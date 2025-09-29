@@ -53,9 +53,10 @@ ros-helm-chart/
 │   ├── install-helm-chart.sh               # Install/upgrade from GitHub releases or local source
 │   └── cleanup-kind-artifacts.sh           # Cleanup KIND cluster artifacts
 └── .github/workflows/                      # CI/CD automation
-    ├── release.yml                         # Automated release creation
+    ├── lint-and-validate.yml               # Chart validation
+    ├── version-check.yml                   # Semantic version validation
     ├── test-deployment.yml                 # Full deployment testing
-    └── lint-and-validate.yml               # Chart validation
+    └── release.yml                         # Automated release creation
 ```
 
 **Template Organization:**
@@ -329,7 +330,18 @@ The repository includes automated workflows for continuous integration and deplo
   - `helm template --validate` - Template validation against Kubernetes schemas
   - Dependency checking (if Chart.yaml has dependencies)
 
-### 2. Test Deployment (`test-deployment.yml`)
+### 2. Version Check (`version-check.yml`)
+**Purpose**: Validate chart version follows semantic versioning
+- **Runtime**: ~5 minutes
+- **Triggers**: PRs and pushes to main/master (when `ros-ocp/Chart.yaml` changes)
+- **Actions**:
+  - Validates current version is valid semantic version
+  - Compares with latest GitHub release version
+  - Ensures version is semantically higher than previous release
+  - Provides suggestions for version bumps (patch/minor/major)
+  - Comments on PRs with version fix suggestions
+
+### 3. Test Deployment (`test-deployment.yml`)
 **Purpose**: Complete end-to-end deployment testing
 - **Runtime**: ~45 minutes
 - **Triggers**: PRs and pushes to main/master (when `ros-ocp/**` or `scripts/**` change)
@@ -339,6 +351,16 @@ The repository includes automated workflows for continuous integration and deplo
   - Runs `scripts/install-helm-chart.sh` to deploy chart
   - Performs health checks and connectivity tests
   - Automatic cleanup on success/failure
+
+### 4. Create Release (`release.yml`)
+**Purpose**: Automated release creation when version tags are pushed
+- **Runtime**: ~10 minutes
+- **Triggers**: Push of version tags (e.g., `v0.2.0`, `v1.0.0`)
+- **Actions**:
+  - Updates Chart.yaml version to match tag
+  - Packages Helm chart into .tgz file
+  - Creates GitHub release with both versioned and latest artifacts
+  - Generates release notes with installation instructions
 
 ### Workflow Benefits
 - **Early Detection**: Catches issues before merging
