@@ -4,37 +4,69 @@ Kubernetes Helm chart for deploying the complete ROS-OCP backend stack.
 
 ## Quick Start
 
+### Option 1: Install Latest Release (Recommended)
 ```bash
-# Or manual Helm installation
-helm install ros-ocp ./ros-ocp -n ros-ocp --create-namespace
+# Automated installation of the latest release from GitHub
+./scripts/install-helm-chart.sh
+
+# Or specify custom namespace and release name
+NAMESPACE=my-namespace HELM_RELEASE_NAME=my-release ./scripts/install-helm-chart.sh
+```
+
+### Option 2: Manual Installation from Source
+```bash
+# Local Helm installation from source (development mode)
+USE_LOCAL_CHART=true ./scripts/install-helm-chart.sh
+```
+
+### Option 3: Direct Helm Installation
+```bash
+# Download latest release manually and install
+LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
+curl -L -o ros-ocp-latest.tgz "$LATEST_URL"
+helm install ros-ocp ros-ocp-latest.tgz -n ros-ocp --create-namespace
 ```
 
 ## Chart Structure
 
 ```
-ros-ocp/
-├── Chart.yaml           # Chart metadata
-├── values.yaml          # Default configuration values
-└── templates/           # Kubernetes resource templates (46 files)
-    ├── _helpers.tpl                           # Template helpers
-    ├── deployment-*.yaml                     # Application deployments (8 files)
-    ├── statefulset-*.yaml                    # Stateful services (6 files)
-    ├── service-*.yaml                        # Service definitions (12 files)
-    ├── configmap-*.yaml                      # Configuration management (2 files)
-    ├── secret-*.yaml                         # Credential management (3 files)
-    ├── job-*.yaml                            # Initialization jobs (2 files)
-    ├── cronjob-*.yaml                        # Scheduled tasks (2 files)
-    ├── ingress*.yaml                         # Kubernetes ingress (2 files)
-    ├── routes.yaml                           # OpenShift routes
-    ├── *-serviceaccount.yaml                 # Service accounts (2 files)
-    ├── clusterrole*.yaml                     # RBAC cluster roles (2 files)
-    └── auth-cluster-roles-*.yaml             # Authentication roles (1 file)
+ros-helm-chart/
+├── ros-ocp/                                 # Helm chart directory
+│   ├── Chart.yaml                          # Chart metadata
+│   ├── values.yaml                         # Default configuration values
+│   └── templates/                          # Kubernetes resource templates (46 files)
+│       ├── _helpers.tpl                    # Template helpers
+│       ├── deployment-*.yaml               # Application deployments (8 files)
+│       ├── statefulset-*.yaml              # Stateful services (6 files)
+│       ├── service-*.yaml                  # Service definitions (12 files)
+│       ├── configmap-*.yaml                # Configuration management (2 files)
+│       ├── secret-*.yaml                   # Credential management (3 files)
+│       ├── job-*.yaml                      # Initialization jobs (2 files)
+│       ├── cronjob-*.yaml                  # Scheduled tasks (2 files)
+│       ├── ingress*.yaml                   # Kubernetes ingress (2 files)
+│       ├── routes.yaml                     # OpenShift routes
+│       ├── *-serviceaccount.yaml           # Service accounts (2 files)
+│       ├── clusterrole*.yaml               # RBAC cluster roles (2 files)
+│       └── auth-cluster-roles-*.yaml       # Authentication roles (1 file)
+├── scripts/                                # Installation and deployment scripts
+│   ├── deploy-kind.sh                      # KIND cluster setup for development
+│   ├── install-helm-chart.sh               # Install/upgrade from GitHub releases or local source
+│   └── cleanup-kind-artifacts.sh           # Cleanup KIND cluster artifacts
+└── .github/workflows/                      # CI/CD automation
+    ├── release.yml                         # Automated release creation
+    ├── test-deployment.yml                 # Full deployment testing
+    └── lint-and-validate.yml               # Chart validation
 ```
 
 **Template Organization:**
 - **Flat structure**: All templates in single directory with descriptive names
 - **Naming convention**: `<resource-type>-<component-name>.yaml`
 - **Platform support**: Includes both Kubernetes Ingress and OpenShift Routes
+
+**Script Organization:**
+- **Unified Installation**: Single script handles both GitHub releases and local development
+- **Development Scripts**: KIND cluster setup and artifact cleanup
+- **CI/CD Integration**: GitHub Actions workflows for automated testing and releases
 
 ## Services Deployed
 
@@ -146,16 +178,49 @@ kubectl port-forward svc/ros-ocp-minio 9001:9001 -n ros-ocp
 
 ## Installation Options
 
-The deployment system provides distinct workflows for different use cases:
+The deployment system provides multiple installation methods for different use cases:
 
-### 1. Automated Testing (GitHub Actions)
-Continuous integration with automated deployment testing:
+### 1. GitHub Release Installation (Production Ready)
 
-- **Lint & Validate**: Fast Helm chart validation on every PR
-- **Full Deployment Test**: Complete E2E testing with KIND cluster
-- **Triggers**: Automatically runs on PR/push to main branch
+#### Automated Installation (Recommended)
+The easiest way to install the latest stable release:
 
-See [GitHub Workflows](#github-workflows) section for details.
+```bash
+# Install latest release with default settings
+./scripts/install-helm-chart.sh
+
+# Install with custom namespace and release name
+NAMESPACE=my-namespace HELM_RELEASE_NAME=my-release ./scripts/install-helm-chart.sh
+
+# The script automatically:
+# - Fetches the latest release from GitHub
+# - Downloads the chart package
+# - Installs or upgrades the deployment
+# - Handles cleanup and platform detection
+```
+
+**Features:**
+- ✅ Always installs the latest stable release
+- ✅ Automatic upgrade detection
+- ✅ Platform detection (Kubernetes/OpenShift)
+- ✅ No version management required
+- ✅ Perfect for CI/CD pipelines
+- ✅ Automatic fallback to local chart if GitHub unavailable
+
+#### Manual GitHub Release Installation
+For CI/CD systems that prefer direct control:
+
+```bash
+# Get latest release URL dynamically
+LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
+
+# Download and install
+curl -L -o ros-ocp-latest.tgz "$LATEST_URL"
+helm install ros-ocp ros-ocp-latest.tgz --namespace ros-ocp --create-namespace
+
+# Verify installation
+helm status ros-ocp -n ros-ocp
+```
 
 ### 2. Local Development (KIND-based)
 For local development and testing using ephemeral KIND clusters:
@@ -170,30 +235,85 @@ scripts/install-helm-chart.sh
 # Access: All services available at http://localhost:32061
 ```
 
-### 3. Manual Helm Installation
-For advanced use cases or custom configurations:
+### 3. Local Source Installation
+For development, testing, or custom modifications:
 
 ```bash
-# Kubernetes with default values
-helm install ros-ocp ./ros-ocp \
-  --namespace ros-ocp \
-  --create-namespace
+# Clone the repository first
+git clone https://github.com/insights-onprem/ros-helm-chart.git
+cd ros-helm-chart
 
-# Kubernetes with custom values
-helm install ros-ocp ./ros-ocp \
-  --namespace ros-ocp \
-  --create-namespace \
-  --values custom-values.yaml
+# Use local chart source (development mode)
+USE_LOCAL_CHART=true ./scripts/install-helm-chart.sh
 
-# OpenShift (auto-detected by chart)
+# With custom values file
+USE_LOCAL_CHART=true VALUES_FILE=custom-values.yaml ./scripts/install-helm-chart.sh
+
+# Direct Helm installation (bypasses script automation)
 helm install ros-ocp ./ros-ocp \
   --namespace ros-ocp \
   --create-namespace
 ```
 
-### Upgrade
+### 4. Automated Testing (GitHub Actions)
+Continuous integration with automated deployment testing:
+
+- **Lint & Validate**: Fast Helm chart validation on every PR
+- **Full Deployment Test**: Complete E2E testing with KIND cluster
+- **Triggers**: Automatically runs on PR/push to main branch
+
+See [GitHub Workflows](#github-workflows) section for details.
+
+### Prerequisites for Script-based Installation
+
+The installation scripts require the following tools to be installed:
+
 ```bash
-helm upgrade ros-ocp ./ros-ocp -n ros-ocp
+# Required tools
+curl    # For downloading releases from GitHub
+jq      # For parsing JSON responses from GitHub API
+helm    # For installing Helm charts
+kubectl # For Kubernetes cluster access
+```
+
+**Installation on different systems:**
+
+```bash
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install curl jq
+
+# RHEL/CentOS/Fedora
+sudo dnf install curl jq
+
+# macOS
+brew install curl jq
+
+# Install Helm (all platforms)
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+```
+
+### Upgrade
+
+#### Using Scripts (Recommended)
+```bash
+# Upgrade to latest release automatically
+./scripts/install-helm-chart.sh
+
+# The script detects existing installations and performs upgrades
+# Uses GitHub releases by default, set USE_LOCAL_CHART=true for local source
+```
+
+#### Manual Upgrade
+```bash
+# From GitHub release
+LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
+curl -L -o ros-ocp-latest.tgz "$LATEST_URL"
+helm upgrade ros-ocp ros-ocp-latest.tgz -n ros-ocp
+
+# From local source
+USE_LOCAL_CHART=true ./scripts/install-helm-chart.sh
+# Or direct: helm upgrade ros-ocp ./ros-ocp -n ros-ocp
 ```
 
 ## GitHub Workflows
@@ -295,6 +415,60 @@ kubectl logs -n ros-ocp -l app.kubernetes.io/name=rosocp-processor
 **Check persistent volumes**:
 ```bash
 kubectl get pvc -n ros-ocp
+```
+
+### Script Installation Issues
+
+**Script prerequisites missing**:
+```bash
+# Check if required tools are installed
+which curl jq helm kubectl
+
+# Install missing tools (Ubuntu/Debian example)
+sudo apt-get install curl jq
+
+# Verify Helm installation
+helm version
+```
+
+**GitHub API rate limiting**:
+```bash
+# If you hit GitHub API rate limits, use authentication
+export GITHUB_TOKEN="your_personal_access_token"
+
+# Or wait for rate limit reset (usually 1 hour)
+curl -s https://api.github.com/rate_limit
+```
+
+**Script execution permissions**:
+```bash
+# Make script executable if needed
+chmod +x scripts/install-helm-chart.sh
+
+# Run with explicit bash if needed
+bash scripts/install-helm-chart.sh
+```
+
+**Network connectivity issues**:
+```bash
+# Test GitHub connectivity
+curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest
+
+# Test with verbose output for debugging
+curl -v https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest
+```
+
+**Chart download failures**:
+```bash
+# Manual verification of latest release
+curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | jq '.tag_name'
+
+# Check available assets
+curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | jq '.assets[].name'
+
+# Download manually if script fails
+LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
+curl -L -o ros-ocp-latest.tgz "$LATEST_URL"
 ```
 
 ### Access Issues
