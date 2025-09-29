@@ -267,13 +267,13 @@ deploy_helm_chart() {
     cd "$SCRIPT_DIR"
 
     # Check if Helm chart directory exists
-    if [ ! -d "../helm/ros-ocp" ]; then
-        echo_error "Helm chart directory not found: ../helm/ros-ocp"
+    if [ ! -d "../ros-ocp" ]; then
+        echo_error "Helm chart directory not found: ../ros-ocp"
         return 1
     fi
 
     # Build Helm command
-    local helm_cmd="helm upgrade --install \"$HELM_RELEASE_NAME\" ../helm/ros-ocp"
+    local helm_cmd="helm upgrade --install \"$HELM_RELEASE_NAME\" ../ros-ocp"
     helm_cmd="$helm_cmd --namespace \"$NAMESPACE\""
     helm_cmd="$helm_cmd --create-namespace"
     helm_cmd="$helm_cmd --timeout=600s"
