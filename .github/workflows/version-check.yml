@@ -1,0 +1,226 @@
+name: Version Check
+
+on:
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'ros-ocp/**'
+
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'ros-ocp/**'
+
+  workflow_dispatch:
+
+jobs:
+  version-validation:
+    name: Validate Chart Version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history to compare with previous versions
+
+      - name: Install semver tool
+        run: |
+          # Install semver comparison tool
+          wget -O /tmp/semver https://raw.githubusercontent.com/fsaintjacques/semver-tool/master/src/semver
+          chmod +x /tmp/semver
+          sudo mv /tmp/semver /usr/local/bin/semver
+
+          # Verify installation
+          semver --version
+
+      - name: Get current chart version
+        id: current_version
+        run: |
+          CURRENT_VERSION=$(grep '^version:' ros-ocp/Chart.yaml | sed 's/version: *//' | tr -d '"' | tr -d "'")
+          echo "Current chart version: $CURRENT_VERSION"
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+          # Validate current version is valid semver
+          if ! semver validate "$CURRENT_VERSION"; then
+            echo "❌ Current version '$CURRENT_VERSION' is not valid semantic version"
+            exit 1
+          fi
+          echo "✅ Current version '$CURRENT_VERSION' is valid semantic version"
+
+      - name: Get latest release version
+        id: latest_release
+        run: |
+          # Get the latest release tag from GitHub API
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.tag_name // empty')
+
+          if [ -z "$LATEST_RELEASE" ] || [ "$LATEST_RELEASE" = "null" ]; then
+            echo "No previous releases found - this appears to be the first release"
+            echo "version=" >> $GITHUB_OUTPUT
+            echo "is_first_release=true" >> $GITHUB_OUTPUT
+          else
+            # Remove 'v' prefix if present
+            LATEST_VERSION=${LATEST_RELEASE#v}
+            echo "Latest release version: $LATEST_VERSION"
+            echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+            echo "is_first_release=false" >> $GITHUB_OUTPUT
+
+            # Validate latest version is valid semver
+            if ! semver validate "$LATEST_VERSION"; then
+              echo "⚠️ Latest release version '$LATEST_VERSION' is not valid semantic version"
+              echo "This might be an old release format - proceeding with validation"
+            fi
+          fi
+
+      - name: Compare versions
+        id: version_check
+        run: |
+          CURRENT_VERSION="${{ steps.current_version.outputs.version }}"
+          LATEST_VERSION="${{ steps.latest_release.outputs.version }}"
+          IS_FIRST_RELEASE="${{ steps.latest_release.outputs.is_first_release }}"
+
+          echo "=== Version Comparison ==="
+          echo "Current version: $CURRENT_VERSION"
+          echo "Latest release:  $LATEST_VERSION"
+          echo "First release:   $IS_FIRST_RELEASE"
+          echo ""
+
+          if [ "$IS_FIRST_RELEASE" = "true" ]; then
+            echo "✅ This is the first release - no version comparison needed"
+            echo "result=success" >> $GITHUB_OUTPUT
+            echo "message=First release - version $CURRENT_VERSION is valid" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Compare versions using semver tool
+          if semver validate "$LATEST_VERSION"; then
+            COMPARISON=$(semver compare "$CURRENT_VERSION" "$LATEST_VERSION")
+
+            case $COMPARISON in
+              1)
+                echo "✅ Version check passed: $CURRENT_VERSION > $LATEST_VERSION"
+                echo "result=success" >> $GITHUB_OUTPUT
+                echo "message=Version increased from $LATEST_VERSION to $CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+                # Determine type of version bump
+                if semver compare "$CURRENT_VERSION" "$(semver bump major $LATEST_VERSION)" -eq 0; then
+                  echo "📈 This is a MAJOR version bump"
+                  echo "bump_type=major" >> $GITHUB_OUTPUT
+                elif semver compare "$CURRENT_VERSION" "$(semver bump minor $LATEST_VERSION)" -eq 0; then
+                  echo "📈 This is a MINOR version bump"
+                  echo "bump_type=minor" >> $GITHUB_OUTPUT
+                elif semver compare "$CURRENT_VERSION" "$(semver bump patch $LATEST_VERSION)" -eq 0; then
+                  echo "📈 This is a PATCH version bump"
+                  echo "bump_type=patch" >> $GITHUB_OUTPUT
+                else
+                  echo "📈 This is a CUSTOM version bump"
+                  echo "bump_type=custom" >> $GITHUB_OUTPUT
+                fi
+                ;;
+              0)
+                echo "❌ Version check failed: $CURRENT_VERSION = $LATEST_VERSION"
+                echo "The chart version must be higher than the latest release"
+                echo "result=failure" >> $GITHUB_OUTPUT
+                echo "message=Version $CURRENT_VERSION is the same as latest release" >> $GITHUB_OUTPUT
+                exit 1
+                ;;
+              -1)
+                echo "❌ Version check failed: $CURRENT_VERSION < $LATEST_VERSION"
+                echo "The chart version cannot be lower than the latest release"
+                echo "result=failure" >> $GITHUB_OUTPUT
+                echo "message=Version $CURRENT_VERSION is lower than latest release $LATEST_VERSION" >> $GITHUB_OUTPUT
+                exit 1
+                ;;
+            esac
+          else
+            echo "⚠️ Cannot compare with invalid semver latest version '$LATEST_VERSION'"
+            echo "Proceeding with basic validation that current version is valid"
+            echo "result=warning" >> $GITHUB_OUTPUT
+            echo "message=Current version $CURRENT_VERSION is valid, but cannot compare with invalid latest version $LATEST_VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Suggest next versions
+        if: failure()
+        run: |
+          LATEST_VERSION="${{ steps.latest_release.outputs.version }}"
+
+          if [ -n "$LATEST_VERSION" ] && semver validate "$LATEST_VERSION"; then
+            echo ""
+            echo "💡 Suggested next versions:"
+            echo "  Patch: $(semver bump patch $LATEST_VERSION)"
+            echo "  Minor: $(semver bump minor $LATEST_VERSION)"
+            echo "  Major: $(semver bump major $LATEST_VERSION)"
+            echo ""
+            echo "Update ros-ocp/Chart.yaml with one of the suggested versions:"
+            echo "  version: $(semver bump patch $LATEST_VERSION)  # For bug fixes"
+            echo "  version: $(semver bump minor $LATEST_VERSION)  # For new features"
+            echo "  version: $(semver bump major $LATEST_VERSION)  # For breaking changes"
+          fi
+
+      - name: Create version check summary
+        if: always()
+        run: |
+          RESULT="${{ steps.version_check.outputs.result }}"
+          MESSAGE="${{ steps.version_check.outputs.message }}"
+          BUMP_TYPE="${{ steps.version_check.outputs.bump_type }}"
+
+          echo "## 📋 Version Check Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          case $RESULT in
+            "success")
+              echo "✅ **Status**: Version check passed" >> $GITHUB_STEP_SUMMARY
+              echo "📝 **Details**: $MESSAGE" >> $GITHUB_STEP_SUMMARY
+              if [ -n "$BUMP_TYPE" ]; then
+                echo "🔄 **Bump Type**: $BUMP_TYPE" >> $GITHUB_STEP_SUMMARY
+              fi
+              ;;
+            "failure")
+              echo "❌ **Status**: Version check failed" >> $GITHUB_STEP_SUMMARY
+              echo "📝 **Details**: $MESSAGE" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### 💡 How to Fix" >> $GITHUB_STEP_SUMMARY
+              echo "Update the \`version\` field in \`ros-ocp/Chart.yaml\` to a higher semantic version." >> $GITHUB_STEP_SUMMARY
+              ;;
+            "warning")
+              echo "⚠️ **Status**: Version check completed with warnings" >> $GITHUB_STEP_SUMMARY
+              echo "📝 **Details**: $MESSAGE" >> $GITHUB_STEP_SUMMARY
+              ;;
+            *)
+              echo "ℹ️ **Status**: Version check completed" >> $GITHUB_STEP_SUMMARY
+              ;;
+          esac
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Version Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **Current Chart Version**: \`${{ steps.current_version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Latest Release Version**: \`${{ steps.latest_release.outputs.version || 'None' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **First Release**: ${{ steps.latest_release.outputs.is_first_release }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment on PR (if applicable)
+        if: github.event_name == 'pull_request' && steps.version_check.outputs.result == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const message = `## ❌ Version Check Failed
+
+            The Helm chart version in \`ros-ocp/Chart.yaml\` must be semantically higher than the latest release.
+
+            **Current version**: \`${{ steps.current_version.outputs.version }}\`
+            **Latest release**: \`${{ steps.latest_release.outputs.version }}\`
+
+            ### 💡 Suggested fixes:
+            Update the \`version\` field in \`ros-ocp/Chart.yaml\` to one of:
+            - \`$(semver bump patch ${{ steps.latest_release.outputs.version }})\` for bug fixes
+            - \`$(semver bump minor ${{ steps.latest_release.outputs.version }})\` for new features
+            - \`$(semver bump major ${{ steps.latest_release.outputs.version }})\` for breaking changes
+
+            [Learn more about semantic versioning](https://semver.org/)`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
