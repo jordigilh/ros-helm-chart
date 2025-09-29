@@ -477,13 +477,13 @@ deploy_helm_chart() {
     echo_info "Deploying ROS-OCP Helm chart..."
 
     # Check if Helm chart directory exists
-    if [ ! -d "../helm/ros-ocp" ]; then
+    if [ ! -d "../ros-ocp" ]; then
         echo_error "Helm chart directory not found: ../helm/ros-ocp"
         return 1
     fi
 
     # Install or upgrade the Helm release
-    helm upgrade --install "$HELM_RELEASE_NAME" ../helm/ros-ocp \
+    helm upgrade --install "$HELM_RELEASE_NAME" ../ros-ocp \
         --namespace "$NAMESPACE" \
         --create-namespace \
         --set global.storageClass="$STORAGE_CLASS" \
