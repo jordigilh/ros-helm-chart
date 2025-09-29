@@ -6,7 +6,7 @@ on:
     paths:
       - 'ros-ocp/**'
 
-  workflow_dispatch:
+workflow_dispatch:
 
 jobs:
   helm-validation:
@@ -36,7 +36,6 @@ jobs:
         # Template with strict validation
         echo "Running strict template validation..."
         helm template ros-ocp-test . --validate
-
         echo "✓ Helm template validation completed successfully"
 
 
