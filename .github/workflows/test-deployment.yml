@@ -13,11 +13,6 @@ on:
       - 'scripts/install-helm-chart.sh'
       - 'scripts/deploy-kind.sh'
 
-  push:
-    paths:
-      - 'ros-ocp/**'
-      - 'scripts/install-helm-chart.sh'
-      - 'scripts/deploy-kind.sh'
   workflow_dispatch:
 
 jobs:
@@ -84,7 +79,7 @@ jobs:
       - name: Setup KIND cluster
         timeout-minutes: 15
         run: |
-          cd deployment/kubernetes/scripts
+          cd scripts
           export KIND_CLUSTER_NAME=${{ env.KIND_CLUSTER_NAME }}
           export HELM_RELEASE_NAME=${{ env.HELM_RELEASE_NAME }}
           export NAMESPACE=${{ env.NAMESPACE }}
@@ -107,7 +102,7 @@ jobs:
         timeout-minutes: 15
         run: |
           # Trigger new build to test MinIO buckets job fix
-          cd deployment/kubernetes/scripts
+          cd scripts
           export KIND_CLUSTER_NAME=${{ env.KIND_CLUSTER_NAME }}
           export HELM_RELEASE_NAME=${{ env.HELM_RELEASE_NAME }}
           export NAMESPACE=${{ env.NAMESPACE }}
