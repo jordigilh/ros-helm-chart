@@ -13,11 +13,6 @@ on:
       - 'scripts/install-helm-chart.sh'
       - 'scripts/deploy-kind.sh'
 
-  push:
-    paths:
-      - 'ros-ocp/**'
-      - 'scripts/install-helm-chart.sh'
-      - 'scripts/deploy-kind.sh'
   workflow_dispatch:
 
 jobs:
