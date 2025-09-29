@@ -206,7 +206,7 @@ The repository includes automated workflows for continuous integration and deplo
 - **Triggers**: PRs and pushes to main/master (when `ros-ocp/**` changes)
 - **Actions**:
   - `helm lint` - Chart structure and syntax validation
-  - `helm template --validate --strict` - Template validation against Kubernetes schemas
+  - `helm template --validate` - Template validation against Kubernetes schemas
   - Dependency checking (if Chart.yaml has dependencies)
 
 ### 2. Test Deployment (`test-deployment.yml`)
@@ -325,7 +325,7 @@ oc describe route ros-ocp-main -n ros-ocp
 # Run locally to debug
 cd ros-ocp
 helm lint .
-helm template test-release . --validate --strict
+helm template test-release . --validate
 ```
 
 **Deployment test workflow failing**:
