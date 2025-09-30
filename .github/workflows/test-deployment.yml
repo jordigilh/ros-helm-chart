@@ -125,32 +125,58 @@ jobs:
           echo "Waiting for services to stabilize..."
           sleep 60
 
-          # Verify authentication setup was created by deploy-kind.sh
-          if [ -f "/tmp/dev-kubeconfig" ]; then
-            echo "✅ Authentication kubeconfig found at /tmp/dev-kubeconfig"
-          else
-            echo "❌ Authentication kubeconfig not found"
-            echo "Expected file: /tmp/dev-kubeconfig"
-            echo "This should have been created by deploy-kind.sh"
-            ls -la /tmp/ | grep -E "(kubeconfig|auth)" || true
-          fi
-
+          # Kubernetes authentication verification (1.24+ compatible)
+          echo "=== Kubernetes Authentication Setup ==="
+          
           # Check if service account exists
           if kubectl get serviceaccount insights-ros-ingress -n ${{ env.NAMESPACE }} >/dev/null 2>&1; then
             echo "✅ insights-ros-ingress service account found"
-
-            # Check if token secret exists
-            if kubectl get secret insights-ros-ingress-token -n ${{ env.NAMESPACE }} >/dev/null 2>&1; then
-              echo "✅ insights-ros-ingress-token secret found"
+            
+            # Create service account token using modern TokenRequest API (Kubernetes 1.24+)
+            echo "Creating service account token using TokenRequest API..."
+            if TOKEN=$(kubectl create token insights-ros-ingress -n ${{ env.NAMESPACE }} --duration=3600s 2>/dev/null); then
+              if [ -n "$TOKEN" ] && [ ${#TOKEN} -gt 50 ]; then
+                echo "✅ Service account token created successfully (length: ${#TOKEN})"
+                echo "✅ Modern Kubernetes authentication is working"
+                
+                # Test token validation
+                if kubectl auth can-i get pods --as=system:serviceaccount:${{ env.NAMESPACE }}:insights-ros-ingress -n ${{ env.NAMESPACE }} >/dev/null 2>&1; then
+                  echo "✅ Service account has proper RBAC permissions"
+                else
+                  echo "⚠️  Service account may have limited RBAC permissions (this is normal for testing)"
+                fi
+              else
+                echo "❌ Service account token is invalid or too short"
+                exit 1
+              fi
             else
-              echo "❌ insights-ros-ingress-token secret not found"
-              kubectl get secrets -n ${{ env.NAMESPACE }} | head -10 || true
+              echo "❌ Failed to create service account token"
+              echo "This may indicate RBAC or API server issues"
+              exit 1
             fi
           else
             echo "❌ insights-ros-ingress service account not found"
+            echo "Available service accounts:"
             kubectl get serviceaccounts -n ${{ env.NAMESPACE }} || true
+            exit 1
           fi
 
+          # Legacy authentication check (for reference, but not required)
+          echo "=== Legacy Authentication Check (for reference) ==="
+          if [ -f "/tmp/dev-kubeconfig" ]; then
+            echo "ℹ️  Legacy kubeconfig found at /tmp/dev-kubeconfig"
+          else
+            echo "ℹ️  Legacy kubeconfig not found (this is expected with modern setup)"
+          fi
+          
+          # Legacy token secret check (not required in Kubernetes 1.24+)
+          if kubectl get secret insights-ros-ingress-token -n ${{ env.NAMESPACE }} >/dev/null 2>&1; then
+            echo "ℹ️  Legacy token secret found (unusual in Kubernetes 1.24+)"
+          else
+            echo "ℹ️  Legacy token secret not found (this is expected in Kubernetes 1.24+)"
+          fi
+
+          echo "=== Pod Readiness Check ==="
           # Wait for all pods to be in Running state
           timeout 600 bash -c "until kubectl wait --for=condition=ready pod -l 'app.kubernetes.io/instance=${{ env.HELM_RELEASE_NAME }}' -n ${{ env.NAMESPACE }} --timeout=30s; do echo 'Waiting for pods...'; sleep 10; done"
 
@@ -196,10 +222,18 @@ jobs:
           echo "=== Authentication Status ==="
           echo "Service Accounts:"
           kubectl get serviceaccounts -n ${{ env.NAMESPACE }} || true
+          echo "Service Account Details:"
+          kubectl describe serviceaccount insights-ros-ingress -n ${{ env.NAMESPACE }} || true
           echo "Secrets:"
           kubectl get secrets -n ${{ env.NAMESPACE }} | grep -E "(insights-ros-ingress|token)" || true
+          echo "All Secrets:"
+          kubectl get secrets -n ${{ env.NAMESPACE }} || true
           echo "Authentication files:"
           ls -la /tmp/ | grep -E "(kubeconfig|auth)" || true
+          echo "Testing TokenRequest API:"
+          kubectl create token insights-ros-ingress -n ${{ env.NAMESPACE }} --duration=60s --dry-run=server || true
+          echo "RBAC Check:"
+          kubectl auth can-i get pods --as=system:serviceaccount:${{ env.NAMESPACE }}:insights-ros-ingress -n ${{ env.NAMESPACE }} || true
 
           echo "=== Ingress Service Logs ==="
           kubectl logs -n ${{ env.NAMESPACE }} -l app.kubernetes.io/name=ingress --tail=30 || true
