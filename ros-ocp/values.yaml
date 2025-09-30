@@ -88,13 +88,22 @@ kafka:
       size: 10Gi
     port: 29092
 
-# Redis
+# Redis (Development Cache - for Kubernetes deployments)
 redis:
   image:
     repository: quay.io/insights-onprem/redis-ephemeral
     tag: "6"
   maxMemory: 512mb
   maxMemoryPolicy: allkeys-lru
+  port: 6379
+
+# Valkey (Production Cache - for OpenShift deployments)
+valkey:
+  image:
+    # Primary image (Red Hat)
+    repository: registry.redhat.io/rhel10/valkey-8
+    tag: "latest"
+  bindAddress: "0.0.0.0"
   port: 6379
 
 # MinIO

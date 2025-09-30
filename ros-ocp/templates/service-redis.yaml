@@ -1,20 +1,23 @@
+{{- $isOpenShift := eq (include "ros-ocp.isOpenShift" .) "true" }}
+{{- $cacheName := ternary "valkey" "redis" $isOpenShift }}
+{{- $cacheConfig := ternary .Values.valkey .Values.redis $isOpenShift }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "ros-ocp.fullname" . }}-redis
+  name: {{ include "ros-ocp.fullname" . }}-{{ $cacheName }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: cache
-    app.kubernetes.io/name: redis
+    app.kubernetes.io/name: {{ $cacheName }}
 spec:
   type: {{ .Values.service.type }}
   ports:
-    - port: {{ .Values.redis.port }}
-      targetPort: redis
+    - port: {{ $cacheConfig.port }}
+      targetPort: {{ $cacheName }}
       protocol: TCP
-      name: redis
+      name: {{ $cacheName }}
   selector:
     {{- include "ros-ocp.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: cache
-    app.kubernetes.io/name: redis
+    app.kubernetes.io/name: {{ $cacheName }}
