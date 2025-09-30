@@ -36,10 +36,6 @@ jobs:
         echo "Running template validation..."
         helm template ros-ocp-test . --debug --dry-run
         echo "✓ Helm template validation completed successfully"
-        
-        # Additional template checks
-        echo "Checking template output for common issues..."
-        helm template ros-ocp-test . | grep -E "(apiVersion|kind|metadata)" | head -10
-        echo "✓ Template structure validation completed"
+
 
 

@@ -545,3 +545,36 @@ Filesystem
     {{- end -}}
   {{- end -}}
 {{- end }}
+
+{{/*
+Cache service name (redis or valkey based on platform)
+*/}}
+{{- define "ros-ocp.cache.name" -}}
+{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+valkey
+{{- else -}}
+redis
+{{- end -}}
+{{- end }}
+
+{{/*
+Cache configuration (returns the appropriate config object)
+*/}}
+{{- define "ros-ocp.cache.config" -}}
+{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- .Values.valkey | toYaml -}}
+{{- else -}}
+{{- .Values.redis | toYaml -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Cache CLI command (redis-cli or valkey-cli based on platform)
+*/}}
+{{- define "ros-ocp.cache.cli" -}}
+{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+valkey-cli
+{{- else -}}
+redis-cli
+{{- end -}}
+{{- end }}

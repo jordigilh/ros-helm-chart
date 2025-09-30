@@ -1,5 +1,7 @@
 {{- $isOpenShift := eq (include "ros-ocp.isOpenShift" .) "true" }}
-{{- $cacheName := ternary "valkey" "redis" $isOpenShift }}
+{{- $cacheName := include "ros-ocp.cache.name" . }}
+{{- $cacheConfig := ternary .Values.valkey .Values.redis $isOpenShift }}
+{{- $cacheCliCommand := include "ros-ocp.cache.cli" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,19 +31,11 @@ spec:
       {{- end }}
       containers:
         - name: {{ $cacheName }}
-          {{- if $isOpenShift }}
-          image: "{{ .Values.valkey.image.repository }}:{{ .Values.valkey.image.tag }}"
-          {{- else }}
-          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
-          {{- end }}
+          image: "{{ $cacheConfig.image.repository }}:{{ $cacheConfig.image.tag }}"
           imagePullPolicy: {{ .Values.global.pullPolicy }}
           ports:
             - name: {{ $cacheName }}
-              {{- if $isOpenShift }}
-              containerPort: {{ .Values.valkey.port }}
-              {{- else }}
-              containerPort: {{ .Values.redis.port }}
-              {{- end }}
+              containerPort: {{ $cacheConfig.port }}
               protocol: TCP
           {{- if not $isOpenShift }}
           env:
@@ -54,20 +48,16 @@ spec:
             - valkey-server
           args:
             - --bind
-            - "{{ .Values.valkey.bindAddress }}"
+            - "{{ $cacheConfig.bindAddress }}"
             - --port
-            - "{{ .Values.valkey.port }}"
+            - "{{ $cacheConfig.port }}"
             - --protected-mode
             - "no"
           {{- end }}
           livenessProbe:
             exec:
               command:
-                {{- if $isOpenShift }}
-                - valkey-cli
-                {{- else }}
-                - redis-cli
-                {{- end }}
+                - {{ $cacheCliCommand }}
                 - ping
             initialDelaySeconds: {{ .Values.probes.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.periodSeconds }}
@@ -76,11 +66,7 @@ spec:
           readinessProbe:
             exec:
               command:
-                {{- if $isOpenShift }}
-                - valkey-cli
-                {{- else }}
-                - redis-cli
-                {{- end }}
+                - {{ $cacheCliCommand }}
                 - ping
             initialDelaySeconds: 5
             periodSeconds: {{ .Values.probes.periodSeconds }}
