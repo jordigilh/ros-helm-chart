@@ -35,7 +35,7 @@ spec:
           imagePullPolicy: {{ .Values.global.pullPolicy }}
           ports:
             - name: {{ $cacheName }}
-              containerPort: {{ $cacheConfig.port }}
+              containerPort: 6379
               protocol: TCP
           {{- if not $isOpenShift }}
           env:
@@ -50,7 +50,7 @@ spec:
             - --bind
             - "{{ $cacheConfig.bindAddress }}"
             - --port
-            - "{{ $cacheConfig.port }}"
+            - "6379"
             - --protected-mode
             - "no"
           {{- end }}

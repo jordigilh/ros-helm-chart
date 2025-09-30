@@ -95,7 +95,6 @@ redis:
     tag: "6"
   maxMemory: 512mb
   maxMemoryPolicy: allkeys-lru
-  port: 6379
 
 # Valkey (Production Cache - for OpenShift deployments)
 valkey:
@@ -104,7 +103,6 @@ valkey:
     repository: registry.redhat.io/rhel10/valkey-8
     tag: "latest"
   bindAddress: "0.0.0.0"
-  port: 6379
 
 # MinIO
 minio:
