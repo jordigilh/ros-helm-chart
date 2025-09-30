@@ -5,8 +5,7 @@ on:
     branches: [ main, master ]
     paths:
       - 'ros-ocp/**'
-
-workflow_dispatch:
+  workflow_dispatch:
 
 jobs:
   helm-validation:
