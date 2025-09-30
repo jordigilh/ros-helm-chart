@@ -1,5 +1,5 @@
 {{- $isOpenShift := eq (include "ros-ocp.isOpenShift" .) "true" }}
-{{- $cacheName := ternary "valkey" "redis" $isOpenShift }}
+{{- $cacheName := include "ros-ocp.cache.name" . }}
 {{- $cacheConfig := ternary .Values.valkey .Values.redis $isOpenShift }}
 apiVersion: apps/v1
 kind: Deployment
