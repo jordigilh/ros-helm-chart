@@ -1,6 +1,5 @@
 {{- $isOpenShift := eq (include "ros-ocp.isOpenShift" .) "true" }}
 {{- $cacheName := include "ros-ocp.cache.name" . }}
-{{- $cacheConfig := ternary .Values.valkey .Values.redis $isOpenShift }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -58,8 +57,8 @@ spec:
           command: ['bash', '-c']
           args:
             - |
-              echo "Waiting for {{ $cacheName | title }} at {{ include "ros-ocp.fullname" . }}-{{ $cacheName }}:{{ $cacheConfig.port }}..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "ros-ocp.fullname" . }}-{{ $cacheName }}/{{ $cacheConfig.port }}" 2>/dev/null; do
+              echo "Waiting for {{ $cacheName | title }} at {{ include "ros-ocp.fullname" . }}-{{ $cacheName }}:6379..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "ros-ocp.fullname" . }}-{{ $cacheName }}/6379" 2>/dev/null; do
                 echo "{{ $cacheName | title }} not ready yet, retrying in 5 seconds..."
                 sleep 5
               done
@@ -92,7 +91,7 @@ spec:
             - name: REDIS_CACHE_HOST
               value: {{ include "ros-ocp.fullname" . }}-{{ $cacheName }}
             - name: REDIS_CACHE_PORT
-              value: {{ $cacheConfig.port | quote }}
+              value: "6379"
             - name: BYPASS_RBAC
               value: {{ .Values.sourcesApi.bypassRbac | quote }}
             - name: QUEUE_HOST
