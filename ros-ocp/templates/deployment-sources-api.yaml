@@ -1,3 +1,5 @@
+{{- $isOpenShift := eq (include "ros-ocp.isOpenShift" .) "true" }}
+{{- $cacheName := include "ros-ocp.cache.name" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -50,18 +52,18 @@ spec:
               done
               echo "Kafka is ready"
               echo "Kafka is ready"
-        - name: wait-for-redis
+        - name: wait-for-{{ $cacheName }}
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
           command: ['bash', '-c']
           args:
             - |
-              echo "Waiting for Redis at {{ include "ros-ocp.fullname" . }}-redis:{{ .Values.redis.port }}..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "ros-ocp.fullname" . }}-redis/{{ .Values.redis.port }}" 2>/dev/null; do
-                echo "Redis not ready yet, retrying in 5 seconds..."
+              echo "Waiting for {{ $cacheName | title }} at {{ include "ros-ocp.fullname" . }}-{{ $cacheName }}:6379..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "ros-ocp.fullname" . }}-{{ $cacheName }}/6379" 2>/dev/null; do
+                echo "{{ $cacheName | title }} not ready yet, retrying in 5 seconds..."
                 sleep 5
               done
-              echo "Redis is ready"
-              echo "Redis is ready"
+              echo "{{ $cacheName | title }} is ready"
+              echo "{{ $cacheName | title }} is ready"
       containers:
         - name: sources-api
           image: "{{ .Values.sourcesApi.image.repository }}:{{ .Values.sourcesApi.image.tag }}"
@@ -87,9 +89,9 @@ spec:
             - name: LOG_LEVEL
               value: {{ .Values.sourcesApi.logLevel | quote }}
             - name: REDIS_CACHE_HOST
-              value: {{ include "ros-ocp.fullname" . }}-redis
+              value: {{ include "ros-ocp.fullname" . }}-{{ $cacheName }}
             - name: REDIS_CACHE_PORT
-              value: {{ .Values.redis.port | quote }}
+              value: "6379"
             - name: BYPASS_RBAC
               value: {{ .Values.sourcesApi.bypassRbac | quote }}
             - name: QUEUE_HOST
