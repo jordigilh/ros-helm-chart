@@ -1,47 +1,73 @@
+{{- $isOpenShift := eq (include "ros-ocp.isOpenShift" .) "true" }}
+{{- $cacheName := ternary "valkey" "redis" $isOpenShift }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "ros-ocp.fullname" . }}-redis
+  name: {{ include "ros-ocp.fullname" . }}-{{ $cacheName }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: cache
-    app.kubernetes.io/name: redis
+    app.kubernetes.io/name: {{ $cacheName }}
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "ros-ocp.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: cache
-      app.kubernetes.io/name: redis
+      app.kubernetes.io/name: {{ $cacheName }}
   template:
     metadata:
       labels:
         {{- include "ros-ocp.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: cache
-        app.kubernetes.io/name: redis
+        app.kubernetes.io/name: {{ $cacheName }}
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: redis
+        - name: {{ $cacheName }}
+          {{- if $isOpenShift }}
+          image: "{{ .Values.valkey.image.repository }}:{{ .Values.valkey.image.tag }}"
+          {{- else }}
           image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          {{- end }}
           imagePullPolicy: {{ .Values.global.pullPolicy }}
           ports:
-            - name: redis
+            - name: {{ $cacheName }}
+              {{- if $isOpenShift }}
+              containerPort: {{ .Values.valkey.port }}
+              {{- else }}
               containerPort: {{ .Values.redis.port }}
+              {{- end }}
               protocol: TCP
+          {{- if not $isOpenShift }}
           env:
             - name: REDIS_MAXMEMORY
               value: {{ .Values.redis.maxMemory | quote }}
             - name: REDIS_MAXMEMORY_POLICY
               value: {{ .Values.redis.maxMemoryPolicy | quote }}
+          {{- else }}
+          command:
+            - valkey-server
+          args:
+            - --bind
+            - "{{ .Values.valkey.bindAddress }}"
+            - --port
+            - "{{ .Values.valkey.port }}"
+            - --protected-mode
+            - "no"
+          {{- end }}
           livenessProbe:
             exec:
               command:
+                {{- if $isOpenShift }}
+                - valkey-cli
+                {{- else }}
                 - redis-cli
+                {{- end }}
                 - ping
             initialDelaySeconds: {{ .Values.probes.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.periodSeconds }}
@@ -50,7 +76,11 @@ spec:
           readinessProbe:
             exec:
               command:
+                {{- if $isOpenShift }}
+                - valkey-cli
+                {{- else }}
                 - redis-cli
+                {{- end }}
                 - ping
             initialDelaySeconds: 5
             periodSeconds: {{ .Values.probes.periodSeconds }}
