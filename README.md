@@ -74,7 +74,7 @@ ros-helm-chart/
 ### Stateful Services
 - **PostgreSQL** (3 instances): ROS, Kruize, Sources databases
 - **Kafka + Zookeeper**: Message streaming with persistent storage
-- **MinIO**: Object storage with persistent volumes
+- **MinIO/ODF**: Object storage (MinIO for Kubernetes, ODF for OpenShift)
 
 ### Application Services
 - **Ingress**: File upload API and routing gateway
@@ -133,13 +133,59 @@ Based on the current deployment analysis:
 - **Storage Requirements**:
   - PostgreSQL databases: 3 × 5GB = 15GB
   - Kafka + Zookeeper: 5GB + 3GB = 8GB
-  - MinIO: 10GB
+  - MinIO: 10GB (Kubernetes) / ODF: Uses existing storage (OpenShift)
   - **Total**: ~33GB (recommended 30GB+ for development)
 
 #### ODF Configuration
 - **Storage Class**: `ocs-storagecluster-ceph-rbd` (automatically detected)
 - **Volume Mode**: Filesystem (automatically selected for ODF)
 - **Access Mode**: ReadWriteOnce (RWO)
+
+## Storage Configuration
+
+### Dual Storage Support
+The chart supports two storage backends based on the deployment platform:
+
+#### MinIO (Kubernetes/KinD - Development)
+- **Purpose**: Development and testing environments
+- **Deployment**: StatefulSet with persistent volumes
+- **Console Access**: Available via ingress at `/minio`
+- **Credentials**: `minioaccesskey` / `miniosecretkey`
+- **API**: S3-compatible endpoint at `ros-ocp-minio:9000`
+
+#### ODF (OpenShift - Production)
+- **Purpose**: Production environments with enterprise-grade storage
+- **Deployment**: Uses existing ODF installation
+- **Console Access**: Managed via OpenShift console
+- **Credentials**: User must create secret in deployment namespace
+- **API**: S3-compatible endpoint at `s3.openshift-storage.svc.cluster.local:443`
+
+### Automatic Detection
+The installation script automatically detects the platform and configures the appropriate storage:
+- **Kubernetes**: Deploys MinIO StatefulSet
+- **OpenShift**: Uses existing ODF installation
+
+### ODF Credentials Setup (OpenShift Only)
+
+For OpenShift deployments, you must create the ODF S3 credentials secret in the deployment namespace before installing the chart:
+
+```bash
+# Create ODF credentials secret in the ros-ocp namespace
+kubectl create secret generic ros-ocp-odf-credentials \
+  --namespace=ros-ocp \
+  --from-literal=access-key=<your-odf-access-key> \
+  --from-literal=secret-key=<your-odf-secret-key>
+
+# Verify the secret was created
+kubectl get secret ros-ocp-odf-credentials -n ros-ocp
+```
+
+**Important Notes:**
+- The secret must be created in the same namespace where you plan to deploy the chart (default: `ros-ocp`)
+- The secret name is configurable via `odf.credentials.secretName` in values.yaml
+- The secret keys are configurable via `odf.credentials.accessKeyKey` and `odf.credentials.secretKeyKey`
+- This approach ensures the chart is not responsible for managing ODF credentials
+- Works with GitOps workflows and external secret management systems (Vault, etc.)
 
 ## Access Points
 
@@ -152,7 +198,7 @@ All services are accessible through the ingress controller on port **32061**:
 - **Kruize API**: http://localhost:32061/api/kruize/listPerformanceProfiles
 - **Sources API**: http://localhost:32061/api/sources/*
 - **File Upload (Ingress)**: http://localhost:32061/api/ingress/*
-- **MinIO Console**: http://localhost:32061/minio (minioaccesskey/miniosecretkey)
+- **MinIO Console**: http://localhost:32061/minio (minioaccesskey/miniosecretkey) - Kubernetes only
 
 ### OpenShift Deployment
 Services are accessible through OpenShift Routes:
@@ -264,6 +310,102 @@ Continuous integration with automated deployment testing:
 - **Triggers**: Automatically runs on PR/push to main branch
 
 See [GitHub Workflows](#github-workflows) section for details.
+
+### Prerequisites for OpenShift Deployment
+
+Before deploying to OpenShift, ensure the following prerequisites are met:
+
+#### 1. OpenShift Data Foundation (ODF) Installation
+- ODF must be installed and operational in the cluster
+- S3 service should be available at `s3.openshift-storage.svc.cluster.local:443`
+- NooBaa should be running and accessible
+
+#### 2. ODF S3 Credentials Secret
+Create the ODF credentials secret in the deployment namespace:
+
+```bash
+# Create the secret with your ODF S3 credentials
+kubectl create secret generic ros-ocp-odf-credentials \
+  --namespace=ros-ocp \
+  --from-literal=access-key=<your-odf-access-key> \
+  --from-literal=secret-key=<your-odf-secret-key>
+
+# Verify the secret exists
+kubectl get secret ros-ocp-odf-credentials -n ros-ocp
+```
+
+**Getting ODF Credentials:**
+
+There are several ways to obtain ODF S3 credentials:
+
+#### Method 1: OpenShift Console (Recommended)
+1. **Access OpenShift Console**: Log into your OpenShift web console
+2. **Navigate to Storage**: Go to **Storage** → **Object Storage** in the left sidebar
+3. **Create/Select Bucket**: 
+   - If you don't have a bucket, click **Create Bucket** and name it (e.g., `ros-data`)
+   - If you have an existing bucket, select it from the list
+4. **Generate Credentials**:
+   - Click on your bucket name
+   - Go to the **Access Keys** tab
+   - Click **Create Access Key**
+   - **Important**: Copy both the **Access Key** and **Secret Key** immediately
+   - The secret key will only be shown once and cannot be retrieved later
+
+#### Method 2: NooBaa CLI
+```bash
+# Install NooBaa CLI (if not already installed)
+curl -LO https://github.com/noobaa/noobaa-operator/releases/download/v5.13.0/noobaa-linux
+chmod +x noobaa-linux
+sudo mv noobaa-linux /usr/local/bin/noobaa
+
+# Login to NooBaa
+noobaa status -n openshift-storage
+
+# Create credentials for a bucket
+noobaa account create my-ros-account -n openshift-storage
+noobaa bucket create ros-data -n openshift-storage
+noobaa account attach my-ros-account --bucket ros-data -n openshift-storage
+
+# Get the credentials
+noobaa account show my-ros-account -n openshift-storage
+```
+
+#### Method 3: Using Existing Admin Credentials (Not Recommended)
+```bash
+# Get admin credentials from noobaa-admin secret
+kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d
+kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d
+
+# Note: These are admin credentials with full access - use with caution
+```
+
+#### Method 4: External Secret Management (GitOps)
+If using external secret management systems like Vault or Sealed Secrets:
+
+```bash
+# Example with Vault
+vault kv get -field=access_key secret/odf/ros-credentials
+vault kv get -field=secret_key secret/odf/ros-credentials
+
+# Example with Sealed Secrets
+kubectl create secret generic ros-ocp-odf-credentials \
+  --from-literal=access-key=<vault-access-key> \
+  --from-literal=secret-key=<vault-secret-key> \
+  --dry-run=client -o yaml | kubeseal -o yaml > sealed-secret.yaml
+```
+
+**Security Best Practices:**
+- Use dedicated service accounts instead of admin credentials
+- Rotate credentials regularly
+- Store credentials securely (Vault, Sealed Secrets, etc.)
+- Use least-privilege access (only grant access to specific buckets)
+- Never commit credentials to version control
+
+#### 3. Namespace Permissions
+Ensure you have the necessary permissions to:
+- Create secrets in the target namespace
+- Deploy Helm charts
+- Access ODF resources
 
 ### Prerequisites for Script-based Installation
 
@@ -381,7 +523,7 @@ The chart automatically adapts to different Kubernetes platforms:
 |---------|------------|-----------|
 | **Routing** | Ingress resources | Route resources |
 | **Access** | `http://localhost:32061/*` | `http://<route-host>/*` |
-| **Storage** | Default storage class | `ocs-storagecluster-ceph-rbd` (ODF) |
+| **Storage** | MinIO with default storage class | ODF (OpenShift Data Foundation) |
 | **Security** | Standard RBAC | Enhanced security contexts |
 | **Detection** | `kubectl get routes` fails | `kubectl get routes` succeeds |
 
@@ -554,7 +696,7 @@ kubectl top nodes  # if metrics-server available
 ### Universal Installation (`install-helm-chart.sh`)
 - **Automatic Platform Detection**: Kubernetes vs OpenShift detection
 - **Dynamic Template Selection**: Adapts Ingress vs Routes based on platform
-- **Intelligent Storage**: Auto-selects optimal storage classes per platform
+- **Intelligent Storage**: Auto-selects MinIO (Kubernetes) or ODF (OpenShift) per platform
 - **Kafka Conflict Resolution**: Prevents cluster ID mismatches automatically
 - **Comprehensive Health Checks**: Internal and external connectivity validation
 - **Flexible Cleanup**: Standard cleanup (preserves data) or complete cleanup (removes all)
@@ -574,5 +716,5 @@ kubectl top nodes  # if metrics-server available
 - **Resource Management**: Appropriate limits and requests to prevent resource exhaustion
 - **Platform Optimization**: OpenShift Routes vs Kubernetes Ingress automatically selected
 - **RBAC Integration**: Service accounts and cluster roles for secure operation
-- **Automated Jobs**: Kafka topic creation and MinIO bucket initialization
+- **Automated Jobs**: Kafka topic creation and storage bucket initialization (MinIO/ODF)
 - **Flexible Configuration**: Extensive values.yaml for customization
