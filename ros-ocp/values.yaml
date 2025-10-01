@@ -104,7 +104,7 @@ valkey:
     tag: "latest"
   bindAddress: "0.0.0.0"
 
-# MinIO
+# MinIO (Development Storage - for Kubernetes deployments)
 minio:
   image:
     repository: quay.io/minio/minio
@@ -120,6 +120,35 @@ minio:
     - insights-upload-perma
     - koku-bucket
     - ros-data
+
+# ODF (Production Storage - for OpenShift deployments)
+odf:
+  # ODF S3 endpoint (auto-detected from NooBaa CRD status if empty)
+  # If auto-detection fails, specify the endpoint manually:
+  # endpoint: "s3.openshift-storage.svc.cluster.local"
+  endpoint: ""
+  # ODF S3 region
+  region: "us-east-1"
+  # ODF S3 bucket (will be created if it doesn't exist)
+  bucket: "ros-data"
+  # ODF S3 path style (required for ODF)
+  pathStyle: true
+  # ODF S3 SSL configuration
+  useSSL: true
+  # ODF S3 port (default for ODF)
+  port: 443
+  # ODF S3 credentials (user must create this secret in the deployment namespace)
+  credentials:
+    # Name of the secret containing ODF S3 credentials
+    # This secret must be created by the user in the deployment namespace
+    # Example: kubectl create secret generic ros-ocp-odf-credentials \
+    #   --from-literal=access-key=<access-key> \
+    #   --from-literal=secret-key=<secret-key>
+    secretName: "ros-ocp-odf-credentials"
+    # Secret keys (optional, defaults shown)
+    # These specify which keys in the secret contain the credentials
+    # accessKeyKey: "access-key"  # Key name for access key in the secret
+    # secretKeyKey: "secret-key"  # Key name for secret key in the secret
 
 # NGINX configuration removed - static test samples are no longer part of the Helm chart
 
