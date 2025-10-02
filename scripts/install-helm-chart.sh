@@ -161,13 +161,68 @@ create_storage_credentials_secret() {
         return 0
     fi
 
-    # For Kubernetes/KIND, create MinIO credentials for development
-    echo_info "Creating MinIO credentials for development environment..."
-    kubectl create secret generic "$secret_name" \
-        --namespace="$NAMESPACE" \
-        --from-literal=access-key="minioaccesskey" \
-        --from-literal=secret-key="miniosecretkey"
-    echo_success "Storage credentials secret created with default MinIO credentials"
+    if [ "$PLATFORM" = "openshift" ]; then
+        # For OpenShift, check if ODF credentials secret exists
+        local odf_secret_name="ros-ocp-odf-credentials"
+        if kubectl get secret "$odf_secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+            echo_info "Found existing ODF credentials secret: $odf_secret_name"
+            echo_info "Creating storage credentials secret from ODF credentials..."
+                # Extract credentials from ODF secret
+            local access_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}')
+            local secret_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}')
+                # Create storage credentials secret
+            kubectl create secret generic "$secret_name" \
+                --namespace="$NAMESPACE" \
+                --from-literal=access-key="$(echo "$access_key" | base64 -d)" \
+                --from-literal=secret-key="$(echo "$secret_key" | base64 -d)"
+            echo_success "Storage credentials secret created from ODF credentials"
+        else
+            # Try to create ODF credentials from noobaa-admin secret (from create_secret_odf.sh logic)
+            echo_info "ODF credentials secret not found. Attempting to create from noobaa-admin secret..."
+            
+            if kubectl get secret noobaa-admin -n openshift-storage >/dev/null 2>&1; then
+                echo_info "Found noobaa-admin secret, extracting ODF credentials..."
+                
+                # Extract credentials from noobaa-admin secret (using create_secret_odf.sh logic)
+                local access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d)
+                local secret_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d)
+                
+                # Create ODF credentials secret first
+                kubectl create secret generic "$odf_secret_name" \
+                    --namespace="$NAMESPACE" \
+                    --from-literal=access-key="$access_key" \
+                    --from-literal=secret-key="$secret_key"
+                
+                echo_success "Created ODF credentials secret from noobaa-admin"
+                
+                # Now create storage credentials secret
+                kubectl create secret generic "$secret_name" \
+                    --namespace="$NAMESPACE" \
+                    --from-literal=access-key="$access_key" \
+                    --from-literal=secret-key="$secret_key"
+                
+                echo_success "Storage credentials secret created from noobaa-admin credentials"
+            else
+                echo_error "Neither ODF credentials secret '$odf_secret_name' nor noobaa-admin secret found"
+                echo_error "For OpenShift deployments, you must create the ODF credentials secret first:"
+                echo_info "  kubectl create secret generic $odf_secret_name \\"
+                echo_info "    --namespace=$NAMESPACE \\"
+                echo_info "    --from-literal=access-key=<your-odf-access-key> \\"
+                echo_info "    --from-literal=secret-key=<your-odf-secret-key>"
+                echo_info ""
+                echo_info "Or ensure noobaa-admin secret exists in openshift-storage namespace"
+                return 1
+            fi
+        fi
+    else
+        # For Kubernetes/KIND, create MinIO credentials for development
+        echo_info "Creating MinIO credentials for development environment..."
+        kubectl create secret generic "$secret_name" \
+            --namespace="$NAMESPACE" \
+            --from-literal=access-key="minioaccesskey" \
+            --from-literal=secret-key="miniosecretkey"
+        echo_success "Storage credentials secret created with default MinIO credentials"
+    fi
 }
 
 # Function to download latest chart from GitHub
