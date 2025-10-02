@@ -165,27 +165,6 @@ The installation script automatically detects the platform and configures the ap
 - **Kubernetes**: Deploys MinIO StatefulSet
 - **OpenShift**: Uses existing ODF installation
 
-### ODF Credentials Setup (OpenShift Only)
-
-For OpenShift deployments, you must create the ODF S3 credentials secret in the deployment namespace before installing the chart:
-
-```bash
-# Create ODF credentials secret in the ros-ocp namespace
-kubectl create secret generic ros-ocp-odf-credentials \
-  --namespace=ros-ocp \
-  --from-literal=access-key=<your-odf-access-key> \
-  --from-literal=secret-key=<your-odf-secret-key>
-
-# Verify the secret was created
-kubectl get secret ros-ocp-odf-credentials -n ros-ocp
-```
-
-**Important Notes:**
-- The secret must be created in the same namespace where you plan to deploy the chart (default: `ros-ocp`)
-- The secret name is configurable via `odf.credentials.secretName` in values.yaml
-- The secret keys are configurable via `odf.credentials.accessKeyKey` and `odf.credentials.secretKeyKey`
-- This approach ensures the chart is not responsible for managing ODF credentials
-- Works with GitOps workflows and external secret management systems (Vault, etc.)
 
 ## Access Points
 
@@ -333,6 +312,8 @@ kubectl create secret generic ros-ocp-odf-credentials \
 # Verify the secret exists
 kubectl get secret ros-ocp-odf-credentials -n ros-ocp
 ```
+
+> **Note**: For development environments (Kubernetes/KIND), the installation script automatically creates this secret with default MinIO credentials.
 
 **Getting ODF Credentials:**
 
