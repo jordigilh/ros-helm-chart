@@ -281,7 +281,7 @@ rosocp:
   processor:
     image:
 #TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
-      repository: quay.io/jordigilh/ros-ocp-backend
+      repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
     metricsPort: 9000
     kafkaConsumerGroupId: rosocp-processor
@@ -294,7 +294,7 @@ rosocp:
   recommendationPoller:
     image:
 #TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
-      repository: quay.io/jordigilh/ros-ocp-backend
+      repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
     metricsPort: 9000
     kafkaConsumerGroupId: rosocp-recommendation-poller
@@ -307,7 +307,7 @@ rosocp:
   api:
     image:
 #TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
-      repository: quay.io/jordigilh/ros-ocp-backend
+      repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
     port: 8000
     metricsPort: 9000
@@ -321,7 +321,7 @@ rosocp:
   housekeeper:
     image:
 #TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
-      repository: quay.io/jordigilh/ros-ocp-backend
+      repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
     serviceName: rosocp-housekeeper-sources
     logLevel: INFO
@@ -330,7 +330,7 @@ rosocp:
     schedule: "0 0 */15 * *"  # Runs at 12:00 AM, every 15 days
     image:
 #TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
-      repository: quay.io/jordigilh/ros-ocp-backend
+      repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
     serviceName: rosocp-housekeeper-partition
     logLevel: INFO
