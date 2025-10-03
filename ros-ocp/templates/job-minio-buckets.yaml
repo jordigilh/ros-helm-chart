@@ -1,3 +1,5 @@
+{{- $isOpenShift := eq (include "ros-ocp.isOpenShift" .) "true" }}
+{{- if not $isOpenShift }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -78,12 +80,12 @@ spec:
             - name: MINIO_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ros-ocp.fullname" . }}-minio-credentials
+                  name: {{ include "ros-ocp.fullname" . }}-storage-credentials
                   key: access-key
             - name: MINIO_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ros-ocp.fullname" . }}-minio-credentials
+                  name: {{ include "ros-ocp.fullname" . }}-storage-credentials
                   key: secret-key
           command: ["/bin/sh", "-c"]
           args:
@@ -107,3 +109,4 @@ spec:
       volumes:
         - name: mc-config
           emptyDir: {}
+{{- end }}

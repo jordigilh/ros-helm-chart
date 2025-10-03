@@ -103,10 +103,18 @@ Detect if running on OpenShift by checking for OpenShift-specific API resources
 Returns true if OpenShift is detected, false otherwise
 */}}
 {{- define "ros-ocp.isOpenShift" -}}
-  {{- if .Capabilities.APIVersions.Has "route.openshift.io/v1" -}}
+  {{- if .Values.global.storageType -}}
+    {{- if eq .Values.global.storageType "odf" -}}
 true
-  {{- else -}}
+    {{- else -}}
 false
+    {{- end -}}
+  {{- else -}}
+    {{- if .Capabilities.APIVersions.Has "route.openshift.io/v1" -}}
+true
+    {{- else -}}
+false
+    {{- end -}}
   {{- end -}}
 {{- end }}
 
@@ -576,5 +584,114 @@ Cache CLI command (redis-cli or valkey-cli based on platform)
 valkey-cli
 {{- else -}}
 redis-cli
+{{- end -}}
+{{- end }}
+
+{{/*
+Storage service name (minio or odf based on platform)
+*/}}
+{{- define "ros-ocp.storage.name" -}}
+{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+odf
+{{- else -}}
+minio
+{{- end -}}
+{{- end }}
+
+{{/*
+Storage configuration (returns the appropriate config object)
+*/}}
+{{- define "ros-ocp.storage.config" -}}
+{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- .Values.odf | toYaml -}}
+{{- else -}}
+{{- .Values.minio | toYaml -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Storage endpoint (MinIO service or ODF endpoint)
+*/}}
+{{- define "ros-ocp.storage.endpoint" -}}
+{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- if .Values.odf.endpoint -}}
+{{- .Values.odf.endpoint | quote -}}
+{{- else -}}
+{{- /* Dynamic ODF S3 service discovery using NooBaa CRD status */ -}}
+{{- $noobaaList := lookup "noobaa.io/v1alpha1" "NooBaa" "" "" -}}
+{{- $s3Endpoint := "" -}}
+{{- if and $noobaaList $noobaaList.items -}}
+  {{- range $noobaaList.items -}}
+    {{- if and .status .status.services .status.services.serviceS3 .status.services.serviceS3.internalDNS -}}
+      {{- $internalDNS := index .status.services.serviceS3.internalDNS 0 -}}
+      {{- if $internalDNS -}}
+        {{- /* Extract service name from internal DNS (e.g., "https://s3.openshift-storage.svc:443" -> "s3.openshift-storage.svc.cluster.local") */ -}}
+        {{- $serviceName := regexReplaceAll "https://" $internalDNS "" -}}
+        {{- $serviceName = regexReplaceAll ":443" $serviceName "" -}}
+        {{- /* Convert short DNS to full cluster DNS (e.g., "s3.openshift-storage.svc" -> "s3.openshift-storage.svc.cluster.local") */ -}}
+        {{- if not (hasSuffix ".cluster.local" $serviceName) -}}
+          {{- $serviceName = printf "%s.cluster.local" $serviceName -}}
+        {{- end -}}
+        {{- $s3Endpoint = $serviceName -}}
+        {{- break -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- if $s3Endpoint -}}
+{{- $s3Endpoint | quote -}}
+{{- else -}}
+{{- fail "Unable to discover ODF S3 service endpoint. Please ensure OpenShift Data Foundation is installed and specify 'odf.endpoint' in values.yaml" -}}
+{{- end -}}
+{{- end -}}
+{{- else -}}
+{{- printf "%s-minio:%v" (include "ros-ocp.fullname" .) .Values.minio.ports.api | quote -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Storage port (MinIO port or ODF port)
+*/}}
+{{- define "ros-ocp.storage.port" -}}
+{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- .Values.odf.port -}}
+{{- else -}}
+{{- .Values.minio.ports.api -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Storage access key (MinIO root user - ODF uses noobaa-admin secret directly)
+*/}}
+{{- define "ros-ocp.storage.accessKey" -}}
+{{- .Values.minio.rootUser -}}
+{{- end }}
+
+{{/*
+Storage secret key (MinIO root password - ODF uses noobaa-admin secret directly)
+*/}}
+{{- define "ros-ocp.storage.secretKey" -}}
+{{- .Values.minio.rootPassword -}}
+{{- end }}
+
+{{/*
+Storage bucket name
+*/}}
+{{- define "ros-ocp.storage.bucket" -}}
+{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- .Values.odf.bucket -}}
+{{- else -}}
+{{- .Values.ingress.storage.bucket -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Storage use SSL flag
+*/}}
+{{- define "ros-ocp.storage.useSSL" -}}
+{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- .Values.odf.useSSL -}}
+{{- else -}}
+{{- .Values.ingress.storage.useSSL -}}
 {{- end -}}
 {{- end }}

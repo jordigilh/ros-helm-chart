@@ -27,10 +27,11 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        - name: wait-for-minio
+        - name: wait-for-storage
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
           command: ['bash', '-c']
           args:
+            {{- if (eq (include "ros-ocp.isOpenShift" .) "false") }}
             - |
               echo "Waiting for MinIO at {{ include "ros-ocp.fullname" . }}-minio:{{ .Values.minio.ports.api }}..."
               until timeout 3 bash -c "echo > /dev/tcp/{{ include "ros-ocp.fullname" . }}-minio/{{ .Values.minio.ports.api }}" 2>/dev/null; do
@@ -38,7 +39,15 @@ spec:
                 sleep 5
               done
               echo "MinIO is ready"
-              echo "MinIO is ready"
+            {{- else }}
+            - |
+              echo "Waiting for ODF S3 endpoint at {{ include "ros-ocp.storage.endpoint" . }}:{{ include "ros-ocp.storage.port" . }}..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "ros-ocp.storage.endpoint" . }}/{{ include "ros-ocp.storage.port" . }}" 2>/dev/null; do
+                echo "ODF S3 endpoint not ready yet, retrying in 5 seconds..."
+                sleep 5
+              done
+              echo "ODF S3 endpoint is ready"
+            {{- end }}
         - name: wait-for-kafka
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
           command: ['bash', '-c']
@@ -49,7 +58,6 @@ spec:
                 echo "Kafka not ready yet, retrying in 5 seconds..."
                 sleep 5
               done
-              echo "Kafka is ready"
               echo "Kafka is ready"
       serviceAccountName: insights-ros-ingress
       containers:
@@ -87,24 +95,28 @@ spec:
 
             # Storage configuration
             - name: STORAGE_ENDPOINT
-              value: {{ include "ros-ocp.fullname" . }}-minio:{{ .Values.minio.ports.api }}
+              value: {{ include "ros-ocp.storage.endpoint" . }}
             - name: STORAGE_BUCKET
-              value: {{ .Values.ingress.storage.bucket | quote }}
+              value: {{ include "ros-ocp.storage.bucket" . | quote }}
             - name: STORAGE_USE_SSL
-              value: {{ .Values.ingress.storage.useSSL | quote }}
+              value: {{ include "ros-ocp.storage.useSSL" . | quote }}
             - name: STORAGE_URL_EXPIRATION
               value: {{ .Values.ingress.storage.urlExpiration | quote }}
             - name: STORAGE_PATH_PREFIX
               value: {{ .Values.ingress.storage.pathPrefix | quote }}
+            {{- if eq (include "ros-ocp.isOpenShift" .) "true" }}
+            - name: STORAGE_SSL_CA_CERT_PATH
+              value: "/etc/ssl/certs/service-ca.crt"
+            {{- end }}
             - name: STORAGE_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ros-ocp.fullname" . }}-minio-credentials
+                  name: {{ include "ros-ocp.fullname" . }}-storage-credentials
                   key: access-key
             - name: STORAGE_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ros-ocp.fullname" . }}-minio-credentials
+                  name: {{ include "ros-ocp.fullname" . }}-storage-credentials
                   key: secret-key
 
             # Kafka configuration
@@ -161,3 +173,19 @@ spec:
             failureThreshold: {{ .Values.probes.failureThreshold }}
           resources:
             {{- toYaml .Values.resources.application | nindent 12 }}
+          {{- if eq (include "ros-ocp.isOpenShift" .) "true" }}
+          volumeMounts:
+            - name: service-ca-cert
+              mountPath: /etc/ssl/certs/service-ca.crt
+              subPath: service-ca.crt
+              readOnly: true
+          {{- end }}
+      {{- if eq (include "ros-ocp.isOpenShift" .) "true" }}
+      volumes:
+        - name: service-ca-cert
+          configMap:
+            name: {{ include "ros-ocp.fullname" . }}-service-ca
+            items:
+              - key: service-ca.crt
+                path: service-ca.crt
+      {{- end }}

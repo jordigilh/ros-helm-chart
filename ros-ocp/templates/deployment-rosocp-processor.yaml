@@ -82,6 +82,12 @@ spec:
             - name: cdapp-config
               mountPath: /cdapp
               readOnly: true
+            {{- if eq (include "ros-ocp.isOpenShift" .) "true" }}
+            - name: service-ca-cert
+              mountPath: /etc/ssl/certs/service-ca.crt
+              subPath: service-ca.crt
+              readOnly: true
+            {{- end }}
           env:
             - name: CLOWDER_ENABLED
               value: "false"
@@ -120,6 +126,10 @@ spec:
               value: http://{{ include "ros-ocp.fullname" . }}-sources-api:{{ .Values.sourcesApi.port }}
             - name: PROMETHEUS_PORT
               value: {{ .Values.rosocp.processor.metricsPort | quote }}
+            {{- if eq (include "ros-ocp.isOpenShift" .) "true" }}
+            - name: STORAGE_SSL_CA_CERT_PATH
+              value: "/etc/ssl/certs/service-ca.crt"
+            {{- end }}
           # Re-enable probes now that PROMETHEUS_PORT environment variable is correctly set
           livenessProbe:
             httpGet:
@@ -143,3 +153,11 @@ spec:
         - name: cdapp-config
           configMap:
             name: {{ include "ros-ocp.fullname" . }}-cdapp-config
+        {{- if eq (include "ros-ocp.isOpenShift" .) "true" }}
+        - name: service-ca-cert
+          configMap:
+            name: {{ include "ros-ocp.fullname" . }}-service-ca
+            items:
+              - key: service-ca.crt
+                path: service-ca.crt
+        {{- end }}

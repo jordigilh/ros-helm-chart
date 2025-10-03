@@ -26,6 +26,7 @@ VALUES_FILE=${VALUES_FILE:-}
 REPO_OWNER="insights-onprem"
 REPO_NAME="ros-helm-chart"
 USE_LOCAL_CHART=${USE_LOCAL_CHART:-false}  # Set to true to use local chart instead of GitHub release
+LOCAL_CHART_PATH=${LOCAL_CHART_PATH:-../ros-ocp}  # Path to local chart directory
 
 echo_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -148,6 +149,82 @@ create_namespace() {
     fi
 }
 
+# Function to create storage credentials secret
+create_storage_credentials_secret() {
+    echo_info "Creating storage credentials secret..."
+
+    local secret_name="${HELM_RELEASE_NAME}-storage-credentials"
+
+    # Check if secret already exists
+    if kubectl get secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_warning "Storage credentials secret '$secret_name' already exists"
+        return 0
+    fi
+
+    if [ "$PLATFORM" = "openshift" ]; then
+        # For OpenShift, check if ODF credentials secret exists
+        local odf_secret_name="ros-ocp-odf-credentials"
+        if kubectl get secret "$odf_secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+            echo_info "Found existing ODF credentials secret: $odf_secret_name"
+            echo_info "Creating storage credentials secret from ODF credentials..."
+                # Extract credentials from ODF secret
+            local access_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}')
+            local secret_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}')
+                # Create storage credentials secret
+            kubectl create secret generic "$secret_name" \
+                --namespace="$NAMESPACE" \
+                --from-literal=access-key="$(echo "$access_key" | base64 -d)" \
+                --from-literal=secret-key="$(echo "$secret_key" | base64 -d)"
+            echo_success "Storage credentials secret created from ODF credentials"
+        else
+            # Try to create ODF credentials from noobaa-admin secret (from create_secret_odf.sh logic)
+            echo_info "ODF credentials secret not found. Attempting to create from noobaa-admin secret..."
+            
+            if kubectl get secret noobaa-admin -n openshift-storage >/dev/null 2>&1; then
+                echo_info "Found noobaa-admin secret, extracting ODF credentials..."
+                
+                # Extract credentials from noobaa-admin secret (using create_secret_odf.sh logic)
+                local access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d)
+                local secret_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d)
+                
+                # Create ODF credentials secret first
+                kubectl create secret generic "$odf_secret_name" \
+                    --namespace="$NAMESPACE" \
+                    --from-literal=access-key="$access_key" \
+                    --from-literal=secret-key="$secret_key"
+                
+                echo_success "Created ODF credentials secret from noobaa-admin"
+                
+                # Now create storage credentials secret
+                kubectl create secret generic "$secret_name" \
+                    --namespace="$NAMESPACE" \
+                    --from-literal=access-key="$access_key" \
+                    --from-literal=secret-key="$secret_key"
+                
+                echo_success "Storage credentials secret created from noobaa-admin credentials"
+            else
+                echo_error "Neither ODF credentials secret '$odf_secret_name' nor noobaa-admin secret found"
+                echo_error "For OpenShift deployments, you must create the ODF credentials secret first:"
+                echo_info "  kubectl create secret generic $odf_secret_name \\"
+                echo_info "    --namespace=$NAMESPACE \\"
+                echo_info "    --from-literal=access-key=<your-odf-access-key> \\"
+                echo_info "    --from-literal=secret-key=<your-odf-secret-key>"
+                echo_info ""
+                echo_info "Or ensure noobaa-admin secret exists in openshift-storage namespace"
+                return 1
+            fi
+        fi
+    else
+        # For Kubernetes/KIND, create MinIO credentials for development
+        echo_info "Creating MinIO credentials for development environment..."
+        kubectl create secret generic "$secret_name" \
+            --namespace="$NAMESPACE" \
+            --from-literal=access-key="minioaccesskey" \
+            --from-literal=secret-key="miniosecretkey"
+        echo_success "Storage credentials secret created with default MinIO credentials"
+    fi
+}
+
 # Function to download latest chart from GitHub
 download_latest_chart() {
     echo_info "Downloading latest Helm chart from GitHub..."
@@ -167,8 +244,8 @@ download_latest_chart() {
 
     # Extract the tag name and download URL for the .tgz file
     local tag_name=$(echo "$latest_release" | jq -r '.tag_name')
-    local download_url=$(echo "$latest_release" | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
-    local filename=$(echo "$latest_release" | jq -r '.assets[] | select(.name | endswith(".tgz")) | .name')
+    local download_url=$(echo "$latest_release" | jq -r '.assets[] | select(.name | contains("latest")) | .browser_download_url')
+    local filename=$(echo "$latest_release" | jq -r '.assets[] | select(.name | contains("latest")) | .name')
 
     if [ -z "$download_url" ] || [ "$download_url" = "null" ]; then
         echo_error "No .tgz file found in the latest release ($tag_name)"
@@ -348,13 +425,13 @@ deploy_helm_chart() {
         cd "$SCRIPT_DIR"
 
         # Check if Helm chart directory exists
-        if [ ! -d "../ros-ocp" ]; then
-            echo_error "Local Helm chart directory not found: ../ros-ocp"
-            echo_info "Set USE_LOCAL_CHART=false to use GitHub releases, or ensure the local chart exists"
+        if [ ! -d "$LOCAL_CHART_PATH" ]; then
+            echo_error "Local Helm chart directory not found: $LOCAL_CHART_PATH"
+            echo_info "Set USE_LOCAL_CHART=false to use GitHub releases, or set LOCAL_CHART_PATH to the correct chart location (default: ./helm/ros-ocp)"
             return 1
         fi
 
-        chart_source="../ros-ocp"
+        chart_source="$LOCAL_CHART_PATH"
         echo_info "Using local chart: $chart_source"
     else
         echo_info "Using GitHub release (USE_LOCAL_CHART=false)"
@@ -668,32 +745,39 @@ run_health_checks() {
             failed_checks=$((failed_checks + 1))
         fi
 
-        # Test Ingress internally
-        local ingress_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-        if [ -n "$ingress_pod" ]; then
-            if kubectl exec -n "$NAMESPACE" "$ingress_pod" -- curl -f -s http://localhost:8080/ready >/dev/null 2>&1; then
-                echo_success "✓ Ingress API service is healthy (internal)"
-            else
-                echo_error "✗ Ingress API service is not responding (internal)"
-                failed_checks=$((failed_checks + 1))
-            fi
+        # Test services via port-forwarding (OpenShift approach)
+        echo_info "Testing services via port-forwarding (OpenShift approach)..."
+        # Test Ingress API via port-forward
+        echo_info "Testing Ingress API via port-forward..."
+        local ingress_pf_pid=""
+        kubectl port-forward -n "$NAMESPACE" svc/ros-ocp-ingress 18080:8080 >/dev/null 2>&1 &
+        ingress_pf_pid=$!
+        sleep 3
+        if kill -0 "$ingress_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 5 --max-time 10 http://localhost:18080/ready >/dev/null 2>&1; then
+            echo_success "✓ Ingress API service is healthy (port-forward)"
         else
-            echo_error "✗ Ingress API pod not found"
+            echo_error "✗ Ingress API service is not responding (port-forward)"
             failed_checks=$((failed_checks + 1))
         fi
-
-        # Test Kruize internally
-        local kruize_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=kruize -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-        if [ -n "$kruize_pod" ]; then
-            if kubectl exec -n "$NAMESPACE" "$kruize_pod" -- curl -f -s http://localhost:30080/listPerformanceProfiles >/dev/null 2>&1; then
-                echo_success "✓ Kruize API service is healthy (internal)"
-            else
-                echo_error "✗ Kruize API service is not responding (internal)"
-                failed_checks=$((failed_checks + 1))
-            fi
+        # Cleanup ingress port-forward
+        if [ -n "$ingress_pf_pid" ] && kill -0 "$ingress_pf_pid" 2>/dev/null; then
+            kill "$ingress_pf_pid" 2>/dev/null || true
+        fi
+        # Test Kruize API via port-forward
+        echo_info "Testing Kruize API via port-forward..."
+        local kruize_pf_pid=""
+        kubectl port-forward -n "$NAMESPACE" svc/ros-ocp-kruize 18081:8080 >/dev/null 2>&1 &
+        kruize_pf_pid=$!
+        sleep 3
+        if kill -0 "$kruize_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 5 --max-time 10 http://localhost:18081/listPerformanceProfiles >/dev/null 2>&1; then
+            echo_success "✓ Kruize API service is healthy (port-forward)"
         else
-            echo_error "✗ Kruize API pod not found"
+            echo_error "✗ Kruize API service is not responding (port-forward)"
             failed_checks=$((failed_checks + 1))
+        fi
+        # Cleanup kruize port-forward
+        if [ -n "$kruize_pf_pid" ] && kill -0 "$kruize_pf_pid" 2>/dev/null; then
+            kill "$kruize_pf_pid" 2>/dev/null || true
         fi
 
         # Test external route accessibility (informational only - not counted as failure)
@@ -760,6 +844,15 @@ run_health_checks() {
             echo_success "✓ Kruize API is accessible via http://$hostname/api/kruize/listPerformanceProfiles"
         else
             echo_error "✗ Kruize API is not accessible via http://$hostname/api/kruize/listPerformanceProfiles"
+            failed_checks=$((failed_checks + 1))
+        fi
+
+        # Check if MinIO console is accessible via ingress
+        echo_info "Testing MinIO console: http://$hostname/minio/"
+        if curl -f -s "http://$hostname/minio/" >/dev/null; then
+            echo_success "✓ MinIO console is accessible via http://$hostname/minio/"
+        else
+            echo_error "✗ MinIO console is not accessible via http://$hostname/minio/"
             failed_checks=$((failed_checks + 1))
         fi
     fi
@@ -918,6 +1011,11 @@ main() {
         exit 1
     fi
 
+    # Create storage credentials secret
+    if ! create_storage_credentials_secret; then
+        exit 1
+    fi
+
     # Check for Kafka cluster ID conflicts
     if ! check_kafka_cluster_conflicts; then
         echo_warning "Kafka cluster ID conflicts detected. Cleaning up..."
@@ -1017,12 +1115,15 @@ case "${1:-}" in
         echo "  NAMESPACE         - Kubernetes namespace (default: ros-ocp)"
         echo "  VALUES_FILE       - Path to custom values file (optional)"
         echo "  USE_LOCAL_CHART   - Use local chart instead of GitHub release (default: false)"
+        echo "  LOCAL_CHART_PATH  - Path to local chart directory (default: ../helm/ros-ocp)"
         echo ""
         echo "Chart Source Options:"
         echo "  - Default: Downloads latest release from GitHub (recommended)"
-        echo "  - Local: Set USE_LOCAL_CHART=true to use local ../ros-ocp directory"
-        echo "  - Always uses the most recent stable release from GitHub"
-        echo "  - Automatic fallback to local chart if GitHub is unavailable"
+        echo "  - Local: Set USE_LOCAL_CHART=true to use local chart directory"
+        echo "  - Chart Path: Set LOCAL_CHART_PATH to specify custom chart location"
+        echo "  - Examples:"
+        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../helm/ros-ocp $0"
+        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-helm-chart/ros-ocp $0"
         echo ""
         echo "Platform Detection:"
         echo "  - Automatically detects Kubernetes vs OpenShift"

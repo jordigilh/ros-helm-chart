@@ -69,7 +69,8 @@ spec:
               name: {{ include "ros-ocp.fullname" $ }}-sources-api
               port:
                 number: {{ $.Values.sourcesApi.port }}
-        # MinIO Console (object storage UI)
+        # MinIO Console (object storage UI) - only for Kubernetes
+        {{- if (eq (include "ros-ocp.isOpenShift" $) "false") }}
         - path: /minio
           pathType: Prefix
           backend:
@@ -77,5 +78,6 @@ spec:
               name: {{ include "ros-ocp.fullname" $ }}-minio
               port:
                 number: {{ $.Values.minio.ports.console }}
+        {{- end }}
     {{- end }}
 {{- end }}
