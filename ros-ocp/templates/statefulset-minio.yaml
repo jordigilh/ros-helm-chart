@@ -1,3 +1,5 @@
+{{- $isOpenShift := eq (include "ros-ocp.isOpenShift" .) "true" }}
+{{- if not $isOpenShift }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -49,12 +51,12 @@ spec:
             - name: MINIO_ROOT_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ros-ocp.fullname" . }}-minio-credentials
+                  name: {{ include "ros-ocp.fullname" . }}-storage-credentials
                   key: access-key
             - name: MINIO_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ros-ocp.fullname" . }}-minio-credentials
+                  name: {{ include "ros-ocp.fullname" . }}-storage-credentials
                   key: secret-key
           volumeMounts:
             - name: minio-storage
@@ -87,3 +89,4 @@ spec:
         resources:
           requests:
             storage: {{ .Values.minio.storage.size }}
+{{- end }}

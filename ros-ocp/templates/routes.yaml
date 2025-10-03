@@ -11,9 +11,10 @@ This file contains only the essential routes required for the dataflow test to p
 REMOVED ROUTES (previously supplementary, not tested):
 - ROS API route (/api/ros) - Alternative API path
 - Sources API route (/api/sources) - Sources integration
-- MinIO Console route (/minio) - Admin console access
+- MinIO Console route (/minio) - Admin console access (not needed for ODF)
 
 These routes can be added back if needed for additional functionality.
+Note: MinIO console route is not needed when using ODF as the object storage backend.
 */ -}}
 ---
 # Main route for ROS-OCP API (serves as main entry point in OCP)
