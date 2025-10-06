@@ -179,28 +179,28 @@ create_storage_credentials_secret() {
         else
             # Try to create ODF credentials from noobaa-admin secret (from create_secret_odf.sh logic)
             echo_info "ODF credentials secret not found. Attempting to create from noobaa-admin secret..."
-            
+
             if kubectl get secret noobaa-admin -n openshift-storage >/dev/null 2>&1; then
                 echo_info "Found noobaa-admin secret, extracting ODF credentials..."
-                
+
                 # Extract credentials from noobaa-admin secret (using create_secret_odf.sh logic)
                 local access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d)
                 local secret_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d)
-                
+
                 # Create ODF credentials secret first
                 kubectl create secret generic "$odf_secret_name" \
                     --namespace="$NAMESPACE" \
                     --from-literal=access-key="$access_key" \
                     --from-literal=secret-key="$secret_key"
-                
+
                 echo_success "Created ODF credentials secret from noobaa-admin"
-                
+
                 # Now create storage credentials secret
                 kubectl create secret generic "$secret_name" \
                     --namespace="$NAMESPACE" \
                     --from-literal=access-key="$access_key" \
                     --from-literal=secret-key="$secret_key"
-                
+
                 echo_success "Storage credentials secret created from noobaa-admin credentials"
             else
                 echo_error "Neither ODF credentials secret '$odf_secret_name' nor noobaa-admin secret found"
