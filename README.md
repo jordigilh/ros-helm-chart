@@ -4,28 +4,35 @@ Kubernetes Helm chart for deploying the complete ROS-OCP backend stack.
 
 ## Quick Start
 
-### Option 1: Install Latest Release (Recommended)
+### Two-Step Deployment Process
+
+#### Step 1: Setup KIND Cluster (Development)
 ```bash
-# Automated installation of the latest release from GitHub
+# Create KIND cluster with ingress controller
+./scripts/deploy-kind.sh
+```
+
+#### Step 2: Deploy ROS-OCP Services
+```bash
+# Install latest release from GitHub (recommended)
 ./scripts/install-helm-chart.sh
+
+# Or use local chart for development
+USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp ./scripts/install-helm-chart.sh
 
 # Or specify custom namespace and release name
 NAMESPACE=my-namespace HELM_RELEASE_NAME=my-release ./scripts/install-helm-chart.sh
 ```
 
-### Option 2: Manual Installation from Source
-```bash
-# Local Helm installation from source (development mode)
-USE_LOCAL_CHART=true ./scripts/install-helm-chart.sh
-```
-
-### Option 3: Direct Helm Installation
+### Alternative: Direct Helm Installation
 ```bash
 # Download latest release manually and install
 LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
 curl -L -o ros-ocp-latest.tgz "$LATEST_URL"
 helm install ros-ocp ros-ocp-latest.tgz -n ros-ocp --create-namespace
 ```
+
+📖 **For detailed step-by-step instructions, see the [Quick Start Guide](docs/quickstart.md)**
 
 ## Chart Structure
 
@@ -48,6 +55,9 @@ ros-helm-chart/
 │       ├── *-serviceaccount.yaml           # Service accounts (2 files)
 │       ├── clusterrole*.yaml               # RBAC cluster roles (2 files)
 │       └── auth-cluster-roles-*.yaml       # Authentication roles (1 file)
+├── docs/                                   # Documentation
+│   ├── quickstart.md                       # Step-by-step deployment guide
+│   └── troubleshooting.md                  # Common issues and solutions
 ├── scripts/                                # Installation and deployment scripts
 │   ├── deploy-kind.sh                      # KIND cluster setup for development
 │   ├── install-helm-chart.sh               # Install/upgrade from GitHub releases or local source
@@ -169,15 +179,17 @@ The installation script automatically detects the platform and configures the ap
 ## Access Points
 
 ### Kubernetes (KIND) Deployment
-All services are accessible through the ingress controller on port **32061**:
+After successful deployment, all services are accessible through the ingress controller on port **32061**:
 
-- **Ingress Health Check**: http://localhost:32061/ready
-- **ROS-OCP API Status**: http://localhost:32061/status
-- **ROS-OCP API**: http://localhost:32061/api/ros/*
-- **Kruize API**: http://localhost:32061/api/kruize/listPerformanceProfiles
-- **Sources API**: http://localhost:32061/api/sources/*
-- **File Upload (Ingress)**: http://localhost:32061/api/ingress/*
-- **MinIO Console**: http://localhost:32061/minio (minioaccesskey/miniosecretkey) - Kubernetes only
+| Service | URL | Description |
+|---------|-----|-------------|
+| **Ingress Health** | http://localhost:32061/ready | Health check endpoint |
+| **ROS-OCP API** | http://localhost:32061/status | Main REST API status |
+| **ROS-OCP API** | http://localhost:32061/api/ros/* | Recommendations API |
+| **Kruize API** | http://localhost:32061/api/kruize/* | Optimization engine |
+| **Sources API** | http://localhost:32061/api/sources/* | Source management |
+| **File Upload** | http://localhost:32061/api/ingress/* | Data upload endpoint |
+| **MinIO Console** | http://localhost:32061/minio | Storage admin UI (minioaccesskey/miniosecretkey) |
 
 ### OpenShift Deployment
 Services are accessible through OpenShift Routes:
@@ -252,11 +264,11 @@ helm status ros-ocp -n ros-ocp
 For local development and testing using ephemeral KIND clusters:
 
 ```bash
-# Setup: Create KIND cluster with ingress
-scripts/deploy-kind.sh
+# Step 1: Create KIND cluster with ingress
+./scripts/deploy-kind.sh
 
-# Deploy: Auto-detects platform and deploys chart
-scripts/install-helm-chart.sh
+# Step 2: Deploy ROS-OCP services
+./scripts/install-helm-chart.sh
 
 # Access: All services available at http://localhost:32061
 ```
@@ -561,6 +573,8 @@ kubectl logs -n ros-ocp -l app.kubernetes.io/name=rosocp-processor
 ```bash
 kubectl get pvc -n ros-ocp
 ```
+
+🔧 **For comprehensive troubleshooting, see the [Troubleshooting Guide](docs/troubleshooting.md)**
 
 ### Script Installation Issues
 
