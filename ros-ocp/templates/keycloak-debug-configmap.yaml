@@ -17,13 +17,13 @@ data:
   keycloak-detection-results.yaml: |
     # Keycloak Auto-Detection Results (Using Keycloak CRs)
     # ====================================================
-    
+
     # Detection Results:
     keycloak_installed: {{ include "ros-ocp.keycloak.isInstalled" . | quote }}
     keycloak_namespace: {{ include "ros-ocp.keycloak.namespace" . | quote }}
     keycloak_service_name: {{ include "ros-ocp.keycloak.serviceName" . | quote }}
     keycloak_auto_url: {{ include "ros-ocp.keycloak.url" . | quote }}
-    
+
     # Keycloak CR Information:
 {{ include "ros-ocp.keycloak.crInfo" . | indent 4 }}
 
@@ -40,9 +40,11 @@ data:
     is_openshift: {{ include "ros-ocp.isOpenShift" . | quote }}
 
     # Authorino Configuration:
-    authorino_namespace: {{ .Values.jwt_auth.authorino.service.namespace | quote }}
-    authorino_service: {{ .Values.jwt_auth.authorino.service.name | quote }}
-    authorino_port: {{ .Values.jwt_auth.authorino.service.port | quote }}
+    authorino_deploy_enabled: {{ .Values.jwt_auth.authorino.deploy.enabled | quote }}
+    authorino_namespace: {{ include "ros-ocp.authorino.namespace" . | quote }}
+    authorino_service: {{ include "ros-ocp.authorino.serviceName" . | quote }}
+    authorino_fqdn: {{ include "ros-ocp.authorino.fqdn" . | quote }}
+    authorino_port: {{ include "ros-ocp.authorino.port" . | quote }}
 
     # How to use this information:
     # ============================
@@ -52,7 +54,7 @@ data:
     # 4. Verify keycloak_auto_url or externalURL points to your Keycloak instance
     # 5. If issuer_url looks correct, JWT auth should work
     # 6. If auto-detection fails, set jwt_auth.keycloak.issuer.baseUrl manually
-    
+
     # Troubleshooting:
     # ================
     # - If keycloak_installed is 'false': No Keycloak CRs found, may not be installed via operator
@@ -60,12 +62,12 @@ data:
     # - If 'ready' is false: Keycloak CR exists but instance may not be ready
     # - If keycloak_auto_url is empty: No route/ingress found, check Keycloak external access
     # - If issuer_url is wrong: Override with manual jwt_auth.keycloak.issuer.baseUrl
-    
+
     # Detection Method Priority:
     # =========================
     # 1. Keycloak CRs (keycloaks.keycloak.org) - Most reliable
     # 2. CR status.externalURL - Direct from operator
-    # 3. OpenShift Routes - Platform integration  
+    # 3. OpenShift Routes - Platform integration
     # 4. Kubernetes Ingresses - Platform integration
     # 5. Service discovery - Fallback method
 {{- end }}

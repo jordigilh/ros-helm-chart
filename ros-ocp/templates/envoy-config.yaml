@@ -95,9 +95,9 @@ data:
             - endpoint:
                 address:
                   socket_address:
-                    # Use the existing Authorino service
-                    address: {{ .Values.jwt_auth.authorino.service.name }}.{{ .Values.jwt_auth.authorino.service.namespace }}.svc.cluster.local
-                    port_value: {{ .Values.jwt_auth.authorino.service.port }}
+                    # Use dynamic Authorino service (same namespace or external)
+                    address: {{ include "ros-ocp.authorino.fqdn" . }}
+                    port_value: {{ include "ros-ocp.authorino.port" . }}
       
       # ROS ingress backend (same pod, different port)
       - name: ros-ingress-backend

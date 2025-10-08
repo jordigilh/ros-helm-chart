@@ -20,13 +20,19 @@ jwt_auth:
 
   # Authorino service configuration
   authorino:
-    service:
-      # Namespace where Authorino is deployed
-      namespace: costmanagement-metrics-operator
-      # Authorino service name
-      name: authorino-authorino-authorization
-      port: 50051
-
+    # Deploy Authorino in the same namespace (recommended)
+    deploy:
+      enabled: true
+      name: ros-authorino
+      logLevel: info
+    
+    # For using existing external Authorino instance
+    # (uncomment and disable deploy.enabled if needed)
+    # service:
+    #   namespace: costmanagement-metrics-operator
+    #   name: authorino-authorino-authorization
+    #   port: 50051
+    
     authConfig:
       name: ros-ingress-keycloak-auth
       create: true
