@@ -1,0 +1,124 @@
+{{- if .Values.jwt_auth.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ros-ocp.fullname" . }}-envoy-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+data:
+  envoy.yaml: |
+    static_resources:
+      listeners:
+      - name: listener_0
+        address:
+          socket_address:
+            address: 0.0.0.0
+            port_value: {{ .Values.jwt_auth.envoy.port }}
+        filter_chains:
+        - filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              stat_prefix: ros_ingress_jwt_http
+              access_log:
+              - name: envoy.access_loggers.stdout
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                  format: |
+                    [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%"
+                    %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT%
+                    %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% "%REQ(X-FORWARDED-FOR)%"
+                    "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%"
+                    "client_id=%REQ({{ .Values.jwt_auth.headers.client.id }})%" "user=%REQ({{ .Values.jwt_auth.headers.user.name }})%"
+              http_filters:
+              # External authorization filter that calls Authorino service
+              - name: envoy.filters.http.ext_authz
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                  transport_api_version: V3
+                  grpc_service:
+                    envoy_grpc:
+                      cluster_name: authorino-service
+                    timeout: {{ .Values.jwt_auth.envoy.externalAuth.timeout }}
+                  failure_mode_allow: {{ .Values.jwt_auth.envoy.externalAuth.failureMode }}
+                  with_request_body:
+                    max_request_bytes: {{ .Values.jwt_auth.envoy.externalAuth.maxRequestBytes }}
+                  clear_route_cache: true
+                  # Pass through headers for enrichment
+                  allowed_headers:
+                    patterns:
+                    - exact: authorization
+                    - prefix: x-
+                  # Headers to forward to upstream after authorization
+                  allowed_upstream_headers:
+                    patterns:
+                    - prefix: x-ros-
+                    - prefix: x-jwt-
+                    - prefix: x-client-
+                    - prefix: x-token-
+                    - prefix: x-user-
+                    - prefix: x-bearer-
+                    - prefix: x-original-
+                    - exact: authorization
+              - name: envoy.filters.http.router
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+              route_config:
+                name: local_route
+                virtual_hosts:
+                - name: ros_ingress_backend
+                  domains: ["*"]
+                  routes:
+                  - match:
+                      prefix: "/"
+                    route:
+                      cluster: ros-ingress-backend
+                      # Add headers visible in access logs
+                      request_headers_to_add:
+                      - header:
+                          key: x-envoy-auth-method
+                          value: authorino
+                        append: false
+      
+      clusters:
+      # Existing Authorino service for external authorization
+      - name: authorino-service
+        connect_timeout: 5s
+        type: LOGICAL_DNS
+        lb_policy: ROUND_ROBIN
+        http2_protocol_options: {}  # Enable HTTP/2 for gRPC
+        load_assignment:
+          cluster_name: authorino-service
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    # Use the existing Authorino service
+                    address: {{ .Values.jwt_auth.authorino.service.name }}.{{ .Values.jwt_auth.authorino.service.namespace }}.svc.cluster.local
+                    port_value: {{ .Values.jwt_auth.authorino.service.port }}
+      
+      # ROS ingress backend (same pod, different port)
+      - name: ros-ingress-backend
+        connect_timeout: 5s
+        type: LOGICAL_DNS
+        lb_policy: ROUND_ROBIN
+        load_assignment:
+          cluster_name: ros-ingress-backend
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: localhost  # Same pod
+                    port_value: {{ .Values.ingress.port }}  # Use existing ingress port from values
+    
+    # Admin interface for monitoring and debugging
+    admin:
+      address:
+        socket_address:
+          protocol: TCP
+          address: 0.0.0.0
+          port_value: {{ .Values.jwt_auth.envoy.adminPort }}
+{{- end }}

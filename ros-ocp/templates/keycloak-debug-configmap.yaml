@@ -1,0 +1,56 @@
+{{- if .Values.jwt_auth.enabled }}
+{{/*
+Debug ConfigMap to show Keycloak auto-detection results
+This will be created when JWT auth is enabled to help troubleshoot Keycloak detection
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ros-ocp.fullname" . }}-keycloak-debug
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-1"
+data:
+  keycloak-detection-results.yaml: |
+    # Keycloak Auto-Detection Results
+    # ================================
+    
+    # Detection Results:
+    keycloak_installed: {{ include "ros-ocp.keycloak.isInstalled" . | quote }}
+    keycloak_namespace: {{ include "ros-ocp.keycloak.namespace" . | quote }}
+    keycloak_service_name: {{ include "ros-ocp.keycloak.serviceName" . | quote }}
+    keycloak_auto_url: {{ include "ros-ocp.keycloak.url" . | quote }}
+    
+    # Computed URLs:
+    issuer_url: {{ include "ros-ocp.keycloak.issuerUrl" . | quote }}
+    jwks_url: {{ include "ros-ocp.keycloak.jwksUrl" . | quote }}
+    
+    # Configuration Used:
+    jwt_auth_enabled: {{ .Values.jwt_auth.enabled | quote }}
+    manual_base_url: {{ .Values.jwt_auth.keycloak.issuer.baseUrl | quote }}
+    realm: {{ .Values.jwt_auth.keycloak.issuer.realm | quote }}
+    
+    # Platform Detection:
+    is_openshift: {{ include "ros-ocp.isOpenShift" . | quote }}
+    
+    # Authorino Configuration:
+    authorino_namespace: {{ .Values.jwt_auth.authorino.service.namespace | quote }}
+    authorino_service: {{ .Values.jwt_auth.authorino.service.name | quote }}
+    authorino_port: {{ .Values.jwt_auth.authorino.service.port | quote }}
+    
+    # How to use this information:
+    # ============================
+    # 1. Check if keycloak_installed is 'true'
+    # 2. Verify keycloak_auto_url points to your Keycloak instance
+    # 3. If issuer_url looks correct, JWT auth should work
+    # 4. If auto-detection fails, set jwt_auth.keycloak.issuer.baseUrl manually
+    
+    # Troubleshooting:
+    # ================
+    # - If keycloak_installed is 'false': Keycloak may not be installed or in an unexpected namespace
+    # - If keycloak_auto_url is empty: No route/ingress found, check your Keycloak installation
+    # - If issuer_url is wrong: Override with manual jwt_auth.keycloak.issuer.baseUrl
+{{- end }}
