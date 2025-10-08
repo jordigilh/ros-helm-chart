@@ -1,0 +1,32 @@
+{{- if and .Values.jwt_auth.enabled .Values.jwt_auth.authorino.deploy.enabled }}
+apiVersion: operator.authorino.kuadrant.io/v1beta1
+kind: Authorino
+metadata:
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}
+  namespace: {{ include "ros-ocp.namespace" . }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
+spec:
+  # Listener configuration
+  listener:
+    tls:
+      enabled: {{ .Values.jwt_auth.authorino.deploy.tls.enabled }}
+  
+  # Logging configuration
+  log:
+    level: {{ .Values.jwt_auth.authorino.deploy.logLevel }}
+  
+  # Metrics configuration
+  metrics:
+    enabled: true
+  
+  # Tracing configuration (optional)
+  tracing:
+    enabled: false
+  
+  # Health check configuration
+  healthz:
+    enabled: true
+    port: 8080
+{{- end }}

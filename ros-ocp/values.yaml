@@ -459,11 +459,26 @@ jwt_auth:
 
   # Authorino Integration Configuration
   authorino:
-    # Existing Authorino service details
+    # Deploy Authorino in the same namespace as ROS ingress for better isolation
+    # and simplified networking (recommended approach)
+    deploy:
+      # Whether to deploy Authorino instance in this namespace
+      enabled: true
+      # Authorino instance name (will create service: <name>-authorino-authorization)
+      name: ros-authorino
+      # Log level for debugging
+      logLevel: info
+      # TLS settings for internal communication
+      tls:
+        enabled: false  # Disabled for simplicity in demo environments
+
+    # Existing/External Authorino service details (if deploy.enabled: false)
     service:
-      # Namespace where Authorino is deployed
-      namespace: costmanagement-metrics-operator
-      # Service name (typically created by Authorino operator)
+      # Namespace where existing Authorino is deployed
+      # Leave empty to use same namespace as ROS ingress (recommended)
+      namespace: ""
+      # Service name of existing Authorino instance
+      # Default naming: <instance-name>-authorino-authorization
       name: authorino-authorino-authorization
       # gRPC port for external authorization
       port: 50051

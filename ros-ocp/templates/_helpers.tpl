@@ -929,6 +929,48 @@ Get Keycloak CR information for debugging
 {{- end }}
 
 {{/*
+Get Authorino service namespace
+Uses same namespace as ROS ingress if deploy.enabled, otherwise uses configured namespace
+*/}}
+{{- define "ros-ocp.authorino.namespace" -}}
+{{- if .Values.jwt_auth.authorino.deploy.enabled -}}
+  {{- include "ros-ocp.namespace" . -}}
+{{- else -}}
+  {{- if .Values.jwt_auth.authorino.service.namespace -}}
+    {{- .Values.jwt_auth.authorino.service.namespace -}}
+  {{- else -}}
+    {{- include "ros-ocp.namespace" . -}}
+  {{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get Authorino service name
+Uses deployed instance name if deploy.enabled, otherwise uses configured service name
+*/}}
+{{- define "ros-ocp.authorino.serviceName" -}}
+{{- if .Values.jwt_auth.authorino.deploy.enabled -}}
+  {{- printf "%s-authorino-authorization" .Values.jwt_auth.authorino.deploy.name -}}
+{{- else -}}
+  {{- .Values.jwt_auth.authorino.service.name -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get Authorino service port
+*/}}
+{{- define "ros-ocp.authorino.port" -}}
+{{- .Values.jwt_auth.authorino.service.port -}}
+{{- end }}
+
+{{/*
+Get Authorino service FQDN
+*/}}
+{{- define "ros-ocp.authorino.fqdn" -}}
+{{- printf "%s.%s.svc.cluster.local" (include "ros-ocp.authorino.serviceName" .) (include "ros-ocp.authorino.namespace" .) -}}
+{{- end }}
+
+{{/*
 Check if JWT authentication should be enabled
 This enables JWT auth automatically if Keycloak is detected and jwt_auth.enabled is not explicitly set to false
 */}}
