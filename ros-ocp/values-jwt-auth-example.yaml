@@ -25,11 +25,11 @@ jwt_auth:
       - openshift-oidc
 
   # Authorino service configuration
+  # 
+  # PREREQUISITE: Install Authorino Operator first!
+  # See: docs/authorino-operator-prerequisites.md
+  #
   authorino:
-    # Install Authorino operator (required)
-    operator:
-      install: true  # Automatically install the operator via OLM
-      
     # Deploy Authorino in the same namespace (recommended)
     deploy:
       enabled: true
