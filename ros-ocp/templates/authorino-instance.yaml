@@ -7,28 +7,33 @@ metadata:
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "5"
+    # Wait for operator to be ready before creating Authorino instance
+    helm.sh/hook-delete-policy: before-hook-creation
 spec:
   # Container image configuration
   image: {{ .Values.jwt_auth.authorino.deploy.image.repository }}:{{ .Values.jwt_auth.authorino.deploy.image.tag }}
   imagePullPolicy: {{ .Values.jwt_auth.authorino.deploy.image.pullPolicy }}
-  
+
   # Listener configuration
   listener:
     tls:
       enabled: {{ .Values.jwt_auth.authorino.deploy.tls.enabled }}
-  
+
   # Logging configuration
   log:
     level: {{ .Values.jwt_auth.authorino.deploy.logLevel }}
-  
+
   # Metrics configuration
   metrics:
     enabled: true
-  
+
   # Tracing configuration (optional)
   tracing:
     enabled: false
-  
+
   # Health check configuration
   healthz:
     enabled: true

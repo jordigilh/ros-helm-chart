@@ -4,14 +4,14 @@
 # Enable JWT authentication with Red Hat enterprise images
 jwt_auth:
   enabled: true
-  
+
   # Envoy proxy configuration - Red Hat enterprise image
   envoy:
     image:
       repository: registry.redhat.io/openshift-service-mesh/proxyv2-rhel9
       tag: "2.4.3"  # Use specific version tags in production
       pullPolicy: Always  # Always pull for security updates
-    
+
     # Production resource configuration
     resources:
       limits:
@@ -20,13 +20,13 @@ jwt_auth:
       requests:
         cpu: 100m
         memory: 128Mi
-    
+
     # External authorization configuration
     externalAuth:
       timeout: 3s  # Shorter timeout for production
       failureMode: false  # Fail closed (secure)
       maxRequestBytes: 4096  # Reduced for security
-  
+
   # Keycloak configuration (auto-detection enabled)
   keycloak:
     issuer:
@@ -35,23 +35,28 @@ jwt_auth:
     audiences:
       - cost-management-operator
       - openshift-oidc
-  
+
   # Authorino deployment (same namespace - recommended)
   authorino:
+    # Install Authorino operator (required for production)
+    operator:
+      install: true
+      installPlanApproval: Manual  # Manual approval for production
+      
     deploy:
       enabled: true
       name: ros-authorino
-      
+
       # Red Hat Authorino image for production
       image:
         repository: registry.redhat.io/rhosak/authorino-rhel8
         tag: "1.0.0"  # Use specific version in production
         pullPolicy: Always  # Always pull for security updates
-        
+
       logLevel: warn  # Reduced logging for production
       tls:
         enabled: true  # Enable TLS in production
-    
+
     authConfig:
       name: ros-ingress-keycloak-auth
       create: true
@@ -66,10 +71,10 @@ ingress:
     requests:
       cpu: 200m
       memory: 256Mi
-  
+
   # Production replica count
   replicaCount: 2
-  
+
   # Health check configuration
   livenessProbe:
     enabled: true
@@ -77,7 +82,7 @@ ingress:
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
-  
+
   readinessProbe:
     enabled: true
     initialDelaySeconds: 10
@@ -101,7 +106,7 @@ podSecurityContext:
 # Network policies (if supported)
 networkPolicy:
   enabled: true
-  
+
 # Pod disruption budget for high availability
 podDisruptionBudget:
   enabled: true

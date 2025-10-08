@@ -1,0 +1,308 @@
+{{- if and .Values.jwt_auth.enabled .Values.jwt_auth.authorino.deploy.enabled (eq .Values.jwt_auth.authorino.deploymentMode "direct") }}
+#
+# COMPLETE AUTHORINO DEPLOYMENT WITHOUT OPERATOR
+# ==============================================
+# This shows all the resources we'd need to create manually
+# if we skip the Authorino operator. Compare this complexity
+# to the simple 40-line Custom Resource approach!
+#
+
+# 1. ServiceAccount for Authorino
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}
+  namespace: {{ include "ros-ocp.namespace" . }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
+
+# 2. ClusterRole with all required permissions
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}-manager-role
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+- apiGroups: ["authorino.kuadrant.io"]
+  resources: ["authconfigs"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["authorino.kuadrant.io"]
+  resources: ["authconfigs/status"]
+  verbs: ["get", "patch", "update"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["httproutes", "gateways"]
+  verbs: ["get", "list", "watch"]
+
+# 3. ClusterRoleBinding
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}-manager-rolebinding
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}-manager-role
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}
+  namespace: {{ include "ros-ocp.namespace" . }}
+
+# 4. ConfigMap for Authorino configuration
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}-config
+  namespace: {{ include "ros-ocp.namespace" . }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
+data:
+  config.yaml: |
+    server:
+      grpc:
+        host: "0.0.0.0"
+        port: 50051
+        {{- if .Values.jwt_auth.authorino.deploy.tls.enabled }}
+        tls:
+          enabled: true
+          certPath: "/etc/ssl/certs/tls.crt"
+          keyPath: "/etc/ssl/private/tls.key"
+        {{- else }}
+        tls:
+          enabled: false
+        {{- end }}
+      http:
+        host: "0.0.0.0"
+        port: 5001
+    log:
+      level: {{ .Values.jwt_auth.authorino.deploy.logLevel }}
+      mode: production
+    metrics:
+      port: 8080
+    tracing:
+      endpoint: ""
+
+# 5. Main Authorino Deployment
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}
+  namespace: {{ include "ros-ocp.namespace" . }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.jwt_auth.authorino.deploy.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.jwt_auth.authorino.deploy.name }}
+        {{- include "ros-ocp.labels" . | nindent 8 }}
+        app.kubernetes.io/component: authorino
+    spec:
+      serviceAccountName: {{ .Values.jwt_auth.authorino.deploy.name }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: authorino
+        image: {{ .Values.jwt_auth.authorino.deploy.image.repository }}:{{ .Values.jwt_auth.authorino.deploy.image.tag }}
+        imagePullPolicy: {{ .Values.jwt_auth.authorino.deploy.image.pullPolicy }}
+        ports:
+        - containerPort: 50051
+          name: grpc
+          protocol: TCP
+        - containerPort: 5001
+          name: http
+          protocol: TCP
+        - containerPort: 8080
+          name: metrics
+          protocol: TCP
+        env:
+        - name: AUTHORINO_LOG_LEVEL
+          value: {{ .Values.jwt_auth.authorino.deploy.logLevel }}
+        - name: AUTHORINO_LOG_MODE
+          value: "production"
+        - name: AUTHORINO_LISTENER_TIMEOUT
+          value: "0"
+        - name: AUTHORINO_GRPC_TLS_ENABLED
+          value: {{ .Values.jwt_auth.authorino.deploy.tls.enabled | quote }}
+        - name: AUTHORINO_METRICS_ADDR
+          value: ":8080"
+        - name: AUTHORINO_HEALTH_PROBE_ADDR
+          value: ":8081"
+        - name: AUTHORINO_WATCH_NAMESPACE
+          value: ""
+        - name: AUTHORINO_EVALUATOR_CACHE_SIZE
+          value: "1000"
+        command:
+        - /usr/local/bin/authorino
+        args:
+        - server
+        - --config-file=/etc/authorino/config/config.yaml
+        - --watch-namespace=$(AUTHORINO_WATCH_NAMESPACE)
+        volumeMounts:
+        - name: config
+          mountPath: /etc/authorino/config
+          readOnly: true
+        {{- if .Values.jwt_auth.authorino.deploy.tls.enabled }}
+        - name: tls-certs
+          mountPath: /etc/ssl/certs
+          readOnly: true
+        - name: tls-private
+          mountPath: /etc/ssl/private
+          readOnly: true
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+      volumes:
+      - name: config
+        configMap:
+          name: {{ .Values.jwt_auth.authorino.deploy.name }}-config
+      {{- if .Values.jwt_auth.authorino.deploy.tls.enabled }}
+      - name: tls-certs
+        secret:
+          secretName: {{ .Values.jwt_auth.authorino.deploy.name }}-tls
+      - name: tls-private
+        secret:
+          secretName: {{ .Values.jwt_auth.authorino.deploy.name }}-tls
+      {{- end }}
+      terminationGracePeriodSeconds: 10
+
+# 6. Service for gRPC (external authorization)
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}-authorino-authorization
+  namespace: {{ include "ros-ocp.namespace" . }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: {{ .Values.jwt_auth.authorino.deploy.name }}-tls
+spec:
+  selector:
+    app: {{ .Values.jwt_auth.authorino.deploy.name }}
+  ports:
+  - name: grpc
+    port: 50051
+    targetPort: 50051
+    protocol: TCP
+  type: ClusterIP
+
+# 7. Service for metrics and health checks
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}-metrics
+  namespace: {{ include "ros-ocp.namespace" . }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
+spec:
+  selector:
+    app: {{ .Values.jwt_auth.authorino.deploy.name }}
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  - name: health
+    port: 8081
+    targetPort: 8081
+    protocol: TCP
+  type: ClusterIP
+
+# 8. ServiceMonitor for Prometheus metrics (if enabled)
+{{- if .Values.monitoring.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}-metrics
+  namespace: {{ include "ros-ocp.namespace" . }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: authorino
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+{{- end }}
+
+# 9. PodDisruptionBudget for high availability
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}-pdb
+  namespace: {{ include "ros-ocp.namespace" . }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.jwt_auth.authorino.deploy.name }}
+
+{{- end }}
