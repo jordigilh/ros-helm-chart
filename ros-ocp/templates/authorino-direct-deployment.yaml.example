@@ -1,0 +1,77 @@
+# Example: Direct Authorino deployment without operator
+# This shows what we'd need to create manually if we skip the operator
+
+{{- if false }}  # Disabled - this is just an example
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}
+  namespace: {{ include "ros-ocp.namespace" . }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.jwt_auth.authorino.deploy.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.jwt_auth.authorino.deploy.name }}
+    spec:
+      serviceAccountName: {{ .Values.jwt_auth.authorino.deploy.name }}
+      containers:
+      - name: authorino
+        image: {{ .Values.jwt_auth.authorino.deploy.image.repository }}:{{ .Values.jwt_auth.authorino.deploy.image.tag }}
+        imagePullPolicy: {{ .Values.jwt_auth.authorino.deploy.image.pullPolicy }}
+        ports:
+        - containerPort: 50051
+          name: grpc
+        - containerPort: 8080
+          name: metrics
+        env:
+        - name: AUTHORINO_LOG_LEVEL
+          value: {{ .Values.jwt_auth.authorino.deploy.logLevel }}
+        - name: AUTHORINO_LISTENER_TLS_ENABLED
+          value: {{ .Values.jwt_auth.authorino.deploy.tls.enabled | quote }}
+        # ... many more environment variables needed
+        # ... resource limits, health checks, etc.
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}-authorization
+  namespace: {{ include "ros-ocp.namespace" . }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
+spec:
+  selector:
+    app: {{ .Values.jwt_auth.authorino.deploy.name }}
+  ports:
+  - name: grpc
+    port: 50051
+    targetPort: 50051
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.jwt_auth.authorino.deploy.name }}
+  namespace: {{ include "ros-ocp.namespace" . }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
+---
+# ... and many more resources (RBAC, ConfigMaps, etc.)
+{{- end }}
