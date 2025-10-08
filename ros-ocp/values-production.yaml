@@ -37,12 +37,12 @@ jwt_auth:
       - openshift-oidc
 
   # Authorino deployment (same namespace - recommended)
+  # 
+  # PREREQUISITE: Install Authorino Operator manually first!
+  # For production: Use Manual approval in operator subscription
+  # See: docs/authorino-operator-prerequisites.md
+  #
   authorino:
-    # Install Authorino operator (required for production)
-    operator:
-      install: true
-      installPlanApproval: Manual  # Manual approval for production
-      
     deploy:
       enabled: true
       name: ros-authorino
