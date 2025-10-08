@@ -695,3 +695,143 @@ Storage use SSL flag
 {{- .Values.ingress.storage.useSSL -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+Keycloak Dynamic Configuration Helpers
+*/}}
+
+{{/*
+Detect if Keycloak is installed in the cluster
+This helper looks for common Keycloak resources to determine if it's available
+*/}}
+{{- define "ros-ocp.keycloak.isInstalled" -}}
+{{- $keycloakFound := false -}}
+{{- /* Try to find Keycloak by looking for common patterns */ -}}
+{{- range $ns := (lookup "v1" "Namespace" "" "").items -}}
+  {{- if or (contains "keycloak" $ns.metadata.name) (contains "rhsso" $ns.metadata.name) (contains "sso" $ns.metadata.name) -}}
+    {{- $keycloakFound = true -}}
+  {{- end -}}
+{{- end -}}
+{{- $keycloakFound -}}
+{{- end }}
+
+{{/*
+Find Keycloak namespace by looking for common patterns
+*/}}
+{{- define "ros-ocp.keycloak.namespace" -}}
+{{- $keycloakNs := "" -}}
+{{- range $ns := (lookup "v1" "Namespace" "" "").items -}}
+  {{- if or (contains "keycloak" $ns.metadata.name) (contains "rhsso" $ns.metadata.name) -}}
+    {{- $keycloakNs = $ns.metadata.name -}}
+    {{- break -}}
+  {{- end -}}
+{{- end -}}
+{{- $keycloakNs -}}
+{{- end }}
+
+{{/*
+Find Keycloak service name by looking in the detected namespace
+*/}}
+{{- define "ros-ocp.keycloak.serviceName" -}}
+{{- $keycloakSvc := "" -}}
+{{- $ns := include "ros-ocp.keycloak.namespace" . -}}
+{{- if $ns -}}
+  {{- range $svc := (lookup "v1" "Service" $ns "").items -}}
+    {{- if or (contains "keycloak" $svc.metadata.name) (contains "sso" $svc.metadata.name) -}}
+      {{- $keycloakSvc = $svc.metadata.name -}}
+      {{- break -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $keycloakSvc -}}
+{{- end }}
+
+{{/*
+Get Keycloak route URL (OpenShift) or construct service URL (Kubernetes)
+*/}}
+{{- define "ros-ocp.keycloak.url" -}}
+{{- $keycloakUrl := "" -}}
+{{- $ns := include "ros-ocp.keycloak.namespace" . -}}
+{{- if $ns -}}
+  {{- if (include "ros-ocp.isOpenShift" .) -}}
+    {{- /* OpenShift: Look for Keycloak route */ -}}
+    {{- range $route := (lookup "route.openshift.io/v1" "Route" $ns "").items -}}
+      {{- if or (contains "keycloak" $route.metadata.name) (contains "sso" $route.metadata.name) -}}
+        {{- $scheme := "https" -}}
+        {{- if $route.spec.tls -}}
+          {{- $scheme = "https" -}}
+        {{- else -}}
+          {{- $scheme = "http" -}}
+        {{- end -}}
+        {{- $keycloakUrl = printf "%s://%s" $scheme $route.spec.host -}}
+        {{- break -}}
+      {{- end -}}
+    {{- end -}}
+  {{- else -}}
+    {{- /* Kubernetes: Look for Keycloak ingress or construct service URL */ -}}
+    {{- $found := false -}}
+    {{- range $ing := (lookup "networking.k8s.io/v1" "Ingress" $ns "").items -}}
+      {{- if or (contains "keycloak" $ing.metadata.name) (contains "sso" $ing.metadata.name) -}}
+        {{- if $ing.spec.rules -}}
+          {{- $host := (index $ing.spec.rules 0).host -}}
+          {{- $scheme := "http" -}}
+          {{- if $ing.spec.tls -}}
+            {{- $scheme = "https" -}}
+          {{- end -}}
+          {{- $keycloakUrl = printf "%s://%s" $scheme $host -}}
+          {{- $found = true -}}
+          {{- break -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if not $found -}}
+      {{- /* Fallback: construct service URL */ -}}
+      {{- $svcName := include "ros-ocp.keycloak.serviceName" . -}}
+      {{- if $svcName -}}
+        {{- $keycloakUrl = printf "http://%s.%s.svc.cluster.local:8080" $svcName $ns -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $keycloakUrl -}}
+{{- end }}
+
+{{/*
+Get complete Keycloak issuer URL with realm
+*/}}
+{{- define "ros-ocp.keycloak.issuerUrl" -}}
+{{- $baseUrl := "" -}}
+{{- if .Values.jwt_auth.keycloak.issuer.baseUrl -}}
+  {{- /* Use explicitly configured URL */ -}}
+  {{- $baseUrl = .Values.jwt_auth.keycloak.issuer.baseUrl -}}
+{{- else -}}
+  {{- /* Auto-detect Keycloak URL */ -}}
+  {{- $baseUrl = include "ros-ocp.keycloak.url" . -}}
+{{- end -}}
+{{- if $baseUrl -}}
+  {{- printf "%s/auth/realms/%s" $baseUrl .Values.jwt_auth.keycloak.issuer.realm -}}
+{{- else -}}
+  {{- /* Fallback URL for development */ -}}
+  {{- printf "https://keycloak-rhsso.apps.stress.parodos.dev/auth/realms/%s" .Values.jwt_auth.keycloak.issuer.realm -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get Keycloak JWKS URL
+*/}}
+{{- define "ros-ocp.keycloak.jwksUrl" -}}
+{{- printf "%s/protocol/openid-connect/certs" (include "ros-ocp.keycloak.issuerUrl" .) -}}
+{{- end }}
+
+{{/*
+Check if JWT authentication should be enabled
+This enables JWT auth automatically if Keycloak is detected and jwt_auth.enabled is not explicitly set to false
+*/}}
+{{- define "ros-ocp.jwt.shouldEnable" -}}
+{{- if hasKey .Values.jwt_auth "enabled" -}}
+  {{- .Values.jwt_auth.enabled -}}
+{{- else -}}
+  {{- /* Auto-enable if Keycloak is detected */ -}}
+  {{- include "ros-ocp.keycloak.isInstalled" . -}}
+{{- end -}}
+{{- end }}

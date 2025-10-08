@@ -1,0 +1,55 @@
+# Example values file for JWT Authentication with dynamic Keycloak detection
+# This demonstrates how to enable JWT auth with auto-detected Keycloak
+
+# Enable JWT authentication
+jwt_auth:
+  enabled: true  # Set to true to enable JWT authentication
+  
+  # Keycloak configuration
+  keycloak:
+    issuer:
+      # Leave baseUrl empty for auto-detection of Keycloak in the cluster
+      # The chart will automatically find Keycloak routes/ingresses
+      baseUrl: ""  # Auto-detect Keycloak URL
+      realm: kubernetes  # Your Keycloak realm name
+    
+    # Valid audiences for JWT tokens
+    audiences:
+      - cost-management-operator
+      - openshift-oidc
+  
+  # Authorino service configuration
+  authorino:
+    service:
+      # Namespace where Authorino is deployed
+      namespace: costmanagement-metrics-operator
+      # Authorino service name
+      name: authorino-authorino-authorization
+      port: 50051
+    
+    authConfig:
+      name: ros-ingress-keycloak-auth
+      create: true
+
+# Alternative: Manual Keycloak URL specification
+# Uncomment and modify if you want to specify the URL explicitly:
+#
+# jwt_auth:
+#   enabled: true
+#   keycloak:
+#     issuer:
+#       baseUrl: https://keycloak.mydomain.com  # Explicit URL
+#       realm: kubernetes
+#     audiences:
+#       - cost-management-operator
+
+# Alternative: Different Authorino instance
+# Uncomment if you want to use Authorino in the ros-ocp namespace:
+#
+# jwt_auth:
+#   enabled: true
+#   authorino:
+#     service:
+#       namespace: ros-ocp  # Same namespace as ROS ingress
+#       name: ros-authorino
+#       port: 50051
