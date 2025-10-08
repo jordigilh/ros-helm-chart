@@ -8,6 +8,10 @@ metadata:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
 spec:
+  # Container image configuration
+  image: {{ .Values.jwt_auth.authorino.deploy.image.repository }}:{{ .Values.jwt_auth.authorino.deploy.image.tag }}
+  imagePullPolicy: {{ .Values.jwt_auth.authorino.deploy.image.pullPolicy }}
+  
   # Listener configuration
   listener:
     tls:

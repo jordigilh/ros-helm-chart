@@ -41,6 +41,7 @@ data:
 
     # Authorino Configuration:
     authorino_deploy_enabled: {{ .Values.jwt_auth.authorino.deploy.enabled | quote }}
+    authorino_image: {{ .Values.jwt_auth.authorino.deploy.image.repository }}:{{ .Values.jwt_auth.authorino.deploy.image.tag }}
     authorino_namespace: {{ include "ros-ocp.authorino.namespace" . | quote }}
     authorino_service: {{ include "ros-ocp.authorino.serviceName" . | quote }}
     authorino_fqdn: {{ include "ros-ocp.authorino.fqdn" . | quote }}

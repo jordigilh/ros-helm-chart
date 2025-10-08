@@ -466,9 +466,21 @@ jwt_auth:
       enabled: true
       # Authorino instance name (will create service: <name>-authorino-authorization)
       name: ros-authorino
+      
+      # Container image configuration
+      image:
+        # Red Hat provides Authorino images via registry.redhat.io
+        repository: registry.redhat.io/rhosak/authorino-rhel8
+        tag: "1.0.0"  # Use specific version tags
+        pullPolicy: IfNotPresent
+        
+        # Alternative images:
+        # registry.redhat.io/3scale-amp28/authorino-rhel8:1.0.0
+        # quay.io/kuadrant/authorino:latest (community)
+      
       # Log level for debugging
       logLevel: info
-      # TLS settings for internal communication
+      # TLS settings for internal communication  
       tls:
         enabled: false  # Disabled for simplicity in demo environments
 

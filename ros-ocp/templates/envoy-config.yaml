@@ -80,7 +80,7 @@ data:
                           key: x-envoy-auth-method
                           value: authorino
                         append: false
-      
+
       clusters:
       # Existing Authorino service for external authorization
       - name: authorino-service
@@ -98,7 +98,7 @@ data:
                     # Use dynamic Authorino service (same namespace or external)
                     address: {{ include "ros-ocp.authorino.fqdn" . }}
                     port_value: {{ include "ros-ocp.authorino.port" . }}
-      
+
       # ROS ingress backend (same pod, different port)
       - name: ros-ingress-backend
         connect_timeout: 5s
@@ -113,7 +113,7 @@ data:
                   socket_address:
                     address: localhost  # Same pod
                     port_value: {{ .Values.ingress.port }}  # Use existing ingress port from values
-    
+
     # Admin interface for monitoring and debugging
     admin:
       address:
