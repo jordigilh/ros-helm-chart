@@ -11,7 +11,7 @@ spec:
   hosts:
   - "{{ include "ros-ocp.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local"
   - "{{ include "ros-ocp.fullname" . }}"
-  
+
   # JWT Authentication configuration using Keycloak
   authentication:
     "keycloak-jwt":
@@ -24,7 +24,7 @@ spec:
       credentials:
         authorizationHeader:
           prefix: Bearer
-  
+
   # Authorization - allow all authenticated users
   authorization:
     "allow-authenticated":
@@ -33,7 +33,7 @@ spec:
         - selector: auth.identity.sub
           operator: neq
           value: ""
-  
+
   # Enhanced response configuration - inject comprehensive headers
   response:
     success:
@@ -49,7 +49,7 @@ spec:
           # This extracts just the token part (without "Bearer ")
           selector: context.request.http.headers.authorization
           # You might need to use a custom expression to strip "Bearer "
-        
+
         # EXPLICIT CLIENT IDENTIFICATION
         {{ .Values.jwt_auth.headers.client.id | quote }}:
           selector: auth.identity.azp
@@ -60,7 +60,7 @@ spec:
         {{ .Values.jwt_auth.headers.client.audience | quote }}:
           selector: auth.identity.aud
           # Token audience claim
-        
+
         # USER IDENTITY CONTEXT
         {{ .Values.jwt_auth.headers.user.id | quote }}:
           selector: auth.identity.sub
@@ -72,7 +72,7 @@ spec:
           selector: auth.identity.given_name
         {{ .Values.jwt_auth.headers.user.familyName | quote }}:
           selector: auth.identity.family_name
-        
+
         # TOKEN METADATA
         {{ .Values.jwt_auth.headers.token.scope | quote }}:
           selector: auth.identity.scope
@@ -90,7 +90,7 @@ spec:
           selector: auth.identity.nbf
         {{ .Values.jwt_auth.headers.token.authTime | quote }}:
           selector: auth.identity.auth_time
-        
+
         # GROUP AND ROLE INFORMATION
         {{ .Values.jwt_auth.headers.user.groups | quote }}:
           selector: auth.identity.groups
@@ -101,7 +101,7 @@ spec:
         {{ .Values.jwt_auth.headers.user.clientRoles | quote }}:
           selector: auth.identity.resource_access[auth.identity.azp].roles
           join: ","
-        
+
         # AUTHENTICATION SOURCE METADATA
         {{ .Values.jwt_auth.headers.auth.method | quote }}:
           value: "Authorino-JWT"
@@ -109,7 +109,7 @@ spec:
           value: "true"
         {{ .Values.jwt_auth.headers.auth.source | quote }}:
           value: "Authorino"
-        
+
         # SESSION AND SECURITY CONTEXT
         {{ .Values.jwt_auth.headers.token.sessionId | quote }}:
           selector: auth.identity.jti
