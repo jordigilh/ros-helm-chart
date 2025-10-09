@@ -394,9 +394,9 @@ verify_kafka_topics() {
     # Check and create missing topics
     for topic in "${required_topics[@]}"; do
         echo_info "Checking topic: $topic"
-        if ! kubectl exec "$kafka_pod" -n "$NAMESPACE" -c kafka -- kafka-topics --bootstrap-server localhost:29092 --list 2>/dev/null | grep -q "^${topic}$"; then
+        if ! kubectl exec "$kafka_pod" -n "$NAMESPACE" -c kafka --request-timeout=180s -- kafka-topics --bootstrap-server localhost:29092 --list 2>/dev/null | grep -q "^${topic}$"; then
             echo_info "Creating missing topic: $topic"
-            kubectl exec "$kafka_pod" -n "$NAMESPACE" -c kafka -- kafka-topics \
+            kubectl exec "$kafka_pod" -n "$NAMESPACE" -c kafka --request-timeout=180s -- kafka-topics \
                 --bootstrap-server localhost:29092 \
                 --create \
                 --topic "$topic" \
@@ -619,7 +619,7 @@ check_ingress_readiness() {
     echo_info "Testing connectivity to ingress controller on port $http_port..."
     local connectivity_ok=false
     for i in {1..10}; do
-        if curl -f -s "http://localhost:$http_port/ready" >/dev/null 2>&1; then
+        if curl -f -s --connect-timeout 60 --max-time 90 "http://localhost:$http_port/ready" >/dev/null 2>&1; then
             echo_success "✓ Ingress controller is accessible via HTTP"
             connectivity_ok=true
             break
@@ -750,10 +750,10 @@ run_health_checks() {
         # Test Ingress API via port-forward
         echo_info "Testing Ingress API via port-forward..."
         local ingress_pf_pid=""
-        kubectl port-forward -n "$NAMESPACE" svc/ros-ocp-ingress 18080:8080 >/dev/null 2>&1 &
+        kubectl port-forward -n "$NAMESPACE" svc/ros-ocp-ingress 18080:8080 --request-timeout=90s >/dev/null 2>&1 &
         ingress_pf_pid=$!
         sleep 3
-        if kill -0 "$ingress_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 5 --max-time 10 http://localhost:18080/ready >/dev/null 2>&1; then
+        if kill -0 "$ingress_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18080/ready >/dev/null 2>&1; then
             echo_success "✓ Ingress API service is healthy (port-forward)"
         else
             echo_error "✗ Ingress API service is not responding (port-forward)"
@@ -762,14 +762,16 @@ run_health_checks() {
         # Cleanup ingress port-forward
         if [ -n "$ingress_pf_pid" ] && kill -0 "$ingress_pf_pid" 2>/dev/null; then
             kill "$ingress_pf_pid" 2>/dev/null || true
+            # Wait a moment for process to terminate
+            sleep 1
         fi
         # Test Kruize API via port-forward
         echo_info "Testing Kruize API via port-forward..."
         local kruize_pf_pid=""
-        kubectl port-forward -n "$NAMESPACE" svc/ros-ocp-kruize 18081:8080 >/dev/null 2>&1 &
+        kubectl port-forward -n "$NAMESPACE" svc/ros-ocp-kruize 18081:8080 --request-timeout=90s >/dev/null 2>&1 &
         kruize_pf_pid=$!
         sleep 3
-        if kill -0 "$kruize_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 5 --max-time 10 http://localhost:18081/listPerformanceProfiles >/dev/null 2>&1; then
+        if kill -0 "$kruize_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18081/listPerformanceProfiles >/dev/null 2>&1; then
             echo_success "✓ Kruize API service is healthy (port-forward)"
         else
             echo_error "✗ Kruize API service is not responding (port-forward)"
@@ -778,6 +780,8 @@ run_health_checks() {
         # Cleanup kruize port-forward
         if [ -n "$kruize_pf_pid" ] && kill -0 "$kruize_pf_pid" 2>/dev/null; then
             kill "$kruize_pf_pid" 2>/dev/null || true
+            # Wait a moment for process to terminate
+            sleep 1
         fi
 
         # Test external route accessibility (informational only - not counted as failure)
