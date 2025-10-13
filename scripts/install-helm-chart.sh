@@ -154,9 +154,18 @@ create_storage_credentials_secret() {
     echo_info "Creating storage credentials secret..."
 
     # Use the same naming convention as the Helm chart fullname template
-    # The fullname is: ${HELM_RELEASE_NAME}-ros-ocp
-    # So the secret should be: ${HELM_RELEASE_NAME}-ros-ocp-storage-credentials
-    local secret_name="${HELM_RELEASE_NAME}-ros-ocp-storage-credentials"
+    # The fullname template logic: if release name contains chart name, use release name as-is
+    # Otherwise use: ${HELM_RELEASE_NAME}-${CHART_NAME}
+    # For ros-ocp-test release: fullname = ros-ocp-test (contains "ros-ocp")
+    # For other releases: fullname = ${HELM_RELEASE_NAME}-ros-ocp
+    local chart_name="ros-ocp"
+    local fullname
+    if [[ "$HELM_RELEASE_NAME" == *"$chart_name"* ]]; then
+        fullname="$HELM_RELEASE_NAME"
+    else
+        fullname="${HELM_RELEASE_NAME}-${chart_name}"
+    fi
+    local secret_name="${fullname}-storage-credentials"
 
     # Check if secret already exists
     if kubectl get secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
