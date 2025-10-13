@@ -101,7 +101,7 @@ jobs:
 
 
       - name: Deploy Helm Chart
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: |
           # Use local Helm chart instead of pulling from GitHub
           cd scripts
@@ -110,6 +110,7 @@ jobs:
           export NAMESPACE=${{ env.NAMESPACE }}
           export USE_LOCAL_CHART=true
           export LOCAL_CHART_PATH=../ros-ocp
+          export HELM_TIMEOUT=900s
 
           # Make scripts executable
           chmod +x install-helm-chart.sh
@@ -117,6 +118,7 @@ jobs:
           # Deploy Helm chart using local chart
           echo "Installing ROS-OCP Helm chart from local source..."
           echo "Using local chart: $LOCAL_CHART_PATH"
+          echo "Using Helm timeout: $HELM_TIMEOUT"
           ./install-helm-chart.sh
 
           # Verify deployment
