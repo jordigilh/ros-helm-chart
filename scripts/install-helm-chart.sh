@@ -27,6 +27,8 @@ REPO_OWNER="insights-onprem"
 REPO_NAME="ros-helm-chart"
 USE_LOCAL_CHART=${USE_LOCAL_CHART:-false}  # Set to true to use local chart instead of GitHub release
 LOCAL_CHART_PATH=${LOCAL_CHART_PATH:-../ros-ocp}  # Path to local chart directory
+STRIMZI_NAMESPACE=${STRIMZI_NAMESPACE:-}  # If set, use existing Strimzi operator in this namespace
+KAFKA_NAMESPACE=${KAFKA_NAMESPACE:-}  # If set, use existing Kafka cluster in this namespace
 
 echo_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -155,6 +157,288 @@ create_namespace() {
     echo_success "Cost management optimization label applied"
     echo_info "  Label: cost_management_optimizations=true"
     echo_info "  This enables the Cost Management Metrics Operator to collect resource optimization data"
+}
+
+# Function to cleanup existing Strimzi operators
+cleanup_existing_strimzi() {
+    echo_info "Cleaning up any existing Strimzi operators..."
+    
+    # Remove all Strimzi operators from all namespaces
+    kubectl get pods -A -l name=strimzi-cluster-operator --no-headers 2>/dev/null | while read namespace pod_name rest; do
+        echo_info "Removing Strimzi operator from namespace: $namespace"
+        kubectl delete deployment -n "$namespace" -l name=strimzi-cluster-operator --ignore-not-found
+        helm uninstall strimzi-kafka-operator -n "$namespace" --ignore-not-found 2>/dev/null || true
+        helm uninstall strimzi-cluster-operator -n "$namespace" --ignore-not-found 2>/dev/null || true
+    done
+    
+    # Wait for all operators to be removed
+    echo_info "Waiting for all Strimzi operators to be removed..."
+    kubectl wait --for=delete pod -l name=strimzi-cluster-operator -A --timeout=120s 2>/dev/null || true
+    echo_success "All Strimzi operators removed"
+    
+    # Delete all Kafka resources before removing CRDs
+    echo_info "Deleting all Kafka resources across all namespaces..."
+    kubectl delete kafka --all -A --ignore-not-found --timeout=30s 2>/dev/null || \
+        kubectl patch kafka --all -A -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
+    kubectl delete kafkatopic --all -A --ignore-not-found --timeout=30s 2>/dev/null || \
+        kubectl patch kafkatopic --all -A -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
+    kubectl delete kafkauser --all -A --ignore-not-found --timeout=30s 2>/dev/null || \
+        kubectl patch kafkauser --all -A -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
+    kubectl delete kafkaconnect --all -A --ignore-not-found --timeout=30s 2>/dev/null || true
+    kubectl delete kafkaconnector --all -A --ignore-not-found --timeout=30s 2>/dev/null || true
+    
+    # Clean up all RBAC resources
+    echo_info "Cleaning up all Strimzi RBAC resources..."
+    kubectl delete clusterrolebinding strimzi-cluster-operator --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-cluster-operator-global --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-cluster-operator-leader-election --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-cluster-operator-namespaced --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-cluster-operator-watched --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-entity-operator --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-kafka-broker --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-kafka-client --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrolebinding strimzi-cluster-operator-kafka-broker-delegation --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrolebinding strimzi-cluster-operator-kafka-client-delegation --ignore-not-found 2>/dev/null || true
+    
+    # Clean up all CRDs (now safe since resources are deleted)
+    echo_info "Cleaning up all Strimzi CRDs..."
+    kubectl delete crd kafkas.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkatopics.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkausers.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkaconnects.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkaconnectors.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkamirrormakers.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkamirrormaker2s.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkabridges.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkarebalances.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkanodepools.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd strimzipodsets.core.strimzi.io --ignore-not-found 2>/dev/null || true
+    
+    echo_success "Strimzi cleanup completed"
+}
+
+# Function to verify existing Strimzi operator
+verify_existing_strimzi() {
+    local strimzi_namespace="$1"
+    
+    echo_info "Verifying existing Strimzi operator in namespace: $strimzi_namespace"
+    
+    # Check if Strimzi operator exists
+    if ! kubectl get pods -n "$strimzi_namespace" -l name=strimzi-cluster-operator >/dev/null 2>&1; then
+        echo_error "Strimzi operator not found in namespace: $strimzi_namespace"
+        return 1
+    fi
+    
+    # Check Strimzi operator version compatibility
+    echo_info "Checking Strimzi operator version compatibility..."
+    local strimzi_pod=$(kubectl get pods -n "$strimzi_namespace" -l name=strimzi-cluster-operator -o jsonpath='{.items[0].metadata.name}')
+    if [ -n "$strimzi_pod" ]; then
+        local strimzi_image=$(kubectl get pod -n "$strimzi_namespace" "$strimzi_pod" -o jsonpath='{.spec.containers[0].image}')
+        echo_info "Found Strimzi operator image: $strimzi_image"
+        
+        # Check if it's a compatible version (should contain 0.45.x for Kafka 3.8.0 support)
+        if [[ "$strimzi_image" =~ :0\.45\. ]] || [[ "$strimzi_image" =~ :0\.44\. ]] || [[ "$strimzi_image" =~ :0\.43\. ]]; then
+            echo_success "Strimzi operator version is compatible with Kafka 3.8.0"
+        else
+            echo_error "Strimzi operator version may not be compatible with Kafka 3.8.0"
+            echo_error "Found: $strimzi_image"
+            echo_error "Required: Strimzi 0.43.x, 0.44.x, or 0.45.x for Kafka 3.8.0 support"
+            echo_error "Please use a compatible Strimzi version or let the script install the correct version"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
+# Function to verify existing Kafka cluster
+verify_existing_kafka() {
+    local kafka_namespace="$1"
+    
+    echo_info "Verifying existing Kafka cluster in namespace: $kafka_namespace"
+    
+    # Check if Kafka cluster exists
+    if ! kubectl get kafka -n "$kafka_namespace" >/dev/null 2>&1; then
+        echo_error "Kafka cluster not found in namespace: $kafka_namespace"
+        return 1
+    fi
+    
+    # Check Kafka cluster version
+    echo_info "Checking Kafka cluster version compatibility..."
+    local kafka_cluster=$(kubectl get kafka -n "$kafka_namespace" -o jsonpath='{.items[0].metadata.name}')
+    if [ -n "$kafka_cluster" ]; then
+        local kafka_version=$(kubectl get kafka -n "$kafka_namespace" "$kafka_cluster" -o jsonpath='{.spec.kafka.version}')
+        echo_info "Found Kafka cluster version: $kafka_version"
+        
+        # Check if it's Kafka 3.8.0
+        if [ "$kafka_version" = "3.8.0" ]; then
+            echo_success "Kafka cluster version is compatible: $kafka_version"
+        else
+            echo_error "Kafka cluster version is not compatible"
+            echo_error "Found: $kafka_version"
+            echo_error "Required: 3.8.0"
+            echo_error "Please use Kafka 3.8.0 or let the script install the correct version"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
+# Function to configure cross-namespace Kafka connectivity
+configure_kafka_connectivity() {
+    local kafka_namespace="$1"
+    
+    echo_info "Configuring Kafka bootstrap servers for cross-namespace communication..."
+    local kafka_cluster_name=$(kubectl get kafka -n "$kafka_namespace" -o jsonpath='{.items[0].metadata.name}')
+    local kafka_bootstrap_servers="${kafka_cluster_name}-kafka-bootstrap.${kafka_namespace}.svc.cluster.local:9092"
+    
+    echo_info "Detected Kafka cluster: $kafka_cluster_name"
+    echo_info "Kafka bootstrap servers: $kafka_bootstrap_servers"
+    
+    # Add Kafka bootstrap servers to Helm arguments
+    HELM_EXTRA_ARGS+=("--set" "kafka.bootstrapServers=$kafka_bootstrap_servers")
+}
+
+# Function to cleanup existing Strimzi operators
+cleanup_existing_strimzi() {
+    echo_info "Cleaning up any existing Strimzi operators..."
+    
+    # Remove all Strimzi operators from all namespaces
+    kubectl get pods -A -l name=strimzi-cluster-operator --no-headers 2>/dev/null | while read namespace pod_name rest; do
+        echo_info "Removing Strimzi operator from namespace: $namespace"
+        kubectl delete deployment -n "$namespace" -l name=strimzi-cluster-operator --ignore-not-found
+        helm uninstall strimzi-kafka-operator -n "$namespace" --ignore-not-found 2>/dev/null || true
+        helm uninstall strimzi-cluster-operator -n "$namespace" --ignore-not-found 2>/dev/null || true
+    done
+    
+    # Wait for all operators to be removed
+    echo_info "Waiting for all Strimzi operators to be removed..."
+    kubectl wait --for=delete pod -l name=strimzi-cluster-operator -A --timeout=120s 2>/dev/null || true
+    echo_success "All Strimzi operators removed"
+    
+    # Delete all Kafka resources before removing CRDs
+    echo_info "Deleting all Kafka resources across all namespaces..."
+    kubectl delete kafka --all -A --ignore-not-found --timeout=30s 2>/dev/null || \
+        kubectl patch kafka --all -A -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
+    kubectl delete kafkatopic --all -A --ignore-not-found --timeout=30s 2>/dev/null || \
+        kubectl patch kafkatopic --all -A -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
+    kubectl delete kafkauser --all -A --ignore-not-found --timeout=30s 2>/dev/null || \
+        kubectl patch kafkauser --all -A -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
+    kubectl delete kafkaconnect --all -A --ignore-not-found --timeout=30s 2>/dev/null || true
+    kubectl delete kafkaconnector --all -A --ignore-not-found --timeout=30s 2>/dev/null || true
+    
+    # Clean up all RBAC resources
+    echo_info "Cleaning up all Strimzi RBAC resources..."
+    kubectl delete clusterrolebinding strimzi-cluster-operator --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-cluster-operator-global --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-cluster-operator-leader-election --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-cluster-operator-namespaced --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-cluster-operator-watched --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-entity-operator --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-kafka-broker --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrole strimzi-kafka-client --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrolebinding strimzi-cluster-operator-kafka-broker-delegation --ignore-not-found 2>/dev/null || true
+    kubectl delete clusterrolebinding strimzi-cluster-operator-kafka-client-delegation --ignore-not-found 2>/dev/null || true
+    
+    # Clean up all CRDs (now safe since resources are deleted)
+    echo_info "Cleaning up all Strimzi CRDs..."
+    kubectl delete crd kafkas.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkatopics.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkausers.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkaconnects.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkaconnectors.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkamirrormakers.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkamirrormaker2s.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkabridges.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkarebalances.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd kafkanodepools.kafka.strimzi.io --ignore-not-found 2>/dev/null || true
+    kubectl delete crd strimzipodsets.core.strimzi.io --ignore-not-found 2>/dev/null || true
+    
+    echo_success "Strimzi cleanup completed"
+}
+
+# Function to verify existing Strimzi operator
+verify_existing_strimzi() {
+    local strimzi_namespace="$1"
+    
+    echo_info "Verifying existing Strimzi operator in namespace: $strimzi_namespace"
+    
+    # Check if Strimzi operator exists
+    if ! kubectl get pods -n "$strimzi_namespace" -l name=strimzi-cluster-operator >/dev/null 2>&1; then
+        echo_error "Strimzi operator not found in namespace: $strimzi_namespace"
+        return 1
+    fi
+    
+    # Check Strimzi operator version compatibility
+    echo_info "Checking Strimzi operator version compatibility..."
+    local strimzi_pod=$(kubectl get pods -n "$strimzi_namespace" -l name=strimzi-cluster-operator -o jsonpath='{.items[0].metadata.name}')
+    if [ -n "$strimzi_pod" ]; then
+        local strimzi_image=$(kubectl get pod -n "$strimzi_namespace" "$strimzi_pod" -o jsonpath='{.spec.containers[0].image}')
+        echo_info "Found Strimzi operator image: $strimzi_image"
+        
+        # Check if it's a compatible version (should contain 0.45.x for Kafka 3.8.0 support)
+        if [[ "$strimzi_image" =~ :0\.45\. ]] || [[ "$strimzi_image" =~ :0\.44\. ]] || [[ "$strimzi_image" =~ :0\.43\. ]]; then
+            echo_success "Strimzi operator version is compatible with Kafka 3.8.0"
+        else
+            echo_error "Strimzi operator version may not be compatible with Kafka 3.8.0"
+            echo_error "Found: $strimzi_image"
+            echo_error "Required: Strimzi 0.43.x, 0.44.x, or 0.45.x for Kafka 3.8.0 support"
+            echo_error "Please use a compatible Strimzi version or let the script install the correct version"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
+# Function to verify existing Kafka cluster
+verify_existing_kafka() {
+    local kafka_namespace="$1"
+    
+    echo_info "Verifying existing Kafka cluster in namespace: $kafka_namespace"
+    
+    # Check if Kafka cluster exists
+    if ! kubectl get kafka -n "$kafka_namespace" >/dev/null 2>&1; then
+        echo_error "Kafka cluster not found in namespace: $kafka_namespace"
+        return 1
+    fi
+    
+    # Check Kafka cluster version
+    echo_info "Checking Kafka cluster version compatibility..."
+    local kafka_cluster=$(kubectl get kafka -n "$kafka_namespace" -o jsonpath='{.items[0].metadata.name}')
+    if [ -n "$kafka_cluster" ]; then
+        local kafka_version=$(kubectl get kafka -n "$kafka_namespace" "$kafka_cluster" -o jsonpath='{.spec.kafka.version}')
+        echo_info "Found Kafka cluster version: $kafka_version"
+        
+        # Check if it's Kafka 3.8.0
+        if [ "$kafka_version" = "3.8.0" ]; then
+            echo_success "Kafka cluster version is compatible: $kafka_version"
+        else
+            echo_error "Kafka cluster version is not compatible"
+            echo_error "Found: $kafka_version"
+            echo_error "Required: 3.8.0"
+            echo_error "Please use Kafka 3.8.0 or let the script install the correct version"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
+# Function to configure cross-namespace Kafka connectivity
+configure_kafka_connectivity() {
+    local kafka_namespace="$1"
+    
+    echo_info "Configuring Kafka bootstrap servers for cross-namespace communication..."
+    local kafka_cluster_name=$(kubectl get kafka -n "$kafka_namespace" -o jsonpath='{.items[0].metadata.name}')
+    local kafka_bootstrap_servers="${kafka_cluster_name}-kafka-bootstrap.${kafka_namespace}.svc.cluster.local:9092"
+    
+    echo_info "Detected Kafka cluster: $kafka_cluster_name"
+    echo_info "Kafka bootstrap servers: $kafka_bootstrap_servers"
+    
+    # Add Kafka bootstrap servers to Helm arguments
+    HELM_EXTRA_ARGS+=("--set" "kafka.bootstrapServers=$kafka_bootstrap_servers")
 }
 
 # Function to create storage credentials secret
@@ -313,124 +597,310 @@ cleanup_downloaded_chart() {
     fi
 }
 
-# Function to check for Kafka cluster ID conflicts
-check_kafka_cluster_conflicts() {
-    echo_info "Checking for potential Kafka cluster ID conflicts..."
 
-    # Check if Kafka and Zookeeper PVCs exist with different ages
-    local kafka_pvc_age=$(kubectl get pvc -n "$NAMESPACE" -o json 2>/dev/null | jq -r '.items[] | select(.metadata.name | contains("kafka-storage")) | .metadata.creationTimestamp' | head -1)
-    local zk_pvc_age=$(kubectl get pvc -n "$NAMESPACE" -o json 2>/dev/null | jq -r '.items[] | select(.metadata.name | contains("zookeeper-storage")) | .metadata.creationTimestamp' | head -1)
-
-    if [ -n "$kafka_pvc_age" ] && [ -n "$zk_pvc_age" ]; then
-        # Convert timestamps to seconds for comparison
-        local kafka_seconds=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$kafka_pvc_age" "+%s" 2>/dev/null || date -d "$kafka_pvc_age" "+%s" 2>/dev/null)
-        local zk_seconds=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$zk_pvc_age" "+%s" 2>/dev/null || date -d "$zk_pvc_age" "+%s" 2>/dev/null)
-
-        if [ -n "$kafka_seconds" ] && [ -n "$zk_seconds" ]; then
-            local age_diff=$((kafka_seconds - zk_seconds))
-            local age_diff_abs=${age_diff#-}  # absolute value
-
-            # If age difference is more than 1 hour (3600 seconds), likely a conflict
-            if [ "$age_diff_abs" -gt 3600 ]; then
-                echo_warning "Detected potential Kafka cluster ID conflict:"
-                echo_warning "  Kafka PVC age: $kafka_pvc_age"
-                echo_warning "  Zookeeper PVC age: $zk_pvc_age"
-                echo_warning "  Age difference: $age_diff_abs seconds"
-                return 1
-            fi
-        fi
-    fi
-
-    echo_success "No Kafka cluster ID conflicts detected"
-    return 0
-}
-
-# Function to clean up conflicting Kafka/Zookeeper data
-cleanup_kafka_conflicts() {
-    echo_warning "Cleaning up Kafka cluster ID conflicts..."
-
-    # Scale down Kafka and Zookeeper
-    echo_info "Scaling down Kafka and Zookeeper..."
-    kubectl scale statefulset "$HELM_RELEASE_NAME-kafka" --replicas=0 -n "$NAMESPACE" 2>/dev/null || true
-    kubectl scale statefulset "$HELM_RELEASE_NAME-zookeeper" --replicas=0 -n "$NAMESPACE" 2>/dev/null || true
-
-    # Wait for pods to terminate
-    echo_info "Waiting for Kafka and Zookeeper pods to terminate..."
-    local timeout=60
-    local count=0
-    while [ $count -lt $timeout ]; do
-        local kafka_pods=$(kubectl get pods -n "$NAMESPACE" --no-headers | grep -E "(kafka|zookeeper)" | wc -l)
-        if [ "$kafka_pods" -eq 0 ]; then
-            break
-        fi
-        sleep 2
-        count=$((count + 2))
-    done
-
-    # Delete conflicting PVCs
-    echo_info "Removing conflicting persistent volumes..."
-    kubectl delete pvc -n "$NAMESPACE" -l "app.kubernetes.io/name=kafka" 2>/dev/null || true
-    kubectl delete pvc -n "$NAMESPACE" -l "app.kubernetes.io/name=zookeeper" 2>/dev/null || true
-    kubectl delete pvc -n "$NAMESPACE" --selector="app.kubernetes.io/instance=$HELM_RELEASE_NAME" --field-selector="metadata.name~=kafka-storage" 2>/dev/null || true
-    kubectl delete pvc -n "$NAMESPACE" --selector="app.kubernetes.io/instance=$HELM_RELEASE_NAME" --field-selector="metadata.name~=zookeeper-storage" 2>/dev/null || true
-
-    # Alternative method - delete by name pattern
-    kubectl get pvc -n "$NAMESPACE" -o name 2>/dev/null | grep -E "(kafka|zookeeper)" | xargs -r kubectl delete -n "$NAMESPACE" 2>/dev/null || true
-
-    echo_success "Kafka cluster conflict cleanup completed"
-}
-
-# Function to verify and create required Kafka topics
+# Function to verify Kafka topics status
 verify_kafka_topics() {
-    echo_info "Verifying Kafka topics after deployment..."
+    # Determine Kafka namespace based on deployment scenario
+    local kafka_namespace="${KAFKA_NAMESPACE:-kafka}"
+    
+    echo_info "Verifying Kafka topics status in namespace: $kafka_namespace..."
+    
+    # Show topic status (topics are created by create_kafka_topics during Kafka cluster creation)
+    if kubectl get kafkatopic -n "$kafka_namespace" >/dev/null 2>&1; then
+        kubectl get kafkatopic -n "$kafka_namespace" -o custom-columns=NAME:.metadata.name,READY:.status.conditions[0].status 2>/dev/null || true
+        echo_success "Kafka topics verification completed"
+    else
+        echo_info "No Kafka topics found in namespace $kafka_namespace (may be created later)"
+    fi
+}
 
-    # Wait for Kafka to be ready
-    echo_info "Waiting for Kafka to be ready..."
-    kubectl wait --for=condition=ready pod -l "app.kubernetes.io/name=kafka" \
-        --namespace "$NAMESPACE" \
-        --timeout=300s || {
-        echo_warning "Kafka pod not ready within timeout, will retry topic creation later"
-        return 0
-    }
-
-    # Get Kafka pod name
-    local kafka_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=kafka" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-
-    if [ -z "$kafka_pod" ]; then
-        echo_warning "No Kafka pod found, skipping topic verification"
+# Function to install Strimzi operator and Kafka cluster
+install_strimzi_and_kafka() {
+    local environment="$1"
+    
+    # Check if existing Strimzi/Kafka namespaces are provided
+    if [ -n "$STRIMZI_NAMESPACE" ] && [ -n "$KAFKA_NAMESPACE" ]; then
+        echo_info "Using existing Strimzi operator in namespace: $STRIMZI_NAMESPACE"
+        echo_info "Using existing Kafka cluster in namespace: $KAFKA_NAMESPACE"
+        
+        # Verify existing infrastructure
+        if ! verify_existing_strimzi "$STRIMZI_NAMESPACE"; then
+            return 1
+        fi
+        
+        if ! verify_existing_kafka "$KAFKA_NAMESPACE"; then
+            return 1
+        fi
+        
+        # Configure cross-namespace connectivity
+        configure_kafka_connectivity "$KAFKA_NAMESPACE"
+        
+        echo_success "Using existing Strimzi and Kafka infrastructure with compatible versions"
         return 0
     fi
-
-    echo_info "Found Kafka pod: $kafka_pod"
-
-    # Required topics
-    local required_topics=(
-        "hccm.ros.events"
-        "rosocp.kruize.recommendations"
-        "platform.upload.announce"
-        "platform.payload-status"
-    )
-
-    # Check and create missing topics
-    for topic in "${required_topics[@]}"; do
-        echo_info "Checking topic: $topic"
-        if ! kubectl exec "$kafka_pod" -n "$NAMESPACE" -c kafka --request-timeout=180s -- kafka-topics --bootstrap-server localhost:29092 --list 2>/dev/null | grep -q "^${topic}$"; then
-            echo_info "Creating missing topic: $topic"
-            kubectl exec "$kafka_pod" -n "$NAMESPACE" -c kafka --request-timeout=180s -- kafka-topics \
-                --bootstrap-server localhost:29092 \
-                --create \
-                --topic "$topic" \
-                --partitions 3 \
-                --replication-factor 1 \
-                --if-not-exists 2>/dev/null || {
-                echo_warning "Failed to create topic: $topic"
-            }
+    
+    echo_info "Installing Strimzi operator and Kafka cluster..."
+    
+    local strimzi_namespace="kafka"
+    
+    # Check if there's already a Strimzi operator we can reuse
+    local existing_strimzi_ns=$(kubectl get pods -A -l name=strimzi-cluster-operator -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || echo "")
+    
+    if [ -n "$existing_strimzi_ns" ]; then
+        echo_info "Found existing Strimzi operator in namespace: $existing_strimzi_ns"
+        
+        # Verify if it's compatible
+        if verify_existing_strimzi "$existing_strimzi_ns" 2>/dev/null; then
+            echo_success "Existing Strimzi operator is compatible, reusing it"
+            strimzi_namespace="$existing_strimzi_ns"
         else
-            echo_success "Topic exists: $topic"
+            echo_error "Existing Strimzi operator in namespace '$existing_strimzi_ns' is not compatible"
+            echo_error "Required: Strimzi 0.43.x, 0.44.x, or 0.45.x for Kafka 3.8.0 support"
+            echo_info "To clean up and install fresh, run:"
+            echo_info "  $0 cleanup --strimzi-conflicts"
+            echo_info "Or specify existing compatible infrastructure:"
+            echo_info "  STRIMZI_NAMESPACE=<namespace> KAFKA_NAMESPACE=<namespace> $0"
+            return 1
+        fi
+    else
+        echo_info "No existing Strimzi operator found, installing fresh"
+    fi
+    
+    # Create namespace for Strimzi operator if needed
+    echo_info "Ensuring namespace exists for Strimzi operator: $strimzi_namespace"
+    kubectl create namespace "$strimzi_namespace" --dry-run=client -o yaml | kubectl apply -f -
+    
+    # Only install Strimzi if not already reusing an existing compatible one
+    if [ "$strimzi_namespace" != "$existing_strimzi_ns" ] || [ -z "$existing_strimzi_ns" ]; then
+        # Add Strimzi Helm repo
+        helm repo add strimzi https://strimzi.io/charts/
+        helm repo update
+        
+        # Install Strimzi operator using Helm (version 0.45.1 for Kafka 3.8.0 support)
+        echo_info "Installing Strimzi operator version 0.45.1 (supports Kafka 3.8.0)..."
+        helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator \
+            --namespace "$strimzi_namespace" \
+            --version 0.45.1 \
+            --wait
+        
+        # Wait for Strimzi operator pod to be ready
+        echo_info "Waiting for Strimzi operator to be ready..."
+        kubectl wait --for=condition=ready pod -l name=strimzi-cluster-operator -n "$strimzi_namespace" --timeout=300s
+        
+        # Wait for CRDs to be established
+        echo_info "Waiting for Strimzi CRDs to be ready..."
+        kubectl wait --for condition=established --timeout=60s crd/kafkas.kafka.strimzi.io 2>/dev/null || true
+        kubectl wait --for condition=established --timeout=60s crd/kafkatopics.kafka.strimzi.io 2>/dev/null || true
+        
+        echo_success "Strimzi operator installed"
+    else
+        echo_info "Skipping Strimzi installation, using existing compatible operator"
+        
+        # Still wait for CRDs to be ready
+        echo_info "Verifying Strimzi CRDs are ready..."
+        kubectl wait --for condition=established --timeout=60s crd/kafkas.kafka.strimzi.io 2>/dev/null || true
+        kubectl wait --for condition=established --timeout=60s crd/kafkatopics.kafka.strimzi.io 2>/dev/null || true
+    fi
+    
+    # Create Kafka cluster in the kafka namespace
+    echo_info "Creating Kafka cluster in namespace: $strimzi_namespace"
+    create_kafka_cluster "$strimzi_namespace" "$environment"
+}
+
+# Function to create Kafka cluster
+create_kafka_cluster() {
+    local kafka_namespace="$1"
+    local environment="$2"
+    local kafka_name="ros-ocp-kafka"
+    
+    # Check if Kafka cluster already exists
+    if kubectl get kafka "$kafka_name" -n "$kafka_namespace" >/dev/null 2>&1; then
+        echo_info "Kafka cluster '$kafka_name' already exists in namespace '$kafka_namespace'"
+        return 0
+    fi
+    
+    # Set environment-specific Kafka configuration
+    local kafka_replicas=1
+    local kafka_storage_size="10Gi"
+    local kafka_storage_class=""
+    local zookeeper_replicas=1
+    local zookeeper_storage_size="5Gi"
+    local zookeeper_storage_class=""
+    local tls_enabled="false"
+    
+    case "$environment" in
+        "ocp"|"openshift")
+            kafka_replicas=3
+            kafka_storage_size="100Gi"
+            kafka_storage_class="odf-storagecluster-ceph-rbd"
+            zookeeper_replicas=3
+            zookeeper_storage_size="20Gi"
+            zookeeper_storage_class="odf-storagecluster-ceph-rbd"
+            tls_enabled="true"
+            ;;
+        "dev"|"development")
+            # Use defaults
+            ;;
+    esac
+    
+    # Create Kafka cluster YAML
+    local kafka_yaml=$(cat << EOF
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: $kafka_name
+  namespace: $kafka_namespace
+spec:
+  kafka:
+    version: 3.8.0
+    replicas: $kafka_replicas
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+EOF
+)
+    
+    # Add TLS listener if enabled
+    if [ "$tls_enabled" = "true" ]; then
+        kafka_yaml=$(cat << EOF
+$kafka_yaml
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+EOF
+)
+    fi
+    
+    # Add storage configuration
+    kafka_yaml=$(cat << EOF
+$kafka_yaml
+    storage:
+      type: persistent-claim
+      size: $kafka_storage_size
+      deleteClaim: false
+EOF
+)
+    
+    # Add storage class if specified
+    if [ -n "$kafka_storage_class" ]; then
+        kafka_yaml=$(cat << EOF
+$kafka_yaml
+      class: $kafka_storage_class
+EOF
+)
+    fi
+    
+    # Add Kafka configuration
+    kafka_yaml=$(cat << EOF
+$kafka_yaml
+    config:
+      auto.create.topics.enable: "true"
+      default.replication.factor: "$kafka_replicas"
+      log.retention.hours: "168"
+      log.segment.bytes: "1073741824"
+      min.insync.replicas: "$((kafka_replicas / 2 + 1))"
+      offsets.topic.replication.factor: "$kafka_replicas"
+      transaction.state.log.min.isr: "$((kafka_replicas / 2 + 1))"
+      transaction.state.log.replication.factor: "$kafka_replicas"
+  zookeeper:
+    replicas: $zookeeper_replicas
+    storage:
+      type: persistent-claim
+      size: $zookeeper_storage_size
+      deleteClaim: false
+EOF
+)
+    
+    # Add Zookeeper storage class if specified
+    if [ -n "$zookeeper_storage_class" ]; then
+        kafka_yaml=$(cat << EOF
+$kafka_yaml
+      class: $zookeeper_storage_class
+EOF
+)
+    fi
+    
+    # Add entity operator
+    kafka_yaml=$(cat << EOF
+$kafka_yaml
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
+EOF
+)
+    
+    # Apply Kafka cluster
+    if echo "$kafka_yaml" | kubectl apply -f -; then
+        echo_success "Kafka cluster '$kafka_name' created in namespace '$kafka_namespace'"
+        
+        # Wait for Kafka cluster to be ready
+        echo_info "Waiting for Kafka cluster to be ready..."
+        kubectl wait --for=condition=ready kafka/"$kafka_name" -n "$kafka_namespace" --timeout=600s
+        
+        echo_success "Kafka cluster is ready"
+    else
+        echo_error "Failed to create Kafka cluster"
+        return 1
+    fi
+    
+    # Create Kafka topics
+    create_kafka_topics "$kafka_namespace" "$kafka_name" "$kafka_replicas"
+}
+
+# Function to create Kafka topics
+create_kafka_topics() {
+    local kafka_namespace="$1"
+    local kafka_name="$2"
+    local replication_factor="$3"
+    
+    echo_info "Creating Kafka topics in namespace: $kafka_namespace"
+    
+    # Required topics (partitions:replication_factor)
+    local required_topics=(
+        "hccm.ros.events:3:$replication_factor"
+        "platform.sources.event-stream:3:$replication_factor"
+        "rosocp.kruize.recommendations:3:$replication_factor"
+        "platform.upload.announce:3:$replication_factor"
+        "platform.payload-status:3:$replication_factor"
+    )
+    
+    for topic_config in "${required_topics[@]}"; do
+        IFS=':' read -r topic_name partitions replication_factor <<< "$topic_config"
+        
+        # Check if topic already exists
+        if kubectl get kafkatopic "$topic_name" -n "$kafka_namespace" >/dev/null 2>&1; then
+            echo_info "Topic '$topic_name' already exists, skipping"
+            continue
+        fi
+        
+        # Create topic YAML
+        local topic_yaml=$(cat << EOF
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: $topic_name
+  namespace: $kafka_namespace
+  labels:
+    strimzi.io/cluster: $kafka_name
+spec:
+  partitions: $partitions
+  replicas: $replication_factor
+  config:
+    retention.ms: "604800000"
+    segment.ms: "86400000"
+EOF
+)
+        
+        # Apply topic
+        if echo "$topic_yaml" | kubectl apply -f -; then
+            echo_success "Topic '$topic_name' created"
+        else
+            echo_warning "Failed to create topic '$topic_name'"
         fi
     done
-
-    echo_success "Kafka topics verification completed"
 }
 
 # Function to deploy Helm chart
@@ -497,6 +967,12 @@ deploy_helm_chart() {
         fi
     else
         echo_info "JWT authentication disabled (non-OpenShift platform)"
+    fi
+    
+    # Add additional Helm arguments passed to the script
+    if [ ${#HELM_EXTRA_ARGS[@]} -gt 0 ]; then
+        echo_info "Adding additional Helm arguments: ${HELM_EXTRA_ARGS[*]}"
+        helm_cmd="$helm_cmd ${HELM_EXTRA_ARGS[*]}"
     fi
 
     echo_info "Executing: $helm_cmd"
@@ -910,13 +1386,9 @@ cleanup() {
     # Parse arguments
     while [ $# -gt 0 ]; do
         case "$1" in
-            --kafka-conflicts)
-                echo_info "Cleaning up Kafka cluster ID conflicts only..."
-                if ! check_kafka_cluster_conflicts; then
-                    cleanup_kafka_conflicts
-                else
-                    echo_info "No Kafka conflicts detected"
-                fi
+            --strimzi-conflicts)
+                echo_info "Cleaning up Strimzi conflicts only..."
+                cleanup_existing_strimzi
                 return 0
                 ;;
             --complete)
@@ -994,7 +1466,7 @@ cleanup() {
 
     # Delete namespace
     echo_info "Deleting namespace..."
-    kubectl delete namespace "$NAMESPACE" --timeout=120s || true
+    kubectl delete namespace "$NAMESPACE" --timeout=120s --ignore-not-found || true
 
     # Wait for namespace deletion
     echo_info "Waiting for namespace deletion to complete..."
@@ -1127,8 +1599,77 @@ setup_jwt_authentication() {
     return 0
 }
 
+# Function to set platform-specific configurations
+set_platform_config() {
+    local platform="$1"
+    
+    case "$platform" in
+        "openshift")
+            echo_info "Using OpenShift configuration (auto-detected)"
+            
+            # Use openshift-values.yaml if no custom values file is specified
+            if [ -z "$VALUES_FILE" ]; then
+                local openshift_values="$SCRIPT_DIR/../openshift-values.yaml"
+                if [ -f "$openshift_values" ]; then
+                    VALUES_FILE="$openshift_values"
+                    echo_info "Using OpenShift values file: $openshift_values"
+                else
+                    echo_warning "OpenShift values file not found: $openshift_values"
+                    echo_info "Using base values with minimal OpenShift overrides"
+                    # Fallback to minimal inline configuration if openshift-values.yaml is missing
+                    HELM_EXTRA_ARGS+=(
+                        "--set" "global.storageClass=odf-storagecluster-ceph-rbd"
+                        "--set" "ingress.auth.enabled=false"
+                        "--set" "ingress.upload.requireAuth=false"
+                    )
+                fi
+            else
+                echo_info "Using custom values file: $VALUES_FILE"
+            fi
+            
+            export KAFKA_ENVIRONMENT="ocp"
+            ;;
+            
+        "kubernetes")
+            echo_info "Using Kubernetes configuration (auto-detected)"
+            echo_info "Using base values.yaml (optimized for Kubernetes/KIND)"
+            
+            # No additional overrides needed - base values.yaml is Kubernetes-optimized
+            export KAFKA_ENVIRONMENT="dev"
+            ;;
+            
+        *)
+            echo_error "Unknown platform: $platform"
+            return 1
+            ;;
+    esac
+}
+
 # Main execution
 main() {
+    # Process additional arguments
+    HELM_EXTRA_ARGS=()
+    
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --set|--set-string|--set-file|--set-json)
+                # These are Helm arguments, collect them
+                HELM_EXTRA_ARGS+=("$1" "$2")
+                shift 2
+                ;;
+            --*)
+                # Other Helm arguments
+                HELM_EXTRA_ARGS+=("$1")
+                shift
+                ;;
+            *)
+                # Unknown argument, skip it
+                echo_warning "Unknown argument: $1 (ignoring)"
+                shift
+                ;;
+        esac
+    done
+
     echo_info "ROS-OCP Helm Chart Installation"
     echo_info "==============================="
 
@@ -1137,11 +1678,16 @@ main() {
         exit 1
     fi
 
-    # Detect platform
+    # Detect platform (OpenShift vs Kubernetes)
     detect_platform
 
     # Setup JWT authentication prerequisites (if applicable)
     setup_jwt_authentication
+    
+    # Set platform-specific configuration based on auto-detection
+    if ! set_platform_config "$PLATFORM"; then
+        exit 1
+    fi
 
     echo_info "Configuration:"
     echo_info "  Platform: $PLATFORM"
@@ -1168,10 +1714,10 @@ main() {
         exit 1
     fi
 
-    # Check for Kafka cluster ID conflicts
-    if ! check_kafka_cluster_conflicts; then
-        echo_warning "Kafka cluster ID conflicts detected. Cleaning up..."
-        cleanup_kafka_conflicts
+    # Install Strimzi operator and Kafka cluster
+    if ! install_strimzi_and_kafka "$KAFKA_ENVIRONMENT"; then
+        echo_error "Strimzi operator and Kafka installation failed"
+        exit 1
     fi
 
     # Deploy Helm chart
@@ -1196,7 +1742,6 @@ main() {
 
     # Run health checks
     echo_info "Waiting 30 seconds for services to stabilize before running health checks..."
-    sleep 30
 
     # Show pod status before health checks
     echo_info "Pod status before health checks:"
@@ -1214,9 +1759,9 @@ main() {
     echo_info "The services are now running in namespace '$NAMESPACE'"
 
     if [ "$PLATFORM" = "kubernetes" ]; then
-        echo_info "Next: Run ./test-k8s-dataflow.sh to test the deployment"
+        echo_info "Next: Run https://raw.githubusercontent.com/insights-onprem/ros-ocp-backend/refs/heads/main/deployment/kubernetes/scripts/test-k8s-dataflow.sh to test the deployment"
     else
-        echo_info "Next: Run ./test-ocp-dataflow.sh to test the deployment"
+        echo_info "Next: Run https://raw.githubusercontent.com/insights-onprem/ros-ocp-backend/refs/heads/main/deployment/kubernetes/scripts/test-ocp-dataflow.sh to test the deployment"
     fi
 
     # Cleanup downloaded chart if we used GitHub release
@@ -1228,7 +1773,8 @@ main() {
 # Handle script arguments
 case "${1:-}" in
     "cleanup")
-        cleanup
+        shift  # Remove "cleanup" from arguments
+        cleanup "$@"
         exit 0
         ;;
     "status")
@@ -1242,25 +1788,36 @@ case "${1:-}" in
         exit $?
         ;;
     "help"|"-h"|"--help")
-        echo "Usage: $0 [command] [options]"
+        echo "Usage: $0 [command] [options] [--set key=value ...]"
+        echo ""
+        echo "Platform Detection:"
+        echo "  The script automatically detects whether you're running on:"
+        echo "  - OpenShift (production configuration: HA, large resources, ODF storage)"
+        echo "  - Kubernetes (development configuration: single node, small resources)"
         echo ""
         echo "Commands:"
         echo "  (none)              - Install ROS-OCP Helm chart"
         echo "  cleanup             - Delete Helm release and namespace (preserves PVs)"
         echo "  cleanup --complete  - Complete removal including Persistent Volumes"
-        echo "  cleanup --kafka-conflicts - Clean up Kafka cluster ID conflicts only"
+        echo "  cleanup --strimzi-conflicts - Clean up Strimzi operator conflicts only"
         echo "  status              - Show deployment status"
         echo "  health              - Run health checks"
         echo "  help                - Show this help message"
         echo ""
+        echo "Helm Arguments:"
+        echo "  --set key=value     - Set individual values (can be used multiple times)"
+        echo "  --set-string key=value - Set string values"
+        echo "  --set-file key=path - Set values from file"
+        echo "  --set-json key=json - Set JSON values"
+        echo ""
         echo "Uninstall/Reinstall Workflow:"
         echo "  # For clean reinstall with fresh data:"
         echo "  $0 cleanup --complete    # Remove everything including data"
-        echo "  $0 install               # Fresh installation"
+        echo "  $0                       # Fresh installation"
         echo ""
         echo "  # For reinstall preserving data:"
         echo "  $0 cleanup               # Remove workloads but keep volumes"
-        echo "  $0 install               # Reinstall (reuses existing volumes)"
+        echo "  $0                       # Reinstall (reuses existing volumes)"
         echo ""
         echo "Environment Variables:"
         echo "  HELM_RELEASE_NAME - Name of Helm release (default: ros-ocp)"
@@ -1268,6 +1825,11 @@ case "${1:-}" in
         echo "  VALUES_FILE       - Path to custom values file (optional)"
         echo "  USE_LOCAL_CHART   - Use local chart instead of GitHub release (default: false)"
         echo "  LOCAL_CHART_PATH  - Path to local chart directory (default: ../helm/ros-ocp)"
+        echo "  STRIMZI_NAMESPACE - Use existing Strimzi operator in this namespace (optional)"
+        echo "  KAFKA_NAMESPACE   - Use existing Kafka cluster in this namespace (optional)"
+        echo "                      Note: Both must be set together. Existing infrastructure must be"
+        echo "                      compatible (Strimzi 0.43-0.45.x, Kafka 3.8.0). Cross-namespace"
+        echo "                      communication is automatically configured"
         echo ""
         echo "Chart Source Options:"
         echo "  - Default: Downloads latest release from GitHub (recommended)"
@@ -1277,12 +1839,51 @@ case "${1:-}" in
         echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../helm/ros-ocp $0"
         echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-helm-chart/ros-ocp $0"
         echo ""
+        echo "Examples:"
+        echo "  # Basic deployment (auto-detects platform)"
+        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp $0"
+        echo ""
+        echo "  # Custom namespace and release name"
+        echo "  NAMESPACE=my-namespace HELM_RELEASE_NAME=my-release \\"
+        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp $0"
+        echo ""
+        echo "  # Use existing Strimzi/Kafka infrastructure"
+        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp \\"
+        echo "    STRIMZI_NAMESPACE=my-strimzi KAFKA_NAMESPACE=my-kafka $0"
+        echo ""
+        echo "  # With custom overrides"
+        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp $0 \\"
+        echo "    --set database.ros.storage.size=200Gi"
+        echo ""
+        echo "  # Install latest release from GitHub"
+        echo "  $0"
+        echo ""
+        echo "  # Cleanup and reinstall"
+        echo "  $0 cleanup --complete && USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp $0"
+        echo ""
         echo "Platform Detection:"
         echo "  - Automatically detects Kubernetes vs OpenShift"
         echo "  - Uses openshift-values.yaml for OpenShift if available"
         echo "  - Auto-detects optimal storage class for platform"
-        echo "  - Detects and resolves Kafka cluster ID conflicts automatically"
+        echo "  - Installs Strimzi operator and creates Kafka cluster"
         echo "  - Ensures required Kafka topics are created"
+        echo ""
+        echo "Deployment Scenarios:"
+        echo "  1. Fresh deployment: $0"
+        echo "     - Auto-detects platform (OpenShift or Kubernetes)"
+        echo "     - Installs Strimzi operator and Kafka cluster"
+        echo "     - Deploys ROS-OCP with platform-specific configuration"
+        echo ""
+        echo "  2. Existing Kafka infrastructure:"
+        echo "     STRIMZI_NAMESPACE=strimzi KAFKA_NAMESPACE=kafka $0"
+        echo "     - Validates version compatibility (Strimzi 0.43-0.45.x, Kafka 3.8.0)"
+        echo "     - Automatically configures cross-namespace Kafka connectivity"
+        echo "     - Skips Strimzi/Kafka installation"
+        echo ""
+        echo "  3. Custom configuration:"
+        echo "     $0 --set key=value"
+        echo "     - Override any Helm value"
+        echo "     - Platform detection still applies"
         echo ""
         echo "Requirements:"
         echo "  - kubectl must be configured with target cluster"
