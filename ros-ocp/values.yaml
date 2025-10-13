@@ -184,8 +184,11 @@ ingress:
     clientId: "insights-ros-ingress"
     batchSize: 16384
     retries: 3
+  # Authentication configuration
+  # Note: Authentication is only available on OpenShift with Keycloak/RHSSO.
+  # On vanilla Kubernetes/KIND, authentication is automatically disabled regardless of this setting.
   auth:
-    enabled: true
+    enabled: true  # Only applies to OpenShift deployments
     allowedOrgs: []
   logging:
     level: "info"

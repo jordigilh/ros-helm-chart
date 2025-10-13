@@ -133,9 +133,13 @@ spec:
             - name: KAFKA_RETRIES
               value: {{ .Values.ingress.kafka.retries | quote }}
 
-            # Authentication configuration
+            # Authentication configuration (only available on OpenShift with Keycloak)
             - name: AUTH_ENABLED
+              {{- if eq (include "ros-ocp.isOpenShift" .) "true" }}
               value: {{ .Values.ingress.auth.enabled | quote }}
+              {{- else }}
+              value: "false"
+              {{- end }}
             # Logging configuration
             - name: LOG_LEVEL
               value: {{ .Values.ingress.logging.level | quote }}
