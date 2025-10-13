@@ -22,6 +22,12 @@ Kubernetes Helm chart for deploying the complete Resource Optimization Service (
 # Install latest release from GitHub
 ./scripts/install-helm-chart.sh
 
+# Or use local chart for development
+USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp ./scripts/install-helm-chart.sh
+
+# Or specify custom namespace and release name
+NAMESPACE=my-namespace HELM_RELEASE_NAME=my-release ./scripts/install-helm-chart.sh
+
 # Or use Helm directly
 helm repo add ros-ocp https://insights-onprem.github.io/ros-helm-chart
 helm install ros-ocp ros-ocp/ros-ocp --namespace ros-ocp --create-namespace
@@ -60,8 +66,11 @@ ros-helm-chart/
 
 ### Stateful Services
 - **PostgreSQL** (3 instances): ROS, Kruize, Sources databases
-- **Kafka + Zookeeper**: Message streaming with persistent storage
 - **MinIO/ODF**: Object storage (MinIO for Kubernetes, ODF for OpenShift)
+
+### Kafka Infrastructure (Managed by Install Script)
+- **Strimzi Operator**: Deploys and manages Kafka clusters
+- **Kafka 3.8.0**: Message streaming with persistent storage (deployed via Strimzi CRDs)
 
 ### Application Services
 - **Ingress**: File upload API and routing gateway
