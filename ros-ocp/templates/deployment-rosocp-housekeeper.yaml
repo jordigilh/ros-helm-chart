@@ -38,18 +38,19 @@ spec:
               done
               echo "ROS database is ready"
               echo "ROS database is ready"
+        {{- if .Values.kafka.bootstrapServers }}
         - name: wait-for-kafka
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
           command: ['bash', '-c']
           args:
             - |
-              echo "Waiting for Kafka at {{ include "ros-ocp.fullname" . }}-kafka:{{ .Values.kafka.broker.port }}..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "ros-ocp.fullname" . }}-kafka/{{ .Values.kafka.broker.port }}" 2>/dev/null; do
+              echo "Waiting for Kafka at {{ include "ros-ocp.kafkaHost" . }}:{{ include "ros-ocp.kafkaPort" . }}..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "ros-ocp.kafkaHost" . }}/{{ include "ros-ocp.kafkaPort" . }}" 2>/dev/null; do
                 echo "Kafka not ready yet, retrying in 5 seconds..."
                 sleep 5
               done
               echo "Kafka is ready"
-              echo "Kafka is ready"
+        {{- end }}
         - name: wait-for-kruize
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
           command: ['bash', '-c']
@@ -113,7 +114,9 @@ spec:
             - name: DATABASE_URL
               value: {{ include "ros-ocp.databaseUrl" . }}
             - name: KAFKA_BOOTSTRAP_SERVERS
-              value: {{ include "ros-ocp.fullname" . }}-kafka:{{ .Values.kafka.broker.port }}
+              value: {{ include "ros-ocp.kafkaBootstrapServers" . | quote }}
+            - name: KAFKA_SECURITY_PROTOCOL
+              value: {{ include "ros-ocp.kafkaSecurityProtocol" . | quote }}
             - name: SOURCES_API_BASE_URL
               value: http://{{ include "ros-ocp.fullname" . }}-sources-api:{{ .Values.sourcesApi.port }}
           resources:
