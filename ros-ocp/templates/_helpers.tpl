@@ -930,37 +930,25 @@ Get Keycloak CR information for debugging
 
 {{/*
 Get Authorino service namespace
-Uses same namespace as ROS ingress if deploy.enabled, otherwise uses configured namespace
+Always uses the same namespace as ROS ingress when JWT auth is enabled
 */}}
 {{- define "ros-ocp.authorino.namespace" -}}
-{{- if .Values.jwt_auth.authorino.deploy.enabled -}}
-  {{- .Release.Namespace -}}
-{{- else -}}
-  {{- if .Values.jwt_auth.authorino.service.namespace -}}
-    {{- .Values.jwt_auth.authorino.service.namespace -}}
-  {{- else -}}
-    {{- .Release.Namespace -}}
-  {{- end -}}
-{{- end -}}
+{{- .Release.Namespace -}}
 {{- end }}
 
 {{/*
 Get Authorino service name
-Uses deployed instance name if deploy.enabled, otherwise uses configured service name
+Always uses the deployed instance name when JWT auth is enabled
 */}}
 {{- define "ros-ocp.authorino.serviceName" -}}
-{{- if .Values.jwt_auth.authorino.deploy.enabled -}}
-  {{- printf "%s-authorino-authorization" .Values.jwt_auth.authorino.deploy.name -}}
-{{- else -}}
-  {{- .Values.jwt_auth.authorino.service.name -}}
-{{- end -}}
+{{- printf "%s-authorino-authorization" .Values.jwt_auth.authorino.name -}}
 {{- end }}
 
 {{/*
 Get Authorino service port
 */}}
 {{- define "ros-ocp.authorino.port" -}}
-{{- .Values.jwt_auth.authorino.service.port -}}
+50051
 {{- end }}
 
 {{/*
@@ -972,13 +960,17 @@ Get Authorino service FQDN
 
 {{/*
 Check if JWT authentication should be enabled
-This enables JWT auth automatically if Keycloak is detected and jwt_auth.enabled is not explicitly set to false
+Auto-enables on OpenShift, disabled elsewhere, unless explicitly overridden
 */}}
 {{- define "ros-ocp.jwt.shouldEnable" -}}
-{{- if hasKey .Values.jwt_auth "enabled" -}}
-  {{- .Values.jwt_auth.enabled -}}
+{{- if eq .Values.jwt_auth.enabled true -}}
+  {{- /* Explicitly enabled */ -}}
+  true
+{{- else if eq .Values.jwt_auth.enabled false -}}
+  {{- /* Explicitly disabled */ -}}
+  false
 {{- else -}}
-  {{- /* Auto-enable if Keycloak is detected */ -}}
-  {{- include "ros-ocp.keycloak.isInstalled" . -}}
+  {{- /* Auto-detect: enable on OpenShift, disable elsewhere */ -}}
+  {{- include "ros-ocp.isOpenShift" . -}}
 {{- end -}}
 {{- end }}

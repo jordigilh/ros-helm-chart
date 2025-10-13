@@ -11,7 +11,7 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   ports:
-    {{- if .Values.jwt_auth.enabled }}
+    {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
     # When JWT auth is enabled, expose Envoy proxy port for external traffic
     - port: {{ .Values.ingress.port }}
       targetPort: http-proxy  # Route to Envoy sidecar

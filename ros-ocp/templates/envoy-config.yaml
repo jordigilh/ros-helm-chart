@@ -1,4 +1,4 @@
-{{- if .Values.jwt_auth.enabled }}
+{{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -37,7 +37,7 @@ data:
                     timeout: 5s
                   failure_mode_allow: false
                   with_request_body:
-                    max_request_bytes: {{ .Values.jwt_auth.envoy.extAuth.maxRequestBytes | int }}
+                    max_request_bytes: 104857600
                   clear_route_cache: true
               - name: envoy.filters.http.router
                 typed_config:

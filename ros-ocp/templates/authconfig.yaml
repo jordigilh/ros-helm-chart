@@ -1,4 +1,4 @@
-{{- if and .Values.jwt_auth.enabled .Values.jwt_auth.authorino.authConfig.create }}
+{{- if and (eq (include "ros-ocp.jwt.shouldEnable" .) "true") .Values.jwt_auth.authorino.authConfig.create }}
 apiVersion: authorino.kuadrant.io/v1beta3
 kind: AuthConfig
 metadata:
