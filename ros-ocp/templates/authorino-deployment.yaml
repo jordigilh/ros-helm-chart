@@ -1,4 +1,4 @@
-{{- if and .Values.jwt_auth.enabled .Values.jwt_auth.authorino.deploy.enabled }}
+{{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
 #
 # AUTHORINO DIRECT DEPLOYMENT WITH SELF-SIGNED CA SUPPORT
 # ========================================================
@@ -12,7 +12,7 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ .Values.jwt_auth.authorino.deploy.name }}
+  name: {{ .Values.jwt_auth.authorino.name }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
@@ -23,7 +23,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ .Values.jwt_auth.authorino.deploy.name }}-manager-role
+  name: {{ .Values.jwt_auth.authorino.name }}-manager-role
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
@@ -52,17 +52,17 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ .Values.jwt_auth.authorino.deploy.name }}-manager-rolebinding
+  name: {{ .Values.jwt_auth.authorino.name }}-manager-rolebinding
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ .Values.jwt_auth.authorino.deploy.name }}-manager-role
+  name: {{ .Values.jwt_auth.authorino.name }}-manager-role
 subjects:
 - kind: ServiceAccount
-  name: {{ .Values.jwt_auth.authorino.deploy.name }}
+  name: {{ .Values.jwt_auth.authorino.name }}
   namespace: {{ .Release.Namespace }}
 
 # 4. ConfigMap for Authorino configuration
@@ -70,7 +70,7 @@ subjects:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Values.jwt_auth.authorino.deploy.name }}-config
+  name: {{ .Values.jwt_auth.authorino.name }}-config
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
@@ -81,7 +81,7 @@ data:
       grpc:
         host: "0.0.0.0"
         port: 50051
-        {{- if .Values.jwt_auth.authorino.deploy.tls.enabled }}
+        {{- if .Values.jwt_auth.authorino.tls.enabled }}
         tls:
           enabled: true
           certPath: "/etc/ssl/certs/tls.crt"
@@ -94,7 +94,7 @@ data:
         host: "0.0.0.0"
         port: 5001
     log:
-      level: {{ .Values.jwt_auth.authorino.deploy.logLevel }}
+      level: {{ .Values.jwt_auth.authorino.logLevel }}
       mode: production
     metrics:
       port: 8080
@@ -106,7 +106,7 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Values.jwt_auth.authorino.deploy.name }}
+  name: {{ .Values.jwt_auth.authorino.name }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
@@ -115,23 +115,23 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: {{ .Values.jwt_auth.authorino.deploy.name }}
+      app: {{ .Values.jwt_auth.authorino.name }}
   template:
     metadata:
       labels:
-        app: {{ .Values.jwt_auth.authorino.deploy.name }}
+        app: {{ .Values.jwt_auth.authorino.name }}
         {{- include "ros-ocp.labels" . | nindent 8 }}
         app.kubernetes.io/component: authorino
     spec:
-      serviceAccountName: {{ .Values.jwt_auth.authorino.deploy.name }}
+      serviceAccountName: {{ .Values.jwt_auth.authorino.name }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
       containers:
       - name: authorino
-        image: {{ .Values.jwt_auth.authorino.deploy.image.repository }}:{{ .Values.jwt_auth.authorino.deploy.image.tag }}
-        imagePullPolicy: {{ .Values.jwt_auth.authorino.deploy.image.pullPolicy }}
+        image: {{ .Values.jwt_auth.authorino.image.repository }}:{{ .Values.jwt_auth.authorino.image.tag }}
+        imagePullPolicy: {{ .Values.jwt_auth.authorino.image.pullPolicy }}
         ports:
         - containerPort: 50051
           name: grpc
@@ -144,13 +144,13 @@ spec:
           protocol: TCP
         env:
         - name: AUTHORINO_LOG_LEVEL
-          value: {{ .Values.jwt_auth.authorino.deploy.logLevel }}
+          value: {{ .Values.jwt_auth.authorino.logLevel }}
         - name: AUTHORINO_LOG_MODE
           value: "production"
         - name: AUTHORINO_LISTENER_TIMEOUT
           value: "0"
         - name: AUTHORINO_GRPC_TLS_ENABLED
-          value: {{ .Values.jwt_auth.authorino.deploy.tls.enabled | quote }}
+          value: {{ .Values.jwt_auth.authorino.tls.enabled | quote }}
         - name: AUTHORINO_METRICS_ADDR
           value: ":8080"
         - name: AUTHORINO_HEALTH_PROBE_ADDR
@@ -160,7 +160,7 @@ spec:
         - name: AUTHORINO_EVALUATOR_CACHE_SIZE
           value: "1000"
         # CA certificate configuration for self-signed certificates
-        {{- if and .Values.jwt_auth.keycloak .Values.jwt_auth.keycloak.tls and .Values.jwt_auth.keycloak .Values.jwt_auth.keycloak.tls .Values.jwt_auth.keycloak.tls.caCert }}
+        {{- if and .Values.jwt_auth.keycloak .Values.jwt_auth.keycloak.tls .Values.jwt_auth.keycloak.tls.caCert }}
         - name: REQUESTS_CA_BUNDLE
           value: "/etc/ssl/certs/ca-bundle.crt:/etc/ssl/certs/keycloak-ca.crt"
         - name: SSL_CERT_FILE
@@ -187,7 +187,7 @@ spec:
           subPath: ca.crt
           readOnly: true
         {{- end }}
-        {{- if .Values.jwt_auth.authorino.deploy.tls.enabled }}
+        {{- if .Values.jwt_auth.authorino.tls.enabled }}
         - name: tls-certs
           mountPath: /etc/ssl/certs
           readOnly: true
@@ -229,20 +229,20 @@ spec:
       volumes:
       - name: config
         configMap:
-          name: {{ .Values.jwt_auth.authorino.deploy.name }}-config
+          name: {{ .Values.jwt_auth.authorino.name }}-config
       # Keycloak CA certificate for self-signed certificate support
-      {{- if and .Values.jwt_auth.keycloak .Values.jwt_auth.keycloak.tls and .Values.jwt_auth.keycloak .Values.jwt_auth.keycloak.tls .Values.jwt_auth.keycloak.tls.caCert }}
+      {{- if and .Values.jwt_auth.keycloak .Values.jwt_auth.keycloak.tls .Values.jwt_auth.keycloak.tls.caCert }}
       - name: keycloak-ca
         configMap:
           name: {{ include "ros-ocp.fullname" . }}-keycloak-ca
       {{- end }}
-      {{- if .Values.jwt_auth.authorino.deploy.tls.enabled }}
+      {{- if .Values.jwt_auth.authorino.tls.enabled }}
       - name: tls-certs
         secret:
-          secretName: {{ .Values.jwt_auth.authorino.deploy.name }}-tls
+          secretName: {{ .Values.jwt_auth.authorino.name }}-tls
       - name: tls-private
         secret:
-          secretName: {{ .Values.jwt_auth.authorino.deploy.name }}-tls
+          secretName: {{ .Values.jwt_auth.authorino.name }}-tls
       {{- end }}
       terminationGracePeriodSeconds: 10
 
@@ -251,16 +251,16 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Values.jwt_auth.authorino.deploy.name }}-authorino-authorization
+  name: {{ .Values.jwt_auth.authorino.name }}-authorino-authorization
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
   annotations:
-    service.beta.openshift.io/serving-cert-secret-name: {{ .Values.jwt_auth.authorino.deploy.name }}-tls
+    service.beta.openshift.io/serving-cert-secret-name: {{ .Values.jwt_auth.authorino.name }}-tls
 spec:
   selector:
-    app: {{ .Values.jwt_auth.authorino.deploy.name }}
+    app: {{ .Values.jwt_auth.authorino.name }}
   ports:
   - name: grpc
     port: 50051
@@ -273,14 +273,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Values.jwt_auth.authorino.deploy.name }}-metrics
+  name: {{ .Values.jwt_auth.authorino.name }}-metrics
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
 spec:
   selector:
-    app: {{ .Values.jwt_auth.authorino.deploy.name }}
+    app: {{ .Values.jwt_auth.authorino.name }}
   ports:
   - name: metrics
     port: 8080
@@ -298,7 +298,7 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ .Values.jwt_auth.authorino.deploy.name }}-metrics
+  name: {{ .Values.jwt_auth.authorino.name }}-metrics
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
@@ -318,7 +318,7 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ .Values.jwt_auth.authorino.deploy.name }}-pdb
+  name: {{ .Values.jwt_auth.authorino.name }}-pdb
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
@@ -327,7 +327,7 @@ spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app: {{ .Values.jwt_auth.authorino.deploy.name }}
+      app: {{ .Values.jwt_auth.authorino.name }}
 
 {{- end }}
 

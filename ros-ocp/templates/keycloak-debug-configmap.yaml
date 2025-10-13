@@ -1,4 +1,4 @@
-{{- if .Values.jwt_auth.enabled }}
+{{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
 {{/*
 Debug ConfigMap to show Keycloak auto-detection results
 This will be created when JWT auth is enabled to help troubleshoot Keycloak detection
@@ -32,7 +32,7 @@ data:
     jwks_url: {{ include "ros-ocp.keycloak.jwksUrl" . | quote }}
 
     # Configuration Used:
-    jwt_auth_enabled: {{ .Values.jwt_auth.enabled | quote }}
+    jwt_auth_enabled: {{ include "ros-ocp.jwt.shouldEnable" . | quote }}
     manual_base_url: {{ .Values.jwt_auth.keycloak.issuer.baseUrl | quote }}
     realm: {{ .Values.jwt_auth.keycloak.issuer.realm | quote }}
 
@@ -40,8 +40,8 @@ data:
     is_openshift: {{ include "ros-ocp.isOpenShift" . | quote }}
 
     # Authorino Configuration:
-    authorino_deploy_enabled: {{ .Values.jwt_auth.authorino.deploy.enabled | quote }}
-    authorino_image: {{ .Values.jwt_auth.authorino.deploy.image.repository }}:{{ .Values.jwt_auth.authorino.deploy.image.tag }}
+    authorino_deploy_enabled: "true"  # Always deployed when JWT auth is enabled
+    authorino_image: {{ .Values.jwt_auth.authorino.image.repository }}:{{ .Values.jwt_auth.authorino.image.tag }}
     authorino_namespace: {{ include "ros-ocp.authorino.namespace" . | quote }}
     authorino_service: {{ include "ros-ocp.authorino.serviceName" . | quote }}
     authorino_fqdn: {{ include "ros-ocp.authorino.fqdn" . | quote }}

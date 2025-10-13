@@ -1,5 +1,9 @@
 # Default values for ros-ocp-helm
 
+# Chart name overrides
+nameOverride: ""
+fullnameOverride: ""
+
 global:
   # Storage class for persistent volumes
   storageClass:
@@ -425,3 +429,72 @@ probes:
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 3
+
+# Monitoring configuration
+monitoring:
+  enabled: false  # Enable monitoring components (ServiceMonitor, etc.)
+
+# JWT Authentication configuration
+# JWT authentication with Keycloak/RHSSO
+# Auto-enabled on OpenShift, disabled elsewhere. Override with explicit true/false.
+jwt_auth:
+  enabled: null  # null = auto-detect (true on OpenShift, false elsewhere)
+
+  # Envoy proxy configuration
+  envoy:
+    image:
+      repository: envoyproxy/envoy
+      tag: "v1.24-latest"
+      pullPolicy: IfNotPresent
+    port: 8080
+    adminPort: 9901
+    logLevel: info
+
+    # Resource configuration
+    resources:
+      limits:
+        cpu: 500m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # Authorino configuration (deployed when JWT auth is enabled)
+  authorino:
+    name: ros-authorino
+    logLevel: info
+
+    # Image configuration
+    image:
+      repository: registry.redhat.io/rhosak/authorino-rhel8
+      tag: "latest"
+      pullPolicy: Always
+
+    # TLS configuration
+    tls:
+      enabled: false  # Enable for production with proper certificates
+
+    # AuthConfig configuration
+    authConfig:
+      name: ros-ingress-keycloak-auth
+      create: true  # Create AuthConfig when JWT auth is enabled
+
+  # Keycloak configuration
+  keycloak:
+    issuer:
+      baseUrl: ""  # Auto-detect Keycloak URL from cluster
+      realm: kubernetes
+
+    # Client configuration
+    client:
+      id: cost-management-operator
+
+    # Audiences for JWT validation
+    audiences:
+      - cost-management-operator
+      - openshift-oidc
+
+    # TLS configuration for Keycloak communication
+    tls:
+      insecureSkipVerify: false
+      # caCert: ""  # Path to CA certificate
