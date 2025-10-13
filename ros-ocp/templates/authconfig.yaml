@@ -1,5 +1,5 @@
 {{- if and .Values.jwt_auth.enabled .Values.jwt_auth.authorino.authConfig.create }}
-apiVersion: authorino.kuadrant.io/v1beta1
+apiVersion: authorino.kuadrant.io/v1beta3
 kind: AuthConfig
 metadata:
   name: {{ .Values.jwt_auth.authorino.authConfig.name }}
@@ -11,16 +11,18 @@ spec:
   hosts:
   - "{{ include "ros-ocp.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local"
   - "{{ include "ros-ocp.fullname" . }}"
+  {{- if and .Values.global .Values.global.platform .Values.global.platform.openshift }}
+  # OpenShift external route (for external JWT validation)
+  - "ros-ocp-ingress-{{ .Release.Namespace }}.{{ .Values.global.platform.domain | default "apps.cluster.local" }}"
+  {{- end }}
 
   # JWT Authentication configuration using Keycloak
   authentication:
     "keycloak-jwt":
       jwt:
         issuerUrl: {{ include "ros-ocp.keycloak.issuerUrl" . }}
-        audiences:
-        {{- range .Values.jwt_auth.keycloak.audiences }}
-        - {{ . }}
-        {{- end }}
+        # Note: TLS configuration for Red Hat operator must be done at Authorino instance level,
+        # not at AuthConfig level. See authorino-instance.yaml for TLS settings.
       credentials:
         authorizationHeader:
           prefix: Bearer
@@ -34,86 +36,33 @@ spec:
           operator: neq
           value: ""
 
-  # Enhanced response configuration - inject comprehensive headers
+  # Response configuration using Red Hat Authorino 'plain' format
   response:
     success:
       headers:
-        # ORIGINAL JWT TOKEN FORWARDING
-        {{ .Values.jwt_auth.headers.jwt.fullToken | quote }}:
-          selector: context.request.http.headers.authorization
-          # This forwards the complete "Bearer <token>" header value
-        {{ .Values.jwt_auth.headers.jwt.originalToken | quote }}:
-          selector: context.request.http.headers.authorization
-          # Alternative header name for the same token
-        {{ .Values.jwt_auth.headers.jwt.tokenOnly | quote }}:
-          # This extracts just the token part (without "Bearer ")
-          selector: context.request.http.headers.authorization
-          # You might need to use a custom expression to strip "Bearer "
+        # Essential authentication headers using plain format
+        "X-ROS-Authenticated":
+          plain:
+            value: "true"
 
-        # EXPLICIT CLIENT IDENTIFICATION
-        {{ .Values.jwt_auth.headers.client.id | quote }}:
-          selector: auth.identity.azp
-          # Primary client ID from 'azp' claim (authorized party)
-        {{ .Values.jwt_auth.headers.client.tokenClientId | quote }}:
-          selector: auth.identity.client_id
-          # Alternative client ID field (if present)
-        {{ .Values.jwt_auth.headers.client.audience | quote }}:
-          selector: auth.identity.aud
-          # Token audience claim
+        "X-ROS-User-ID":
+          plain:
+            selector: auth.identity.sub
 
-        # USER IDENTITY CONTEXT
-        {{ .Values.jwt_auth.headers.user.id | quote }}:
-          selector: auth.identity.sub
-        {{ .Values.jwt_auth.headers.user.name | quote }}:
-          selector: auth.identity.preferred_username
-        {{ .Values.jwt_auth.headers.user.email | quote }}:
-          selector: auth.identity.email
-        {{ .Values.jwt_auth.headers.user.givenName | quote }}:
-          selector: auth.identity.given_name
-        {{ .Values.jwt_auth.headers.user.familyName | quote }}:
-          selector: auth.identity.family_name
+        "X-Client-ID":
+          plain:
+            selector: auth.identity.azp
 
-        # TOKEN METADATA
-        {{ .Values.jwt_auth.headers.token.scope | quote }}:
-          selector: auth.identity.scope
-        {{ .Values.jwt_auth.headers.token.type | quote }}:
-          selector: auth.identity.typ
-        {{ .Values.jwt_auth.headers.token.issuer | quote }}:
-          selector: auth.identity.iss
-        {{ .Values.jwt_auth.headers.token.subject | quote }}:
-          selector: auth.identity.sub
-        {{ .Values.jwt_auth.headers.token.expires | quote }}:
-          selector: auth.identity.exp
-        {{ .Values.jwt_auth.headers.token.issuedAt | quote }}:
-          selector: auth.identity.iat
-        {{ .Values.jwt_auth.headers.token.notBefore | quote }}:
-          selector: auth.identity.nbf
-        {{ .Values.jwt_auth.headers.token.authTime | quote }}:
-          selector: auth.identity.auth_time
+        "X-ROS-User-Name":
+          plain:
+            selector: auth.identity.preferred_username
 
-        # GROUP AND ROLE INFORMATION
-        {{ .Values.jwt_auth.headers.user.groups | quote }}:
-          selector: auth.identity.groups
-          join: ","
-        {{ .Values.jwt_auth.headers.user.realmRoles | quote }}:
-          selector: auth.identity.realm_access.roles
-          join: ","
-        {{ .Values.jwt_auth.headers.user.clientRoles | quote }}:
-          selector: auth.identity.resource_access[auth.identity.azp].roles
-          join: ","
+        "X-ROS-Auth-Method":
+          plain:
+            value: "Authorino-JWT"
 
-        # AUTHENTICATION SOURCE METADATA
-        {{ .Values.jwt_auth.headers.auth.method | quote }}:
-          value: "Authorino-JWT"
-        {{ .Values.jwt_auth.headers.auth.authenticated | quote }}:
-          value: "true"
-        {{ .Values.jwt_auth.headers.auth.source | quote }}:
-          value: "Authorino"
-
-        # SESSION AND SECURITY CONTEXT
-        {{ .Values.jwt_auth.headers.token.sessionId | quote }}:
-          selector: auth.identity.jti
-          # JWT ID for session tracking
-        {{ .Values.jwt_auth.headers.token.sessionState | quote }}:
-          selector: auth.identity.session_state
+        # Forward JWT token to backend for further authorization
+        "X-Bearer-Token":
+          plain:
+            selector: context.request.http.headers.authorization|@replace:{"old":"Bearer ","new":""}
 {{- end }}

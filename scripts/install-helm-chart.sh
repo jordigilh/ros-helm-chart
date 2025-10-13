@@ -479,6 +479,23 @@ deploy_helm_chart() {
         fi
     fi
 
+    # Add JWT authentication configuration if enabled
+    if [ "$JWT_AUTH_ENABLED" = "true" ]; then
+        echo_info "Configuring JWT authentication for Helm deployment..."
+        helm_cmd="$helm_cmd --set jwt_auth.enabled=true"
+
+        if [ -n "$KEYCLOAK_URL" ]; then
+            echo_info "Using detected Keycloak URL: $KEYCLOAK_URL"
+            helm_cmd="$helm_cmd --set jwt_auth.keycloak.issuer.baseUrl=\"$KEYCLOAK_URL\""
+        fi
+
+        # Enable Authorino deployment in same namespace
+        helm_cmd="$helm_cmd --set jwt_auth.authorino.deploy.enabled=true"
+        helm_cmd="$helm_cmd --set jwt_auth.authorino.deploy.name=ros-authorino"
+
+        echo_info "JWT authentication configured for Helm chart"
+    fi
+
     echo_info "Executing: $helm_cmd"
 
     # Execute Helm command
@@ -1000,6 +1017,278 @@ cleanup() {
     cleanup_downloaded_chart
 }
 
+# Function to detect RH SSO/Keycloak installation (OpenShift only)
+detect_rhsso_keycloak() {
+    echo_info "Detecting RH SSO/Keycloak installation..."
+
+    # RH SSO is only available on OpenShift clusters
+    if [ "$PLATFORM" != "openshift" ]; then
+        echo_info "Skipping RH SSO detection - not an OpenShift cluster"
+        echo_info "RH SSO/Keycloak is only supported on OpenShift platforms"
+        export KEYCLOAK_FOUND="false"
+        export KEYCLOAK_NAMESPACE=""
+        export KEYCLOAK_URL=""
+        return 1
+    fi
+
+    local keycloak_found=false
+    local keycloak_namespace=""
+    local keycloak_url=""
+
+    # Method 1: Look for Keycloak Custom Resources (preferred)
+    echo_info "Checking for Keycloak Custom Resources..."
+    if kubectl get keycloaks.keycloak.org -A >/dev/null 2>&1; then
+        local keycloak_cr=$(kubectl get keycloaks.keycloak.org -A -o jsonpath='{.items[0]}' 2>/dev/null)
+        if [ -n "$keycloak_cr" ]; then
+            keycloak_namespace=$(echo "$keycloak_cr" | jq -r '.metadata.namespace' 2>/dev/null)
+            keycloak_url=$(echo "$keycloak_cr" | jq -r '.status.externalURL // empty' 2>/dev/null)
+            keycloak_found=true
+            echo_success "Found Keycloak CR in namespace: $keycloak_namespace"
+            if [ -n "$keycloak_url" ]; then
+                echo_info "Keycloak URL: $keycloak_url"
+            fi
+        fi
+    fi
+
+    # Method 2: Look for common RH SSO/Keycloak namespaces
+    if [ "$keycloak_found" = false ]; then
+        echo_info "Checking for RH SSO/Keycloak namespaces..."
+        for ns in rhsso sso keycloak keycloak-system; do
+            if kubectl get namespace "$ns" >/dev/null 2>&1; then
+                echo_info "Found potential Keycloak namespace: $ns"
+                # Check for Keycloak services in this namespace
+                local keycloak_service=$(kubectl get service -n "$ns" -l "app.kubernetes.io/name=keycloak" -o name 2>/dev/null | head -1)
+                if [ -n "$keycloak_service" ]; then
+                    keycloak_namespace="$ns"
+                    keycloak_found=true
+                    echo_success "Confirmed Keycloak service in namespace: $ns"
+                    break
+                fi
+            fi
+        done
+    fi
+
+    # Method 3: OpenShift Route detection (if on OpenShift)
+    if [ "$keycloak_found" = true ] && [ "$PLATFORM" = "openshift" ] && [ -z "$keycloak_url" ]; then
+        echo_info "Detecting Keycloak route in OpenShift..."
+        keycloak_url=$(kubectl get route -n "$keycloak_namespace" -o jsonpath='{.items[?(@.spec.to.name=="keycloak")].spec.host}' 2>/dev/null | head -1)
+        if [ -n "$keycloak_url" ]; then
+            keycloak_url="https://$keycloak_url"
+            echo_info "Detected Keycloak route: $keycloak_url"
+        fi
+    fi
+
+    # Export results for other functions
+    export KEYCLOAK_FOUND="$keycloak_found"
+    export KEYCLOAK_NAMESPACE="$keycloak_namespace"
+    export KEYCLOAK_URL="$keycloak_url"
+
+    if [ "$keycloak_found" = true ]; then
+        echo_success "RH SSO/Keycloak detected successfully"
+        echo_info "  Namespace: $keycloak_namespace"
+        echo_info "  URL: ${keycloak_url:-"(auto-detect during deployment)"}"
+        return 0
+    else
+        echo_warning "RH SSO/Keycloak not detected in OpenShift cluster"
+        echo_info "JWT authentication will be disabled"
+        echo_info "To enable JWT auth, install RH SSO operator or deploy Keycloak"
+        return 1
+    fi
+}
+
+# Function to check if Authorino operator is installed
+check_authorino_operator() {
+    echo_info "Checking Authorino operator installation..."
+
+    # Check for Authorino operator deployment
+    if kubectl get deployment authorino-operator -n openshift-operators >/dev/null 2>&1; then
+        echo_info "Found Authorino operator deployment"
+
+        # Check if operator is ready
+        local ready_replicas=$(kubectl get deployment authorino-operator -n openshift-operators -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+        if [ "$ready_replicas" -gt 0 ]; then
+            echo_success "Authorino operator is running and ready"
+
+            # Verify CRDs are available
+            if kubectl get crd authorinos.operator.authorino.kuadrant.io >/dev/null 2>&1 && \
+               kubectl get crd authconfigs.authorino.kuadrant.io >/dev/null 2>&1; then
+                echo_success "Authorino CRDs are available"
+                export AUTHORINO_OPERATOR_READY="true"
+                return 0
+            else
+                echo_warning "Authorino operator found but CRDs not available"
+                export AUTHORINO_OPERATOR_READY="false"
+                return 1
+            fi
+        else
+            echo_warning "Authorino operator found but not ready"
+            export AUTHORINO_OPERATOR_READY="false"
+            return 1
+        fi
+    else
+        echo_info "Authorino operator not found"
+        export AUTHORINO_OPERATOR_READY="false"
+        return 1
+    fi
+}
+
+# Function to install Authorino operator
+install_authorino_operator() {
+    echo_info "Installing Authorino operator..."
+
+    # Create OperatorGroup if it doesn't exist
+    if ! kubectl get operatorgroup -n openshift-operators >/dev/null 2>&1; then
+        echo_info "Creating OperatorGroup in openshift-operators namespace..."
+        kubectl apply -f - <<EOF
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openshift-operators-og
+  namespace: openshift-operators
+spec:
+  targetNamespaces:
+  - openshift-operators
+EOF
+    fi
+
+    # Install Authorino operator subscription
+    echo_info "Creating Authorino operator subscription..."
+    kubectl apply -f - <<EOF
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: authorino-operator
+  namespace: openshift-operators
+  labels:
+    app.kubernetes.io/name: authorino-operator
+    app.kubernetes.io/part-of: ros-ocp-jwt-auth
+spec:
+  channel: stable
+  name: authorino-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic
+  config:
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+EOF
+
+    echo_success "Authorino operator subscription created"
+
+    # Wait for operator installation
+    echo_info "Waiting for Authorino operator installation..."
+    local timeout=300  # 5 minutes timeout
+    local count=0
+
+    while [ $count -lt $timeout ]; do
+        # Check InstallPlan
+        local install_plan=$(kubectl get subscription authorino-operator -n openshift-operators -o jsonpath='{.status.installPlanRef.name}' 2>/dev/null)
+        if [ -n "$install_plan" ]; then
+            local install_plan_status=$(kubectl get installplan "$install_plan" -n openshift-operators -o jsonpath='{.status.phase}' 2>/dev/null)
+            if [ "$install_plan_status" = "Complete" ]; then
+                echo_success "InstallPlan completed"
+                break
+            fi
+        fi
+
+        echo_info "Waiting for InstallPlan to complete... ($count/$timeout seconds)"
+        sleep 10
+        count=$((count + 10))
+    done
+
+    if [ $count -ge $timeout ]; then
+        echo_error "Timeout waiting for InstallPlan to complete"
+        return 1
+    fi
+
+    # Wait for CSV to be ready
+    echo_info "Waiting for ClusterServiceVersion to be ready..."
+    count=0
+    while [ $count -lt $timeout ]; do
+        local csv_name=$(kubectl get subscription authorino-operator -n openshift-operators -o jsonpath='{.status.installedCSV}' 2>/dev/null)
+        if [ -n "$csv_name" ]; then
+            local csv_status=$(kubectl get csv "$csv_name" -n openshift-operators -o jsonpath='{.status.phase}' 2>/dev/null)
+            if [ "$csv_status" = "Succeeded" ]; then
+                echo_success "ClusterServiceVersion succeeded"
+                break
+            fi
+        fi
+
+        echo_info "Waiting for CSV to succeed... ($count/$timeout seconds)"
+        sleep 10
+        count=$((count + 10))
+    done
+
+    if [ $count -ge $timeout ]; then
+        echo_error "Timeout waiting for CSV to succeed"
+        return 1
+    fi
+
+    # Wait for operator deployment to be ready
+    echo_info "Waiting for Authorino operator deployment to be ready..."
+    kubectl wait --for=condition=available deployment/authorino-operator \
+        --namespace openshift-operators \
+        --timeout=300s || {
+        echo_error "Authorino operator deployment did not become ready"
+        return 1
+    }
+
+    # Final verification
+    if check_authorino_operator; then
+        echo_success "Authorino operator installed and verified successfully"
+        return 0
+    else
+        echo_error "Authorino operator installation verification failed"
+        return 1
+    fi
+}
+
+# Function to setup JWT authentication prerequisites
+setup_jwt_authentication() {
+    echo_info "Setting up JWT authentication prerequisites..."
+
+    # JWT authentication with RH SSO is only supported on OpenShift
+    if [ "$PLATFORM" != "openshift" ]; then
+        echo_info "JWT authentication setup skipped - not an OpenShift cluster"
+        echo_info "JWT authentication with RH SSO/Keycloak requires OpenShift platform"
+        echo_info "For vanilla Kubernetes, consider using external OIDC providers"
+        export JWT_AUTH_ENABLED="false"
+        return 0
+    fi
+
+    # Detect RH SSO/Keycloak
+    if ! detect_rhsso_keycloak; then
+        echo_warning "RH SSO/Keycloak not detected - JWT authentication will be disabled"
+        export JWT_AUTH_ENABLED="false"
+        return 0
+    fi
+
+    # Check/install Authorino operator
+    if ! check_authorino_operator; then
+        echo_info "Authorino operator not ready, installing..."
+        if ! install_authorino_operator; then
+            echo_error "Failed to install Authorino operator"
+            echo_warning "JWT authentication will be disabled"
+            export JWT_AUTH_ENABLED="false"
+            return 1
+        fi
+    fi
+
+    # Set JWT auth as enabled
+    export JWT_AUTH_ENABLED="true"
+    echo_success "JWT authentication prerequisites ready"
+    echo_info "  Keycloak: $KEYCLOAK_NAMESPACE namespace"
+    echo_info "  Authorino: Operator ready"
+    echo_info "  JWT Auth: Enabled"
+
+    return 0
+}
+
 # Main execution
 main() {
     echo_info "ROS-OCP Helm Chart Installation"
@@ -1013,12 +1302,21 @@ main() {
     # Detect platform
     detect_platform
 
+    # Setup JWT authentication prerequisites (if applicable)
+    setup_jwt_authentication
+
     echo_info "Configuration:"
     echo_info "  Platform: $PLATFORM"
     echo_info "  Helm Release: $HELM_RELEASE_NAME"
     echo_info "  Namespace: $NAMESPACE"
     if [ -n "$VALUES_FILE" ]; then
         echo_info "  Values File: $VALUES_FILE"
+    fi
+    if [ "$JWT_AUTH_ENABLED" = "true" ]; then
+        echo_info "  JWT Authentication: Enabled"
+        echo_info "  Keycloak Namespace: $KEYCLOAK_NAMESPACE"
+    else
+        echo_info "  JWT Authentication: Disabled"
     fi
     echo ""
 

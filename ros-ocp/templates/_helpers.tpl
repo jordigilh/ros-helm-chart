@@ -934,12 +934,12 @@ Uses same namespace as ROS ingress if deploy.enabled, otherwise uses configured 
 */}}
 {{- define "ros-ocp.authorino.namespace" -}}
 {{- if .Values.jwt_auth.authorino.deploy.enabled -}}
-  {{- include "ros-ocp.namespace" . -}}
+  {{- .Release.Namespace -}}
 {{- else -}}
   {{- if .Values.jwt_auth.authorino.service.namespace -}}
     {{- .Values.jwt_auth.authorino.service.namespace -}}
   {{- else -}}
-    {{- include "ros-ocp.namespace" . -}}
+    {{- .Release.Namespace -}}
   {{- end -}}
 {{- end -}}
 {{- end }}

@@ -75,3 +75,6 @@ metadata:
 ---
 # ... and many more resources (RBAC, ConfigMaps, etc.)
 {{- end }}
+
+
+

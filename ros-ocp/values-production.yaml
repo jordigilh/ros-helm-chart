@@ -37,7 +37,7 @@ jwt_auth:
       - openshift-oidc
 
   # Authorino deployment (same namespace - recommended)
-  # 
+  #
   # PREREQUISITE: Install Authorino Operator manually first!
   # For production: Use Manual approval in operator subscription
   # See: docs/authorino-operator-prerequisites.md
