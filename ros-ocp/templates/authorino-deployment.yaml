@@ -1,10 +1,10 @@
-{{- if and .Values.jwt_auth.enabled .Values.jwt_auth.authorino.deploy.enabled (eq .Values.jwt_auth.authorino.deploymentMode "direct") }}
+{{- if and .Values.jwt_auth.enabled .Values.jwt_auth.authorino.deploy.enabled }}
 #
-# COMPLETE AUTHORINO DEPLOYMENT WITHOUT OPERATOR
-# ==============================================
-# This shows all the resources we'd need to create manually
-# if we skip the Authorino operator. Compare this complexity
-# to the simple 40-line Custom Resource approach!
+# AUTHORINO DIRECT DEPLOYMENT WITH SELF-SIGNED CA SUPPORT
+# ========================================================
+# This deployment approach allows full control over CA certificate mounting
+# and environment variables, enabling support for self-signed certificates
+# from Keycloak. The operator-managed approach cannot mount custom CAs.
 #
 
 # 1. ServiceAccount for Authorino
@@ -13,7 +13,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ .Values.jwt_auth.authorino.deploy.name }}
-  namespace: {{ include "ros-ocp.namespace" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
@@ -63,7 +63,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: {{ .Values.jwt_auth.authorino.deploy.name }}
-  namespace: {{ include "ros-ocp.namespace" . }}
+  namespace: {{ .Release.Namespace }}
 
 # 4. ConfigMap for Authorino configuration
 ---
@@ -71,7 +71,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ .Values.jwt_auth.authorino.deploy.name }}-config
-  namespace: {{ include "ros-ocp.namespace" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
@@ -107,7 +107,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Values.jwt_auth.authorino.deploy.name }}
-  namespace: {{ include "ros-ocp.namespace" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
@@ -159,6 +159,17 @@ spec:
           value: ""
         - name: AUTHORINO_EVALUATOR_CACHE_SIZE
           value: "1000"
+        # CA certificate configuration for self-signed certificates
+        {{- if and .Values.jwt_auth.keycloak .Values.jwt_auth.keycloak.tls and .Values.jwt_auth.keycloak .Values.jwt_auth.keycloak.tls .Values.jwt_auth.keycloak.tls.caCert }}
+        - name: REQUESTS_CA_BUNDLE
+          value: "/etc/ssl/certs/ca-bundle.crt:/etc/ssl/certs/keycloak-ca.crt"
+        - name: SSL_CERT_FILE
+          value: "/etc/ssl/certs/keycloak-ca.crt"
+        - name: GO_HTTP_TLS_INSECURE_SKIP_VERIFY
+          value: "true"
+        - name: GODEBUG
+          value: "x509ignoreCN=0"
+        {{- end }}
         command:
         - /usr/local/bin/authorino
         args:
@@ -169,6 +180,13 @@ spec:
         - name: config
           mountPath: /etc/authorino/config
           readOnly: true
+        # Mount Keycloak CA certificate for self-signed certificate support
+        {{- if and .Values.jwt_auth.keycloak .Values.jwt_auth.keycloak.tls .Values.jwt_auth.keycloak.tls.caCert }}
+        - name: keycloak-ca
+          mountPath: /etc/ssl/certs/keycloak-ca.crt
+          subPath: ca.crt
+          readOnly: true
+        {{- end }}
         {{- if .Values.jwt_auth.authorino.deploy.tls.enabled }}
         - name: tls-certs
           mountPath: /etc/ssl/certs
@@ -212,6 +230,12 @@ spec:
       - name: config
         configMap:
           name: {{ .Values.jwt_auth.authorino.deploy.name }}-config
+      # Keycloak CA certificate for self-signed certificate support
+      {{- if and .Values.jwt_auth.keycloak .Values.jwt_auth.keycloak.tls and .Values.jwt_auth.keycloak .Values.jwt_auth.keycloak.tls .Values.jwt_auth.keycloak.tls.caCert }}
+      - name: keycloak-ca
+        configMap:
+          name: {{ include "ros-ocp.fullname" . }}-keycloak-ca
+      {{- end }}
       {{- if .Values.jwt_auth.authorino.deploy.tls.enabled }}
       - name: tls-certs
         secret:
@@ -228,7 +252,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .Values.jwt_auth.authorino.deploy.name }}-authorino-authorization
-  namespace: {{ include "ros-ocp.namespace" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
@@ -250,7 +274,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .Values.jwt_auth.authorino.deploy.name }}-metrics
-  namespace: {{ include "ros-ocp.namespace" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
@@ -275,7 +299,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {{ .Values.jwt_auth.authorino.deploy.name }}-metrics
-  namespace: {{ include "ros-ocp.namespace" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
@@ -295,7 +319,7 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: {{ .Values.jwt_auth.authorino.deploy.name }}-pdb
-  namespace: {{ include "ros-ocp.namespace" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
@@ -306,3 +330,7 @@ spec:
       app: {{ .Values.jwt_auth.authorino.deploy.name }}
 
 {{- end }}
+
+
+
+

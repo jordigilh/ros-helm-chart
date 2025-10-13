@@ -63,7 +63,7 @@ helm install ros-ocp . \
 ```yaml
 jwt_auth:
   enabled: true
-  
+
   # Keycloak configuration (auto-detected if empty)
   keycloak:
     issuer:
@@ -88,14 +88,14 @@ jwt_auth:
 ```yaml
 jwt_auth:
   enabled: true
-  
+
   # Red Hat enterprise images
   envoy:
     image:
       repository: registry.redhat.io/openshift-service-mesh/proxyv2-rhel9
       tag: "2.4.3"
       pullPolicy: Always
-  
+
   authorino:
     deploy:
       enabled: true
@@ -113,7 +113,7 @@ jwt_auth:
 The JWT authentication architecture includes:
 
 ```
-Client Request (with JWT) 
+Client Request (with JWT)
     ↓
 Envoy Proxy (Port 8080)
     ↓ External Authorization

@@ -25,12 +25,6 @@ data:
               - name: envoy.access_loggers.stdout
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
-                  format: |
-                    [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%"
-                    %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT%
-                    %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% "%REQ(X-FORWARDED-FOR)%"
-                    "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%"
-                    "client_id=%REQ({{ .Values.jwt_auth.headers.client.id }})%" "user=%REQ({{ .Values.jwt_auth.headers.user.name }})%"
               http_filters:
               # External authorization filter that calls Authorino service
               - name: envoy.filters.http.ext_authz
@@ -40,27 +34,11 @@ data:
                   grpc_service:
                     envoy_grpc:
                       cluster_name: authorino-service
-                    timeout: {{ .Values.jwt_auth.envoy.externalAuth.timeout }}
-                  failure_mode_allow: {{ .Values.jwt_auth.envoy.externalAuth.failureMode }}
+                    timeout: 5s
+                  failure_mode_allow: false
                   with_request_body:
-                    max_request_bytes: {{ .Values.jwt_auth.envoy.externalAuth.maxRequestBytes }}
+                    max_request_bytes: {{ .Values.jwt_auth.envoy.extAuth.maxRequestBytes | int }}
                   clear_route_cache: true
-                  # Pass through headers for enrichment
-                  allowed_headers:
-                    patterns:
-                    - exact: authorization
-                    - prefix: x-
-                  # Headers to forward to upstream after authorization
-                  allowed_upstream_headers:
-                    patterns:
-                    - prefix: x-ros-
-                    - prefix: x-jwt-
-                    - prefix: x-client-
-                    - prefix: x-token-
-                    - prefix: x-user-
-                    - prefix: x-bearer-
-                    - prefix: x-original-
-                    - exact: authorization
               - name: envoy.filters.http.router
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -74,12 +52,6 @@ data:
                       prefix: "/"
                     route:
                       cluster: ros-ingress-backend
-                      # Add headers visible in access logs
-                      request_headers_to_add:
-                      - header:
-                          key: x-envoy-auth-method
-                          value: authorino
-                        append: false
 
       clusters:
       # Existing Authorino service for external authorization
@@ -96,7 +68,7 @@ data:
                 address:
                   socket_address:
                     # Use dynamic Authorino service (same namespace or external)
-                    address: {{ include "ros-ocp.authorino.fqdn" . }}
+                    address: ros-authorino-custom-authorization.ros-ocp.svc.cluster.local
                     port_value: {{ include "ros-ocp.authorino.port" . }}
 
       # ROS ingress backend (same pod, different port)
@@ -112,7 +84,7 @@ data:
                 address:
                   socket_address:
                     address: localhost  # Same pod
-                    port_value: {{ .Values.ingress.port }}  # Use existing ingress port from values
+                    port_value: 8081  # Use different port to avoid conflict with Envoy
 
     # Admin interface for monitoring and debugging
     admin:
