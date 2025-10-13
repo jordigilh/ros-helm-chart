@@ -153,7 +153,10 @@ create_namespace() {
 create_storage_credentials_secret() {
     echo_info "Creating storage credentials secret..."
 
-    local secret_name="${HELM_RELEASE_NAME}-storage-credentials"
+    # Use the same naming convention as the Helm chart fullname template
+    # The fullname is: ${HELM_RELEASE_NAME}-ros-ocp
+    # So the secret should be: ${HELM_RELEASE_NAME}-ros-ocp-storage-credentials
+    local secret_name="${HELM_RELEASE_NAME}-ros-ocp-storage-credentials"
 
     # Check if secret already exists
     if kubectl get secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
