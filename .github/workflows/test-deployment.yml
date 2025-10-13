@@ -1,10 +1,12 @@
 name: Helm Chart Quality Test
 
-# This workflow tests the ROS-OCP Helm chart deployment on Kind
+# This workflow tests the ROS-OCP Helm chart deployment on Kind using the local chart
 # Uses alternative registries to avoid Docker Hub rate limiting:
 # - public.ecr.aws for official images (postgres, redis, busybox, confluent)
 # - quay.io for application images (already configured)
 # - ghcr.io as fallback for some images
+# 
+# Chart Source: Uses local ros-ocp/ directory instead of GitHub releases
 
 on:
   pull_request:
@@ -99,19 +101,24 @@ jobs:
 
 
       - name: Deploy Helm Chart
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: |
-          # Trigger new build to test MinIO buckets job fix
+          # Use local Helm chart instead of pulling from GitHub
           cd scripts
           export KIND_CLUSTER_NAME=${{ env.KIND_CLUSTER_NAME }}
           export HELM_RELEASE_NAME=${{ env.HELM_RELEASE_NAME }}
           export NAMESPACE=${{ env.NAMESPACE }}
+          export USE_LOCAL_CHART=true
+          export LOCAL_CHART_PATH=../ros-ocp
+          export HELM_TIMEOUT=900s
 
           # Make scripts executable
           chmod +x install-helm-chart.sh
 
-          # Deploy Helm chart
-          echo "Installing ROS-OCP Helm chart..."
+          # Deploy Helm chart using local chart
+          echo "Installing ROS-OCP Helm chart from local source..."
+          echo "Using local chart: $LOCAL_CHART_PATH"
+          echo "Using Helm timeout: $HELM_TIMEOUT"
           ./install-helm-chart.sh
 
           # Verify deployment

@@ -153,7 +153,19 @@ create_namespace() {
 create_storage_credentials_secret() {
     echo_info "Creating storage credentials secret..."
 
-    local secret_name="${HELM_RELEASE_NAME}-storage-credentials"
+    # Use the same naming convention as the Helm chart fullname template
+    # The fullname template logic: if release name contains chart name, use release name as-is
+    # Otherwise use: ${HELM_RELEASE_NAME}-${CHART_NAME}
+    # For ros-ocp-test release: fullname = ros-ocp-test (contains "ros-ocp")
+    # For other releases: fullname = ${HELM_RELEASE_NAME}-ros-ocp
+    local chart_name="ros-ocp"
+    local fullname
+    if [[ "$HELM_RELEASE_NAME" == *"$chart_name"* ]]; then
+        fullname="$HELM_RELEASE_NAME"
+    else
+        fullname="${HELM_RELEASE_NAME}-${chart_name}"
+    fi
+    local secret_name="${fullname}-storage-credentials"
 
     # Check if secret already exists
     if kubectl get secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
@@ -453,7 +465,7 @@ deploy_helm_chart() {
     local helm_cmd="helm upgrade --install \"$HELM_RELEASE_NAME\" \"$chart_source\""
     helm_cmd="$helm_cmd --namespace \"$NAMESPACE\""
     helm_cmd="$helm_cmd --create-namespace"
-    helm_cmd="$helm_cmd --timeout=600s"
+    helm_cmd="$helm_cmd --timeout=${HELM_TIMEOUT:-600s}"
     helm_cmd="$helm_cmd --wait"
 
     # Add values file if specified
