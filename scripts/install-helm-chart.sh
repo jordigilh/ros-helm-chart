@@ -456,7 +456,7 @@ deploy_helm_chart() {
     local helm_cmd="helm upgrade --install \"$HELM_RELEASE_NAME\" \"$chart_source\""
     helm_cmd="$helm_cmd --namespace \"$NAMESPACE\""
     helm_cmd="$helm_cmd --create-namespace"
-    helm_cmd="$helm_cmd --timeout=600s"
+    helm_cmd="$helm_cmd --timeout=${HELM_TIMEOUT:-600s}"
     helm_cmd="$helm_cmd --wait"
 
     # Add values file if specified
