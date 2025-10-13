@@ -71,28 +71,21 @@ database:
     user: postgres
     password: postgres
 
-# Kafka and Zookeeper (using insights-onprem images)
+# Kafka Configuration
+# IMPORTANT: Kafka/Strimzi deployment is NOT managed by this Helm chart!
+# The install-helm-chart.sh script installs Strimzi operator and creates Kafka cluster separately
+# This section only contains connection settings for the deployed application
 kafka:
-  zookeeper:
-    image:
-      repository: quay.io/insights-onprem/cp-zookeeper  # Variable for future updates
-      tag: "7.4.10"
-    clientPort: 32181
-    serverId: 1
-    storage:
-      size: 5Gi
-  broker:
-    image:
-      repository: quay.io/insights-onprem/cp-kafka  # Variable for future updates
-      tag: "7.5.3"
-    brokerId: 1
-    offsetsTopicReplicationFactor: 1
-    autoCreateTopicsEnable: true
-    storage:
-      size: 10Gi
-    port: 29092
+  # Bootstrap servers for Kafka cluster
+  # This is auto-configured by the install script based on the Kafka cluster it creates
+  bootstrapServers: "ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
+  
+  # Security protocol (PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL)
+  securityProtocol: "PLAINTEXT"
 
-# Redis (Development Cache - for Kubernetes deployments)
+
+# Redis (Cache - for Kubernetes deployments)
+# Note: OpenShift deployments use Valkey instead (configured in openshift-values.yaml)
 redis:
   image:
     repository: quay.io/insights-onprem/redis-ephemeral
@@ -100,15 +93,8 @@ redis:
   maxMemory: 512mb
   maxMemoryPolicy: allkeys-lru
 
-# Valkey (Production Cache - for OpenShift deployments)
-valkey:
-  image:
-    # Primary image (Red Hat)
-    repository: registry.redhat.io/rhel10/valkey-8
-    tag: "latest"
-  bindAddress: "0.0.0.0"
-
-# MinIO (Development Storage - for Kubernetes deployments)
+# MinIO (Storage - for Kubernetes deployments)
+# Note: OpenShift deployments use ODF instead (configured in openshift-values.yaml)
 minio:
   image:
     repository: quay.io/minio/minio
@@ -125,36 +111,6 @@ minio:
     - koku-bucket
     - ros-data
 
-# ODF (Production Storage - for OpenShift deployments)
-odf:
-  # ODF S3 endpoint (auto-detected from NooBaa CRD status if empty)
-  # If auto-detection fails, specify the endpoint manually:
-  # endpoint: "s3.openshift-storage.svc.cluster.local"
-  endpoint: ""
-  # ODF S3 region
-  region: "us-east-1"
-  # ODF S3 bucket (will be created if it doesn't exist)
-  bucket: "ros-data"
-  # ODF S3 path style (required for ODF)
-  pathStyle: true
-  # ODF S3 SSL configuration
-  useSSL: true
-  # ODF S3 port (default for ODF)
-  port: 443
-  # ODF S3 credentials (user must create this secret in the deployment namespace)
-  credentials:
-    # Name of the secret containing ODF S3 credentials
-    # This secret must be created by the user in the deployment namespace
-    # Example: kubectl create secret generic ros-ocp-odf-credentials \
-    #   --from-literal=access-key=<access-key> \
-    #   --from-literal=secret-key=<secret-key>
-    secretName: "ros-ocp-odf-credentials"
-    # Secret keys (optional, defaults shown)
-    # These specify which keys in the secret contain the credentials
-    # accessKeyKey: "access-key"  # Key name for access key in the secret
-    # secretKeyKey: "secret-key"  # Key name for secret key in the secret
-
-# NGINX configuration removed - static test samples are no longer part of the Helm chart
 
 # Ingress Service
 ingress:
@@ -175,17 +131,14 @@ ingress:
     tempDir: "/tmp"
     allowedTypes:
       - "application/vnd.redhat.hccm.upload"
-    requireAuth: true
+    requireAuth: true   # Will be overridden by environment-specific settings
   storage:
     bucket: "ros-data"
     useSSL: false
     urlExpiration: 172800
     pathPrefix: "ros"
   kafka:
-    brokers:
-      - "kafka:29092"
     topic: "hccm.ros.events"
-    securityProtocol: "PLAINTEXT"
     clientId: "insights-ros-ingress"
     batchSize: 16384
     retries: 3
@@ -193,7 +146,7 @@ ingress:
   # Note: Authentication is only available on OpenShift with Keycloak/RHSSO.
   # On vanilla Kubernetes/KIND, authentication is automatically disabled regardless of this setting.
   auth:
-    enabled: true  # Only applies to OpenShift deployments
+    enabled: true   # Only applies to OpenShift deployments
     allowedOrgs: []
   logging:
     level: "info"
@@ -393,8 +346,8 @@ resources:
       memory: "512Mi"
       cpu: "500m"
 
-  # Kafka minimum: ~512Mi memory, Zookeeper needs ~256Mi
-  kafka:
+  # Kafka minimum: ~512Mi memory
+  strimzi:
     requests:
       memory: "512Mi"
       cpu: "250m"
@@ -402,13 +355,14 @@ resources:
       memory: "1Gi"
       cpu: "500m"
 
-  zookeeper:
+  # ZooKeeper minimum: ~256Mi memory
+  strimziZookeeper:
     requests:
       memory: "256Mi"
       cpu: "100m"
     limits:
       memory: "512Mi"
-      cpu: "250m"
+      cpu: "300m"
 
   # Regular application services
   application:
