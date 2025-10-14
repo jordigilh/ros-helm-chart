@@ -8,6 +8,8 @@ metadata:
     {{- include "ros-ocp.labels" . | nindent 4 }}
 data:
   envoy.yaml: |
+    # Envoy configuration with Native JWT Authentication
+    # This replaces the previous Authorino ext_authz approach to support multipart uploads
     static_resources:
       listeners:
       - name: listener_0
@@ -21,27 +23,11 @@ data:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
               stat_prefix: ros_ingress_jwt_http
+              codec_type: AUTO
               access_log:
               - name: envoy.access_loggers.stdout
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
-              http_filters:
-              # External authorization filter that calls Authorino service
-              - name: envoy.filters.http.ext_authz
-                typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
-                  transport_api_version: V3
-                  grpc_service:
-                    envoy_grpc:
-                      cluster_name: authorino-service
-                    timeout: 5s
-                  failure_mode_allow: false
-                  with_request_body:
-                    max_request_bytes: 104857600
-                  clear_route_cache: true
-              - name: envoy.filters.http.router
-                typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
               route_config:
                 name: local_route
                 virtual_hosts:
@@ -52,30 +38,99 @@ data:
                       prefix: "/"
                     route:
                       cluster: ros-ingress-backend
+              http_filters:
+              # Native JWT Authentication filter - validates JWT inline without external service
+              - name: envoy.filters.http.jwt_authn
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+                  providers:
+                    keycloak:
+                      issuer: "{{ .Values.jwt_auth.keycloak.url }}/auth/realms/{{ .Values.jwt_auth.keycloak.realm }}"
+                      audiences:
+                      {{- range .Values.jwt_auth.keycloak.audiences }}
+                      - {{ . | quote }}
+                      {{- end }}
+                      remote_jwks:
+                        http_uri:
+                          uri: "{{ .Values.jwt_auth.keycloak.url }}/auth/realms/{{ .Values.jwt_auth.keycloak.realm }}/protocol/openid-connect/certs"
+                          cluster: keycloak_jwks
+                          timeout: 5s
+                        cache_duration:
+                          seconds: 300
+                      # Store JWT payload in metadata for Lua filter to extract
+                      payload_in_metadata: "jwt_payload"
+                      # Forward Authorization header to backend
+                      forward: true
+                  rules:
+                  # Require JWT for API endpoints
+                  - match:
+                      prefix: "/api/ingress"
+                    requires:
+                      provider_name: "keycloak"
+                  # Health endpoints don't require authentication
+                  - match:
+                      prefix: "/health"
+                  - match:
+                      prefix: "/ready"
+
+              # Lua filter to extract JWT claims and inject X-ROS headers
+              # This replicates what Authorino did but works with multipart requests
+              - name: envoy.filters.http.lua
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                  inline_code: |
+                    function envoy_on_request(request_handle)
+                      -- Get JWT payload from dynamic metadata (set by jwt_authn filter)
+                      local metadata = request_handle:streamInfo():dynamicMetadata()
+                      local jwt_data = metadata:get("envoy.filters.http.jwt_authn")
+
+                      if jwt_data ~= nil then
+                        local payload = jwt_data["jwt_payload"]
+
+                        if payload ~= nil then
+                          -- Set authentication headers that backend expects
+                          request_handle:headers():add("X-ROS-Authenticated", "true")
+                          request_handle:headers():add("X-ROS-Auth-Method", "Envoy-Native-JWT")
+
+                          -- Extract user ID (sub claim)
+                          if payload["sub"] ~= nil then
+                            request_handle:headers():add("X-ROS-User-ID", tostring(payload["sub"]))
+                          end
+
+                          -- Extract username (preferred_username claim)
+                          if payload["preferred_username"] ~= nil then
+                            request_handle:headers():add("X-ROS-User-Name", tostring(payload["preferred_username"]))
+                          end
+
+                          -- Extract client ID (azp or client_id claim)
+                          if payload["azp"] ~= nil then
+                            request_handle:headers():add("X-Client-ID", tostring(payload["azp"]))
+                          elseif payload["client_id"] ~= nil then
+                            request_handle:headers():add("X-Client-ID", tostring(payload["client_id"]))
+                          end
+
+                          -- Forward the bearer token (strip "Bearer " prefix)
+                          local auth_header = request_handle:headers():get("authorization")
+                          if auth_header ~= nil then
+                            local token = string.gsub(auth_header, "^Bearer ", "")
+                            request_handle:headers():add("X-Bearer-Token", token)
+                          end
+
+                          -- Log authentication for debugging
+                          request_handle:logInfo("JWT authenticated: " .. tostring(payload["sub"]))
+                        end
+                      end
+                    end
+
+              - name: envoy.filters.http.router
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
       clusters:
-      # Existing Authorino service for external authorization
-      - name: authorino-service
-        connect_timeout: 5s
-        type: LOGICAL_DNS
-        lb_policy: ROUND_ROBIN
-        http2_protocol_options: {}  # Enable HTTP/2 for gRPC
-        load_assignment:
-          cluster_name: authorino-service
-          endpoints:
-          - lb_endpoints:
-            - endpoint:
-                address:
-                  socket_address:
-                    # Use dynamic Authorino service (same namespace or external)
-                    address: ros-authorino-custom-authorization.ros-ocp.svc.cluster.local
-                    port_value: {{ include "ros-ocp.authorino.port" . }}
-
       # ROS ingress backend (same pod, different port)
       - name: ros-ingress-backend
         connect_timeout: 5s
-        type: LOGICAL_DNS
-        lb_policy: ROUND_ROBIN
+        type: STATIC
         load_assignment:
           cluster_name: ros-ingress-backend
           endpoints:
@@ -83,8 +138,27 @@ data:
             - endpoint:
                 address:
                   socket_address:
-                    address: localhost  # Same pod
-                    port_value: 8081  # Use different port to avoid conflict with Envoy
+                    address: 127.0.0.1
+                    port_value: 8081
+
+      # Keycloak JWKS endpoint for JWT signature verification
+      - name: keycloak_jwks
+        connect_timeout: 5s
+        type: STRICT_DNS
+        load_assignment:
+          cluster_name: keycloak_jwks
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: {{ .Values.jwt_auth.keycloak.url | replace "https://" "" | replace "http://" "" }}
+                    port_value: 443
+        transport_socket:
+          name: envoy.transport_sockets.tls
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+            sni: {{ .Values.jwt_auth.keycloak.url | replace "https://" "" | replace "http://" "" }}
 
     # Admin interface for monitoring and debugging
     admin:

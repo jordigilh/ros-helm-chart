@@ -61,17 +61,60 @@ spec:
               echo "Kafka is ready"
       serviceAccountName: insights-ros-ingress
       containers:
+        {{- if .Values.jwt_auth.enabled }}
+        # Envoy sidecar for JWT authentication via Authorino
+        - name: envoy-proxy
+          image: "{{ .Values.jwt_auth.envoy.image.repository }}:{{ .Values.jwt_auth.envoy.image.tag }}"
+          imagePullPolicy: {{ .Values.global.pullPolicy }}
+          ports:
+            - name: http-proxy
+              containerPort: {{ .Values.jwt_auth.envoy.port }}
+              protocol: TCP
+            - name: admin
+              containerPort: {{ .Values.jwt_auth.envoy.adminPort }}
+              protocol: TCP
+          command:
+            - /usr/local/bin/envoy
+          args:
+            - -c
+            - /etc/envoy/envoy.yaml
+            - --log-level
+            - {{ .Values.jwt_auth.envoy.logLevel | default "info" }}
+          volumeMounts:
+            - name: envoy-config
+              mountPath: /etc/envoy
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: {{ .Values.jwt_auth.envoy.adminPort }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: {{ .Values.jwt_auth.envoy.adminPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+        {{- end }}
         - name: ingress
           image: "{{ .Values.ingress.image.repository }}:{{ .Values.ingress.image.tag }}"
           imagePullPolicy: {{ .Values.global.pullPolicy }}
           ports:
-            - name: http
-              containerPort: {{ .Values.ingress.port }}
+            - name: {{- if .Values.jwt_auth.enabled }} http-ingress {{- else }} http {{- end }}
+              containerPort: {{- if .Values.jwt_auth.enabled }} 8081 {{- else }} {{ .Values.ingress.port }} {{- end }}
               protocol: TCP
           env:
             # Server configuration
             - name: SERVER_PORT
-              value: {{ .Values.ingress.server.port | quote }}
+              value: {{- if .Values.jwt_auth.enabled }} "8081" {{- else }} {{ .Values.ingress.server.port | quote }} {{- end }}
             - name: SERVER_READ_TIMEOUT
               value: {{ .Values.ingress.server.readTimeout | quote }}
             - name: SERVER_WRITE_TIMEOUT
@@ -91,7 +134,7 @@ spec:
             - name: UPLOAD_ALLOWED_TYPES
               value: {{ join "," .Values.ingress.upload.allowedTypes | quote }}
             - name: UPLOAD_REQUIRE_AUTH
-              value: {{ .Values.ingress.upload.requireAuth | quote }}
+              value: {{- if .Values.jwt_auth.enabled }} "true" {{- else }} {{ .Values.ingress.upload.requireAuth | quote }} {{- end }}
 
             # Storage configuration
             - name: STORAGE_ENDPOINT
@@ -135,7 +178,9 @@ spec:
 
             # Authentication configuration (only available on OpenShift with Keycloak)
             - name: AUTH_ENABLED
-              {{- if eq (include "ros-ocp.isOpenShift" .) "true" }}
+              {{- if .Values.jwt_auth.enabled }}
+              value: "true"  # Auth is enabled via Envoy/Authorino, service trusts X-ROS headers
+              {{- else if eq (include "ros-ocp.isOpenShift" .) "true" }}
               value: {{ .Values.ingress.auth.enabled | quote }}
               {{- else }}
               value: "false"
@@ -159,7 +204,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: {{ .Values.ingress.port }}
+              port: {{- if .Values.jwt_auth.enabled }} 8081 {{- else }} {{ .Values.ingress.port }} {{- end }}
             initialDelaySeconds: {{ .Values.probes.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
@@ -167,7 +212,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /ready
-              port: {{ .Values.ingress.port }}
+              port: {{- if .Values.jwt_auth.enabled }} 8081 {{- else }} {{ .Values.ingress.port }} {{- end }}
             initialDelaySeconds: 10
             periodSeconds: {{ .Values.probes.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
@@ -181,12 +226,21 @@ spec:
               subPath: service-ca.crt
               readOnly: true
           {{- end }}
-      {{- if eq (include "ros-ocp.isOpenShift" .) "true" }}
       volumes:
+        {{- if .Values.jwt_auth.enabled }}
+        # Envoy configuration volume
+        - name: envoy-config
+          configMap:
+            name: {{ include "ros-ocp.fullname" . }}-envoy-config
+            items:
+              - key: envoy.yaml
+                path: envoy.yaml
+        {{- end }}
+        {{- if eq (include "ros-ocp.isOpenShift" .) "true" }}
         - name: service-ca-cert
           configMap:
             name: {{ include "ros-ocp.fullname" . }}-service-ca
             items:
               - key: service-ca.crt
                 path: service-ca.crt
-      {{- end }}
+        {{- end }}
