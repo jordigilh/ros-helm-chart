@@ -41,23 +41,13 @@ The ROS Helm Chart uses **Envoy's native JWT authentication filter** for validat
 
 ## Why Native JWT?
 
-### Previous Approach: Authorino + ext_authz
+Envoy's native JWT authentication provides:
 
-The original implementation used Authorino (an external authorization service) with Envoy's `ext_authz` filter:
-
-**Issues:**
-- ❌ **Multipart uploads failed** - `ext_authz` doesn't forward response headers for multipart-encoded requests
-- ❌ **Higher latency** - External gRPC call to Authorino (~5ms overhead)
-- ❌ **Complex architecture** - Required separate Authorino deployment
-- ❌ **Harder debugging** - Two components to troubleshoot
-
-### Current Approach: Native JWT
-
-**Benefits:**
-- ✅ **Works with multipart uploads** - Inline validation, no body buffering issues
-- ✅ **Lower latency** - Inline validation (<1ms)
-- ✅ **Simpler architecture** - One less component to manage
-- ✅ **Easier debugging** - All configuration in one place
+- ✅ **Multipart upload support** - Inline validation works with all request types including file uploads
+- ✅ **Low latency** - Sub-millisecond authentication overhead (<1ms)
+- ✅ **Simple architecture** - Single sidecar component with no external dependencies
+- ✅ **Easy debugging** - All authentication configuration in one place
+- ✅ **Battle-tested** - Envoy's JWT filter is production-ready and widely used
 
 ## Configuration
 
@@ -210,19 +200,6 @@ echo "$TOKEN" | cut -d'.' -f2 | base64 -d | jq
 
 - The current configuration accepts self-signed certificates from Keycloak
 - In production, use properly signed certificates from your PKI
-
-## Migration from Authorino
-
-If you previously used Authorino, the migration is automatic:
-
-1. **Update Helm chart** - Pull latest changes
-2. **Redeploy** - `helm upgrade ros-ocp ./ros-ocp`
-3. **Verify** - Authorino pods will be removed, Envoy sidecar remains
-
-**No changes required to:**
-- Backend services (still receive same X-ROS headers)
-- Client applications (still send same JWT tokens)
-- Keycloak configuration
 
 ## References
 

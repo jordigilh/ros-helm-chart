@@ -492,31 +492,31 @@ check_for_recommendations() {
 
     if [ -n "$kruize_pod" ]; then
         echo_info "Kruize pod found: $kruize_pod"
-        
+
         # Check Kruize database for experiments (listExperiments API has known issues)
         echo_info "Checking Kruize experiments via database..."
         local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=db-kruize" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-        
+
         if [ -n "$db_pod" ]; then
             local exp_count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
                 psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM kruize_experiments;" 2>/dev/null | tr -d ' ' || echo "0")
-            
+
             if [ "$exp_count" -gt 0 ]; then
                 echo_success "Found $exp_count Kruize experiment(s) in database"
-                
+
                 # Show experiment details
                 echo_info "Recent experiment details:"
                 oc exec -n "$NAMESPACE" "$db_pod" -- \
                     psql -U postgres -d postgres -c \
                     "SELECT experiment_name, status, mode FROM kruize_experiments ORDER BY experiment_id DESC LIMIT 1;" 2>/dev/null || true
-                
+
                 # Check for recommendations in database
                 local rec_count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
                     psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM kruize_recommendations;" 2>/dev/null | tr -d ' ' || echo "0")
-                
+
                 if [ "$rec_count" -gt 0 ]; then
                     echo_success "✓ Found $rec_count ML recommendation(s) in database!"
-                    
+
                     # Show recommendation sample
                     echo_info "Sample recommendation details:"
                     oc exec -n "$NAMESPACE" "$db_pod" -- \
@@ -531,7 +531,7 @@ check_for_recommendations() {
             fi
         else
             echo_warning "Could not access Kruize database"
-            
+
             # Fallback to API check
             echo_info "Setting up port-forward to check via API..."
             oc port-forward -n "$NAMESPACE" "svc/ros-ocp-kruize" 8080:8080 >/dev/null 2>&1 &
@@ -542,7 +542,7 @@ check_for_recommendations() {
                 local experiments=$(curl -s "http://localhost:8080/listExperiments" 2>/dev/null || echo "[]")
                 local experiment_count=$(json_array_length "$experiments")
                 echo_info "Found $experiment_count experiments via API"
-                
+
                 # Cleanup port-forward
                 kill "$PORT_FORWARD_PID" 2>/dev/null || true
                 PORT_FORWARD_PID=""
