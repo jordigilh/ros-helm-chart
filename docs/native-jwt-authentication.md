@@ -184,7 +184,7 @@ echo "$TOKEN" | cut -d'.' -f2 | base64 -d | jq
 
 ## References
 
-- [Helm Templates Reference](./HELM-TEMPLATES.md) - Technical details about Envoy and JWT templates
+- [Helm Templates Reference](./helm-templates-reference.md) - Technical details about Envoy and JWT templates
 - [Envoy JWT Authentication](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/http/jwt_authn/v3/config.proto)
 - [Envoy Lua Filter](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/lua_filter)
 - [Keycloak Client Credentials Flow](https://www.keycloak.org/docs/latest/securing_apps/index.html#_client_credentials_grant)

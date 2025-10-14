@@ -503,7 +503,7 @@ kubectl top nodes  # requires metrics-server
 After successful installation:
 
 1. **Configure Access**: See [Configuration Guide](configuration.md)
-2. **Set Up JWT Auth**: See [JWT Authentication Guide](jwt-native-authentication.md)
+2. **Set Up JWT Auth**: See [JWT Authentication Guide](native-jwt-authentication.md)
 3. **Configure TLS**: See [TLS Setup Guide](cost-management-operator-tls-setup.md)
 4. **Run Tests**: See [Scripts Reference](../scripts/README.md)
 
