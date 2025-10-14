@@ -32,7 +32,7 @@ data:
     #!/bin/bash
     set -e
 
-    echo "🔧 Combining CA certificates for Authorino..."
+    echo "🔧 Combining CA certificates for Envoy..."
 
     # Start with system CA bundle
     if [ -f /etc/ssl/certs/ca-bundle.crt ]; then

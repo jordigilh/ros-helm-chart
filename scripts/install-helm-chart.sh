@@ -1099,8 +1099,6 @@ detect_rhsso_keycloak() {
     fi
 }
 
-# Authorino functions removed - native JWT authentication is now used
-# No operator installation required for Envoy native JWT filter
 
 # Function to setup JWT authentication based on platform
 setup_jwt_authentication() {
