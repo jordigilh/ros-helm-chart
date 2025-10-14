@@ -734,16 +734,15 @@ spec:
 
   # Authentication configuration for Keycloak with JWT
   authentication:
-    type: "token"
+    type: "service-account"  # Use service-account for Keycloak JWT via client_credentials flow
     token_url: "$KEYCLOAK_URL/auth/realms/kubernetes/protocol/openid-connect/token"
-    client_id: "$CLIENT_ID"
     secret_name: "cost-management-auth-secret"
 
   # Upload configuration - works with JWT authentication
   upload:
     upload_toggle: true
     upload_cycle: 360  # 6 hours between uploads
-    validate_cert: true  # Keep certificate validation enabled with custom CA bundle
+    validate_cert: false  # Disable cert validation for self-signed Keycloak certificates (dev/test)
     ingress_path: "/api/ingress/v1/upload"
 
   # Prometheus configuration with TLS validation
@@ -829,9 +828,12 @@ ${GREEN}🎉 Cost Management Operator TLS Setup Completed Successfully!${NC}
 ${BLUE}What was configured:${NC}
 • ✅ Cost Management Operator installed in namespace: $NAMESPACE
 • ✅ CA certificates extracted and configured for self-signed cert support
-• ✅ Keycloak authentication configured with client: $CLIENT_ID
+• ✅ Keycloak JWT authentication configured (service-account type)
+• ✅ Client credentials: $CLIENT_ID (stored in cost-management-auth-secret)
 • ✅ CostManagementMetricsConfig created with local ROS ingress URL
 • ✅ API URL set to ${INGRESS_URL:-local ROS ingress} (NOT console.redhat.com)
+• ✅ TLS certificate validation disabled for self-signed Keycloak certificates
+• ✅ Operator will acquire JWT tokens via client_credentials flow
 • ✅ All components validated and ready for use
 
 ${BLUE}Next steps:${NC}
