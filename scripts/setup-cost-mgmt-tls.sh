@@ -472,9 +472,20 @@ check_prerequisites() {
 
     # Auto-detect ingress URL if not provided
     if [[ -z "$DEFAULT_INGRESS_URL" ]]; then
-        DEFAULT_INGRESS_URL=$(oc get route -A | grep ros.*ingress | head -n1 | awk '{print "https://" $3}' || echo "")
-        if [[ -n "$DEFAULT_INGRESS_URL" ]]; then
-            print_success "Auto-detected ROS ingress URL: $DEFAULT_INGRESS_URL"
+        # Find the ROS ingress route and determine if it uses TLS
+        local ingress_ns=$(oc get route -A | grep -E 'ros.*ingress|ingress.*ros' | head -n1 | awk '{print $1}')
+        local ingress_name=$(oc get route -A | grep -E 'ros.*ingress|ingress.*ros' | head -n1 | awk '{print $2}')
+
+        if [[ -n "$ingress_ns" ]] && [[ -n "$ingress_name" ]]; then
+            local ingress_host=$(oc get route "$ingress_name" -n "$ingress_ns" -o jsonpath='{.spec.host}' 2>/dev/null)
+            local tls_termination=$(oc get route "$ingress_name" -n "$ingress_ns" -o jsonpath='{.spec.tls.termination}' 2>/dev/null)
+
+            if [[ -n "$tls_termination" ]]; then
+                DEFAULT_INGRESS_URL="https://$ingress_host"
+            else
+                DEFAULT_INGRESS_URL="http://$ingress_host"
+            fi
+            print_success "Auto-detected ROS ingress URL: $DEFAULT_INGRESS_URL (TLS: ${tls_termination:-none})"
         else
             print_warning "Could not auto-detect ROS ingress URL"
         fi
@@ -717,6 +728,10 @@ metadata:
   name: costmanagementmetricscfg-tls
   namespace: $NAMESPACE
 spec:
+  # API URL - Base URL for uploads (defaults to console.redhat.com if not set)
+  # IMPORTANT: Set to local ROS ingress to avoid uploading to Red Hat's hosted service
+  api_url: "$INGRESS_URL"
+
   # Authentication configuration for Keycloak with JWT
   authentication:
     type: "token"
@@ -730,7 +745,6 @@ spec:
     upload_cycle: 360  # 6 hours between uploads
     validate_cert: true  # Keep certificate validation enabled with custom CA bundle
     ingress_path: "/api/ingress/v1/upload"
-    ingress_url: "$INGRESS_URL"
 
   # Prometheus configuration with TLS validation
   prometheus_config:
@@ -816,7 +830,8 @@ ${BLUE}What was configured:${NC}
 • ✅ Cost Management Operator installed in namespace: $NAMESPACE
 • ✅ CA certificates extracted and configured for self-signed cert support
 • ✅ Keycloak authentication configured with client: $CLIENT_ID
-• ✅ CostManagementMetricsConfig created with dynamic URLs
+• ✅ CostManagementMetricsConfig created with local ROS ingress URL
+• ✅ API URL set to ${INGRESS_URL:-local ROS ingress} (NOT console.redhat.com)
 • ✅ All components validated and ready for use
 
 ${BLUE}Next steps:${NC}
