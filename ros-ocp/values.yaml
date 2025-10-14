@@ -436,13 +436,14 @@ monitoring:
 
 # JWT Authentication configuration
 # JWT authentication with Keycloak/RHSSO using Envoy's native JWT filter
-# Auto-enabled on OpenShift, disabled elsewhere. Override with explicit true/false.
+# - OpenShift: Automatically enabled (requires Keycloak/RH SSO to be deployed)
+# - KIND/Vanilla K8s: Automatically disabled (Keycloak not available)
+# Platform detection is automatic via Helm's capability detection.
 #
 # Architecture: Envoy sidecar validates JWT tokens inline using native jwt_authn filter
 # with Lua scripting to extract claims into X-ROS headers for the backend service.
 # This replaces the previous Authorino ext_authz approach which had issues with multipart uploads.
 jwt_auth:
-  enabled: null  # null = auto-detect (true on OpenShift, false elsewhere)
 
   # Envoy proxy configuration (sidecar for JWT validation)
   envoy:
@@ -465,15 +466,20 @@ jwt_auth:
 
   # Keycloak configuration for JWT validation
   keycloak:
-    # Keycloak URL is auto-detected from cluster, or can be explicitly set
+    # Keycloak URL - leave empty for automatic detection from cluster
+    # The Helm chart will auto-detect Keycloak route/ingress on OpenShift
+    # Override only if using custom/external Keycloak instance
     url: ""  # e.g., "https://keycloak-rhsso.apps.example.com"
+
+    # Keycloak realm name
     realm: kubernetes
 
-    # Client configuration (optional, for reference)
+    # Client configuration (for reference - used by Cost Management Operator)
     client:
       id: cost-management-operator
 
-    # Audiences for JWT validation (must match JWT 'aud' claim)
+    # JWT audience claims that will be validated
+    # Must match the 'aud' claim in incoming JWT tokens
     audiences:
       - account
       - cost-management-operator

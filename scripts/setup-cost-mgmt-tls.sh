@@ -825,7 +825,7 @@ ${BLUE}Next steps:${NC}
 • Monitor uploads: ${YELLOW}oc get costmanagementmetricsconfig -n $NAMESPACE -o yaml${NC}
 
 ${BLUE}Troubleshooting:${NC}
-• Documentation: docs/COST-MANAGEMENT-OPERATOR-TLS-SETUP.md
+• Documentation: docs/cost-management-operator-tls-setup.md
 • CA bundle functionality: integrated in this script (setup-cost-mgmt-tls.sh)
 • Test script: scripts/test-ocp-dataflow-cost-management.sh
 

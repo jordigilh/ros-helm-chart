@@ -62,7 +62,7 @@ spec:
       serviceAccountName: insights-ros-ingress
       containers:
         {{- if .Values.jwt_auth.enabled }}
-        # Envoy sidecar for JWT authentication via Authorino
+        # Envoy sidecar for native JWT authentication
         - name: envoy-proxy
           image: "{{ .Values.jwt_auth.envoy.image.repository }}:{{ .Values.jwt_auth.envoy.image.tag }}"
           imagePullPolicy: {{ .Values.global.pullPolicy }}
@@ -179,7 +179,7 @@ spec:
             # Authentication configuration (only available on OpenShift with Keycloak)
             - name: AUTH_ENABLED
               {{- if .Values.jwt_auth.enabled }}
-              value: "true"  # Auth is enabled via Envoy/Authorino, service trusts X-ROS headers
+              value: "true"  # Auth is enabled via Envoy native JWT, service trusts X-ROS headers
               {{- else if eq (include "ros-ocp.isOpenShift" .) "true" }}
               value: {{ .Values.ingress.auth.enabled | quote }}
               {{- else }}

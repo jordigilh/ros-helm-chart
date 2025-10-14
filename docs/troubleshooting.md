@@ -2,7 +2,37 @@
 
 ## Common Issues
 
-**Pods getting OOMKilled (Out of Memory):**
+### No Resource Optimization Data Being Collected
+
+**Problem**: Cost Management Metrics Operator is not collecting data from your namespace, no ROS files are being generated, or Kruize is not receiving metrics.
+
+**Cause**: Missing required namespace label.
+
+**Solution**:
+```bash
+# Check if the label exists
+kubectl get namespace ros-ocp --show-labels | grep insights-cost-management
+
+# Apply the required label
+kubectl label namespace ros-ocp insights-cost-management-optimizations=true --overwrite
+
+# Verify the label was applied
+kubectl get namespace ros-ocp -o jsonpath='{.metadata.labels.insights-cost-management-optimizations}'
+# Should output: true
+```
+
+**Note**: The `scripts/install-helm-chart.sh` script automatically applies this label during deployment. If you deployed manually or the label was removed, you need to apply it manually.
+
+**To remove the label (if testing):**
+```bash
+kubectl label namespace ros-ocp insights-cost-management-optimizations-
+```
+
+---
+
+### Pods Getting OOMKilled (Out of Memory)
+
+**Problem**: Pods crashing with OOMKilled status.
 ```bash
 # Check pod status for OOMKilled
 kubectl get pods -n ros-ocp

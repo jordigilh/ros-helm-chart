@@ -1,458 +1,83 @@
-# ROS Helm Chart Scripts Documentation
+# ROS Helm Chart Scripts
 
-This directory contains automation scripts for deploying, configuring, and testing the Resource Optimization Service (ROS) with JWT authentication and TLS certificate handling. Scripts support both production OpenShift environments and lightweight KIND (Kubernetes IN Docker) clusters for CI/CD testing and local development.
+Automation scripts for deploying, configuring, and testing the Resource Optimization Service (ROS) with JWT authentication and TLS certificate handling.
 
-## 📋 Script Overview
+## 📋 Available Scripts
 
-| Script | Purpose | Environment | Complexity |
-|--------|---------|-------------|-----------|
-| `deploy-kind.sh` | 🧪 KIND cluster setup | CI/CD, Local Dev | Medium |
-| `cleanup-kind-artifacts.sh` | 🧹 KIND cleanup | CI/CD, Local Dev | Low |
-| `install-helm-chart.sh` | 📦 Helm deployment | All | Medium |
-| `deploy-rhsso.sh` | 🔐 Keycloak/RHSSO setup | OCP with RHSSO | High |
-| `test-ocp-dataflow-jwt.sh` | 🧪 JWT auth testing | JWT-enabled | Medium |
-| `setup-cost-mgmt-tls.sh` | 🛠️ Complete Cost Mgmt deployment with TLS | Any OCP | Medium |
+| Script | Purpose | Environment |
+|--------|---------|-------------|
+| `install-helm-chart.sh` | Deploy ROS Helm chart | All environments |
+| `deploy-rhsso.sh` | Deploy Keycloak/RHSSO | OpenShift |
+| `setup-cost-mgmt-tls.sh` | Configure TLS certificates | OpenShift |
+| `test-ocp-dataflow-jwt.sh` | Test JWT authentication | JWT-enabled clusters |
+| `deploy-kind.sh` | Create test cluster | CI/CD, Local dev |
+| `cleanup-kind-artifacts.sh` | Cleanup test environment | CI/CD, Local dev |
 
-## 🔐 Authentication & Security Scripts
+## 🚀 Quick Start
 
-### `deploy-rhsso.sh`
-**Purpose**: Automated deployment of Red Hat Single Sign-On (Keycloak) with ROS integration.
-
-**Features**:
-- RHSSO Operator installation
-- Keycloak instance creation
-- Kubernetes realm configuration
-- Cost Management client setup
-- OpenShift OIDC integration
-
-**Usage**:
-```bash
-# Deploy to rhsso namespace (default)
-./deploy-rhsso.sh
-
-# Deploy to custom namespace
-./deploy-rhsso.sh --namespace my-keycloak
-
-# Skip OIDC integration
-./deploy-rhsso.sh --skip-oidc
-```
-
-**What it creates**:
-- `rhsso` namespace with RHSSO Operator
-- Keycloak instance with `kubernetes` realm
-- `cost-management-operator` client
-- Required users and service accounts
-
----
-
-### `setup-cost-mgmt-tls.sh`
-**Purpose**: Complete Cost Management Operator deployment with comprehensive CA certificate support for self-signed certificate environments.
-
-**Extracts** (15+ methods):
-- **Router CAs**: Ingress operator, default certs, controller config, console route
-- **Keycloak CAs**: Route extraction, TLS secrets, service certs, StatefulSet config
-- **System CAs**: Root CA, service CA, cluster bundle, API server, registry
-- **Custom CAs**: ConfigMaps, live HTTPS connections, pod-level certs
-
-**Usage**:
-```bash
-# Complete Cost Management Operator deployment
-./setup-cost-mgmt-tls.sh
-
-# Custom namespace and verbose output
-./setup-cost-mgmt-tls.sh -n my-cost-mgmt -v
-
-# Dry-run to see what would be done
-./setup-cost-mgmt-tls.sh --dry-run
-```
-
-**Best for**:
-- All OpenShift environments (standard to complex)
-- Production and development clusters
-- Custom Keycloak configurations
-- Air-gapped/security-hardened clusters
-- Any deployment requiring comprehensive certificate coverage
-
-**Performance**: 2-3 minutes execution time
-
----
-
-## 🧪 Testing & Validation Scripts
-
-### `test-ocp-dataflow-jwt.sh`
-**Purpose**: End-to-end testing of JWT authentication flow with sample data.
-
-**Test flow**:
-1. Auto-detects Keycloak configuration
-2. Retrieves JWT token using client credentials
-3. Creates sample cost management data
-4. Uploads data using JWT authentication
-5. Validates ingress processing
-6. Checks for ML recommendations
-
-**Usage**:
-```bash
-# Test JWT authentication
-./test-ocp-dataflow-jwt.sh
-
-# Custom namespace
-./test-ocp-dataflow-jwt.sh --namespace ros-production
-
-# Verbose output
-./test-ocp-dataflow-jwt.sh --verbose
-```
-
-**Requirements**:
-- JWT authentication enabled
-- Keycloak configured with `cost-management-operator` client
-- ROS ingress deployed with Envoy sidecar (native JWT authentication)
-
----
-
-
-## 🎯 Usage Recommendations
-
-### For Standard Deployments
+### Standard OpenShift Deployment
 ```bash
 # 1. Deploy Cost Management Operator with TLS support
 ./setup-cost-mgmt-tls.sh
 
-# 2. Test JWT authentication (if enabled)
+# 2. Deploy ROS
+./install-helm-chart.sh
+
+# 3. Test the deployment (if JWT enabled)
 ./test-ocp-dataflow-jwt.sh
 ```
 
-### For JWT Authentication
+### JWT Authentication Setup
 ```bash
-# 1. Deploy Keycloak
+# 1. Deploy Keycloak/RHSSO
 ./deploy-rhsso.sh
 
-# 2. Deploy ROS with JWT auth (uses Envoy native JWT filter)
+# 2. Deploy ROS with JWT authentication
 export JWT_AUTH_ENABLED=true
 ./install-helm-chart.sh
 
-# 3. Deploy Cost Management Operator with TLS support
+# 3. Configure TLS certificates
 ./setup-cost-mgmt-tls.sh
 
-# 4. Test JWT authentication
+# 4. Test JWT flow
 ./test-ocp-dataflow-jwt.sh
 ```
 
-### For Production Environments
+### Local Development (KIND)
 ```bash
-# 1. Deploy Cost Management Operator with comprehensive TLS setup
-./setup-cost-mgmt-tls.sh --verbose
-
-# 2. Deploy Keycloak for production
-./deploy-rhsso.sh
-
-# 3. Test JWT authentication
-./test-ocp-dataflow-jwt.sh
-```
-
-## 🔄 Deployment Approach
-
-1. **Complete Solution**: Use comprehensive CA script for all environments
-2. **Validate Everything**: Always run validation scripts after deployments
-3. **Test End-to-End**: Use both JWT and cost management test scripts
-
-## 🚨 Troubleshooting Guide
-
-### Common Issues
-
-**TLS Certificate Errors**:
-```bash
-# Deploy Cost Management Operator for all environments
-./setup-cost-mgmt-tls.sh --verbose
-```
-
-**JWT Authentication Failures**:
-```bash
-# Test with sample data and detailed logging
-./test-ocp-dataflow-jwt.sh --verbose
-
-# Check Envoy sidecar logs
-oc logs -n ros-ocp -l app.kubernetes.io/name=ingress -c envoy-proxy
-```
-
-**Cost Management Upload Issues**:
-```bash
-# Check Cost Management Operator logs
-oc logs -n costmanagement-metrics-operator deployment/costmanagement-metrics-operator
-
-# Verify namespace has cost optimization label
-oc label namespace <namespace> cost_management_optimizations=true
-```
-
-## 📝 Script Maintenance
-
-### Dependencies
-- `oc` (OpenShift CLI)
-- `helm` (Helm CLI)
-- `jq` (JSON processor)
-- `curl` (HTTP client)
-- `openssl` (Certificate tools)
-
-### Environment Variables
-Most scripts support these environment variables:
-- `NAMESPACE`: Target namespace override
-- `VERBOSE`: Enable detailed logging
-- `DRY_RUN`: Show actions without executing
-
-### Logging
-All scripts use consistent logging with color-coded output:
-- 🟢 **SUCCESS**: Green text for successful operations
-- 🔵 **INFO**: Blue text for informational messages
-- 🟡 **WARNING**: Yellow text for warnings
-- 🔴 **ERROR**: Red text for errors and failures
-
-## 🎛️ Helm Templates & Manifests
-
-The following Helm templates and manifests are included for JWT authentication and TLS certificate handling:
-
-### JWT Authentication Templates
-
-#### `ros-ocp/templates/deployment-ingress.yaml`
-**Purpose**: Enhanced ingress deployment with Envoy sidecar for native JWT authentication.
-
-**Features**:
-- Envoy proxy sidecar with native JWT filter
-- Inline JWT validation (no external authorization service)
-- Lua filter for JWT claims extraction
-- Port configuration for sidecar routing
-- Health probe adjustments
-
-**Key Environment Variables**:
-- `AUTH_ENABLED`: Set to true when JWT enabled (ingress trusts X-ROS headers)
-- `SERVER_PORT`: Ingress container port (8081 for JWT, 8080 for traditional)
-- `UPLOAD_REQUIRE_AUTH`: Set to true when JWT enabled
-
-#### `ros-ocp/templates/envoy-config.yaml`
-**Purpose**: Envoy proxy configuration with native JWT authentication.
-
-**Features**:
-- Native JWT authentication filter (`jwt_authn`)
-- Lua script for extracting JWT claims to X-ROS headers
-- Keycloak JWKS endpoint configuration
-- Request routing to backend service
-- Access logging configuration
-
-**Configuration Options**:
-- `jwt_auth.keycloak.url`: Keycloak base URL
-- `jwt_auth.keycloak.realm`: Keycloak realm name
-- `jwt_auth.keycloak.audiences`: Expected JWT audiences
-- `jwt_auth.envoy.port`: Envoy listener port (default: 8080)
-
-#### `ros-ocp/templates/service-ingress.yaml`
-**Purpose**: Kubernetes service for ingress with Envoy proxy endpoints.
-
-**Features**:
-- Dual port configuration (Envoy + ingress)
-- Service discovery for JWT routing
-- Load balancer configuration
-
-
-### Security & Certificate Templates
-
-#### `ros-ocp/templates/ca-configmap.yaml`
-**Purpose**: ConfigMap for CA certificate bundle injection.
-
-**Features**:
-- Automatic CA certificate extraction
-- Mount point for Authorino containers
-- Support for multiple CA sources
-
-#### `ros-ocp/templates/_helpers.tpl`
-**Purpose**: Helm template helper functions.
-
-**Functions**:
-- JWT authentication conditionals
-- Service name generation
-- Namespace helpers
-- Port configuration logic
-
-## ⚙️ Configuration Files & Examples
-
-### `ros-ocp/values-jwt-auth-complete.yaml`
-**Purpose**: Complete JWT authentication configuration for production use.
-
-**Features**:
-- Full JWT authentication setup
-- Authorino direct deployment configuration
-- Envoy sidecar configuration
-- TLS bypass settings for self-signed certificates
-- Custom ingress image configuration
-
-**Usage**:
-```bash
-helm upgrade ros-ocp ./ros-ocp -f values-jwt-auth-complete.yaml
-```
-
-**Key Sections**:
-- `jwt_auth.enabled: true` - Enables JWT authentication
-- `jwt_auth.authorino.deploy.enabled: true` - Direct Authorino deployment
-- `jwt_auth.envoy.image` - Envoy proxy image configuration
-- `ingress.image.repository` - Custom ingress image with conditional auth
-
-### `examples/costmanagementmetricscfg-tls.yaml`
-**Purpose**: Example CostManagementMetricsConfig with TLS certificate handling.
-
-**Features**:
-- Self-signed certificate support configuration
-- Environment variable examples for CA bundles
-- Volume mount examples for certificate trust
-- Production-ready TLS settings
-
-**Usage**:
-```bash
-oc apply -f examples/costmanagementmetricscfg-tls.yaml
-```
-
-**Key Configuration**:
-- Custom CA bundle mounting
-- TLS verification settings
-- Certificate rotation support
-
-## 📚 Related Documentation
-
-- [Cost Management Operator TLS Setup](../docs/COST-MANAGEMENT-OPERATOR-TLS-SETUP.md)
-- [JWT Authentication Guide](../docs/JWT-AUTHENTICATION.md)
-- [JWT Authentication Values](../ros-ocp/values-jwt-auth-complete.yaml)
-- [Troubleshooting Guide](../docs/TROUBLESHOOTING.md)
-
-## 🎯 Complete Setup Flow
-
-For a full deployment with JWT authentication and TLS support:
-
-1. **Deploy Keycloak/RHSSO**:
-   ```bash
-   ./scripts/deploy-rhsso.sh
-   ```
-
-2. **Fix TLS certificates**:
-   ```bash
-   ./scripts/setup-cost-mgmt-tls.sh
-   ```
-
-3. **Deploy ROS with JWT**:
-   ```bash
-   helm upgrade ros-ocp ./ros-ocp -f values-jwt-auth-complete.yaml
-   ```
-
-4. **Test end-to-end**:
-   ```bash
-   ./scripts/test-ocp-dataflow-jwt.sh
-   ```
-
----
-
-## 🧪 CI/CD & Development Testing
-
-### Overview
-These scripts enable end-to-end testing in CI/CD pipelines without requiring a full OpenShift cluster. Using KIND (Kubernetes IN Docker), they provide a lightweight testing environment for automated testing and local development.
-
-### `deploy-kind.sh`
-**Purpose**: Automated KIND cluster creation for CI/CD testing and local development.
-
-**Features**:
-- KIND cluster creation with optimized resource allocation
-- Container runtime support (Docker/Podman)
-- Fixed memory management (6GB allocation)
-- Automated ingress controller setup
-- Full ROS-OCP deployment capability
-- CI/CD pipeline integration
-
-**Usage**:
-```bash
-# Create default test cluster
+# 1. Create KIND cluster
 ./deploy-kind.sh
 
-# Custom cluster name for parallel testing
-export KIND_CLUSTER_NAME=ros-test-cluster
-./deploy-kind.sh
+# 2. Deploy ROS from local chart
+export USE_LOCAL_CHART=true
+./install-helm-chart.sh
 
-# Use Docker instead of Podman
-export CONTAINER_RUNTIME=docker
-./deploy-kind.sh
-
-# Enable ingress debugging
-export INGRESS_DEBUG_LEVEL=2
-./deploy-kind.sh
-```
-
-**Resource Requirements**:
-- **Container Runtime**: Minimum 6GB memory allocation
-- **KIND Node**: 6GB fixed memory limit
-- **Allocatable**: ~5.2GB after system reservations
-- **Full Deployment**: ~4.5GB for all ROS-OCP services
-
-**CI/CD Integration Example**:
-```yaml
-# GitHub Actions
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Setup KIND cluster
-        run: ./scripts/deploy-kind.sh
-
-      - name: Run E2E tests
-        run: ./scripts/test-ocp-dataflow-jwt.sh
-
-      - name: Cleanup
-        if: always()
-        run: ./scripts/cleanup-kind-artifacts.sh
-```
-
----
-
-### `cleanup-kind-artifacts.sh`
-**Purpose**: Comprehensive cleanup of KIND clusters, containers, and artifacts between CI/CD runs.
-
-**Features**:
-- KIND cluster deletion
-- Container cleanup (running and stopped)
-- Image pruning
-- Network cleanup
-- Complete environment reset
-- Container runtime detection (Docker/Podman)
-
-**Usage**:
-```bash
-# Cleanup default cluster
-./cleanup-kind-artifacts.sh
-
-# Cleanup custom cluster
-export KIND_CLUSTER_NAME=ros-test-cluster
-./cleanup-kind-artifacts.sh
-
-# Use Docker runtime
-export CONTAINER_RUNTIME=docker
+# 3. Cleanup when done
 ./cleanup-kind-artifacts.sh
 ```
 
-**When to Use**:
-- After CI/CD test runs (use `if: always()` in pipelines)
-- Between test iterations
-- Before creating a fresh test environment
-- When troubleshooting cluster issues
-
----
+## 📖 Script Documentation
 
 ### `install-helm-chart.sh`
-**Purpose**: Automated Helm chart deployment with configuration management and lifecycle operations.
+Deploy or upgrade the ROS Helm chart with automatic configuration.
 
-**Features**:
-- Helm chart installation/upgrade automation
-- GitHub release download or local chart support
-- JWT authentication configuration
-- Namespace management
-- Deployment validation and health checks
-- Complete lifecycle management (install, cleanup, status)
-- OpenShift auto-detection
+**Key features:**
+- Installs from GitHub releases or local chart
+- Auto-detects OpenShift and configures JWT authentication
+- Manages namespace and deployment lifecycle
+- **Automatically applies Cost Management Operator label** to namespace
 
-**Usage**:
+**Namespace Labeling:**
+The script automatically applies the `insights-cost-management-optimizations=true` label to the deployment namespace. This label is **required** by the Cost Management Metrics Operator to collect resource optimization data from the namespace.
+
+To remove the label (if needed):
 ```bash
-# Basic installation (latest release from GitHub)
+kubectl label namespace ros-ocp insights-cost-management-optimizations-
+```
+
+**Usage:**
+```bash
+# Basic installation
 ./install-helm-chart.sh
 
 # Use local chart for development
@@ -463,126 +88,214 @@ export USE_LOCAL_CHART=true
 export NAMESPACE=ros-production
 ./install-helm-chart.sh
 
-# Use specific values file
-export VALUES_FILE=values-production.yaml
-./install-helm-chart.sh
-
-# Enable JWT authentication (OpenShift only)
-export JWT_AUTH_ENABLED=true
-./install-helm-chart.sh
-
-# Custom release name
-export HELM_RELEASE_NAME=ros-prod
-./install-helm-chart.sh
-```
-
-**Commands**:
-```bash
-# Install/upgrade ROS
-./install-helm-chart.sh
-
 # Check deployment status
 ./install-helm-chart.sh status
 
-# Run health checks
-./install-helm-chart.sh health
-
-# Cleanup (preserve data volumes)
+# Cleanup
 ./install-helm-chart.sh cleanup
-
-# Complete removal (including data)
-./install-helm-chart.sh cleanup --complete
-
-# Fix Kafka conflicts
-./install-helm-chart.sh cleanup --kafka-conflicts
-
-# Show help
-./install-helm-chart.sh help
 ```
 
-**Environment Variables**:
-- `HELM_RELEASE_NAME`: Helm release name (default: `ros-ocp`)
+**Environment variables:**
 - `NAMESPACE`: Target namespace (default: `ros-ocp`)
-- `VALUES_FILE`: Path to custom values file
-- `USE_LOCAL_CHART`: Use local chart instead of GitHub release (default: `false`)
-- `LOCAL_CHART_PATH`: Path to local chart directory (default: `../ros-ocp`)
+- `USE_LOCAL_CHART`: Use local chart instead of GitHub (default: `false`)
 - `JWT_AUTH_ENABLED`: Enable JWT authentication (default: auto-detect)
+- `VALUES_FILE`: Custom values file path
 
-**CI/CD Integration Example**:
-```yaml
-# GitLab CI
-test-deployment:
-  script:
-    - export USE_LOCAL_CHART=true
-    - ./scripts/install-helm-chart.sh
-    - ./scripts/test-ocp-dataflow-jwt.sh
-  after_script:
-    - ./scripts/install-helm-chart.sh cleanup --complete
+---
+
+### `deploy-rhsso.sh`
+Deploy Red Hat Single Sign-On (Keycloak) with ROS integration.
+
+**What it creates:**
+- RHSSO Operator in target namespace
+- Keycloak instance with `kubernetes` realm
+- `cost-management-operator` client
+- OpenShift OIDC integration
+
+**Usage:**
+```bash
+# Deploy to default namespace (rhsso)
+./deploy-rhsso.sh
+
+# Deploy to custom namespace
+./deploy-rhsso.sh --namespace my-keycloak
+
+# Skip OIDC integration
+./deploy-rhsso.sh --skip-oidc
 ```
 
 ---
 
-## 🔄 Complete CI/CD Workflow
+### `setup-cost-mgmt-tls.sh`
+Configure Cost Management Operator with comprehensive CA certificate support.
 
-### End-to-End Testing Pipeline
+**Features:**
+- Extracts CA certificates from 15+ sources (routers, Keycloak, system CAs, custom CAs)
+- Creates consolidated CA bundle for self-signed certificate environments
+- Configures Cost Management Operator with proper TLS settings
+
+**Usage:**
 ```bash
-# 1. Create KIND test environment
-./scripts/deploy-kind.sh
+# Complete setup (recommended for all environments)
+./setup-cost-mgmt-tls.sh
 
-# 2. Deploy ROS using local chart
-export USE_LOCAL_CHART=true
-./scripts/install-helm-chart.sh
+# Custom namespace with verbose output
+./setup-cost-mgmt-tls.sh -n my-cost-mgmt -v
 
-# 3. Deploy Keycloak for JWT testing (if needed)
-./scripts/deploy-rhsso.sh
-
-# 4. Run E2E tests
-./scripts/test-ocp-dataflow-jwt.sh
-
-# 5. Cleanup (always run)
-./scripts/cleanup-kind-artifacts.sh
+# Dry-run to preview actions
+./setup-cost-mgmt-tls.sh --dry-run
 ```
 
-### Local Development Iteration
+**Best for:** All OpenShift environments, especially those with self-signed certificates
+
+---
+
+### `test-ocp-dataflow-jwt.sh`
+End-to-end test of JWT authentication flow with sample cost data.
+
+**Test flow:**
+1. Auto-detects Keycloak configuration
+2. Obtains JWT token using client credentials
+3. Creates test payload (CSV + manifest.json)
+4. Uploads data via JWT-authenticated endpoint
+5. Validates ingress processing
+6. Checks for ML recommendations
+
+**Usage:**
 ```bash
-# One-time setup
-./scripts/deploy-kind.sh
+# Test JWT authentication
+./test-ocp-dataflow-jwt.sh
 
-# Deploy and iterate
-export USE_LOCAL_CHART=true
-./scripts/install-helm-chart.sh
+# Custom namespace
+./test-ocp-dataflow-jwt.sh --namespace ros-production
 
-# Make changes to chart, then upgrade
-./scripts/install-helm-chart.sh
-
-# Check status
-./scripts/install-helm-chart.sh status
-
-# When done, cleanup
-./scripts/cleanup-kind-artifacts.sh
+# Verbose output for troubleshooting
+./test-ocp-dataflow-jwt.sh --verbose
 ```
 
-### Troubleshooting in CI/CD
+**Requirements:**
+- JWT authentication enabled in ROS deployment
+- Keycloak/RHSSO with `cost-management-operator` client
+
+---
+
+### `deploy-kind.sh`
+Create KIND (Kubernetes IN Docker) cluster for testing and development.
+
+**Features:**
+- Lightweight Kubernetes cluster in Docker
+- Fixed 6GB memory allocation
+- Automated ingress controller setup
+- Suitable for CI/CD pipelines
+
+**Usage:**
 ```bash
-# Check deployment health
-./scripts/install-helm-chart.sh health
+# Create default cluster
+./deploy-kind.sh
 
-# View detailed status
-./scripts/install-helm-chart.sh status
+# Custom cluster name
+export KIND_CLUSTER_NAME=ros-test
+./deploy-kind.sh
 
-# Clean reinstall preserving data
-./scripts/install-helm-chart.sh cleanup
-./scripts/install-helm-chart.sh
-
-# Complete fresh reinstall
-./scripts/install-helm-chart.sh cleanup --complete
-./scripts/install-helm-chart.sh
+# Use Docker instead of Podman
+export CONTAINER_RUNTIME=docker
+./deploy-kind.sh
 ```
+
+**Resource requirements:** 6GB+ memory for container runtime
+
+---
+
+### `cleanup-kind-artifacts.sh`
+Clean up KIND clusters and related resources.
+
+**Usage:**
+```bash
+# Cleanup default cluster
+./cleanup-kind-artifacts.sh
+
+# Cleanup custom cluster
+export KIND_CLUSTER_NAME=ros-test
+./cleanup-kind-artifacts.sh
+```
+
+**When to use:**
+- After CI/CD test runs (use `if: always()`)
+- Between test iterations
+- When troubleshooting cluster issues
+
+---
+
+## 🔧 Common Environment Variables
+
+Most scripts support these variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NAMESPACE` | Target namespace | `ros-ocp` |
+| `VERBOSE` | Enable detailed logging | `false` |
+| `DRY_RUN` | Preview without executing | `false` |
+| `JWT_AUTH_ENABLED` | Enable JWT authentication | Auto-detect |
+| `USE_LOCAL_CHART` | Use local chart for testing | `false` |
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+**TLS Certificate Errors**
+```bash
+# Run comprehensive TLS setup
+./setup-cost-mgmt-tls.sh --verbose
+```
+
+**JWT Authentication Failures**
+```bash
+# Test with verbose logging
+./test-ocp-dataflow-jwt.sh --verbose
+
+# Check Envoy sidecar logs
+oc logs -n ros-ocp -l app.kubernetes.io/name=ingress -c envoy-proxy
+```
+
+**Cost Management Operator Issues**
+```bash
+# Check operator logs
+oc logs -n costmanagement-metrics-operator deployment/costmanagement-metrics-operator
+
+# Verify namespace labeling
+oc label namespace <namespace> cost_management_optimizations=true
+```
+
+For detailed troubleshooting, see [Troubleshooting Guide](../docs/troubleshooting.md)
+
+## 📚 Related Documentation
+
+- **[Installation Guide](../docs/installation.md)** - Complete installation instructions
+- **[JWT Authentication](../docs/jwt-native-authentication.md)** - JWT setup and configuration
+- **[TLS Setup Guide](../docs/cost-management-operator-tls-setup.md)** - Detailed TLS configuration
+- **[Configuration Reference](../docs/configuration.md)** - Helm values and configuration options
+- **[Helm Templates Reference](../docs/helm-templates.md)** - Technical chart details
+- **[Troubleshooting](../docs/troubleshooting.md)** - Detailed troubleshooting guide
+
+## 📝 Script Maintenance
+
+### Dependencies
+- `oc` (OpenShift CLI)
+- `helm` (Helm CLI v3+)
+- `jq` (JSON processor)
+- `curl` (HTTP client)
+- `openssl` (Certificate tools)
+
+### Logging Conventions
+All scripts use color-coded output:
+- 🟢 **SUCCESS**: Green for successful operations
+- 🔵 **INFO**: Blue for informational messages
+- 🟡 **WARNING**: Yellow for warnings
+- 🔴 **ERROR**: Red for errors and failures
 
 ---
 
 **Last Updated**: October 2025
 **Maintainer**: ROS Engineering Team
-**Environment**: OpenShift 4.12+ (Production), KIND (CI/CD Testing)
-**JWT Authentication**: Supported with Keycloak/RHSSO
-**TLS Support**: Self-signed and CA-signed certificates
+**Supported Platforms**: OpenShift 4.18+ (Kubernetes 1.31+), KIND (CI/CD)
+**Tested With**: OpenShift 4.18.24

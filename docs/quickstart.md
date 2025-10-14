@@ -113,9 +113,6 @@ cd /path/to/ros-helm-chart/scripts/
 ```bash
 # Deploy directly to OpenShift (script auto-detects platform)
 ./install-helm-chart.sh
-
-# Or use local chart for development
-USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp ./install-helm-chart.sh
 ```
 
 The script will:

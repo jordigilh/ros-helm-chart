@@ -7,8 +7,7 @@ Platform-specific configuration and differences between Kubernetes and OpenShift
 - [Automatic Platform Detection](#automatic-platform-detection)
 - [Kubernetes Deployment](#kubernetes-deployment)
 - [OpenShift Deployment](#openshift-deployment)
-- [Feature Comparison](#feature-comparison)
-- [Migration Guide](#migration-guide)
+- [Platform-Specific Troubleshooting](#platform-specific-troubleshooting)
 
 ## Platform Overview
 
@@ -18,10 +17,12 @@ The ROS-OCP Helm chart automatically adapts to different Kubernetes platforms, p
 
 | Platform | Version | Status | Use Case |
 |----------|---------|--------|----------|
-| **Kubernetes** | 1.24+ | ✅ Supported | Development, Testing |
+| **Kubernetes** | 1.31+ | ✅ Supported | Development, Testing |
 | **KIND** | Latest | ✅ Supported | CI/CD, Local Dev |
-| **OpenShift** | 4.12+ | ✅ Supported | Production |
-| **Single Node OpenShift** | 4.12+ | ✅ Supported | Edge, Development |
+| **OpenShift** | 4.18+ | ✅ Supported | Production |
+| **Single Node OpenShift** | 4.18+ | ✅ Supported | Edge, Development |
+
+> **Note**: Tested with OpenShift 4.18.24 (Kubernetes 1.31.12)
 
 ---
 
@@ -58,17 +59,27 @@ fi
 
 ### Architecture
 
-```
-┌─────────────────────────────────────┐
-│   nginx-ingress (port 32061)        │
-├─────────────────────────────────────┤
-│  Path Routing:                      │
-│  /api/ros/*      → ROS API          │
-│  /api/kruize/*   → Kruize API       │
-│  /api/sources/*  → Sources API      │
-│  /api/ingress/*  → Upload API       │
-│  /minio          → MinIO Console    │
-└─────────────────────────────────────┘
+```mermaid
+graph TB
+    Client["Client"] -->|"http://localhost:32061"| Ingress
+
+    subgraph Ingress["nginx-ingress (port 32061)"]
+        direction TB
+        PathRouting["Path Routing"]
+    end
+
+    PathRouting -->|"/api/ros/*"| ROS["ROS API"]
+    PathRouting -->|"/api/kruize/*"| Kruize["Kruize API"]
+    PathRouting -->|"/api/sources/*"| Sources["Sources API"]
+    PathRouting -->|"/api/ingress/*"| Upload["Upload API"]
+    PathRouting -->|"/minio"| MinIO["MinIO Console"]
+
+    style Ingress fill:#90caf9,stroke:#333,stroke-width:2px,color:#000
+    style ROS fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style Kruize fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style Sources fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style Upload fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style MinIO fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ### Networking
@@ -191,15 +202,23 @@ global:
 
 ### Architecture
 
-```
-┌─────────────────────────────────────┐
-│   OpenShift Router (HAProxy)        │
-├─────────────────────────────────────┤
-│  Routes (separate hostnames):       │
-│  ros-ocp-main-ros-ocp.apps...       │
-│  ros-ocp-ingress-ros-ocp.apps...    │
-│  ros-ocp-kruize-ros-ocp.apps...     │
-└─────────────────────────────────────┘
+```mermaid
+graph TB
+    Client["Client"] --> Router
+
+    subgraph Router["OpenShift Router (HAProxy)"]
+        direction TB
+        Routes["Routes (separate hostnames)"]
+    end
+
+    Routes -->|"ros-ocp-main-ros-ocp.apps..."| Main["ROS Main Service"]
+    Routes -->|"ros-ocp-ingress-ros-ocp.apps..."| Ingress["Ingress Service"]
+    Routes -->|"ros-ocp-kruize-ros-ocp.apps..."| Kruize["Kruize Service"]
+
+    style Router fill:#e57373,stroke:#333,stroke-width:2px,color:#000
+    style Main fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style Ingress fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style Kruize fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ### Networking
@@ -340,106 +359,6 @@ global:
 
 ---
 
-## Feature Comparison
-
-### Routing & Access
-
-| Feature | Kubernetes | OpenShift |
-|---------|-----------|-----------|
-| **Resource Type** | Ingress | Route |
-| **Controller** | nginx-ingress | HAProxy (built-in) |
-| **TLS** | Manual cert management | Automatic edge termination |
-| **Path Routing** | Single ingress, path-based | Separate routes per service |
-| **External Access** | `localhost:32061` (KIND) | Auto-generated hostnames |
-| **Wildcard Support** | Yes (with cert) | Yes (cluster-wide) |
-
-### Storage
-
-| Feature | Kubernetes | OpenShift |
-|---------|-----------|-----------|
-| **Object Storage** | MinIO (deployed) | ODF/NooBaa (existing) |
-| **Deployment** | StatefulSet | Uses existing installation |
-| **Credentials** | Auto-generated | User-provided secret |
-| **Console** | Included | OpenShift console |
-| **S3 Compatibility** | Full | Full |
-| **Enterprise Features** | Basic | Advanced (deduplication, etc.) |
-
-### Security
-
-| Feature | Kubernetes | OpenShift |
-|---------|-----------|-----------|
-| **Pod Security** | PSS/PSA | SCCs (more granular) |
-| **RBAC** | Standard | Enhanced with SCCs |
-| **Network Policy** | Optional | Recommended |
-| **Service Mesh** | Optional (Istio) | Optional (Service Mesh) |
-| **TLS** | Manual | Automatic (routes) |
-
-### Operations
-
-| Feature | Kubernetes | OpenShift |
-|---------|-----------|-----------|
-| **CLI** | `kubectl` | `oc` (+ kubectl compatibility) |
-| **Web Console** | Dashboard (optional) | Built-in console |
-| **Monitoring** | Manual setup | Built-in Prometheus |
-| **Logging** | Manual setup | Built-in EFK/Loki |
-| **Updates** | Manual | Automated operators |
-
----
-
-## Migration Guide
-
-### Kubernetes to OpenShift
-
-**Prerequisites:**
-1. Install ODF in OpenShift cluster
-2. Create ODF credentials secret
-3. Backup data from MinIO
-
-**Migration Steps:**
-
-```bash
-# 1. Backup MinIO data
-kubectl exec -n ros-ocp statefulset/ros-ocp-minio -- \
-  mc mirror local/ros-data /tmp/backup
-
-# 2. Export data
-kubectl cp ros-ocp/ros-ocp-minio-0:/tmp/backup ./backup-data
-
-# 3. Deploy to OpenShift
-oc create secret generic ros-ocp-odf-credentials \
-  --from-literal=access-key=<key> \
-  --from-literal=secret-key=<secret> \
-  -n ros-ocp
-
-helm install ros-ocp ./ros-ocp \
-  -f values-openshift.yaml \
-  -n ros-ocp
-
-# 4. Import data to ODF
-# Use ODF console or mc client to upload backup data
-```
-
-### OpenShift to Kubernetes
-
-**Steps:**
-
-```bash
-# 1. Backup ODF data
-aws --endpoint-url https://s3-openshift-storage... \
-  s3 sync s3://ros-data ./backup-data
-
-# 2. Deploy to Kubernetes
-helm install ros-ocp ./ros-ocp \
-  -f values-kubernetes.yaml \
-  -n ros-ocp
-
-# 3. Restore to MinIO
-kubectl exec -n ros-ocp statefulset/ros-ocp-minio -- \
-  mc mirror /backup-data local/ros-data
-```
-
----
-
 ## Platform-Specific Troubleshooting
 
 ### Kubernetes Issues
@@ -498,39 +417,6 @@ oc get secret ros-ocp-odf-credentials -n ros-ocp
 oc rsh deployment/ros-ocp-ingress
 aws --endpoint-url https://s3.openshift-storage... s3 ls
 ```
-
----
-
-## Best Practices
-
-### Kubernetes
-
-✅ **Do:**
-- Use KIND for local development and CI/CD
-- Set resource limits to prevent cluster issues
-- Use LoadBalancer or NodePort for production ingress
-- Monitor ingress controller logs
-- Regular MinIO backups
-
-❌ **Don't:**
-- Expose services directly without ingress
-- Use default MinIO credentials in production
-- Skip resource limits (causes OOM issues)
-
-### OpenShift
-
-✅ **Do:**
-- Use ODF for production workloads
-- Leverage built-in monitoring and logging
-- Use route TLS termination
-- Follow SCC best practices
-- Use dedicated service accounts for ODF access
-
-❌ **Don't:**
-- Use admin ODF credentials for applications
-- Disable security contexts
-- Skip route TLS in production
-- Mix Ingress and Routes (use Routes only)
 
 ---
 

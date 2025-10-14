@@ -52,12 +52,52 @@ Complete configuration reference for resource requirements, storage, and access 
 
 ---
 
+## Namespace Requirements
+
+### Cost Management Operator Label
+
+**REQUIRED**: The deployment namespace must be labeled for the Cost Management Metrics Operator to collect resource optimization data.
+
+**Label:**
+```yaml
+insights-cost-management-optimizations: "true"
+```
+
+**Automatic Application:**
+When using `scripts/install-helm-chart.sh`, this label is automatically applied to the namespace during deployment.
+
+**Manual Application:**
+```bash
+# Apply label to namespace
+kubectl label namespace ros-ocp insights-cost-management-optimizations=true
+
+# Verify label
+kubectl get namespace ros-ocp --show-labels | grep insights-cost-management
+
+# Remove label (if needed)
+kubectl label namespace ros-ocp insights-cost-management-optimizations-
+```
+
+**Why This Label is Required:**
+The Cost Management Metrics Operator uses this label to filter which namespaces to collect resource optimization (ROS) metrics from. Without this label:
+- ❌ No resource optimization data will be collected from the namespace
+- ❌ No ROS files will be generated
+- ❌ No data will be uploaded to the ingress service
+- ❌ Kruize will not receive metrics for optimization recommendations
+
+**Legacy Label (also supported):**
+```yaml
+cost_management_optimizations: "true"
+```
+
+---
+
 ## OpenShift Requirements
 
 ### Single Node OpenShift (SNO)
 
 **Base Requirements:**
-- SNO cluster running OpenShift 4.12+
+- SNO cluster running OpenShift 4.18+
 - OpenShift Data Foundation (ODF) installed
 - 30GB+ block devices for ODF
 
@@ -590,7 +630,7 @@ kubectl get secrets -n ros-ocp
 
 - **Installation**: See [Installation Guide](installation.md)
 - **Platform Specifics**: See [Platform Guide](platform-guide.md)
-- **JWT Authentication**: See [JWT Auth Guide](README-JWT-AUTH.md)
+- **JWT Authentication**: See [JWT Auth Guide](jwt-native-authentication.md)
 - **Troubleshooting**: See [Troubleshooting Guide](troubleshooting.md)
 
 ---

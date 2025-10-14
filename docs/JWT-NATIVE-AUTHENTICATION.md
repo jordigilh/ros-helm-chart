@@ -6,37 +6,18 @@ The ROS Helm Chart uses **Envoy's native JWT authentication filter** for validat
 
 ## Architecture
 
-```
-┌─────────────┐
-│   Client    │
-│ (with JWT)  │
-└──────┬──────┘
-       │ Authorization: Bearer <JWT>
-       ▼
-┌─────────────────────────────────┐
-│     Envoy Sidecar (Port 8080)   │
-│                                  │
-│  1. jwt_authn filter             │
-│     - Fetches JWKS from Keycloak│
-│     - Validates JWT signature    │
-│     - Extracts claims to metadata│
-│                                  │
-│  2. Lua filter                   │
-│     - Reads JWT claims           │
-│     - Injects X-ROS-* headers    │
-│                                  │
-│  3. Routes to backend            │
-└──────┬──────────────────────────┘
-       │ X-ROS-Authenticated: true
-       │ X-ROS-User-ID: <sub>
-       │ X-Bearer-Token: <token>
-       ▼
-┌─────────────────────────────────┐
-│  ROS Ingress Service (Port 8081)│
-│                                  │
-│  - Trusts X-ROS headers          │
-│  - Processes authenticated upload│
-└─────────────────────────────────┘
+```mermaid
+graph TB
+    Client["Client<br/>(with JWT)"]
+    Envoy["Envoy Sidecar<br/>(Port 8080)<br/><br/>1. jwt_authn filter<br/>   - Fetches JWKS from Keycloak<br/>   - Validates JWT signature<br/>   - Extracts claims to metadata<br/><br/>2. Lua filter<br/>   - Reads JWT claims<br/>   - Injects X-ROS-* headers<br/><br/>3. Routes to backend"]
+    Ingress["ROS Ingress Service<br/>(Port 8081)<br/><br/>- Trusts X-ROS headers<br/>- Processes authenticated upload"]
+
+    Client -->|"Authorization: Bearer &lt;JWT&gt;"| Envoy
+    Envoy -->|"X-ROS-Authenticated: true<br/>X-ROS-User-ID: &lt;sub&gt;<br/>X-Bearer-Token: &lt;token&gt;"| Ingress
+
+    style Client fill:#90caf9,stroke:#333,stroke-width:2px,color:#000
+    style Envoy fill:#fff59d,stroke:#333,stroke-width:2px,color:#000
+    style Ingress fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ## Why Native JWT?
@@ -203,6 +184,7 @@ echo "$TOKEN" | cut -d'.' -f2 | base64 -d | jq
 
 ## References
 
+- [Helm Templates Reference](./HELM-TEMPLATES.md) - Technical details about Envoy and JWT templates
 - [Envoy JWT Authentication](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/http/jwt_authn/v3/config.proto)
 - [Envoy Lua Filter](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/lua_filter)
 - [Keycloak Client Credentials Flow](https://www.keycloak.org/docs/latest/securing_apps/index.html#_client_credentials_grant)
