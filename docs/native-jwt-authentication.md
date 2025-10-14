@@ -32,11 +32,16 @@ Envoy's native JWT authentication provides:
 
 ## Configuration
 
+### Automatic Platform Detection
+
+JWT authentication is **automatically enabled on OpenShift** and **disabled on KIND/K8s**. No configuration needed!
+
+The Helm chart detects the platform by checking for OpenShift-specific APIs (`route.openshift.io/v1`).
+
 ### Helm Values
 
 ```yaml
 jwt_auth:
-  enabled: true  # Auto-enabled on OpenShift
 
   envoy:
     image:
@@ -46,12 +51,21 @@ jwt_auth:
     adminPort: 9901
 
   keycloak:
-    url: ""  # Auto-detected from cluster
+    url: ""  # Leave empty for auto-detection (recommended)
     realm: kubernetes
     audiences:
       - account
       - cost-management-operator
 ```
+
+**Automatic Configuration:**
+- **JWT Enabled/Disabled**: Auto-detected by platform (OpenShift vs K8s)
+- **Keycloak URL**: Auto-detected from Keycloak routes/ingresses
+- **Override**: Set `jwt_auth.keycloak.url` only for custom/external Keycloak
+
+**Platform Behavior:**
+- **OpenShift**: JWT auth enabled automatically (Keycloak required)
+- **KIND/K8s**: JWT auth disabled automatically (no Keycloak)
 
 ### JWT Claims to Headers Mapping
 

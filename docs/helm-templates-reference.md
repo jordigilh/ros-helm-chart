@@ -263,7 +263,6 @@ data:
 
 ```yaml
 jwt_auth:
-  enabled: true  # Enable JWT authentication
 
   envoy:
     image:
