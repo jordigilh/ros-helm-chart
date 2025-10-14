@@ -318,7 +318,7 @@ oc logs -n costmanagement-metrics-operator deployment/costmanagement-metrics-ope
 
 ## Integration with JWT Authentication
 
-**IMPORTANT**: This TLS configuration is essential for the JWT authentication flow documented in [JWT-AUTHENTICATION-SETUP.md](JWT-AUTHENTICATION-SETUP.md).
+**IMPORTANT**: This TLS configuration is essential for the JWT authentication flow documented in [jwt-native-authentication.md](jwt-native-authentication.md).
 
 ### Why TLS Matters for JWT Authentication
 Our JWT authentication implementation requires the Cost Management Operator to:
@@ -328,7 +328,7 @@ Our JWT authentication implementation requires the Cost Management Operator to:
 
 Without proper TLS configuration, the JWT authentication flow fails at the token generation step.
 
-When using JWT authentication (as documented in JWT-AUTHENTICATION-SETUP.md), ensure:
+When using JWT authentication (as documented in jwt-native-authentication.md), ensure:
 
 1. **Keycloak Communication**: Cost Management Operator must trust Keycloak's certificate
 2. **Token Validation**: Tokens are properly signed and validated
