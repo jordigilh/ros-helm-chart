@@ -1,4 +1,5 @@
 {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
+{{- $keycloakUrl := .Values.jwt_auth.keycloak.url | default (include "ros-ocp.keycloak.url" .) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -45,14 +46,14 @@ data:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
                   providers:
                     keycloak:
-                      issuer: "{{ .Values.jwt_auth.keycloak.url }}/auth/realms/{{ .Values.jwt_auth.keycloak.realm }}"
+                      issuer: "{{ $keycloakUrl }}/auth/realms/{{ .Values.jwt_auth.keycloak.realm }}"
                       audiences:
                       {{- range .Values.jwt_auth.keycloak.audiences }}
                       - {{ . | quote }}
                       {{- end }}
                       remote_jwks:
                         http_uri:
-                          uri: "{{ .Values.jwt_auth.keycloak.url }}/auth/realms/{{ .Values.jwt_auth.keycloak.realm }}/protocol/openid-connect/certs"
+                          uri: "{{ $keycloakUrl }}/auth/realms/{{ .Values.jwt_auth.keycloak.realm }}/protocol/openid-connect/certs"
                           cluster: keycloak_jwks
                           timeout: 5s
                         cache_duration:
@@ -152,13 +153,13 @@ data:
             - endpoint:
                 address:
                   socket_address:
-                    address: {{ .Values.jwt_auth.keycloak.url | replace "https://" "" | replace "http://" "" }}
+                    address: {{ $keycloakUrl | replace "https://" "" | replace "http://" "" }}
                     port_value: 443
         transport_socket:
           name: envoy.transport_sockets.tls
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-            sni: {{ .Values.jwt_auth.keycloak.url | replace "https://" "" | replace "http://" "" }}
+            sni: {{ $keycloakUrl | replace "https://" "" | replace "http://" "" }}
 
     # Admin interface for monitoring and debugging
     admin:

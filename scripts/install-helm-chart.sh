@@ -147,6 +147,14 @@ create_namespace() {
         kubectl create namespace "$NAMESPACE"
         echo_success "Namespace '$NAMESPACE' created"
     fi
+
+    # Apply Cost Management Metrics Operator label for resource optimization data collection
+    # This label is required by the operator to collect ROS metrics from the namespace
+    echo_info "Applying cost management optimization label to namespace..."
+    kubectl label namespace "$NAMESPACE" insights-cost-management-optimizations=true --overwrite
+    echo_success "Cost management optimization label applied"
+    echo_info "  Label: insights-cost-management-optimizations=true"
+    echo_info "  This enables the Cost Management Metrics Operator to collect resource optimization data"
 }
 
 # Function to create storage credentials secret
@@ -479,17 +487,16 @@ deploy_helm_chart() {
         fi
     fi
 
-    # Add JWT authentication configuration if enabled
-    if [ "$JWT_AUTH_ENABLED" = "true" ]; then
-        echo_info "Configuring JWT authentication for Helm deployment..."
-        helm_cmd="$helm_cmd --set jwt_auth.enabled=true"
-
+    # JWT authentication is auto-enabled on OpenShift via platform detection in Helm templates
+    # Keycloak URL is auto-detected by Helm chart at render time
+    if [ "$PLATFORM" = "openshift" ]; then
+        echo_info "JWT authentication will be auto-enabled on OpenShift"
+        echo_info "  Keycloak URL will be auto-detected by Helm chart"
         if [ -n "$KEYCLOAK_URL" ]; then
-            echo_info "Using detected Keycloak URL: $KEYCLOAK_URL"
-            helm_cmd="$helm_cmd --set jwt_auth.keycloak.url=\"$KEYCLOAK_URL\""
+            echo_info "  Detected Keycloak: $KEYCLOAK_URL"
         fi
-
-        echo_info "JWT authentication configured for Helm chart (native Envoy JWT)"
+    else
+        echo_info "JWT authentication disabled (non-OpenShift platform)"
     fi
 
     echo_info "Executing: $helm_cmd"
@@ -1095,32 +1102,29 @@ detect_rhsso_keycloak() {
 # Authorino functions removed - native JWT authentication is now used
 # No operator installation required for Envoy native JWT filter
 
-# Function to setup JWT authentication prerequisites
+# Function to setup JWT authentication based on platform
 setup_jwt_authentication() {
-    echo_info "Setting up JWT authentication prerequisites..."
+    echo_info "Configuring JWT authentication based on platform..."
 
-    # JWT authentication with RH SSO is only supported on OpenShift
-    if [ "$PLATFORM" != "openshift" ]; then
-        echo_info "JWT authentication setup skipped - not an OpenShift cluster"
-        echo_info "JWT authentication with RH SSO/Keycloak requires OpenShift platform"
-        echo_info "For vanilla Kubernetes, consider using external OIDC providers"
+    # JWT authentication is enabled on OpenShift (requires Keycloak), disabled elsewhere
+    if [ "$PLATFORM" = "openshift" ]; then
+        export JWT_AUTH_ENABLED="true"
+        echo_info "JWT authentication: Enabled (OpenShift platform)"
+        echo_info "  JWT Method: Envoy native JWT filter"
+        echo_info "  Requires: Keycloak/RH SSO deployed"
+
+        # Detect Keycloak URL for configuration
+        if detect_rhsso_keycloak; then
+            echo_info "  Keycloak: $KEYCLOAK_NAMESPACE namespace"
+        else
+            echo_warning "Keycloak not detected - ensure it's deployed before using JWT authentication"
+        fi
+    else
         export JWT_AUTH_ENABLED="false"
-        return 0
+        echo_info "JWT authentication: Disabled (non-OpenShift platform)"
+        echo_info "  Platform: $PLATFORM"
+        echo_info "  Note: JWT auth with RH SSO/Keycloak is only supported on OpenShift"
     fi
-
-    # Detect RH SSO/Keycloak
-    if ! detect_rhsso_keycloak; then
-        echo_warning "RH SSO/Keycloak not detected - JWT authentication will be disabled"
-        export JWT_AUTH_ENABLED="false"
-        return 0
-    fi
-
-    # Set JWT auth as enabled (uses Envoy native JWT filter, no operator required)
-    export JWT_AUTH_ENABLED="true"
-    echo_success "JWT authentication prerequisites ready"
-    echo_info "  Keycloak: $KEYCLOAK_NAMESPACE namespace"
-    echo_info "  JWT Method: Envoy native JWT filter"
-    echo_info "  JWT Auth: Enabled"
 
     return 0
 }

@@ -86,7 +86,8 @@ export USE_LOCAL_CHART=true
 - `VALUES_FILE`: Path to custom values file
 - `USE_LOCAL_CHART`: Use local chart instead of GitHub release (default: `false`)
 - `LOCAL_CHART_PATH`: Path to local chart directory (default: `../ros-ocp`)
-- `JWT_AUTH_ENABLED`: Enable JWT authentication (default: auto-detect)
+
+**Note**: JWT authentication is automatically enabled on OpenShift and disabled on KIND/K8s via platform detection.
 
 ---
 
@@ -502,8 +503,8 @@ kubectl top nodes  # requires metrics-server
 After successful installation:
 
 1. **Configure Access**: See [Configuration Guide](configuration.md)
-2. **Set Up JWT Auth**: See [JWT Authentication Guide](README-JWT-AUTH.md)
-3. **Configure TLS**: See [TLS Setup Guide](COST-MANAGEMENT-OPERATOR-TLS-SETUP.md)
+2. **Set Up JWT Auth**: See [JWT Authentication Guide](jwt-native-authentication.md)
+3. **Configure TLS**: See [TLS Setup Guide](cost-management-operator-tls-setup.md)
 4. **Run Tests**: See [Scripts Reference](../scripts/README.md)
 
 ---

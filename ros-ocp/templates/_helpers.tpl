@@ -930,17 +930,9 @@ Get Keycloak CR information for debugging
 
 {{/*
 Check if JWT authentication should be enabled
-Auto-enables on OpenShift, disabled elsewhere, unless explicitly overridden
+Auto-detects based on platform: true for OpenShift, false for KIND/K8s
+JWT authentication requires Keycloak, which is only deployed on OpenShift
 */}}
 {{- define "ros-ocp.jwt.shouldEnable" -}}
-{{- if eq .Values.jwt_auth.enabled true -}}
-  {{- /* Explicitly enabled */ -}}
-  true
-{{- else if eq .Values.jwt_auth.enabled false -}}
-  {{- /* Explicitly disabled */ -}}
-  false
-{{- else -}}
-  {{- /* Auto-detect: enable on OpenShift, disable elsewhere */ -}}
-  {{- include "ros-ocp.isOpenShift" . -}}
-{{- end -}}
+{{- include "ros-ocp.isOpenShift" . -}}
 {{- end }}
