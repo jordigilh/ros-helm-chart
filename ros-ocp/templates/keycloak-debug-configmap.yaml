@@ -33,19 +33,15 @@ data:
 
     # Configuration Used:
     jwt_auth_enabled: {{ include "ros-ocp.jwt.shouldEnable" . | quote }}
-    manual_base_url: {{ .Values.jwt_auth.keycloak.issuer.baseUrl | quote }}
-    realm: {{ .Values.jwt_auth.keycloak.issuer.realm | quote }}
+    manual_base_url: {{ .Values.jwt_auth.keycloak.url | quote }}
+    realm: {{ .Values.jwt_auth.keycloak.realm | quote }}
 
     # Platform Detection:
     is_openshift: {{ include "ros-ocp.isOpenShift" . | quote }}
 
-    # Authorino Configuration:
-    authorino_deploy_enabled: "true"  # Always deployed when JWT auth is enabled
-    authorino_image: {{ .Values.jwt_auth.authorino.image.repository }}:{{ .Values.jwt_auth.authorino.image.tag }}
-    authorino_namespace: {{ include "ros-ocp.authorino.namespace" . | quote }}
-    authorino_service: {{ include "ros-ocp.authorino.serviceName" . | quote }}
-    authorino_fqdn: {{ include "ros-ocp.authorino.fqdn" . | quote }}
-    authorino_port: {{ include "ros-ocp.authorino.port" . | quote }}
+    # JWT Authentication Method:
+    auth_method: "Envoy Native JWT Filter"
+    auth_description: "Inline JWT validation without external authorization service"
 
     # How to use this information:
     # ============================
@@ -54,7 +50,7 @@ data:
     # 3. Check 'ready' status to ensure Keycloak is operational
     # 4. Verify keycloak_auto_url or externalURL points to your Keycloak instance
     # 5. If issuer_url looks correct, JWT auth should work
-    # 6. If auto-detection fails, set jwt_auth.keycloak.issuer.baseUrl manually
+    # 6. If auto-detection fails, set jwt_auth.keycloak.url manually
 
     # Troubleshooting:
     # ================
@@ -62,7 +58,7 @@ data:
     # - If 'found' is false but keycloak_installed is true: Using fallback namespace detection
     # - If 'ready' is false: Keycloak CR exists but instance may not be ready
     # - If keycloak_auto_url is empty: No route/ingress found, check Keycloak external access
-    # - If issuer_url is wrong: Override with manual jwt_auth.keycloak.issuer.baseUrl
+    # - If issuer_url is wrong: Override with manual jwt_auth.keycloak.url
 
     # Detection Method Priority:
     # =========================
