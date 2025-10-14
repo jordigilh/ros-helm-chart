@@ -468,7 +468,7 @@ jwt_auth:
   # On vanilla Kubernetes/KIND, JWT authentication is automatically disabled.
   keycloak:
     # Keycloak URL - leave empty for automatic runtime discovery (OpenShift only)
-    # 
+    #
     # Runtime Discovery on OpenShift (when url is empty):
     #   1. Searches for Keycloak Route in common namespaces (rhsso, keycloak, sso)
     #   2. Falls back to Keycloak Service discovery (cluster-local)
@@ -476,6 +476,15 @@ jwt_auth:
     #
     # Override only if using custom/external Keycloak instance on OpenShift
     url: ""  # e.g., "https://keycloak-rhsso.apps.example.com"
+
+    # Keycloak namespace - leave empty for automatic discovery
+    # Set this if Keycloak is deployed in a custom namespace that doesn't match
+    # the standard patterns (rhsso, keycloak, sso)
+    namespace: ""  # e.g., "my-auth-namespace"
+
+    # Keycloak service port for internal cluster-local discovery fallback
+    # Only used when discovering Keycloak via Service (not Route)
+    servicePort: 8080
 
     # Keycloak realm name
     realm: kubernetes
