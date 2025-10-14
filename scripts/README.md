@@ -11,8 +11,6 @@ This directory contains automation scripts for deploying, configuring, and testi
 | `install-helm-chart.sh` | 📦 Helm deployment | All | Medium |
 | `deploy-rhsso.sh` | 🔐 Keycloak/RHSSO setup | OCP with RHSSO | High |
 | `test-ocp-dataflow-jwt.sh` | 🧪 JWT auth testing | JWT-enabled | Medium |
-| `test-ocp-dataflow-cost-management.sh` | 🎯 Cost mgmt testing | Cost mgmt enabled | Medium |
-| `validate-jwt-setup.sh` | ✅ JWT validation | JWT-enabled | Low |
 | `setup-cost-mgmt-tls.sh` | 🛠️ Complete Cost Mgmt deployment with TLS | Any OCP | Medium |
 
 ## 🔐 Authentication & Security Scripts
@@ -107,62 +105,10 @@ This directory contains automation scripts for deploying, configuring, and testi
 **Requirements**:
 - JWT authentication enabled
 - Keycloak configured with `cost-management-operator` client
-- ROS ingress deployed with Authorino sidecar
+- ROS ingress deployed with Envoy sidecar (native JWT authentication)
 
 ---
 
-### `test-ocp-dataflow-cost-management.sh`
-**Purpose**: Tests the actual Cost Management Operator data upload and processing.
-
-**Features**:
-- Automatic namespace labeling for cost optimization
-- Cost Management Operator pod management
-- Upload monitoring and validation
-- ML recommendation verification
-- Comprehensive error reporting
-
-**Test phases**:
-1. **STEP 0**: Ensure cost optimization labels on namespaces
-2. **STEP 1**: Trigger cost management operator upload
-3. **STEP 2**: Validate data processing and storage
-4. **STEP 3**: Check for ML recommendations
-
-**Usage**:
-```bash
-# Test cost management data flow
-./test-ocp-dataflow-cost-management.sh
-
-# Monitor upload only
-./test-ocp-dataflow-cost-management.sh --upload-only
-
-# Skip recommendation checks
-./test-ocp-dataflow-cost-management.sh --no-recommendations
-```
-
-**Key feature**: Automatically labels namespaces with `cost_management_optimizations=true` to enable ROS file generation.
-
----
-
-### `validate-jwt-setup.sh`
-**Purpose**: Validates JWT authentication infrastructure and configuration.
-
-**Checks**:
-- Authorino operator deployment
-- AuthConfig resources
-- Envoy sidecar configuration
-- Keycloak connectivity
-- Certificate trust chains
-
-**Usage**:
-```bash
-# Validate JWT setup
-./validate-jwt-setup.sh
-
-# Quick health check
-./validate-jwt-setup.sh --health-check
-```
-
----
 
 ## 🎯 Usage Recommendations
 
@@ -171,8 +117,8 @@ This directory contains automation scripts for deploying, configuring, and testi
 # 1. Deploy Cost Management Operator with TLS support
 ./setup-cost-mgmt-tls.sh
 
-# 2. Test the deployment
-./test-ocp-dataflow-cost-management.sh
+# 2. Test JWT authentication (if enabled)
+./test-ocp-dataflow-jwt.sh
 ```
 
 ### For JWT Authentication
@@ -180,17 +126,14 @@ This directory contains automation scripts for deploying, configuring, and testi
 # 1. Deploy Keycloak
 ./deploy-rhsso.sh
 
-# 2. Deploy ROS with JWT auth
+# 2. Deploy ROS with JWT auth (uses Envoy native JWT filter)
 export JWT_AUTH_ENABLED=true
 ./install-helm-chart.sh
 
 # 3. Deploy Cost Management Operator with TLS support
 ./setup-cost-mgmt-tls.sh
 
-# 4. Validate JWT setup
-./validate-jwt-setup.sh
-
-# 5. Test JWT authentication
+# 4. Test JWT authentication
 ./test-ocp-dataflow-jwt.sh
 ```
 
@@ -202,9 +145,7 @@ export JWT_AUTH_ENABLED=true
 # 2. Deploy Keycloak for production
 ./deploy-rhsso.sh
 
-# 3. Run full validation suite
-./validate-jwt-setup.sh
-./test-ocp-dataflow-cost-management.sh
+# 3. Test JWT authentication
 ./test-ocp-dataflow-jwt.sh
 ```
 
@@ -226,20 +167,20 @@ export JWT_AUTH_ENABLED=true
 
 **JWT Authentication Failures**:
 ```bash
-# Check JWT setup
-./validate-jwt-setup.sh
-
-# Test with sample data
+# Test with sample data and detailed logging
 ./test-ocp-dataflow-jwt.sh --verbose
+
+# Check Envoy sidecar logs
+oc logs -n ros-ocp -l app.kubernetes.io/name=ingress -c envoy-proxy
 ```
 
 **Cost Management Upload Issues**:
 ```bash
-# Ensure namespace labeling
-./test-ocp-dataflow-cost-management.sh --upload-only
-
-# Check for missing ROS files
+# Check Cost Management Operator logs
 oc logs -n costmanagement-metrics-operator deployment/costmanagement-metrics-operator
+
+# Verify namespace has cost optimization label
+oc label namespace <namespace> cost_management_optimizations=true
 ```
 
 ## 📝 Script Maintenance
@@ -270,43 +211,36 @@ The following Helm templates and manifests are included for JWT authentication a
 
 ### JWT Authentication Templates
 
-#### `ros-ocp/templates/authconfig.yaml`
-**Purpose**: Configures Authorino AuthConfig for Keycloak JWT validation.
-
-**Features**:
-- Keycloak OIDC discovery configuration
-- JWT token validation rules
-- Host-based routing protection
-- TLS bypass for self-signed certificates
-
-**Usage**: Automatically deployed when `jwt_auth.enabled=true`
-
 #### `ros-ocp/templates/deployment-ingress.yaml`
-**Purpose**: Enhanced ingress deployment with Envoy sidecar for JWT authentication.
+**Purpose**: Enhanced ingress deployment with Envoy sidecar for native JWT authentication.
 
 **Features**:
-- Envoy proxy sidecar for external authentication
-- Conditional authentication (JWT vs traditional)
+- Envoy proxy sidecar with native JWT filter
+- Inline JWT validation (no external authorization service)
+- Lua filter for JWT claims extraction
 - Port configuration for sidecar routing
 - Health probe adjustments
-- Custom ingress image support
 
 **Key Environment Variables**:
-- `AUTH_ENABLED`: Controls traditional auth (false when JWT enabled)
+- `AUTH_ENABLED`: Set to true when JWT enabled (ingress trusts X-ROS headers)
 - `SERVER_PORT`: Ingress container port (8081 for JWT, 8080 for traditional)
+- `UPLOAD_REQUIRE_AUTH`: Set to true when JWT enabled
 
 #### `ros-ocp/templates/envoy-config.yaml`
-**Purpose**: Envoy proxy configuration for routing and JWT validation.
+**Purpose**: Envoy proxy configuration with native JWT authentication.
 
 **Features**:
-- External authorization filter configuration
-- Authorino service routing
-- Request size limits (configurable)
+- Native JWT authentication filter (`jwt_authn`)
+- Lua script for extracting JWT claims to X-ROS headers
+- Keycloak JWKS endpoint configuration
+- Request routing to backend service
 - Access logging configuration
 
 **Configuration Options**:
-- `jwt_auth.envoy.maxRequestBytes`: Maximum request size (default: 100MB)
-- `jwt_auth.authorino.service`: Authorino service endpoint
+- `jwt_auth.keycloak.url`: Keycloak base URL
+- `jwt_auth.keycloak.realm`: Keycloak realm name
+- `jwt_auth.keycloak.audiences`: Expected JWT audiences
+- `jwt_auth.envoy.port`: Envoy listener port (default: 8080)
 
 #### `ros-ocp/templates/service-ingress.yaml`
 **Purpose**: Kubernetes service for ingress with Envoy proxy endpoints.
@@ -315,19 +249,6 @@ The following Helm templates and manifests are included for JWT authentication a
 - Dual port configuration (Envoy + ingress)
 - Service discovery for JWT routing
 - Load balancer configuration
-
-### Authorino Direct Deployment Templates
-
-#### `ros-ocp/templates/authorino-direct-full.yaml`
-**Purpose**: Complete direct deployment of Authorino without operator.
-
-**Features**:
-- ServiceAccount, ClusterRole, ClusterRoleBinding
-- Authorino deployment with TLS bypass
-- CA certificate mounting
-- Service configuration
-
-**Use Case**: When operator-based deployment doesn't support TLS bypass
 
 
 ### Security & Certificate Templates
@@ -417,15 +338,9 @@ For a full deployment with JWT authentication and TLS support:
    helm upgrade ros-ocp ./ros-ocp -f values-jwt-auth-complete.yaml
    ```
 
-4. **Validate setup**:
-   ```bash
-   ./scripts/validate-jwt-setup.sh
-   ```
-
-5. **Test end-to-end**:
+4. **Test end-to-end**:
    ```bash
    ./scripts/test-ocp-dataflow-jwt.sh
-   ./scripts/test-ocp-dataflow-cost-management.sh
    ```
 
 ---
@@ -621,14 +536,10 @@ export USE_LOCAL_CHART=true
 # 3. Deploy Keycloak for JWT testing (if needed)
 ./scripts/deploy-rhsso.sh
 
-# 4. Validate JWT setup
-./scripts/validate-jwt-setup.sh
-
-# 5. Run E2E tests
+# 4. Run E2E tests
 ./scripts/test-ocp-dataflow-jwt.sh
-./scripts/test-ocp-dataflow-cost-management.sh
 
-# 6. Cleanup (always run)
+# 5. Cleanup (always run)
 ./scripts/cleanup-kind-artifacts.sh
 ```
 

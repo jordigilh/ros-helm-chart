@@ -486,14 +486,10 @@ deploy_helm_chart() {
 
         if [ -n "$KEYCLOAK_URL" ]; then
             echo_info "Using detected Keycloak URL: $KEYCLOAK_URL"
-            helm_cmd="$helm_cmd --set jwt_auth.keycloak.issuer.baseUrl=\"$KEYCLOAK_URL\""
+            helm_cmd="$helm_cmd --set jwt_auth.keycloak.url=\"$KEYCLOAK_URL\""
         fi
 
-        # Enable Authorino deployment in same namespace
-        helm_cmd="$helm_cmd --set jwt_auth.authorino.deploy.enabled=true"
-        helm_cmd="$helm_cmd --set jwt_auth.authorino.deploy.name=ros-authorino"
-
-        echo_info "JWT authentication configured for Helm chart"
+        echo_info "JWT authentication configured for Helm chart (native Envoy JWT)"
     fi
 
     echo_info "Executing: $helm_cmd"
@@ -1096,157 +1092,8 @@ detect_rhsso_keycloak() {
     fi
 }
 
-# Function to check if Authorino operator is installed
-check_authorino_operator() {
-    echo_info "Checking Authorino operator installation..."
-
-    # Check for Authorino operator deployment
-    if kubectl get deployment authorino-operator -n openshift-operators >/dev/null 2>&1; then
-        echo_info "Found Authorino operator deployment"
-
-        # Check if operator is ready
-        local ready_replicas=$(kubectl get deployment authorino-operator -n openshift-operators -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
-        if [ "$ready_replicas" -gt 0 ]; then
-            echo_success "Authorino operator is running and ready"
-
-            # Verify CRDs are available
-            if kubectl get crd authorinos.operator.authorino.kuadrant.io >/dev/null 2>&1 && \
-               kubectl get crd authconfigs.authorino.kuadrant.io >/dev/null 2>&1; then
-                echo_success "Authorino CRDs are available"
-                export AUTHORINO_OPERATOR_READY="true"
-                return 0
-            else
-                echo_warning "Authorino operator found but CRDs not available"
-                export AUTHORINO_OPERATOR_READY="false"
-                return 1
-            fi
-        else
-            echo_warning "Authorino operator found but not ready"
-            export AUTHORINO_OPERATOR_READY="false"
-            return 1
-        fi
-    else
-        echo_info "Authorino operator not found"
-        export AUTHORINO_OPERATOR_READY="false"
-        return 1
-    fi
-}
-
-# Function to install Authorino operator
-install_authorino_operator() {
-    echo_info "Installing Authorino operator..."
-
-    # Create OperatorGroup if it doesn't exist
-    if ! kubectl get operatorgroup -n openshift-operators >/dev/null 2>&1; then
-        echo_info "Creating OperatorGroup in openshift-operators namespace..."
-        kubectl apply -f - <<EOF
-apiVersion: operators.coreos.com/v1
-kind: OperatorGroup
-metadata:
-  name: openshift-operators-og
-  namespace: openshift-operators
-spec:
-  targetNamespaces:
-  - openshift-operators
-EOF
-    fi
-
-    # Install Authorino operator subscription
-    echo_info "Creating Authorino operator subscription..."
-    kubectl apply -f - <<EOF
-apiVersion: operators.coreos.com/v1alpha1
-kind: Subscription
-metadata:
-  name: authorino-operator
-  namespace: openshift-operators
-  labels:
-    app.kubernetes.io/name: authorino-operator
-    app.kubernetes.io/part-of: ros-ocp-jwt-auth
-spec:
-  channel: stable
-  name: authorino-operator
-  source: redhat-operators
-  sourceNamespace: openshift-marketplace
-  installPlanApproval: Automatic
-  config:
-    resources:
-      limits:
-        cpu: 200m
-        memory: 256Mi
-      requests:
-        cpu: 100m
-        memory: 128Mi
-EOF
-
-    echo_success "Authorino operator subscription created"
-
-    # Wait for operator installation
-    echo_info "Waiting for Authorino operator installation..."
-    local timeout=300  # 5 minutes timeout
-    local count=0
-
-    while [ $count -lt $timeout ]; do
-        # Check InstallPlan
-        local install_plan=$(kubectl get subscription authorino-operator -n openshift-operators -o jsonpath='{.status.installPlanRef.name}' 2>/dev/null)
-        if [ -n "$install_plan" ]; then
-            local install_plan_status=$(kubectl get installplan "$install_plan" -n openshift-operators -o jsonpath='{.status.phase}' 2>/dev/null)
-            if [ "$install_plan_status" = "Complete" ]; then
-                echo_success "InstallPlan completed"
-                break
-            fi
-        fi
-
-        echo_info "Waiting for InstallPlan to complete... ($count/$timeout seconds)"
-        sleep 10
-        count=$((count + 10))
-    done
-
-    if [ $count -ge $timeout ]; then
-        echo_error "Timeout waiting for InstallPlan to complete"
-        return 1
-    fi
-
-    # Wait for CSV to be ready
-    echo_info "Waiting for ClusterServiceVersion to be ready..."
-    count=0
-    while [ $count -lt $timeout ]; do
-        local csv_name=$(kubectl get subscription authorino-operator -n openshift-operators -o jsonpath='{.status.installedCSV}' 2>/dev/null)
-        if [ -n "$csv_name" ]; then
-            local csv_status=$(kubectl get csv "$csv_name" -n openshift-operators -o jsonpath='{.status.phase}' 2>/dev/null)
-            if [ "$csv_status" = "Succeeded" ]; then
-                echo_success "ClusterServiceVersion succeeded"
-                break
-            fi
-        fi
-
-        echo_info "Waiting for CSV to succeed... ($count/$timeout seconds)"
-        sleep 10
-        count=$((count + 10))
-    done
-
-    if [ $count -ge $timeout ]; then
-        echo_error "Timeout waiting for CSV to succeed"
-        return 1
-    fi
-
-    # Wait for operator deployment to be ready
-    echo_info "Waiting for Authorino operator deployment to be ready..."
-    kubectl wait --for=condition=available deployment/authorino-operator \
-        --namespace openshift-operators \
-        --timeout=300s || {
-        echo_error "Authorino operator deployment did not become ready"
-        return 1
-    }
-
-    # Final verification
-    if check_authorino_operator; then
-        echo_success "Authorino operator installed and verified successfully"
-        return 0
-    else
-        echo_error "Authorino operator installation verification failed"
-        return 1
-    fi
-}
+# Authorino functions removed - native JWT authentication is now used
+# No operator installation required for Envoy native JWT filter
 
 # Function to setup JWT authentication prerequisites
 setup_jwt_authentication() {
@@ -1268,22 +1115,11 @@ setup_jwt_authentication() {
         return 0
     fi
 
-    # Check/install Authorino operator
-    if ! check_authorino_operator; then
-        echo_info "Authorino operator not ready, installing..."
-        if ! install_authorino_operator; then
-            echo_error "Failed to install Authorino operator"
-            echo_warning "JWT authentication will be disabled"
-            export JWT_AUTH_ENABLED="false"
-            return 1
-        fi
-    fi
-
-    # Set JWT auth as enabled
+    # Set JWT auth as enabled (uses Envoy native JWT filter, no operator required)
     export JWT_AUTH_ENABLED="true"
     echo_success "JWT authentication prerequisites ready"
     echo_info "  Keycloak: $KEYCLOAK_NAMESPACE namespace"
-    echo_info "  Authorino: Operator ready"
+    echo_info "  JWT Method: Envoy native JWT filter"
     echo_info "  JWT Auth: Enabled"
 
     return 0
