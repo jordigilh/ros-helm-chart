@@ -37,8 +37,8 @@ helm install ros-ocp ros-ocp/ros-ocp --namespace ros-ocp --create-namespace
 | **[Installation Guide](docs/installation.md)** | Complete installation methods and prerequisites |
 | **[Configuration Guide](docs/configuration.md)** | Resource requirements, storage, and access configuration |
 | **[Platform Guide](docs/platform-guide.md)** | Kubernetes vs OpenShift platform differences |
-| **[JWT Authentication](docs/jwt-native-authentication.md)** | Native JWT authentication with Envoy and Keycloak |
-| **[Helm Templates Reference](docs/helm-templates.md)** | Technical details of chart templates and configuration |
+| **[JWT Authentication](docs/native-jwt-authentication.md)** | Native JWT authentication with Envoy and Keycloak |
+| **[Helm Templates Reference](docs/helm-templates-reference.md)** | Technical details of chart templates and configuration |
 | **[TLS Setup](docs/cost-management-operator-tls-setup.md)** | Cost Management Operator TLS configuration |
 | **[Troubleshooting Guide](docs/troubleshooting.md)** | Common issues and solutions |
 | **[Scripts Reference](scripts/README.md)** | Automation scripts documentation |

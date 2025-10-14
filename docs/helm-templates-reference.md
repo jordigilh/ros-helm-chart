@@ -21,7 +21,7 @@ This document provides detailed information about the Helm templates used in the
 
 **Container Configuration**:
 
-When JWT authentication is enabled (`jwt_auth.enabled: true`):
+When JWT authentication is enabled (automatic on OpenShift):
 - **Ingress container**: Listens on port `8081` (internal)
 - **Envoy sidecar**: Listens on port `8080` (public-facing)
 - **Flow**: Client → Envoy (8080) → JWT validation → Ingress (8081)
@@ -202,25 +202,20 @@ ports:
 **Key Functions**:
 
 #### `ros-ocp.jwt.shouldEnable`
-Determines if JWT authentication should be enabled.
+Determines if JWT authentication should be enabled based on platform detection.
 
 **Logic**:
 ```go
 {{- define "ros-ocp.jwt.shouldEnable" -}}
-{{- if eq .Values.jwt_auth.enabled true -}}
-true
-{{- else if eq .Values.jwt_auth.enabled false -}}
-false
-{{- else -}}
-{{- include "ros-ocp.isOpenShift" . }}
-{{- end -}}
+{{- include "ros-ocp.isOpenShift" . -}}
 {{- end -}}
 ```
 
 **Behavior**:
-- Explicit `true` → Enable JWT
-- Explicit `false` → Disable JWT
-- `null` or unset → Auto-detect (enable on OpenShift, disable elsewhere)
+- **Automatic platform detection** - No configuration needed
+- Returns `true` on OpenShift (Keycloak available)
+- Returns `false` on KIND/Vanilla K8s (Keycloak not deployed)
+- Uses Helm's `Capabilities.APIVersions` to detect `route.openshift.io/v1` API
 
 #### `ros-ocp.isOpenShift`
 Detects if running on OpenShift.

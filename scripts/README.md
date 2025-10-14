@@ -271,10 +271,10 @@ For detailed troubleshooting, see [Troubleshooting Guide](../docs/troubleshootin
 ## 📚 Related Documentation
 
 - **[Installation Guide](../docs/installation.md)** - Complete installation instructions
-- **[JWT Authentication](../docs/jwt-native-authentication.md)** - JWT setup and configuration
+- **[JWT Authentication](../docs/native-jwt-authentication.md)** - JWT setup and configuration
 - **[TLS Setup Guide](../docs/cost-management-operator-tls-setup.md)** - Detailed TLS configuration
 - **[Configuration Reference](../docs/configuration.md)** - Helm values and configuration options
-- **[Helm Templates Reference](../docs/helm-templates.md)** - Technical chart details
+- **[Helm Templates Reference](../docs/helm-templates-reference.md)** - Technical chart details
 - **[Troubleshooting](../docs/troubleshooting.md)** - Detailed troubleshooting guide
 
 ## 📝 Script Maintenance

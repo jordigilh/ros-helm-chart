@@ -630,7 +630,7 @@ kubectl get secrets -n ros-ocp
 
 - **Installation**: See [Installation Guide](installation.md)
 - **Platform Specifics**: See [Platform Guide](platform-guide.md)
-- **JWT Authentication**: See [JWT Auth Guide](jwt-native-authentication.md)
+- **JWT Authentication**: See [JWT Auth Guide](native-jwt-authentication.md)
 - **Troubleshooting**: See [Troubleshooting Guide](troubleshooting.md)
 
 ---
