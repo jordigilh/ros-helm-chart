@@ -464,19 +464,17 @@ jwt_auth:
         memory: 128Mi
 
   # Keycloak configuration for JWT validation
+  # NOTE: JWT authentication is ONLY supported on OpenShift with Keycloak/RHSSO.
+  # On vanilla Kubernetes/KIND, JWT authentication is automatically disabled.
   keycloak:
-    # Keycloak URL - leave empty for automatic runtime discovery from cluster
+    # Keycloak URL - leave empty for automatic runtime discovery (OpenShift only)
     # 
-    # Runtime Discovery (when url is empty):
-    #   1. Searches for Keycloak Route (OpenShift) in common namespaces (rhsso, keycloak, sso)
-    #   2. Falls back to Keycloak Ingress (Kubernetes)
-    #   3. Falls back to Keycloak Service discovery
-    #   4. Fails with helpful message if not found
+    # Runtime Discovery on OpenShift (when url is empty):
+    #   1. Searches for Keycloak Route in common namespaces (rhsso, keycloak, sso)
+    #   2. Falls back to Keycloak Service discovery (cluster-local)
+    #   3. Fails with helpful message if not found
     #
-    # Override only if:
-    #   - Using custom/external Keycloak instance
-    #   - Keycloak is in a non-standard namespace
-    #   - Auto-detection fails in your environment
+    # Override only if using custom/external Keycloak instance on OpenShift
     url: ""  # e.g., "https://keycloak-rhsso.apps.example.com"
 
     # Keycloak realm name
