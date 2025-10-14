@@ -10,7 +10,6 @@ metadata:
 data:
   envoy.yaml: |
     # Envoy configuration with Native JWT Authentication
-    # This replaces the previous Authorino ext_authz approach to support multipart uploads
     static_resources:
       listeners:
       - name: listener_0
@@ -75,7 +74,6 @@ data:
                       prefix: "/ready"
 
               # Lua filter to extract JWT claims and inject X-ROS headers
-              # This replicates what Authorino did but works with multipart requests
               - name: envoy.filters.http.lua
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
