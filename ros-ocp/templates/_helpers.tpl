@@ -867,18 +867,18 @@ Get complete Keycloak issuer URL with realm
 */}}
 {{- define "ros-ocp.keycloak.issuerUrl" -}}
 {{- $baseUrl := "" -}}
-{{- if .Values.jwt_auth.keycloak.issuer.baseUrl -}}
+{{- if .Values.jwt_auth.keycloak.url -}}
   {{- /* Use explicitly configured URL */ -}}
-  {{- $baseUrl = .Values.jwt_auth.keycloak.issuer.baseUrl -}}
+  {{- $baseUrl = .Values.jwt_auth.keycloak.url -}}
 {{- else -}}
   {{- /* Auto-detect Keycloak URL */ -}}
   {{- $baseUrl = include "ros-ocp.keycloak.url" . -}}
 {{- end -}}
 {{- if $baseUrl -}}
-  {{- printf "%s/auth/realms/%s" $baseUrl .Values.jwt_auth.keycloak.issuer.realm -}}
+  {{- printf "%s/auth/realms/%s" $baseUrl .Values.jwt_auth.keycloak.realm -}}
 {{- else -}}
   {{- /* Fallback URL for development */ -}}
-  {{- printf "https://keycloak-rhsso.apps.stress.parodos.dev/auth/realms/%s" .Values.jwt_auth.keycloak.issuer.realm -}}
+  {{- printf "https://keycloak-rhsso.apps.stress.parodos.dev/auth/realms/%s" .Values.jwt_auth.keycloak.realm -}}
 {{- end -}}
 {{- end }}
 
