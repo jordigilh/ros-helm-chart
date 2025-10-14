@@ -118,6 +118,24 @@ create_namespace() {
 install_rhsso_operator() {
     echo_header "INSTALLING RHSSO OPERATOR"
 
+    # Create OperatorGroup if it doesn't exist
+    if ! oc get operatorgroup -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_info "Creating OperatorGroup..."
+        cat <<EOF | oc apply -f -
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: rhsso-operator-group
+  namespace: $NAMESPACE
+spec:
+  targetNamespaces:
+  - $NAMESPACE
+EOF
+        echo_success "✓ OperatorGroup created"
+    else
+        echo_success "✓ OperatorGroup already exists"
+    fi
+
     # Check if operator is already installed
     if oc get subscription rhsso-operator -n "$NAMESPACE" >/dev/null 2>&1; then
         echo_warning "RHSSO Operator subscription already exists"

@@ -929,36 +929,6 @@ Get Keycloak CR information for debugging
 {{- end }}
 
 {{/*
-Get Authorino service namespace
-Always uses the same namespace as ROS ingress when JWT auth is enabled
-*/}}
-{{- define "ros-ocp.authorino.namespace" -}}
-{{- .Release.Namespace -}}
-{{- end }}
-
-{{/*
-Get Authorino service name
-Always uses the deployed instance name when JWT auth is enabled
-*/}}
-{{- define "ros-ocp.authorino.serviceName" -}}
-{{- printf "%s-authorino-authorization" .Values.jwt_auth.authorino.name -}}
-{{- end }}
-
-{{/*
-Get Authorino service port
-*/}}
-{{- define "ros-ocp.authorino.port" -}}
-50051
-{{- end }}
-
-{{/*
-Get Authorino service FQDN
-*/}}
-{{- define "ros-ocp.authorino.fqdn" -}}
-{{- printf "%s.%s.svc.cluster.local" (include "ros-ocp.authorino.serviceName" .) (include "ros-ocp.authorino.namespace" .) -}}
-{{- end }}
-
-{{/*
 Check if JWT authentication should be enabled
 Auto-enables on OpenShift, disabled elsewhere, unless explicitly overridden
 */}}

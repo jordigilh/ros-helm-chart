@@ -5,6 +5,17 @@
 
 set -e  # Exit on any error
 
+# Cleanup function for trapped exits
+cleanup() {
+    local exit_code=$?
+    if [ -n "${PORT_FORWARD_PID:-}" ]; then
+        kill "$PORT_FORWARD_PID" 2>/dev/null || true
+    fi
+    exit $exit_code
+}
+
+trap cleanup EXIT INT TERM
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -19,9 +30,32 @@ KEYCLOAK_NAMESPACE=${KEYCLOAK_NAMESPACE:-rhsso}
 
 # JWT Authentication variables
 JWT_TOKEN=""
+JWT_TOKEN_EXPIRY=""
 KEYCLOAK_URL=""
 CLIENT_ID=""
 CLIENT_SECRET=""
+PORT_FORWARD_PID=""
+
+# Check prerequisites
+check_prerequisites() {
+    local missing_deps=()
+
+    command -v oc >/dev/null 2>&1 || missing_deps+=("oc")
+    command -v curl >/dev/null 2>&1 || missing_deps+=("curl")
+    command -v tar >/dev/null 2>&1 || missing_deps+=("tar")
+
+    # Check for JSON parser (prefer jq, fallback to python3)
+    if ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+        missing_deps+=("jq or python3")
+    fi
+
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        echo_error "Missing required dependencies: ${missing_deps[*]}"
+        return 1
+    fi
+
+    return 0
+}
 
 echo_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -37,6 +71,33 @@ echo_warning() {
 
 echo_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# JSON parsing helper function (works with jq or python3)
+parse_json() {
+    local json_data="$1"
+    local json_path="$2"
+
+    if command -v jq >/dev/null 2>&1; then
+        echo "$json_data" | jq -r "$json_path" 2>/dev/null || echo ""
+    elif command -v python3 >/dev/null 2>&1; then
+        echo "$json_data" | python3 -c "import sys, json; data=json.load(sys.stdin); print($json_path)" 2>/dev/null || echo ""
+    else
+        echo ""
+    fi
+}
+
+# JSON array length helper
+json_array_length() {
+    local json_data="$1"
+
+    if command -v jq >/dev/null 2>&1; then
+        echo "$json_data" | jq 'length' 2>/dev/null || echo "0"
+    elif command -v python3 >/dev/null 2>&1; then
+        echo "$json_data" | python3 -c "import sys, json; data=json.load(sys.stdin); print(len(data))" 2>/dev/null || echo "0"
+    else
+        echo "0"
+    fi
 }
 
 # Function to detect Keycloak configuration
@@ -66,32 +127,53 @@ detect_keycloak_config() {
     # Try to find client credentials from KeycloakClient CR
     echo_info "Looking for Cost Management client configuration..."
 
-    # Get client ID from KeycloakClient CR
-    CLIENT_ID=$(oc get keycloakclient cost-management-operator -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.spec.clientId}' 2>/dev/null || echo "cost-management-operator")
+    # Find KeycloakClient CRs that match cost-management pattern
+    local keycloak_clients=$(oc get keycloakclient -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
+    local keycloak_client_cr=""
 
-    if [ -z "$CLIENT_ID" ] || [ "$CLIENT_ID" = "cost-management-operator" ]; then
-        echo_warning "Using default client ID: cost-management-operator"
+    # Look for cost-management related clients
+    for client in $keycloak_clients; do
+        if echo "$client" | grep -q "cost-management"; then
+            keycloak_client_cr="$client"
+            echo_info "Found KeycloakClient CR: $keycloak_client_cr"
+            break
+        fi
+    done
+
+    if [ -z "$keycloak_client_cr" ]; then
+        echo_warning "No cost-management KeycloakClient found, using default"
         CLIENT_ID="cost-management-operator"
     else
-        echo_success "Found client ID: $CLIENT_ID"
+        # Get client ID from KeycloakClient CR spec
+        CLIENT_ID=$(oc get keycloakclient "$keycloak_client_cr" -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.spec.client.clientId}' 2>/dev/null || echo "")
+
+        if [ -z "$CLIENT_ID" ]; then
+            echo_warning "Could not extract clientId from CR, using default"
+            CLIENT_ID="cost-management-operator"
+        else
+            echo_success "Found client ID: $CLIENT_ID"
+        fi
+
+        # Get client secret from the generated secret (named after the CR, not the clientId)
+        local secret_name="keycloak-client-secret-$keycloak_client_cr"
+        CLIENT_SECRET=$(oc get secret "$secret_name" -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.data.CLIENT_SECRET}' 2>/dev/null | base64 -d || echo "")
+
+        if [ -n "$CLIENT_SECRET" ]; then
+            echo_success "Found client secret in: $secret_name"
+        fi
     fi
 
-    # Get client secret from the generated secret
-    local secret_name="keycloak-client-secret-$CLIENT_ID"
-    CLIENT_SECRET=$(oc get secret "$secret_name" -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.data.CLIENT_SECRET}' 2>/dev/null | base64 -d || echo "")
-
+    # If still no secret, try alternative patterns
     if [ -z "$CLIENT_SECRET" ]; then
         echo_warning "Client secret not found in expected location. Trying alternative locations..."
         # Try different secret name patterns
-        for secret_pattern in "credential-$CLIENT_ID" "keycloak-client-$CLIENT_ID" "$CLIENT_ID-secret" "keycloak-client-secret-cost-management-operator"; do
+        for secret_pattern in "keycloak-client-secret-cost-management-operator" "keycloak-client-secret-cost-management-service-account" "credential-$CLIENT_ID" "keycloak-client-$CLIENT_ID" "$CLIENT_ID-secret"; do
             CLIENT_SECRET=$(oc get secret "$secret_pattern" -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.data.CLIENT_SECRET}' 2>/dev/null | base64 -d || echo "")
             if [ -n "$CLIENT_SECRET" ]; then
                 echo_success "Found client secret in: $secret_pattern"
                 break
             fi
         done
-    else
-        echo_success "Found client secret"
     fi
 
     if [ -z "$CLIENT_SECRET" ]; then
@@ -121,28 +203,40 @@ get_jwt_token() {
     echo_info "Client ID: $CLIENT_ID"
 
     # Request JWT token using client credentials flow
+    echo_warning "Using insecure TLS connection (-k flag) to Keycloak"
     local token_response=$(curl -s -k -X POST "$token_url" \
         -H "Content-Type: application/x-www-form-urlencoded" \
         -d "grant_type=client_credentials" \
         -d "client_id=$CLIENT_ID" \
         -d "client_secret=$CLIENT_SECRET" 2>/dev/null)
 
-    if [ $? -ne 0 ] || [ -z "$token_response" ]; then
-        echo_error "Failed to connect to Keycloak token endpoint"
+    local curl_exit=$?
+    if [ $curl_exit -ne 0 ] || [ -z "$token_response" ]; then
+        echo_error "Failed to connect to Keycloak token endpoint (curl exit code: $curl_exit)"
         return 1
     fi
 
-    # Extract access token from response
-    JWT_TOKEN=$(echo "$token_response" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('access_token', ''))" 2>/dev/null)
+    # Extract access token from response using helper function
+    if command -v jq >/dev/null 2>&1; then
+        JWT_TOKEN=$(echo "$token_response" | jq -r '.access_token // empty' 2>/dev/null)
+        local expires_in=$(echo "$token_response" | jq -r '.expires_in // 0' 2>/dev/null)
+    elif command -v python3 >/dev/null 2>&1; then
+        JWT_TOKEN=$(echo "$token_response" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('access_token', ''))" 2>/dev/null)
+        local expires_in=$(echo "$token_response" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('expires_in', 0))" 2>/dev/null)
+    fi
 
-    if [ -z "$JWT_TOKEN" ]; then
+    if [ -z "$JWT_TOKEN" ] || [ "$JWT_TOKEN" = "null" ]; then
         echo_error "Failed to extract JWT token from response"
         echo_info "Token response: $token_response"
         return 1
     fi
 
+    # Calculate expiry time
+    JWT_TOKEN_EXPIRY=$(($(date +%s) + ${expires_in:-300}))
+
     echo_success "JWT token obtained successfully"
     echo_info "Token length: ${#JWT_TOKEN} characters"
+    echo_info "Token expires in: ${expires_in:-300} seconds"
 
     # Optionally decode and display token info (first part only for security)
     local token_header=$(echo "$JWT_TOKEN" | cut -d'.' -f1)
@@ -163,14 +257,18 @@ get_service_url() {
     if [ -n "$route_host" ]; then
         # Check if route uses TLS
         local tls_termination=$(oc get route "$route_name" -n "$NAMESPACE" -o jsonpath='{.spec.tls.termination}' 2>/dev/null)
+        local route_path=$(oc get route "$route_name" -n "$NAMESPACE" -o jsonpath='{.spec.path}' 2>/dev/null)
+
         if [ -n "$tls_termination" ]; then
-            echo "https://$route_host$path"
+            echo "https://$route_host${route_path}$path"
         else
-            echo "http://$route_host$path"
+            echo "http://$route_host${route_path}$path"
         fi
     else
         # Fallback to service (for port-forward or internal access)
-        echo "http://$HELM_RELEASE_NAME-$service_name.$NAMESPACE.svc.cluster.local:3000$path"
+        # Get the actual service port
+        local service_port=$(oc get svc "$HELM_RELEASE_NAME-$service_name" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || echo "8080")
+        echo "http://$HELM_RELEASE_NAME-$service_name.$NAMESPACE.svc.cluster.local:${service_port}$path"
     fi
 }
 
@@ -259,9 +357,25 @@ upload_test_data_jwt() {
         return 1
     fi
 
-    # Create tar.gz file
+    # Create manifest.json (required by ingress service)
+    local manifest_file="$test_dir/manifest.json"
+    cat > "$manifest_file" << EOF
+{
+  "uuid": "$(uuidgen | tr '[:upper:]' '[:lower:]')",
+  "cluster_id": "test-cluster-$(date +%s)",
+  "cluster_alias": "test-cluster",
+  "date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "files": ["$csv_filename"],
+  "resource_optimization_files": ["$csv_filename"],
+  "certified": true,
+  "operator_version": "1.0.0",
+  "daily_reports": false
+}
+EOF
+
+    # Create tar.gz file with both CSV and manifest.json
     echo_info "Creating tar.gz archive..."
-    if ! (cd "$test_dir" && tar -czf "$tar_filename" "$csv_filename"); then
+    if ! (cd "$test_dir" && tar -czf "$tar_filename" "$csv_filename" "manifest.json"); then
         echo_error "Failed to create tar.gz archive"
         rm -f "$test_csv"
         rm -rf "$test_dir"
@@ -278,23 +392,40 @@ upload_test_data_jwt() {
 
     echo_info "Uploading tar.gz file with JWT authentication..."
 
+    # Check if JWT token is still valid
+    if [ -n "$JWT_TOKEN_EXPIRY" ]; then
+        local now=$(date +%s)
+        if [ "$now" -ge "$JWT_TOKEN_EXPIRY" ]; then
+            echo_warning "JWT token has expired. Please refresh the token."
+        fi
+    fi
+
     # Upload the tar.gz file using curl with JWT Bearer token
-    local upload_url=$(get_service_url "ingress" "/api/ingress/v1/upload")
+    local upload_url=$(get_service_url "ingress" "/v1/upload")
     echo_info "Uploading to: $upload_url"
     echo_info "Using JWT token authentication"
 
-    local response=$(curl -s -w "%{http_code}" \
+    local response=$(curl -s -w "\n%{http_code}" \
         -F "file=@${test_dir}/${tar_filename};type=application/vnd.redhat.hccm.filename+tgz" \
         -H "Authorization: Bearer $JWT_TOKEN" \
         -H "x-rh-request-id: test-request-$(date +%s)" \
-        "$upload_url")
+        "$upload_url" 2>&1)
 
-    local http_code="${response: -3}"
-    local response_body="${response%???}"
+    local curl_exit=$?
+
+    # Extract HTTP code from last line (more portable way)
+    local http_code=$(echo "$response" | tail -n 1)
+    local response_body=$(echo "$response" | sed '$d')
 
     # Cleanup
     rm -f "$test_csv"
     rm -rf "$test_dir"
+
+    if [ $curl_exit -ne 0 ]; then
+        echo_error "Upload failed - curl error (exit code: $curl_exit)"
+        echo_error "Response: $response_body"
+        return 1
+    fi
 
     if [ "$http_code" != "202" ] && [ "$http_code" != "200" ]; then
         echo_error "Upload failed with HTTP $http_code"
@@ -314,13 +445,24 @@ verify_upload_processing() {
 
     # Check ingress logs for upload activity
     echo_info "Checking ingress logs for upload processing..."
-    local ingress_pod=$(oc get pods -n "$NAMESPACE" -l app=ros-ocp-ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local ingress_pod=$(oc get pods -n "$NAMESPACE" -l app.kubernetes.io/name=ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -n "$ingress_pod" ]; then
+        # Get container names to find the right one
+        local containers=$(oc get pod "$ingress_pod" -n "$NAMESPACE" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null)
+        echo_info "Found pod: $ingress_pod with containers: $containers"
+
+        # Try to get logs from the ingress container
         echo_info "Recent ingress logs:"
-        oc logs -n "$NAMESPACE" "$ingress_pod" -c ingress --tail=10 | grep -i "upload\|jwt\|auth\|error" || echo "No relevant log messages found"
+        if echo "$containers" | grep -q "ingress"; then
+            oc logs -n "$NAMESPACE" "$ingress_pod" -c ingress --tail=10 2>/dev/null | grep -i "upload\|jwt\|auth\|error" || echo "No relevant log messages found"
+        else
+            # Fall back to first container
+            local first_container=$(echo "$containers" | awk '{print $1}')
+            oc logs -n "$NAMESPACE" "$ingress_pod" -c "$first_container" --tail=10 2>/dev/null | grep -i "upload\|jwt\|auth\|error" || echo "No relevant log messages found"
+        fi
     else
-        echo_warning "Ingress pod not found"
+        echo_warning "Ingress pod not found (tried label: app.kubernetes.io/name=ingress)"
     fi
 
     # If we have the full ROS stack, check for further processing
@@ -336,41 +478,75 @@ verify_upload_processing() {
     return 0
 }
 
-# Function to check for immediate recommendations
+# Function to check for ML recommendations
 check_for_recommendations() {
     echo_info "=== STEP 3: Check for ML Recommendations ===="
+
+    # Wait for Kruize to process data and generate recommendations
+    echo_info "Waiting for Kruize to process data and generate recommendations (45 seconds)..."
+    echo_info "Kruize needs time to analyze metrics and create optimization recommendations..."
+    sleep 45
 
     # Check if Kruize is accessible
     local kruize_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=kruize" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -n "$kruize_pod" ]; then
         echo_info "Kruize pod found: $kruize_pod"
-        echo_info "Setting up port-forward to check for recommendations..."
-
-        # Set up port-forward to Kruize
-        oc port-forward -n "$NAMESPACE" "svc/ros-ocp-kruize" 8080:8080 >/dev/null 2>&1 &
-        local pf_pid=$!
-        sleep 5
-
-        # Check for experiments
-        local experiments=$(curl -s "http://localhost:8080/listExperiments" 2>/dev/null || echo "[]")
-        local experiment_count=$(echo "$experiments" | python3 -c "import sys, json; data=json.load(sys.stdin); print(len(data))" 2>/dev/null || echo "0")
-
-        echo_info "Found $experiment_count experiments in Kruize"
-
-        # Check for recommendations
-        local recommendations=$(curl -s "http://localhost:8080/listRecommendations" 2>/dev/null || echo "[]")
-        local rec_count=$(echo "$recommendations" | python3 -c "import sys, json; data=json.load(sys.stdin); print(len(data))" 2>/dev/null || echo "0")
-
-        echo_info "Found $rec_count recommendations in Kruize"
-
-        # Cleanup port-forward
-        kill "$pf_pid" 2>/dev/null || true
-
-        if [ "$rec_count" -gt 0 ]; then
-            echo_success "✓ ML recommendations are available!"
+        
+        # Check Kruize database for experiments (listExperiments API has known issues)
+        echo_info "Checking Kruize experiments via database..."
+        local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=db-kruize" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        
+        if [ -n "$db_pod" ]; then
+            local exp_count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
+                psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM kruize_experiments;" 2>/dev/null | tr -d ' ' || echo "0")
+            
+            if [ "$exp_count" -gt 0 ]; then
+                echo_success "Found $exp_count Kruize experiment(s) in database"
+                
+                # Show experiment details
+                echo_info "Recent experiment details:"
+                oc exec -n "$NAMESPACE" "$db_pod" -- \
+                    psql -U postgres -d postgres -c \
+                    "SELECT experiment_name, status, mode FROM kruize_experiments ORDER BY experiment_id DESC LIMIT 1;" 2>/dev/null || true
+                
+                # Check for recommendations in database
+                local rec_count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
+                    psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM kruize_recommendations;" 2>/dev/null | tr -d ' ' || echo "0")
+                
+                if [ "$rec_count" -gt 0 ]; then
+                    echo_success "✓ Found $rec_count ML recommendation(s) in database!"
+                    
+                    # Show recommendation sample
+                    echo_info "Sample recommendation details:"
+                    oc exec -n "$NAMESPACE" "$db_pod" -- \
+                        psql -U postgres -d postgres -c \
+                        "SELECT experiment_name, interval_end_time FROM kruize_recommendations ORDER BY id DESC LIMIT 1;" 2>/dev/null || true
+                else
+                    echo_info "ℹ  No recommendations generated yet"
+                    echo_info "Check Kruize logs for details: oc logs -n $NAMESPACE $kruize_pod | tail -50"
+                fi
+            else
+                echo_warning "No Kruize experiments found in database yet"
+            fi
         else
-            echo_info "ℹ  No recommendations yet - data may need more time to process"
+            echo_warning "Could not access Kruize database"
+            
+            # Fallback to API check
+            echo_info "Setting up port-forward to check via API..."
+            oc port-forward -n "$NAMESPACE" "svc/ros-ocp-kruize" 8080:8080 >/dev/null 2>&1 &
+            PORT_FORWARD_PID=$!
+            sleep 5
+
+            if kill -0 "$PORT_FORWARD_PID" 2>/dev/null; then
+                local experiments=$(curl -s "http://localhost:8080/listExperiments" 2>/dev/null || echo "[]")
+                local experiment_count=$(json_array_length "$experiments")
+                echo_info "Found $experiment_count experiments via API"
+                
+                # Cleanup port-forward
+                kill "$PORT_FORWARD_PID" 2>/dev/null || true
+                PORT_FORWARD_PID=""
+            fi
         fi
     else
         echo_warning "Kruize pod not found - recommendations check skipped"
@@ -381,6 +557,12 @@ check_for_recommendations() {
 main() {
     echo_info "ROS-OCP JWT Authentication Data Flow Test"
     echo_info "========================================="
+
+    # Check prerequisites first
+    if ! check_prerequisites; then
+        echo_error "Prerequisites check failed"
+        exit 1
+    fi
 
     echo_info "Configuration:"
     echo_info "  Platform: OpenShift"

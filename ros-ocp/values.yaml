@@ -435,16 +435,20 @@ monitoring:
   enabled: false  # Enable monitoring components (ServiceMonitor, etc.)
 
 # JWT Authentication configuration
-# JWT authentication with Keycloak/RHSSO
+# JWT authentication with Keycloak/RHSSO using Envoy's native JWT filter
 # Auto-enabled on OpenShift, disabled elsewhere. Override with explicit true/false.
+#
+# Architecture: Envoy sidecar validates JWT tokens inline using native jwt_authn filter
+# with Lua scripting to extract claims into X-ROS headers for the backend service.
+# This replaces the previous Authorino ext_authz approach which had issues with multipart uploads.
 jwt_auth:
   enabled: null  # null = auto-detect (true on OpenShift, false elsewhere)
 
-  # Envoy proxy configuration
+  # Envoy proxy configuration (sidecar for JWT validation)
   envoy:
     image:
-      repository: envoyproxy/envoy
-      tag: "v1.24-latest"
+      repository: registry.redhat.io/openshift-service-mesh/proxyv2-rhel9
+      tag: "2.6"
       pullPolicy: IfNotPresent
     port: 8080
     adminPort: 9901
@@ -459,40 +463,20 @@ jwt_auth:
         cpu: 100m
         memory: 128Mi
 
-  # Authorino configuration (deployed when JWT auth is enabled)
-  authorino:
-    name: ros-authorino
-    logLevel: info
-
-    # Image configuration
-    image:
-      repository: registry.redhat.io/rhosak/authorino-rhel8
-      tag: "latest"
-      pullPolicy: Always
-
-    # TLS configuration
-    tls:
-      enabled: false  # Enable for production with proper certificates
-
-    # AuthConfig configuration
-    authConfig:
-      name: ros-ingress-keycloak-auth
-      create: true  # Create AuthConfig when JWT auth is enabled
-
-  # Keycloak configuration
+  # Keycloak configuration for JWT validation
   keycloak:
-    issuer:
-      baseUrl: ""  # Auto-detect Keycloak URL from cluster
-      realm: kubernetes
+    # Keycloak URL is auto-detected from cluster, or can be explicitly set
+    url: ""  # e.g., "https://keycloak-rhsso.apps.example.com"
+    realm: kubernetes
 
-    # Client configuration
+    # Client configuration (optional, for reference)
     client:
       id: cost-management-operator
 
-    # Audiences for JWT validation
+    # Audiences for JWT validation (must match JWT 'aud' claim)
     audiences:
+      - account
       - cost-management-operator
-      - openshift-oidc
 
     # TLS configuration for Keycloak communication
     tls:
