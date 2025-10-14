@@ -732,21 +732,26 @@ Find Keycloak namespace by looking for Keycloak CRs first, then fallback to patt
 */}}
 {{- define "ros-ocp.keycloak.namespace" -}}
 {{- $keycloakNs := "" -}}
-{{- /* First, try to find namespace from Keycloak CRs */ -}}
-{{- $keycloaks := lookup "keycloak.org/v1alpha1" "Keycloak" "" "" -}}
-{{- if $keycloaks -}}
-  {{- if $keycloaks.items -}}
-    {{- if gt (len $keycloaks.items) 0 -}}
-      {{- $keycloakNs = (index $keycloaks.items 0).metadata.namespace -}}
+{{- /* First priority: check for explicit namespace override */ -}}
+{{- if .Values.jwt_auth.keycloak.namespace -}}
+  {{- $keycloakNs = .Values.jwt_auth.keycloak.namespace -}}
+{{- else -}}
+  {{- /* Second priority: try to find namespace from Keycloak CRs */ -}}
+  {{- $keycloaks := lookup "keycloak.org/v1alpha1" "Keycloak" "" "" -}}
+  {{- if $keycloaks -}}
+    {{- if $keycloaks.items -}}
+      {{- if gt (len $keycloaks.items) 0 -}}
+        {{- $keycloakNs = (index $keycloaks.items 0).metadata.namespace -}}
+      {{- end -}}
     {{- end -}}
   {{- end -}}
-{{- end -}}
-{{- /* Fallback: try namespace pattern matching if no CRs found */ -}}
-{{- if not $keycloakNs -}}
-  {{- range $ns := (lookup "v1" "Namespace" "" "").items -}}
-    {{- if or (contains "keycloak" $ns.metadata.name) (contains "rhsso" $ns.metadata.name) -}}
-      {{- $keycloakNs = $ns.metadata.name -}}
-      {{- break -}}
+  {{- /* Final fallback: try namespace pattern matching if no CRs found */ -}}
+  {{- if not $keycloakNs -}}
+    {{- range $ns := (lookup "v1" "Namespace" "" "").items -}}
+      {{- if or (contains "keycloak" $ns.metadata.name) (contains "rhsso" $ns.metadata.name) (contains "sso" $ns.metadata.name) -}}
+        {{- $keycloakNs = $ns.metadata.name -}}
+        {{- break -}}
+      {{- end -}}
     {{- end -}}
   {{- end -}}
 {{- end -}}
@@ -853,7 +858,8 @@ First try to get URL from Keycloak CR status, then fallback to route/ingress dis
         {{- /* Final fallback: construct service URL */ -}}
         {{- $svcName := include "ros-ocp.keycloak.serviceName" . -}}
         {{- if $svcName -}}
-          {{- $keycloakUrl = printf "http://%s.%s.svc.cluster.local:8080" $svcName $ns -}}
+          {{- $servicePort := .Values.jwt_auth.keycloak.servicePort | default 8080 -}}
+          {{- $keycloakUrl = printf "http://%s.%s.svc.cluster.local:%v" $svcName $ns $servicePort -}}
         {{- end -}}
       {{- end -}}
     {{- end -}}
