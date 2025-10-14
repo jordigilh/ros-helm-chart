@@ -877,8 +877,8 @@ Get complete Keycloak issuer URL with realm
 {{- if $baseUrl -}}
   {{- printf "%s/auth/realms/%s" $baseUrl .Values.jwt_auth.keycloak.realm -}}
 {{- else -}}
-  {{- /* Fallback URL for development */ -}}
-  {{- printf "https://keycloak-rhsso.apps.stress.parodos.dev/auth/realms/%s" .Values.jwt_auth.keycloak.realm -}}
+  {{- /* No Keycloak URL found - fail with helpful message */ -}}
+  {{- fail "Keycloak URL not found. Please either:\n  1. Set jwt_auth.keycloak.url in values.yaml, or\n  2. Ensure Keycloak is deployed with a Route (OpenShift) or Ingress (Kubernetes), or\n  3. Deploy Keycloak using the provided scripts/deploy-rhsso.sh script" -}}
 {{- end -}}
 {{- end }}
 

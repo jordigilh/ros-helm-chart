@@ -442,7 +442,6 @@ monitoring:
 #
 # Architecture: Envoy sidecar validates JWT tokens inline using native jwt_authn filter
 # with Lua scripting to extract claims into X-ROS headers for the backend service.
-# This replaces the previous Authorino ext_authz approach which had issues with multipart uploads.
 jwt_auth:
 
   # Envoy proxy configuration (sidecar for JWT validation)
@@ -466,9 +465,18 @@ jwt_auth:
 
   # Keycloak configuration for JWT validation
   keycloak:
-    # Keycloak URL - leave empty for automatic detection from cluster
-    # The Helm chart will auto-detect Keycloak route/ingress on OpenShift
-    # Override only if using custom/external Keycloak instance
+    # Keycloak URL - leave empty for automatic runtime discovery from cluster
+    # 
+    # Runtime Discovery (when url is empty):
+    #   1. Searches for Keycloak Route (OpenShift) in common namespaces (rhsso, keycloak, sso)
+    #   2. Falls back to Keycloak Ingress (Kubernetes)
+    #   3. Falls back to Keycloak Service discovery
+    #   4. Fails with helpful message if not found
+    #
+    # Override only if:
+    #   - Using custom/external Keycloak instance
+    #   - Keycloak is in a non-standard namespace
+    #   - Auto-detection fails in your environment
     url: ""  # e.g., "https://keycloak-rhsso.apps.example.com"
 
     # Keycloak realm name
@@ -480,8 +488,8 @@ jwt_auth:
 
     # JWT audience claims that will be validated
     # Must match the 'aud' claim in incoming JWT tokens
+    # Only tokens issued for the cost-management-operator client will be accepted
     audiences:
-      - account
       - cost-management-operator
 
     # TLS configuration for Keycloak communication
