@@ -877,8 +877,8 @@ Get complete Keycloak issuer URL with realm
 {{- if $baseUrl -}}
   {{- printf "%s/auth/realms/%s" $baseUrl .Values.jwt_auth.keycloak.realm -}}
 {{- else -}}
-  {{- /* No Keycloak URL found - fail with helpful message */ -}}
-  {{- fail "Keycloak URL not found. Please either:\n  1. Set jwt_auth.keycloak.url in values.yaml, or\n  2. Ensure Keycloak is deployed with a Route (OpenShift) or Ingress (Kubernetes), or\n  3. Deploy Keycloak using the provided scripts/deploy-rhsso.sh script" -}}
+  {{- /* No Keycloak URL found - fail with helpful message (OpenShift only) */ -}}
+  {{- fail "Keycloak URL not found on OpenShift cluster. JWT authentication requires Keycloak/RHSSO. Please either:\n  1. Set jwt_auth.keycloak.url in values.yaml, or\n  2. Ensure Keycloak is deployed with a Route in a common namespace (rhsso, keycloak, sso), or\n  3. Deploy Keycloak using the provided scripts/deploy-rhsso.sh script\n\nNote: JWT authentication is only supported on OpenShift. For KIND/Kubernetes, authentication is automatically disabled." -}}
 {{- end -}}
 {{- end }}
 
