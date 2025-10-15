@@ -161,6 +161,7 @@ ingress:
   image:
     repository: quay.io/insights-onprem/insights-ros-ingress
     tag: "latest"
+    pullPolicy: Always
   port: 8080
   server:
     port: 8080
@@ -221,6 +222,7 @@ sourcesApi:
   image:
     repository: quay.io/insights-onprem/sources-api-go
     tag: "latest"
+    pullPolicy: Always
   port: 8000
   logLevel: DEBUG
   bypassRbac: true
@@ -286,9 +288,9 @@ kruize:
 rosocp:
   processor:
     image:
-#TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
       repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
+      pullPolicy: Always
     metricsPort: 9000
     kafkaConsumerGroupId: rosocp-processor
     kafkaAutoCommit: true
@@ -299,9 +301,9 @@ rosocp:
 
   recommendationPoller:
     image:
-#TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
       repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
+      pullPolicy: Always
     metricsPort: 9000
     kafkaConsumerGroupId: rosocp-recommendation-poller
     kafkaAutoCommit: false
@@ -312,9 +314,10 @@ rosocp:
 
   api:
     image:
-#TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
+
       repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
+      pullPolicy: Always
     port: 8000
     metricsPort: 9000
     pathPrefix: /api
@@ -326,18 +329,20 @@ rosocp:
 
   housekeeper:
     image:
-#TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
+
       repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
+      pullPolicy: Always
     serviceName: rosocp-housekeeper-sources
     logLevel: INFO
 
   partitionCleaner:
     schedule: "0 0 */15 * *"  # Runs at 12:00 AM, every 15 days
     image:
-#TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
+
       repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
+      pullPolicy: Always
     serviceName: rosocp-housekeeper-partition
     logLevel: INFO
     resources:

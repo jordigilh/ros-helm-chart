@@ -77,7 +77,7 @@ spec:
       containers:
         - name: rosocp-housekeeper
           image: "{{ .Values.rosocp.housekeeper.image.repository }}:{{ .Values.rosocp.housekeeper.image.tag }}"
-          imagePullPolicy: {{ .Values.global.pullPolicy }}
+          imagePullPolicy: {{ .Values.rosocp.housekeeper.image.pullPolicy | default .Values.global.pullPolicy }}
           command: ["sh", "-c"]
           args:
             - |
