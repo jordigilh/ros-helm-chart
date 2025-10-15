@@ -119,7 +119,7 @@ install_rhsso_operator() {
     echo_header "INSTALLING RHSSO OPERATOR"
 
     # Create OperatorGroup if it doesn't exist
-    if ! oc get operatorgroup -n "$NAMESPACE" >/dev/null 2>&1; then
+    if ! oc get operatorgroup rhsso-operator-group -n "$NAMESPACE" >/dev/null 2>&1; then
         echo_info "Creating OperatorGroup..."
         cat <<EOF | oc apply -f -
 apiVersion: operators.coreos.com/v1
