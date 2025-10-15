@@ -357,12 +357,16 @@ upload_test_data_jwt() {
         return 1
     fi
 
+    # Generate unique cluster ID for this test run
+    UPLOAD_CLUSTER_ID="test-cluster-$(date +%s)"
+    echo_info "Generated cluster ID for this upload: $UPLOAD_CLUSTER_ID"
+
     # Create manifest.json (required by ingress service)
     local manifest_file="$test_dir/manifest.json"
     cat > "$manifest_file" << EOF
 {
   "uuid": "$(uuidgen | tr '[:upper:]' '[:lower:]')",
-  "cluster_id": "test-cluster-$(date +%s)",
+  "cluster_id": "$UPLOAD_CLUSTER_ID",
   "cluster_alias": "test-cluster",
   "date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "files": ["$csv_filename"],
@@ -478,9 +482,17 @@ verify_upload_processing() {
     return 0
 }
 
-# Function to check for ML recommendations
+# Function to check for ML recommendations for a specific upload
 check_for_recommendations() {
+    local cluster_id="$1"
+
+    if [ -z "$cluster_id" ]; then
+        echo_error "Cluster ID not provided to check_for_recommendations"
+        return 1
+    fi
+
     echo_info "=== STEP 3: Check for ML Recommendations ===="
+    echo_info "Checking recommendations for cluster: $cluster_id"
 
     # Wait for Kruize to process data and generate recommendations
     echo_info "Waiting for Kruize to process data and generate recommendations (45 seconds)..."
@@ -490,67 +502,116 @@ check_for_recommendations() {
     # Check if Kruize is accessible
     local kruize_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=kruize" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
-    if [ -n "$kruize_pod" ]; then
-        echo_info "Kruize pod found: $kruize_pod"
-
-        # Check Kruize database for experiments (listExperiments API has known issues)
-        echo_info "Checking Kruize experiments via database..."
-        local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=db-kruize" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-
-        if [ -n "$db_pod" ]; then
-            local exp_count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
-                psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM kruize_experiments;" 2>/dev/null | tr -d ' ' || echo "0")
-
-            if [ "$exp_count" -gt 0 ]; then
-                echo_success "Found $exp_count Kruize experiment(s) in database"
-
-                # Show experiment details
-                echo_info "Recent experiment details:"
-                oc exec -n "$NAMESPACE" "$db_pod" -- \
-                    psql -U postgres -d postgres -c \
-                    "SELECT experiment_name, status, mode FROM kruize_experiments ORDER BY experiment_id DESC LIMIT 1;" 2>/dev/null || true
-
-                # Check for recommendations in database
-                local rec_count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
-                    psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM kruize_recommendations;" 2>/dev/null | tr -d ' ' || echo "0")
-
-                if [ "$rec_count" -gt 0 ]; then
-                    echo_success "✓ Found $rec_count ML recommendation(s) in database!"
-
-                    # Show recommendation sample
-                    echo_info "Sample recommendation details:"
-                    oc exec -n "$NAMESPACE" "$db_pod" -- \
-                        psql -U postgres -d postgres -c \
-                        "SELECT experiment_name, interval_end_time FROM kruize_recommendations ORDER BY id DESC LIMIT 1;" 2>/dev/null || true
-                else
-                    echo_info "ℹ  No recommendations generated yet"
-                    echo_info "Check Kruize logs for details: oc logs -n $NAMESPACE $kruize_pod | tail -50"
-                fi
-            else
-                echo_warning "No Kruize experiments found in database yet"
-            fi
-        else
-            echo_warning "Could not access Kruize database"
-
-            # Fallback to API check
-            echo_info "Setting up port-forward to check via API..."
-            oc port-forward -n "$NAMESPACE" "svc/ros-ocp-kruize" 8080:8080 >/dev/null 2>&1 &
-            PORT_FORWARD_PID=$!
-            sleep 5
-
-            if kill -0 "$PORT_FORWARD_PID" 2>/dev/null; then
-                local experiments=$(curl -s "http://localhost:8080/listExperiments" 2>/dev/null || echo "[]")
-                local experiment_count=$(json_array_length "$experiments")
-                echo_info "Found $experiment_count experiments via API"
-
-                # Cleanup port-forward
-                kill "$PORT_FORWARD_PID" 2>/dev/null || true
-                PORT_FORWARD_PID=""
-            fi
-        fi
-    else
-        echo_warning "Kruize pod not found - recommendations check skipped"
+    if [ -z "$kruize_pod" ]; then
+        echo_error "Kruize pod not found"
+        echo_info "Use './query-kruize.sh --cluster $cluster_id' to check recommendations later"
+        return 1
     fi
+
+    echo_info "Kruize pod found: $kruize_pod"
+
+    # Check Kruize database for experiments (listExperiments API has known issues)
+    echo_info "Checking Kruize experiments via database..."
+    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=db-kruize" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+
+    if [ -z "$db_pod" ]; then
+        echo_error "Kruize database pod not found"
+        echo_info "Use './query-kruize.sh --cluster $cluster_id' to check recommendations later"
+        return 1
+    fi
+
+    # Query for experiments specific to this cluster (cluster_name format: "1;cluster-id")
+    echo_info "Querying for experiments matching cluster: $cluster_id"
+    local exp_count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
+        psql -U postgres -d postgres -t -c \
+        "SELECT COUNT(*) FROM kruize_experiments WHERE cluster_name LIKE '%${cluster_id}%';" 2>/dev/null | tr -d ' ' || echo "0")
+
+    if [ "$exp_count" -eq 0 ]; then
+        echo_error "❌ No Kruize experiments found for cluster: $cluster_id"
+        echo_info "This indicates the data was not processed by the backend or sent to Kruize"
+        echo_info "Troubleshooting:"
+        echo_info "  - Check processor logs: oc logs -n $NAMESPACE deployment/ros-ocp-rosocp-processor --tail=50"
+        echo_info "  - Verify upload was successful in ingress logs"
+        echo_info "  - Check Kafka messages were processed"
+        return 1
+    fi
+
+    echo_success "Found $exp_count Kruize experiment(s) for this upload"
+
+    # Show experiment details for this cluster
+    echo_info "Experiment details for cluster $cluster_id:"
+    oc exec -n "$NAMESPACE" "$db_pod" -- \
+        psql -U postgres -d postgres -c \
+        "SELECT experiment_name, status, cluster_name FROM kruize_experiments
+         WHERE cluster_name LIKE '%${cluster_id}%'
+         ORDER BY experiment_name DESC LIMIT 3;" 2>/dev/null || true
+
+    # Check for recommendations specific to this cluster
+    echo_info "Querying for recommendations for cluster: $cluster_id"
+    local rec_count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
+        psql -U postgres -d postgres -t -c \
+        "SELECT COUNT(*) FROM kruize_recommendations WHERE cluster_name LIKE '%${cluster_id}%';" 2>/dev/null | tr -d ' ' || echo "0")
+
+    if [ "$rec_count" -eq 0 ]; then
+        echo_error "❌ No ML recommendations found for cluster: $cluster_id"
+        echo_warning "Experiments exist but no recommendations were generated for this upload"
+        echo_info ""
+        echo_info "Possible reasons:"
+        echo_info "  - Not enough data points (Kruize needs multiple intervals over time)"
+        echo_info "  - Data quality issues (check if metrics have valid values)"
+        echo_info "  - Kruize is still processing (may take several minutes)"
+        echo_info ""
+        echo_info "Troubleshooting steps:"
+        echo_info "  1. Check Kruize logs: oc logs -n $NAMESPACE $kruize_pod | tail -100"
+        echo_info "  2. Query later: ./query-kruize.sh --cluster $cluster_id"
+        echo_info "  3. Check if experiments show 'IN_PROGRESS' status (query shown above)"
+        echo_info ""
+        echo_info "Note: Kruize typically requires multiple data uploads over time to generate"
+        echo_info "      meaningful recommendations. A single upload may not be sufficient."
+        return 1
+    fi
+
+    echo_success "✓ Found $rec_count ML recommendation(s) for cluster: $cluster_id!"
+
+    # Show recommendation details for this cluster
+    echo_info "Recommendation details for cluster $cluster_id:"
+    oc exec -n "$NAMESPACE" "$db_pod" -- \
+        psql -U postgres -d postgres -c \
+        "SELECT experiment_name, interval_end_time
+         FROM kruize_recommendations
+         WHERE cluster_name LIKE '%${cluster_id}%'
+         ORDER BY interval_end_time DESC LIMIT 3;" 2>/dev/null || true
+
+    return 0
+}
+
+# Store recommendations check result for main function
+check_recommendations_with_retry() {
+    local cluster_id="$1"
+    local max_retries=3
+    local retry_interval=60
+    local attempt=1
+
+    if [ -z "$cluster_id" ]; then
+        echo_error "Cluster ID not provided to check_recommendations_with_retry"
+        return 1
+    fi
+
+    while [ $attempt -le $max_retries ]; do
+        if [ $attempt -gt 1 ]; then
+            echo_info "Retry attempt $attempt of $max_retries (waiting ${retry_interval}s)..."
+            sleep $retry_interval
+        fi
+
+        if check_for_recommendations "$cluster_id"; then
+            return 0
+        fi
+
+        attempt=$((attempt + 1))
+    done
+
+    echo_error "Failed to find recommendations for cluster $cluster_id after $max_retries attempts"
+    return 1
 }
 
 # Main execution
@@ -596,18 +657,45 @@ main() {
     verify_upload_processing
     echo ""
 
-    # Step 5: Check for recommendations
-    check_for_recommendations
-    echo ""
+    # Step 5: Check for recommendations with retries (for the specific cluster we just uploaded)
+    if [ -z "$UPLOAD_CLUSTER_ID" ]; then
+        echo_error "UPLOAD_CLUSTER_ID not set. This should have been set during upload."
+        exit 1
+    fi
 
-    echo_success "JWT Authentication Data Flow Test completed successfully!"
+    if ! check_recommendations_with_retry "$UPLOAD_CLUSTER_ID"; then
+        echo ""
+        echo_error "❌ JWT Authentication Data Flow Test FAILED!"
+        echo_error "The upload was successful but no ML recommendations were generated for cluster: $UPLOAD_CLUSTER_ID"
+        echo_info ""
+        echo_info "Troubleshooting steps:"
+        echo_info "  1. Check if data reached Kruize for this cluster:"
+        echo_info "     ./query-kruize.sh --cluster $UPLOAD_CLUSTER_ID"
+        echo_info "  2. Check processor logs for errors:"
+        echo_info "     oc logs -n $NAMESPACE deployment/ros-ocp-rosocp-processor --tail=100"
+        echo_info "  3. Check Kruize logs:"
+        echo_info "     oc logs -n $NAMESPACE deployment/ros-ocp-kruize --tail=100"
+        echo_info "  4. Query all recommendations:"
+        echo_info "     ./query-kruize.sh --recommendations"
+        exit 1
+    fi
+
+    echo ""
+    echo_success "✅ JWT Authentication Data Flow Test completed successfully!"
+    echo_success "Test cluster ID: $UPLOAD_CLUSTER_ID"
+    echo_info ""
     echo_info "The test demonstrated:"
     echo_info "  ✓ Keycloak JWT token generation"
     echo_info "  ✓ Authenticated file upload using JWT Bearer token"
     echo_info "  ✓ Ingress processing with JWT authentication"
-    echo_info "  ✓ End-to-end data flow with sample optimization data"
-    echo ""
-    echo_info "🎉 This confirms that the JWT authentication flow is working end-to-end!"
+    echo_info "  ✓ Backend processing and data aggregation"
+    echo_info "  ✓ Kruize ML recommendation generation for uploaded data"
+    echo_info "  ✓ End-to-end data flow with optimization recommendations"
+    echo_info ""
+    echo_info "🎉 This confirms that the complete ROS optimization flow is working end-to-end!"
+    echo_info ""
+    echo_info "To query recommendations for this specific upload later:"
+    echo_info "  ./query-kruize.sh --cluster $UPLOAD_CLUSTER_ID"
 }
 
 # Handle script arguments
@@ -629,7 +717,11 @@ case "${1:-}" in
         echo "  2. Obtains JWT token using client credentials flow"
         echo "  3. Uploads sample data using JWT Bearer authentication"
         echo "  4. Verifies the upload was processed successfully"
-        echo "  5. Checks for ML recommendations (if Kruize is available)"
+        echo "  5. Validates ML recommendations were generated for the uploaded data"
+        echo ""
+        echo "Note: The script will FAIL if no recommendations are generated for the"
+        echo "      specific upload after multiple retry attempts. This ensures the"
+        echo "      complete end-to-end flow is validated."
         echo ""
         echo "Requirements:"
         echo "  - Keycloak deployed with cost-management-operator client"
