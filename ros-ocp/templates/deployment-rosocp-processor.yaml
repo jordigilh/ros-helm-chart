@@ -65,7 +65,7 @@ spec:
       containers:
         - name: rosocp-processor
           image: "{{ .Values.rosocp.processor.image.repository }}:{{ .Values.rosocp.processor.image.tag }}"
-          imagePullPolicy: {{ .Values.global.pullPolicy }}
+          imagePullPolicy: {{ .Values.rosocp.processor.image.pullPolicy | default .Values.global.pullPolicy }}
           command: ["sh", "-c"]
           args:
             - |

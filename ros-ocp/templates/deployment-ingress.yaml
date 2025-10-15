@@ -106,7 +106,7 @@ spec:
         {{- end }}
         - name: ingress
           image: "{{ .Values.ingress.image.repository }}:{{ .Values.ingress.image.tag }}"
-          imagePullPolicy: {{ .Values.global.pullPolicy }}
+          imagePullPolicy: {{ .Values.ingress.image.pullPolicy | default .Values.global.pullPolicy }}
           ports:
             - name: {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }} http-ingress {{- else }} http {{- end }}
               containerPort: {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }} 8081 {{- else }} {{ .Values.ingress.port }} {{- end }}

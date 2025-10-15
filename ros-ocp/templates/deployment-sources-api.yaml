@@ -67,7 +67,7 @@ spec:
       containers:
         - name: sources-api
           image: "{{ .Values.sourcesApi.image.repository }}:{{ .Values.sourcesApi.image.tag }}"
-          imagePullPolicy: {{ .Values.global.pullPolicy }}
+          imagePullPolicy: {{ .Values.sourcesApi.image.pullPolicy | default .Values.global.pullPolicy }}
           ports:
             - name: http
               containerPort: {{ .Values.sourcesApi.port }}
