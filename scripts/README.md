@@ -9,7 +9,8 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 | `install-helm-chart.sh` | Deploy ROS Helm chart | All environments |
 | `deploy-rhsso.sh` | Deploy Keycloak/RHSSO | OpenShift |
 | `setup-cost-mgmt-tls.sh` | Configure TLS certificates | OpenShift |
-| `test-ocp-dataflow-jwt.sh` | Test JWT authentication | JWT-enabled clusters |
+| `test-ocp-dataflow-jwt.sh` | Test JWT + recommendations | JWT-enabled clusters |
+| `query-kruize.sh` | Query Kruize database | All environments |
 | `deploy-kind.sh` | Create test cluster | CI/CD, Local dev |
 | `cleanup-kind-artifacts.sh` | Cleanup test environment | CI/CD, Local dev |
 
@@ -68,11 +69,11 @@ Deploy or upgrade the ROS Helm chart with automatic configuration.
 - **Automatically applies Cost Management Operator label** to namespace
 
 **Namespace Labeling:**
-The script automatically applies the `insights-cost-management-optimizations=true` label to the deployment namespace. This label is **required** by the Cost Management Metrics Operator to collect resource optimization data from the namespace.
+The script automatically applies the `cost_management_optimizations=true` label to the deployment namespace. This label is **required** by the Cost Management Metrics Operator to collect resource optimization data from the namespace.
 
 To remove the label (if needed):
 ```bash
-kubectl label namespace ros-ocp insights-cost-management-optimizations-
+kubectl label namespace ros-ocp cost_management_optimizations-
 ```
 
 **Usage:**
@@ -176,6 +177,75 @@ End-to-end test of JWT authentication flow with sample cost data.
 **Requirements:**
 - JWT authentication enabled in ROS deployment
 - Keycloak/RHSSO with `cost-management-operator` client
+
+**Best for:** CI/CD pipelines, complete E2E validation including ML recommendations
+
+---
+
+### `query-kruize.sh`
+Query Kruize database for experiments and ML recommendations.
+
+**What it does:**
+- Connects to Kruize PostgreSQL database directly
+- Lists experiments and their status
+- Shows generated ML recommendations
+- Supports custom SQL queries
+- Displays database schema
+
+**Usage:**
+```bash
+# List all experiments
+./query-kruize.sh --experiments
+
+# List all recommendations
+./query-kruize.sh --recommendations
+
+# Find experiments by pattern
+./query-kruize.sh --experiment "test-cluster"
+
+# Query by cluster ID
+./query-kruize.sh --cluster "757b6bf6-9e91-486a-8a99-6d3e6d0f485c"
+
+# Get detailed recommendation info
+./query-kruize.sh --detail 5
+
+# Run custom SQL query
+./query-kruize.sh --query "SELECT COUNT(*) FROM kruize_experiments WHERE status='IN_PROGRESS';"
+
+# Show database schema
+./query-kruize.sh --schema
+
+# Custom namespace
+./query-kruize.sh --namespace ros-production --experiments
+```
+
+**Requirements:**
+- Kruize deployed and running
+- Database pod accessible via `oc exec`
+
+**Best for:** Debugging, validating data flow, checking recommendation generation status
+
+---
+
+## 🧪 Test Strategy
+
+### For CI/CD Pipelines
+Use the JWT test script for comprehensive E2E validation:
+
+**Recommended CI/CD workflow:**
+```bash
+# 1. Deploy environment
+./install-helm-chart.sh
+
+# 2. Validate full E2E with ML (quick synthetic test)
+./test-ocp-dataflow-jwt.sh || exit 1
+```
+
+The `test-ocp-dataflow-jwt.sh` script validates:
+- ✅ JWT authentication
+- ✅ Full data flow (ingress → processor → Kruize)
+- ✅ ML recommendation generation
+- ✅ Complete E2E functionality in ~2 minutes
 
 ---
 
