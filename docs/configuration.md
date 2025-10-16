@@ -60,7 +60,7 @@ Complete configuration reference for resource requirements, storage, and access 
 
 **Label:**
 ```yaml
-insights-cost-management-optimizations: "true"
+cost_management_optimizations: "true"
 ```
 
 **Automatic Application:**
@@ -69,13 +69,13 @@ When using `scripts/install-helm-chart.sh`, this label is automatically applied 
 **Manual Application:**
 ```bash
 # Apply label to namespace
-kubectl label namespace ros-ocp insights-cost-management-optimizations=true
+kubectl label namespace ros-ocp cost_management_optimizations=true
 
 # Verify label
-kubectl get namespace ros-ocp --show-labels | grep insights-cost-management
+kubectl get namespace ros-ocp --show-labels | grep cost_management
 
 # Remove label (if needed)
-kubectl label namespace ros-ocp insights-cost-management-optimizations-
+kubectl label namespace ros-ocp cost_management_optimizations-
 ```
 
 **Why This Label is Required:**
@@ -85,10 +85,11 @@ The Cost Management Metrics Operator uses this label to filter which namespaces 
 - ❌ No data will be uploaded to the ingress service
 - ❌ Kruize will not receive metrics for optimization recommendations
 
-**Legacy Label (also supported):**
+**Legacy Label (also supported for backward compatibility):**
 ```yaml
-cost_management_optimizations: "true"
+insights_cost_management_optimizations: "true"
 ```
+> **Note**: The legacy label is supported for backward compatibility but the generic `cost_management_optimizations` label is recommended for new deployments (introduced in koku-metrics-operator v4.1.0).
 
 ---
 

@@ -151,9 +151,9 @@ create_namespace() {
     # Apply Cost Management Metrics Operator label for resource optimization data collection
     # This label is required by the operator to collect ROS metrics from the namespace
     echo_info "Applying cost management optimization label to namespace..."
-    kubectl label namespace "$NAMESPACE" insights-cost-management-optimizations=true --overwrite
+    kubectl label namespace "$NAMESPACE" cost_management_optimizations=true --overwrite
     echo_success "Cost management optimization label applied"
-    echo_info "  Label: insights-cost-management-optimizations=true"
+    echo_info "  Label: cost_management_optimizations=true"
     echo_info "  This enables the Cost Management Metrics Operator to collect resource optimization data"
 }
 

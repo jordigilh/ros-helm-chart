@@ -11,13 +11,13 @@
 **Solution**:
 ```bash
 # Check if the label exists
-kubectl get namespace ros-ocp --show-labels | grep insights-cost-management
+kubectl get namespace ros-ocp --show-labels | grep cost_management
 
 # Apply the required label
-kubectl label namespace ros-ocp insights-cost-management-optimizations=true --overwrite
+kubectl label namespace ros-ocp cost_management_optimizations=true --overwrite
 
 # Verify the label was applied
-kubectl get namespace ros-ocp -o jsonpath='{.metadata.labels.insights-cost-management-optimizations}'
+kubectl get namespace ros-ocp -o jsonpath='{.metadata.labels.cost_management_optimizations}'
 # Should output: true
 ```
 
@@ -25,8 +25,10 @@ kubectl get namespace ros-ocp -o jsonpath='{.metadata.labels.insights-cost-manag
 
 **To remove the label (if testing):**
 ```bash
-kubectl label namespace ros-ocp insights-cost-management-optimizations-
+kubectl label namespace ros-ocp cost_management_optimizations-
 ```
+
+**Legacy Label**: For backward compatibility, you can also use `insights_cost_management_optimizations=true` (the old label from koku-metrics-operator v4.0.x), but `cost_management_optimizations` is recommended for new deployments.
 
 ---
 
