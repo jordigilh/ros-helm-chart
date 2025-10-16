@@ -65,7 +65,7 @@ spec:
       containers:
         - name: rosocp-recommendation-poller
           image: "{{ .Values.rosocp.recommendationPoller.image.repository }}:{{ .Values.rosocp.recommendationPoller.image.tag }}"
-          imagePullPolicy: {{ .Values.global.pullPolicy }}
+          imagePullPolicy: {{ .Values.rosocp.recommendationPoller.image.pullPolicy | default .Values.global.pullPolicy }}
           command: ["sh", "-c"]
           args:
             - |

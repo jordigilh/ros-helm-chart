@@ -1,0 +1,109 @@
+{{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ros-ocp.fullname" . }}-keycloak-ca
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ca-trust
+  annotations:
+    # Auto-inject OpenShift service CA if available
+    {{- if and .Values.global .Values.global.platform .Values.global.platform.openshift }}
+    service.beta.openshift.io/inject-cabundle: "true"
+    {{- end }}
+data:
+  # Custom CA certificate for Keycloak (placeholder - will be updated by setup scripts)
+  {{- if and .Values.jwt_auth.keycloak .Values.jwt_auth.keycloak.tls .Values.jwt_auth.keycloak.tls.caCert }}
+  keycloak-ca.crt: |
+{{ .Values.jwt_auth.keycloak.tls.caCert | indent 4 }}
+  {{- else }}
+  keycloak-ca.crt: |
+    # Placeholder CA certificate - replace with actual Keycloak CA
+    # This will be updated by the setup-cost-mgmt-tls.sh script
+    -----BEGIN CERTIFICATE-----
+    MIICljCCAX4CCQCKLnUhVP3GVDANBGKQHDAG1UECgwCVVMxCzAJBgNVBAgMAlZB
+    -----END CERTIFICATE-----
+  {{- end }}
+
+  # Combined CA bundle script (run by init container)
+  combine-ca.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "🔧 Combining CA certificates for Envoy..."
+
+    # Start with system CA bundle
+    if [ -f /etc/ssl/certs/ca-bundle.crt ]; then
+        echo "📋 Adding system CA bundle..."
+        cat /etc/ssl/certs/ca-bundle.crt > /tmp/combined-ca.crt
+    elif [ -f /etc/ssl/certs/ca-certificates.crt ]; then
+        echo "📋 Adding system CA certificates..."
+        cat /etc/ssl/certs/ca-certificates.crt > /tmp/combined-ca.crt
+    else
+        echo "⚠️ No system CA bundle found, starting with empty bundle"
+        touch /tmp/combined-ca.crt
+    fi
+
+    echo "" >> /tmp/combined-ca.crt
+
+    # Add service account CA (Kubernetes/OpenShift)
+    if [ -f /var/run/secrets/kubernetes.io/serviceaccount/ca.crt ]; then
+        echo "📋 Adding Kubernetes service account CA..."
+        echo "# Kubernetes Service Account CA" >> /tmp/combined-ca.crt
+        cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /tmp/combined-ca.crt
+        echo "" >> /tmp/combined-ca.crt
+    fi
+
+    # Add OpenShift service CA (if available)
+    if [ -f /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt ]; then
+        echo "📋 Adding OpenShift service CA..."
+        echo "# OpenShift Service CA" >> /tmp/combined-ca.crt
+        cat /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt >> /tmp/combined-ca.crt
+        echo "" >> /tmp/combined-ca.crt
+    fi
+
+    # Add custom Keycloak CA
+    if [ -f /ca-source/keycloak-ca.crt ]; then
+        echo "📋 Adding custom Keycloak CA..."
+        echo "# Keycloak Custom CA" >> /tmp/combined-ca.crt
+        cat /ca-source/keycloak-ca.crt >> /tmp/combined-ca.crt
+        echo "" >> /tmp/combined-ca.crt
+    fi
+
+    # Add injected OpenShift CA bundle (if available)
+    if [ -f /ca-source/service-ca.crt ]; then
+        echo "📋 Adding OpenShift injected CA bundle..."
+        echo "# OpenShift Injected CA Bundle" >> /tmp/combined-ca.crt
+        cat /ca-source/service-ca.crt >> /tmp/combined-ca.crt
+        echo "" >> /tmp/combined-ca.crt
+    fi
+
+    # Copy to shared volume
+    cp /tmp/combined-ca.crt /ca-output/ca-bundle.crt
+
+    echo "✅ Combined CA bundle created with $(grep -c 'BEGIN CERTIFICATE' /ca-output/ca-bundle.crt) certificates"
+    echo "📄 CA bundle size: $(wc -c < /ca-output/ca-bundle.crt) bytes"
+
+    # List CA sources for debugging
+    echo "🔍 CA sources included:"
+    if grep -q "Kubernetes Service Account CA" /ca-output/ca-bundle.crt; then
+        echo "   ✅ Kubernetes Service Account CA"
+    fi
+    if grep -q "OpenShift Service CA" /ca-output/ca-bundle.crt; then
+        echo "   ✅ OpenShift Service CA"
+    fi
+    if grep -q "Keycloak Custom CA" /ca-output/ca-bundle.crt; then
+        echo "   ✅ Keycloak Custom CA"
+    fi
+    if grep -q "OpenShift Injected CA Bundle" /ca-output/ca-bundle.crt; then
+        echo "   ✅ OpenShift Injected CA Bundle"
+    fi
+{{- end }}
+
+
+
+
+
+

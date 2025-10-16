@@ -147,6 +147,14 @@ create_namespace() {
         kubectl create namespace "$NAMESPACE"
         echo_success "Namespace '$NAMESPACE' created"
     fi
+
+    # Apply Cost Management Metrics Operator label for resource optimization data collection
+    # This label is required by the operator to collect ROS metrics from the namespace
+    echo_info "Applying cost management optimization label to namespace..."
+    kubectl label namespace "$NAMESPACE" cost_management_optimizations=true --overwrite
+    echo_success "Cost management optimization label applied"
+    echo_info "  Label: cost_management_optimizations=true"
+    echo_info "  This enables the Cost Management Metrics Operator to collect resource optimization data"
 }
 
 # Function to create storage credentials secret
@@ -477,6 +485,18 @@ deploy_helm_chart() {
             echo_error "Values file not found: $VALUES_FILE"
             return 1
         fi
+    fi
+
+    # JWT authentication is auto-enabled on OpenShift via platform detection in Helm templates
+    # Keycloak URL is auto-detected by Helm chart at render time
+    if [ "$PLATFORM" = "openshift" ]; then
+        echo_info "JWT authentication will be auto-enabled on OpenShift"
+        echo_info "  Keycloak URL will be auto-detected by Helm chart"
+        if [ -n "$KEYCLOAK_URL" ]; then
+            echo_info "  Detected Keycloak: $KEYCLOAK_URL"
+        fi
+    else
+        echo_info "JWT authentication disabled (non-OpenShift platform)"
     fi
 
     echo_info "Executing: $helm_cmd"
@@ -1000,6 +1020,113 @@ cleanup() {
     cleanup_downloaded_chart
 }
 
+# Function to detect RH SSO/Keycloak installation (OpenShift only)
+detect_rhsso_keycloak() {
+    echo_info "Detecting RH SSO/Keycloak installation..."
+
+    # RH SSO is only available on OpenShift clusters
+    if [ "$PLATFORM" != "openshift" ]; then
+        echo_info "Skipping RH SSO detection - not an OpenShift cluster"
+        echo_info "RH SSO/Keycloak is only supported on OpenShift platforms"
+        export KEYCLOAK_FOUND="false"
+        export KEYCLOAK_NAMESPACE=""
+        export KEYCLOAK_URL=""
+        return 1
+    fi
+
+    local keycloak_found=false
+    local keycloak_namespace=""
+    local keycloak_url=""
+
+    # Method 1: Look for Keycloak Custom Resources (preferred)
+    echo_info "Checking for Keycloak Custom Resources..."
+    if kubectl get keycloaks.keycloak.org -A >/dev/null 2>&1; then
+        local keycloak_cr=$(kubectl get keycloaks.keycloak.org -A -o jsonpath='{.items[0]}' 2>/dev/null)
+        if [ -n "$keycloak_cr" ]; then
+            keycloak_namespace=$(echo "$keycloak_cr" | jq -r '.metadata.namespace' 2>/dev/null)
+            keycloak_url=$(echo "$keycloak_cr" | jq -r '.status.externalURL // empty' 2>/dev/null)
+            keycloak_found=true
+            echo_success "Found Keycloak CR in namespace: $keycloak_namespace"
+            if [ -n "$keycloak_url" ]; then
+                echo_info "Keycloak URL: $keycloak_url"
+            fi
+        fi
+    fi
+
+    # Method 2: Look for common RH SSO/Keycloak namespaces
+    if [ "$keycloak_found" = false ]; then
+        echo_info "Checking for RH SSO/Keycloak namespaces..."
+        for ns in rhsso sso keycloak keycloak-system; do
+            if kubectl get namespace "$ns" >/dev/null 2>&1; then
+                echo_info "Found potential Keycloak namespace: $ns"
+                # Check for Keycloak services in this namespace
+                local keycloak_service=$(kubectl get service -n "$ns" -l "app.kubernetes.io/name=keycloak" -o name 2>/dev/null | head -1)
+                if [ -n "$keycloak_service" ]; then
+                    keycloak_namespace="$ns"
+                    keycloak_found=true
+                    echo_success "Confirmed Keycloak service in namespace: $ns"
+                    break
+                fi
+            fi
+        done
+    fi
+
+    # Method 3: OpenShift Route detection (if on OpenShift)
+    if [ "$keycloak_found" = true ] && [ "$PLATFORM" = "openshift" ] && [ -z "$keycloak_url" ]; then
+        echo_info "Detecting Keycloak route in OpenShift..."
+        keycloak_url=$(kubectl get route -n "$keycloak_namespace" -o jsonpath='{.items[?(@.spec.to.name=="keycloak")].spec.host}' 2>/dev/null | head -1)
+        if [ -n "$keycloak_url" ]; then
+            keycloak_url="https://$keycloak_url"
+            echo_info "Detected Keycloak route: $keycloak_url"
+        fi
+    fi
+
+    # Export results for other functions
+    export KEYCLOAK_FOUND="$keycloak_found"
+    export KEYCLOAK_NAMESPACE="$keycloak_namespace"
+    export KEYCLOAK_URL="$keycloak_url"
+
+    if [ "$keycloak_found" = true ]; then
+        echo_success "RH SSO/Keycloak detected successfully"
+        echo_info "  Namespace: $keycloak_namespace"
+        echo_info "  URL: ${keycloak_url:-"(auto-detect during deployment)"}"
+        return 0
+    else
+        echo_warning "RH SSO/Keycloak not detected in OpenShift cluster"
+        echo_info "JWT authentication will be disabled"
+        echo_info "To enable JWT auth, install RH SSO operator or deploy Keycloak"
+        return 1
+    fi
+}
+
+
+# Function to setup JWT authentication based on platform
+setup_jwt_authentication() {
+    echo_info "Configuring JWT authentication based on platform..."
+
+    # JWT authentication is enabled on OpenShift (requires Keycloak), disabled elsewhere
+    if [ "$PLATFORM" = "openshift" ]; then
+        export JWT_AUTH_ENABLED="true"
+        echo_info "JWT authentication: Enabled (OpenShift platform)"
+        echo_info "  JWT Method: Envoy native JWT filter"
+        echo_info "  Requires: Keycloak/RH SSO deployed"
+
+        # Detect Keycloak URL for configuration
+        if detect_rhsso_keycloak; then
+            echo_info "  Keycloak: $KEYCLOAK_NAMESPACE namespace"
+        else
+            echo_warning "Keycloak not detected - ensure it's deployed before using JWT authentication"
+        fi
+    else
+        export JWT_AUTH_ENABLED="false"
+        echo_info "JWT authentication: Disabled (non-OpenShift platform)"
+        echo_info "  Platform: $PLATFORM"
+        echo_info "  Note: JWT auth with RH SSO/Keycloak is only supported on OpenShift"
+    fi
+
+    return 0
+}
+
 # Main execution
 main() {
     echo_info "ROS-OCP Helm Chart Installation"
@@ -1013,12 +1140,21 @@ main() {
     # Detect platform
     detect_platform
 
+    # Setup JWT authentication prerequisites (if applicable)
+    setup_jwt_authentication
+
     echo_info "Configuration:"
     echo_info "  Platform: $PLATFORM"
     echo_info "  Helm Release: $HELM_RELEASE_NAME"
     echo_info "  Namespace: $NAMESPACE"
     if [ -n "$VALUES_FILE" ]; then
         echo_info "  Values File: $VALUES_FILE"
+    fi
+    if [ "$JWT_AUTH_ENABLED" = "true" ]; then
+        echo_info "  JWT Authentication: Enabled"
+        echo_info "  Keycloak Namespace: $KEYCLOAK_NAMESPACE"
+    else
+        echo_info "  JWT Authentication: Disabled"
     fi
     echo ""
 

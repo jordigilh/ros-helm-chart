@@ -54,7 +54,7 @@ spec:
       containers:
         - name: rosocp-api
           image: "{{ .Values.rosocp.api.image.repository }}:{{ .Values.rosocp.api.image.tag }}"
-          imagePullPolicy: {{ .Values.global.pullPolicy }}
+          imagePullPolicy: {{ .Values.rosocp.api.image.pullPolicy | default .Values.global.pullPolicy }}
           command: ["sh", "-c"]
           args:
             - |
