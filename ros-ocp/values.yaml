@@ -1,5 +1,9 @@
 # Default values for ros-ocp-helm
 
+# Chart name overrides
+nameOverride: ""
+fullnameOverride: ""
+
 global:
   # Storage class for persistent volumes
   storageClass:
@@ -157,6 +161,7 @@ ingress:
   image:
     repository: quay.io/insights-onprem/insights-ros-ingress
     tag: "latest"
+    pullPolicy: Always
   port: 8080
   server:
     port: 8080
@@ -217,6 +222,7 @@ sourcesApi:
   image:
     repository: quay.io/insights-onprem/sources-api-go
     tag: "latest"
+    pullPolicy: Always
   port: 8000
   logLevel: DEBUG
   bypassRbac: true
@@ -282,9 +288,9 @@ kruize:
 rosocp:
   processor:
     image:
-#TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
       repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
+      pullPolicy: Always
     metricsPort: 9000
     kafkaConsumerGroupId: rosocp-processor
     kafkaAutoCommit: true
@@ -295,9 +301,9 @@ rosocp:
 
   recommendationPoller:
     image:
-#TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
       repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
+      pullPolicy: Always
     metricsPort: 9000
     kafkaConsumerGroupId: rosocp-recommendation-poller
     kafkaAutoCommit: false
@@ -308,9 +314,10 @@ rosocp:
 
   api:
     image:
-#TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
+
       repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
+      pullPolicy: Always
     port: 8000
     metricsPort: 9000
     pathPrefix: /api
@@ -322,18 +329,20 @@ rosocp:
 
   housekeeper:
     image:
-#TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
+
       repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
+      pullPolicy: Always
     serviceName: rosocp-housekeeper-sources
     logLevel: INFO
 
   partitionCleaner:
     schedule: "0 0 */15 * *"  # Runs at 12:00 AM, every 15 days
     image:
-#TODO: Change to quay.io/insights-onprem/ros-ocp-backend when access is granted
+
       repository: quay.io/insights-onprem/ros-ocp-backend
       tag: "latest"
+      pullPolicy: Always
     serviceName: rosocp-housekeeper-partition
     logLevel: INFO
     resources:
@@ -425,3 +434,77 @@ probes:
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 3
+
+# Monitoring configuration
+monitoring:
+  enabled: false  # Enable monitoring components (ServiceMonitor, etc.)
+
+# JWT Authentication configuration
+# JWT authentication with Keycloak/RHSSO using Envoy's native JWT filter
+# - OpenShift: Automatically enabled (requires Keycloak/RH SSO to be deployed)
+# - KIND/Vanilla K8s: Automatically disabled (Keycloak not available)
+# Platform detection is automatic via Helm's capability detection.
+#
+# Architecture: Envoy sidecar validates JWT tokens inline using native jwt_authn filter
+# with Lua scripting to extract claims into X-ROS headers for the backend service.
+jwt_auth:
+
+  # Envoy proxy configuration (sidecar for JWT validation)
+  envoy:
+    image:
+      repository: registry.redhat.io/openshift-service-mesh/proxyv2-rhel9
+      tag: "2.6"
+      pullPolicy: IfNotPresent
+    port: 8080
+    adminPort: 9901
+    logLevel: info
+
+    # Resource configuration
+    resources:
+      limits:
+        cpu: 500m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # Keycloak configuration for JWT validation
+  # NOTE: JWT authentication is ONLY supported on OpenShift with Keycloak/RHSSO.
+  # On vanilla Kubernetes/KIND, JWT authentication is automatically disabled.
+  keycloak:
+    # Keycloak URL - leave empty for automatic runtime discovery (OpenShift only)
+    #
+    # Runtime Discovery on OpenShift (when url is empty):
+    #   1. Searches for Keycloak Route in common namespaces (rhsso, keycloak, sso)
+    #   2. Falls back to Keycloak Service discovery (cluster-local)
+    #   3. Fails with helpful message if not found
+    #
+    # Override only if using custom/external Keycloak instance on OpenShift
+    url: ""  # e.g., "https://keycloak-rhsso.apps.example.com"
+
+    # Keycloak namespace - leave empty for automatic discovery
+    # Set this if Keycloak is deployed in a custom namespace that doesn't match
+    # the standard patterns (rhsso, keycloak, sso)
+    namespace: ""  # e.g., "my-auth-namespace"
+
+    # Keycloak service port for internal cluster-local discovery fallback
+    # Only used when discovering Keycloak via Service (not Route)
+    servicePort: 8080
+
+    # Keycloak realm name
+    realm: kubernetes
+
+    # Client configuration (for reference - used by Cost Management Operator)
+    client:
+      id: cost-management-operator
+
+    # JWT audience claims that will be validated
+    # Must match the 'aud' claim in incoming JWT tokens
+    # Only tokens issued for the cost-management-operator client will be accepted
+    audiences:
+      - cost-management-operator
+
+    # TLS configuration for Keycloak communication
+    tls:
+      insecureSkipVerify: false
+      # caCert: ""  # Path to CA certificate
