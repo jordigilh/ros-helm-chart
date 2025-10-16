@@ -523,7 +523,7 @@ run_health_checks() {
 
     # Check if nginx ingress controller is accessible on entry point
     local nginx_response
-    nginx_response=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 15 "http://localhost:$http_port/" 2>/dev/null || echo "000")
+    nginx_response=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 15 "http://localhost:$http_port/" 2>/dev/null)
 
     if [ "$nginx_response" = "000" ] || [ -z "$nginx_response" ]; then
         echo_error "Ingress Entry Point is not accessible on port $http_port"
