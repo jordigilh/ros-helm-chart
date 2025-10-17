@@ -409,7 +409,7 @@ jwt_auth:
       repository: registry.redhat.io/openshift-service-mesh/proxyv2-rhel9
       tag: "2.6"
       pullPolicy: IfNotPresent
-    port: 8080
+    port: 9080
     adminPort: 9901
     logLevel: info
 

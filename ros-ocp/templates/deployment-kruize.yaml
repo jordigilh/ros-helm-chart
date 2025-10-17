@@ -148,7 +148,7 @@ spec:
           imagePullPolicy: {{ .Values.global.pullPolicy }}
           ports:
             - name: {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }} http-kruize {{- else }} http {{- end }}
-              containerPort: {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }} 8081 {{- else }} {{ .Values.kruize.port }} {{- end }}
+              containerPort: {{ .Values.kruize.port }}
               protocol: TCP
           env:
             - name: LOGGING_LEVEL
@@ -207,7 +207,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /listPerformanceProfiles
-              port: {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }} 8081 {{- else }} {{ .Values.kruize.port }} {{- end }}
+              port: {{ .Values.kruize.port }}
             initialDelaySeconds: 60
             periodSeconds: {{ .Values.probes.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
@@ -215,7 +215,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /listPerformanceProfiles
-              port: {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }} 8081 {{- else }} {{ .Values.kruize.port }} {{- end }}
+              port: {{ .Values.kruize.port }}
             initialDelaySeconds: 30
             periodSeconds: {{ .Values.probes.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
@@ -227,7 +227,7 @@ spec:
         # Envoy configuration volume
         - name: envoy-config
           configMap:
-            name: {{ include "ros-ocp.fullname" . }}-envoy-config
+            name: {{ include "ros-ocp.fullname" . }}-envoy-config-kruize
             items:
               - key: envoy.yaml
                 path: envoy.yaml

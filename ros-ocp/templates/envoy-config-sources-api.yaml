@@ -1,15 +1,17 @@
 {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
 {{- $keycloakUrl := .Values.jwt_auth.keycloak.url | default (include "ros-ocp.keycloak.url" .) }}
+{{- $issuerUrl := include "ros-ocp.keycloak.issuerUrl" . }}
+{{- $jwksUrl := include "ros-ocp.keycloak.jwksUrl" . }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "ros-ocp.fullname" . }}-envoy-config
+  name: {{ include "ros-ocp.fullname" . }}-envoy-config-sources-api
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sources-api-envoy
 data:
   envoy.yaml: |
-    # Envoy configuration with Native JWT Authentication
     static_resources:
       listeners:
       - name: listener_0
@@ -22,16 +24,12 @@ data:
           - name: envoy.filters.network.http_connection_manager
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-              stat_prefix: ros_ingress_jwt_http
+              stat_prefix: ingress_http
               codec_type: AUTO
-              access_log:
-              - name: envoy.access_loggers.stdout
-                typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
               route_config:
                 name: local_route
                 virtual_hosts:
-                - name: ros_ingress_backend
+                - name: backend
                   domains: ["*"]
                   routes:
                   - match:
@@ -39,39 +37,31 @@ data:
                     route:
                       cluster: ros-ingress-backend
               http_filters:
-              # Native JWT Authentication filter - validates JWT inline without external service
+              # JWT authentication filter
               - name: envoy.filters.http.jwt_authn
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
                   providers:
                     keycloak:
-                      issuer: "{{ $keycloakUrl }}/auth/realms/{{ .Values.jwt_auth.keycloak.realm }}"
+                      issuer: {{ $issuerUrl }}
                       audiences:
                       {{- range .Values.jwt_auth.keycloak.audiences }}
-                      - {{ . | quote }}
+                        - {{ . }}
                       {{- end }}
                       remote_jwks:
                         http_uri:
-                          uri: "{{ $keycloakUrl }}/auth/realms/{{ .Values.jwt_auth.keycloak.realm }}/protocol/openid-connect/certs"
+                          uri: {{ $jwksUrl }}
                           cluster: keycloak_jwks
                           timeout: 5s
                         cache_duration:
                           seconds: 300
-                      # Store JWT payload in metadata for Lua filter to extract
-                      payload_in_metadata: "jwt_payload"
-                      # Forward Authorization header to backend
                       forward: true
+                      forward_payload_header: jwt-payload
                   rules:
-                  # Require JWT for API endpoints
                   - match:
-                      prefix: "/api/ingress"
+                      prefix: "/"
                     requires:
-                      provider_name: "keycloak"
-                  # Health endpoints don't require authentication
-                  - match:
-                      prefix: "/health"
-                  - match:
-                      prefix: "/ready"
+                      provider_name: keycloak
 
               # Lua filter to extract JWT claims and inject X-Rh-Identity header
               - name: envoy.filters.http.lua
@@ -108,43 +98,35 @@ data:
                       local metadata = request_handle:streamInfo():dynamicMetadata()
                       local jwt_data = metadata:get("envoy.filters.http.jwt_authn")
 
-                      if jwt_data ~= nil then
-                        local payload = jwt_data["jwt_payload"]
-
-                        if payload ~= nil then
-                          -- Extract org_id with fallback to alternative claim names
-                          local org_id = get_claim(payload, "org_id", "organization_id", "tenant_id")
-
-                          -- Extract account_number with fallback to alternative claim names
-                          local account_number = get_claim(payload, "account_number", "account_id", "account")
-
-                          -- Use default values if not present
-                          if org_id == "" then
-                            org_id = "1"
-                            request_handle:logWarn("JWT missing org_id claim, using default: 1")
-                          end
-
-                          if account_number == "" then
-                            account_number = org_id  -- Default to org_id
-                          end
-
-                          -- Build XRHID JSON structure
-                          local xrhid_json = build_xrhid_json(org_id, account_number, "User")
-
-                          -- Base64 encode the XRHID JSON
-                          local xrhid_base64 = request_handle:base64Escape(xrhid_json)
-
-                          -- Inject X-Rh-Identity header (RHSSO format expected by ros-ocp-backend)
-                          request_handle:headers():add("X-Rh-Identity", xrhid_base64)
-
-                          -- Extract user info for logging only
-                          local username = get_claim(payload, "preferred_username", "sub")
-
-                          -- Log authentication for debugging
-                          request_handle:logInfo(string.format("JWT authenticated: user=%s, org_id=%s, account=%s",
-                                                               username, org_id, account_number))
-                        end
+                      if jwt_data == nil then
+                        request_handle:logWarn("No JWT data found in metadata")
+                        return
                       end
+
+                      -- Extract org_id with fallbacks
+                      local org_id = get_claim(jwt_data, "org_id", "organization_id", "tenant_id")
+                      if org_id == "" then
+                        -- Fallback: extract from clientId (format: org-<id>-client)
+                        local client_id = get_claim(jwt_data, "clientId", "azp", "client_id")
+                        org_id = string.match(client_id, "^org%-(%d+)%-") or "0"
+                      end
+
+                      -- Extract account_number with fallbacks
+                      local account_number = get_claim(jwt_data, "account_number", "account_id", "account")
+                      if account_number == "" then
+                        account_number = org_id  -- Fallback to org_id
+                      end
+
+                      -- Build and encode X-Rh-Identity header
+                      local xrhid_json = build_xrhid_json(org_id, account_number, "User")
+                      local xrhid_b64 = request_handle:base64Escape(xrhid_json)
+
+                      -- Inject header
+                      request_handle:headers():add("X-Rh-Identity", xrhid_b64)
+
+                      -- Log for debugging
+                      request_handle:logInfo(string.format("JWT Authentication successful - org_id: %s, account: %s",
+                                                           org_id, account_number))
                     end
 
               - name: envoy.filters.http.router
@@ -152,7 +134,7 @@ data:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
       clusters:
-      # ROS ingress backend (same pod, different port)
+      # Sources API backend (port 8000)
       - name: ros-ingress-backend
         connect_timeout: 5s
         type: STATIC
@@ -164,7 +146,7 @@ data:
                 address:
                   socket_address:
                     address: 127.0.0.1
-                    port_value: 8081
+                    port_value: 8000
 
       # Keycloak JWKS endpoint for JWT signature verification
       - name: keycloak_jwks
@@ -185,11 +167,10 @@ data:
             "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
             sni: {{ $keycloakUrl | replace "https://" "" | replace "http://" "" }}
 
-    # Admin interface for monitoring and debugging
     admin:
       address:
         socket_address:
-          protocol: TCP
           address: 0.0.0.0
           port_value: {{ .Values.jwt_auth.envoy.adminPort }}
 {{- end }}
+
