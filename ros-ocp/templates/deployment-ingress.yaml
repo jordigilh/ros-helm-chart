@@ -233,7 +233,7 @@ spec:
         # Envoy configuration volume
         - name: envoy-config
           configMap:
-            name: {{ include "ros-ocp.fullname" . }}-envoy-config
+            name: {{ include "ros-ocp.fullname" . }}-envoy-config-ingress
             items:
               - key: envoy.yaml
                 path: envoy.yaml

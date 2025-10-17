@@ -61,6 +61,6 @@ data:
       "metricsPath": "/metrics",
       "metricsPort": 9000,
       "privatePort": 10000,
-      "publicPort": 8000,
-      "webPort": 8000
+      "publicPort": {{ .Values.kruize.port }},
+      "webPort": {{ .Values.kruize.port }}
     }

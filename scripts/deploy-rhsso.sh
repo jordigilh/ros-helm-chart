@@ -383,6 +383,26 @@ spec:
       name: api-console-mock
       protocol: openid-connect
       protocolMapper: oidc-hardcoded-claim-mapper
+    - config:
+        access.token.claim: "true"
+        claim.name: org_id
+        claim.value: "12345"
+        id.token.claim: "false"
+        jsonType.label: String
+        userinfo.token.claim: "false"
+      name: org-id-mapper
+      protocol: openid-connect
+      protocolMapper: oidc-hardcoded-claim-mapper
+    - config:
+        access.token.claim: "true"
+        claim.name: account_number
+        claim.value: "7890123"
+        id.token.claim: "false"
+        jsonType.label: String
+        userinfo.token.claim: "false"
+      name: account-number-mapper
+      protocol: openid-connect
+      protocolMapper: oidc-hardcoded-claim-mapper
     publicClient: false
     serviceAccountsEnabled: true
     standardFlowEnabled: false
