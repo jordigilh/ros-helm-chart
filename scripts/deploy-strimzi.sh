@@ -3,6 +3,12 @@
 # Strimzi Operator and Kafka Cluster Deployment Script
 # This script automates the deployment of Strimzi operator and Kafka cluster
 # for the ROS-OCP platform with support for both Kubernetes/KIND and OpenShift
+#
+# PREREQUISITE: This script should be run BEFORE install-helm-chart.sh
+# 
+# Typical workflow:
+#   1. ./deploy-strimzi.sh         # Deploy Kafka infrastructure (this script)
+#   2. ./install-helm-chart.sh     # Deploy ROS-OCP application
 
 set -e  # Exit on any error
 
@@ -13,17 +19,19 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-STRIMZI_NAMESPACE=${STRIMZI_NAMESPACE:-}  # If set, use existing Strimzi operator
+# Configuration - Strimzi/Kafka settings
 KAFKA_NAMESPACE=${KAFKA_NAMESPACE:-kafka}
 KAFKA_CLUSTER_NAME=${KAFKA_CLUSTER_NAME:-ros-ocp-kafka}
 KAFKA_VERSION=${KAFKA_VERSION:-3.8.0}
 STRIMZI_VERSION=${STRIMZI_VERSION:-0.45.1}
 KAFKA_ENVIRONMENT=${KAFKA_ENVIRONMENT:-dev}  # "dev" or "ocp"
 STORAGE_CLASS=${STORAGE_CLASS:-}  # Auto-detect if empty
+
+# Advanced options
+STRIMZI_NAMESPACE=${STRIMZI_NAMESPACE:-}  # If set, use existing Strimzi operator
 KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-}  # If set, use external Kafka (skip deployment)
 
-# Platform-specific configuration (will be auto-detected)
+# Platform-specific configuration (auto-detected)
 PLATFORM=""
 
 echo_info() {
@@ -565,28 +573,39 @@ display_summary() {
         # Use address from Kafka status (includes correct DNS suffix for the cluster)
         kafka_bootstrap_servers="$bootstrap_address"
         echo_info "Kafka Connection Information:"
-        echo_info "  Bootstrap Servers: $kafka_bootstrap_servers (from Kafka status)"
+        echo_info "  Bootstrap Servers: $kafka_bootstrap_servers"
+        echo_info "  Source: Kafka cluster status"
     else
         # Fallback to short service name (works for cross-namespace communication)
         kafka_bootstrap_servers="${KAFKA_CLUSTER_NAME}-kafka-bootstrap.${KAFKA_NAMESPACE}:9092"
         echo_info "Kafka Connection Information:"
-        echo_info "  Bootstrap Servers: $kafka_bootstrap_servers (short service name)"
-        echo_warning "Could not read bootstrap address from Kafka status, using short service name"
+        echo_info "  Bootstrap Servers: $kafka_bootstrap_servers"
+        echo_info "  Source: Service name (auto-generated)"
+        echo_warning "Could not read from Kafka status, using service name fallback"
     fi
     echo ""
 
     # Export bootstrap servers for parent scripts
     echo "export KAFKA_BOOTSTRAP_SERVERS=\"$kafka_bootstrap_servers\"" > /tmp/kafka-bootstrap-servers.env
-    echo_success "✓ Kafka bootstrap servers exported to /tmp/kafka-bootstrap-servers.env"
+    echo_success "✓ Kafka bootstrap servers exported to: /tmp/kafka-bootstrap-servers.env"
     echo ""
 
-    echo_info "Useful Commands:"
-    echo_info "  - List topics: kubectl get kafkatopic -n $KAFKA_NAMESPACE"
-    echo_info "  - Kafka logs: kubectl logs -n $KAFKA_NAMESPACE -l strimzi.io/name=${KAFKA_CLUSTER_NAME}-kafka"
-    echo_info "  - Operator logs: kubectl logs -n $KAFKA_NAMESPACE -l name=strimzi-cluster-operator"
+    echo_info "Verification Commands:"
+    echo_info "  kubectl get kafka -n $KAFKA_NAMESPACE"
+    echo_info "  kubectl get kafkatopic -n $KAFKA_NAMESPACE"
     echo ""
 
-    echo_success "Strimzi/Kafka deployment completed successfully!"
+    echo_info "Troubleshooting:"
+    echo_info "  Kafka logs: kubectl logs -n $KAFKA_NAMESPACE -l strimzi.io/name=${KAFKA_CLUSTER_NAME}-kafka"
+    echo_info "  Operator logs: kubectl logs -n $KAFKA_NAMESPACE -l name=strimzi-cluster-operator"
+    echo ""
+
+    echo_success "Kafka infrastructure deployment completed successfully!"
+    echo ""
+    echo_info "Next Steps:"
+    echo_info "  1. (Optional) Verify Kafka cluster: kubectl get kafka $KAFKA_CLUSTER_NAME -n $KAFKA_NAMESPACE"
+    echo_info "  2. Deploy ROS-OCP application: ./install-helm-chart.sh"
+    echo ""
 }
 
 # Function to clean up deployment (for troubleshooting)
@@ -669,23 +688,25 @@ main() {
     
     # Handle existing Kafka on cluster (bootstrap servers provided by user)
     if [ -n "$KAFKA_BOOTSTRAP_SERVERS" ]; then
-        echo_info "Using existing Kafka cluster on cluster (provided bootstrap servers)"
+        echo_info "Using existing Kafka cluster (provided bootstrap servers)"
+        echo_info ""
         echo_info "Configuration:"
         echo_info "  Bootstrap Servers: $KAFKA_BOOTSTRAP_SERVERS"
-        echo_info "  Skipping Strimzi/Kafka deployment"
+        echo_info "  Deployment: Skipped (using external Kafka)"
         echo ""
         
         # Export bootstrap servers for parent scripts
         echo "export KAFKA_BOOTSTRAP_SERVERS=\"$KAFKA_BOOTSTRAP_SERVERS\"" > /tmp/kafka-bootstrap-servers.env
         echo_success "✓ Kafka bootstrap servers exported to /tmp/kafka-bootstrap-servers.env"
+        echo ""
         echo_success "Kafka configuration completed successfully!"
         exit 0
     fi
     
     echo_info "This script will deploy Strimzi operator and Kafka cluster"
-    echo_info "Configuration:"
-    echo_info "  Kafka Namespace: $KAFKA_NAMESPACE"
-    echo_info "  Kafka Cluster Name: $KAFKA_CLUSTER_NAME"
+    echo_info "Deployment Configuration:"
+    echo_info "  Namespace: $KAFKA_NAMESPACE"
+    echo_info "  Cluster Name: $KAFKA_CLUSTER_NAME"
     echo_info "  Kafka Version: $KAFKA_VERSION"
     echo_info "  Strimzi Version: $STRIMZI_VERSION"
     echo_info "  Environment: $KAFKA_ENVIRONMENT"
@@ -693,7 +714,7 @@ main() {
         echo_info "  Storage Class: $STORAGE_CLASS"
     fi
     if [ -n "$STRIMZI_NAMESPACE" ]; then
-        echo_info "  Use existing Strimzi in: $STRIMZI_NAMESPACE"
+        echo_info "  Existing Strimzi: $STRIMZI_NAMESPACE"
     fi
     echo ""
 
