@@ -6,6 +6,7 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 
 | Script | Purpose | Environment |
 |--------|---------|-------------|
+| `deploy-strimzi.sh` | Deploy Kafka infrastructure | All environments |
 | `install-helm-chart.sh` | Deploy ROS Helm chart | All environments |
 | `deploy-rhsso.sh` | Deploy Keycloak/RHSSO | OpenShift |
 | `setup-cost-mgmt-tls.sh` | Configure TLS certificates | OpenShift |
@@ -21,6 +22,9 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 # 1. Deploy Cost Management Operator with TLS support
 ./setup-cost-mgmt-tls.sh
 
+# 2. Deploy Kafka infrastructure
+./deploy-strimzi.sh
+
 # 2. Deploy ROS
 ./install-helm-chart.sh
 
@@ -33,14 +37,17 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 # 1. Deploy Keycloak/RHSSO
 ./deploy-rhsso.sh
 
-# 2. Deploy ROS with JWT authentication
+# 2. Deploy Kafka infrastructure
+./deploy-strimzi.sh
+
+# 3. Deploy ROS with JWT authentication
 export JWT_AUTH_ENABLED=true
 ./install-helm-chart.sh
 
-# 3. Configure TLS certificates
+# 4. Configure TLS certificates
 ./setup-cost-mgmt-tls.sh
 
-# 4. Test JWT flow
+# 5. Test JWT flow
 ./test-ocp-dataflow-jwt.sh
 ```
 
@@ -49,11 +56,14 @@ export JWT_AUTH_ENABLED=true
 # 1. Create KIND cluster
 ./deploy-kind.sh
 
-# 2. Deploy ROS from local chart
+# 2. Deploy Kafka infrastructure
+./deploy-strimzi.sh
+
+# 3. Deploy ROS from local chart
 export USE_LOCAL_CHART=true
 ./install-helm-chart.sh
 
-# 3. Cleanup when done
+# 4. Cleanup when done
 ./cleanup-kind-artifacts.sh
 ```
 
@@ -101,6 +111,7 @@ export NAMESPACE=ros-production
 - `USE_LOCAL_CHART`: Use local chart instead of GitHub (default: `false`)
 - `JWT_AUTH_ENABLED`: Enable JWT authentication (default: auto-detect)
 - `VALUES_FILE`: Custom values file path
+- `KAFKA_BOOTSTRAP_SERVERS`: Use external Kafka (skips verification)
 
 ---
 
@@ -148,6 +159,50 @@ Configure Cost Management Operator with comprehensive CA certificate support.
 ```
 
 **Best for:** All OpenShift environments, especially those with self-signed certificates
+
+---
+
+### `deploy-strimzi.sh`
+Deploy Strimzi operator and Kafka cluster.
+
+**What it creates:**
+- Strimzi Operator (Kafka cluster management)
+- Kafka 3.8.0 cluster with persistent storage
+- Required Kafka topics for ROS-OCP
+
+**Usage:**
+```bash
+# Basic deployment
+./deploy-strimzi.sh
+
+# Deploy for OpenShift with custom storage
+KAFKA_ENVIRONMENT=ocp ./deploy-strimzi.sh
+
+# Use existing Strimzi operator
+STRIMZI_NAMESPACE=existing-strimzi ./deploy-strimzi.sh
+
+# Use existing external Kafka
+KAFKA_BOOTSTRAP_SERVERS=my-kafka:9092 ./deploy-strimzi.sh
+
+# Validate existing deployment
+./deploy-strimzi.sh validate
+
+# Cleanup
+./deploy-strimzi.sh cleanup
+```
+
+**Environment variables:**
+- `KAFKA_NAMESPACE`: Target namespace (default: `kafka`)
+- `KAFKA_CLUSTER_NAME`: Kafka cluster name (default: `ros-ocp-kafka`)
+- `KAFKA_VERSION`: Kafka version (default: `3.8.0`)
+- `STRIMZI_VERSION`: Strimzi operator version (default: `0.45.1`)
+- `KAFKA_ENVIRONMENT`: Environment type - `dev` or `ocp` (default: `dev`)
+- `STORAGE_CLASS`: Storage class name (auto-detected if empty)
+- `KAFKA_BOOTSTRAP_SERVERS`: Use external Kafka (skips deployment)
+
+**Platform detection:**
+- **Kubernetes/KIND**: Single-node Kafka with minimal resources
+- **OpenShift**: 3-node HA Kafka with production configuration
 
 ---
 
@@ -234,10 +289,13 @@ Use the JWT test script for comprehensive E2E validation:
 
 **Recommended CI/CD workflow:**
 ```bash
-# 1. Deploy environment
+# 1. Deploy Kafka infrastructure
+./deploy-strimzi.sh
+
+# 2. Deploy environment
 ./install-helm-chart.sh
 
-# 2. Validate full E2E with ML (quick synthetic test)
+# 3. Validate full E2E with ML (quick synthetic test)
 ./test-ocp-dataflow-jwt.sh || exit 1
 ```
 

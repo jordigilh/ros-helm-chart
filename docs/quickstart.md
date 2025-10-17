@@ -111,7 +111,7 @@ cd /path/to/ros-helm-chart/scripts/
 
 #### 2. Deploy ROS-OCP Services
 ```bash
-# Deploy directly to OpenShift (script auto-detects platform)
+# Deploy with auto-platform detection (recommended)
 ./install-helm-chart.sh
 ```
 
@@ -167,7 +167,7 @@ helm install ros-ocp ros-ocp-${VERSION}.tgz -n ros-ocp --create-namespace
 
 #### 4. Development Mode (Local Chart)
 ```bash
-# Use local chart source for development
+# Use local chart source (auto-detects platform)
 USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp ./install-helm-chart.sh
 
 # Or direct Helm installation
@@ -321,12 +321,10 @@ export NAMESPACE=my-namespace
 cat > my-values.yaml << EOF
 global:
   storageClass: "fast-ssd"
-
 database:
   ros:
     storage:
       size: 20Gi
-
 resources:
   application:
     requests:

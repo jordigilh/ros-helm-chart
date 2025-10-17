@@ -614,7 +614,7 @@ Storage endpoint (MinIO service or ODF endpoint)
 */}}
 {{- define "ros-ocp.storage.endpoint" -}}
 {{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
-{{- if .Values.odf.endpoint -}}
+{{- if and .Values.odf .Values.odf.endpoint -}}
 {{- .Values.odf.endpoint | quote -}}
 {{- else -}}
 {{- /* Dynamic ODF S3 service discovery using NooBaa CRD status */ -}}
@@ -654,7 +654,11 @@ Storage port (MinIO port or ODF port)
 */}}
 {{- define "ros-ocp.storage.port" -}}
 {{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- if .Values.odf -}}
 {{- .Values.odf.port -}}
+{{- else -}}
+443
+{{- end -}}
 {{- else -}}
 {{- .Values.minio.ports.api -}}
 {{- end -}}
@@ -679,7 +683,11 @@ Storage bucket name
 */}}
 {{- define "ros-ocp.storage.bucket" -}}
 {{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- if .Values.odf -}}
 {{- .Values.odf.bucket -}}
+{{- else -}}
+ros-data
+{{- end -}}
 {{- else -}}
 {{- .Values.ingress.storage.bucket -}}
 {{- end -}}
@@ -690,7 +698,11 @@ Storage use SSL flag
 */}}
 {{- define "ros-ocp.storage.useSSL" -}}
 {{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- if .Values.odf -}}
 {{- .Values.odf.useSSL -}}
+{{- else -}}
+true
+{{- end -}}
 {{- else -}}
 {{- .Values.ingress.storage.useSSL -}}
 {{- end -}}
@@ -941,4 +953,72 @@ JWT authentication requires Keycloak, which is only deployed on OpenShift
 */}}
 {{- define "ros-ocp.jwt.shouldEnable" -}}
 {{- include "ros-ocp.isOpenShift" . -}}
+{{- end }}
+
+{{/*
+Kafka service host resolver (supports both internal Strimzi and external Kafka)
+*/}}
+{{- define "ros-ocp.kafkaHost" -}}
+{{- if .Values.kafka.bootstrapServers -}}
+  {{- $bootstrapServers := .Values.kafka.bootstrapServers -}}
+  {{- if contains "," $bootstrapServers -}}
+    {{- $firstServer := regexFind "^[^,]+" $bootstrapServers -}}
+    {{- if contains ":" $firstServer -}}
+{{- regexFind "^[^:]+" $firstServer -}}
+    {{- else -}}
+{{- $firstServer -}}
+    {{- end -}}
+  {{- else -}}
+    {{- if contains ":" $bootstrapServers -}}
+{{- regexFind "^[^:]+" $bootstrapServers -}}
+    {{- else -}}
+{{- $bootstrapServers -}}
+    {{- end -}}
+  {{- end -}}
+{{- else -}}
+ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local
+{{- end -}}
+{{- end }}
+
+{{/*
+Kafka port resolver (supports both internal Strimzi and external Kafka)
+*/}}
+{{- define "ros-ocp.kafkaPort" -}}
+{{- if .Values.kafka.bootstrapServers -}}
+  {{- $bootstrapServers := .Values.kafka.bootstrapServers -}}
+  {{- if contains "," $bootstrapServers -}}
+    {{- $firstServer := regexFind "^[^,]+" $bootstrapServers -}}
+    {{- if contains ":" $firstServer -}}
+{{- regexFind "[^:]+$" $firstServer -}}
+    {{- else -}}
+9092
+    {{- end -}}
+  {{- else -}}
+    {{- if contains ":" $bootstrapServers -}}
+{{- regexFind "[^:]+$" $bootstrapServers -}}
+    {{- else -}}
+9092
+    {{- end -}}
+  {{- end -}}
+{{- else -}}
+9092
+{{- end -}}
+{{- end }}
+
+{{/*
+Kafka bootstrap servers resolver (supports both internal Strimzi and external Kafka)
+*/}}
+{{- define "ros-ocp.kafkaBootstrapServers" -}}
+{{- if .Values.kafka.bootstrapServers -}}
+{{- .Values.kafka.bootstrapServers -}}
+{{- else -}}
+ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092
+{{- end -}}
+{{- end }}
+
+{{/*
+Kafka security protocol resolver (supports both internal Strimzi and external Kafka)
+*/}}
+{{- define "ros-ocp.kafkaSecurityProtocol" -}}
+{{- .Values.kafka.securityProtocol | default "PLAINTEXT" -}}
 {{- end }}

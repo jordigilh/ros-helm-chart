@@ -48,17 +48,19 @@ spec:
               done
               echo "ODF S3 endpoint is ready"
             {{- end }}
+        {{- if .Values.kafka.bootstrapServers }}
         - name: wait-for-kafka
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
           command: ['bash', '-c']
           args:
             - |
-              echo "Waiting for Kafka at {{ include "ros-ocp.fullname" . }}-kafka:{{ .Values.kafka.broker.port }}..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "ros-ocp.fullname" . }}-kafka/{{ .Values.kafka.broker.port }}" 2>/dev/null; do
+              echo "Waiting for Kafka at {{ include "ros-ocp.kafkaHost" . }}:{{ include "ros-ocp.kafkaPort" . }}..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "ros-ocp.kafkaHost" . }}/{{ include "ros-ocp.kafkaPort" . }}" 2>/dev/null; do
                 echo "Kafka not ready yet, retrying in 5 seconds..."
                 sleep 5
               done
               echo "Kafka is ready"
+        {{- end }}
       serviceAccountName: insights-ros-ingress
       containers:
         {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
@@ -164,11 +166,11 @@ spec:
 
             # Kafka configuration
             - name: KAFKA_BROKERS
-              value: {{ include "ros-ocp.fullname" . }}-kafka:{{ .Values.kafka.broker.port }}
+              value: {{ include "ros-ocp.kafkaBootstrapServers" . | quote }}
             - name: KAFKA_ROS_TOPIC
               value: {{ .Values.ingress.kafka.topic | quote }}
             - name: KAFKA_SECURITY_PROTOCOL
-              value: {{ .Values.ingress.kafka.securityProtocol | quote }}
+              value: {{ include "ros-ocp.kafkaSecurityProtocol" . | quote }}
             - name: KAFKA_CLIENT_ID
               value: {{ .Values.ingress.kafka.clientId | quote }}
             - name: KAFKA_BATCH_SIZE

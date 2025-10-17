@@ -1,0 +1,112 @@
+# OpenShift-specific values for ROS-OCP deployment
+# This file provides OpenShift-specific overrides with testing/development settings
+# Uses OpenShift Routes, ODF storage, and smaller resource allocations for testing
+#
+# For production deployments, override with larger values:
+#   --set database.ros.storage.size=100Gi
+#   --set resources.kruize.requests.memory=2Gi
+
+global:
+  # OpenShift Data Foundation (ODF) storage class
+  # Common values: odf-storagecluster-ceph-rbd, ocs-storagecluster-ceph-rbd
+  storageClass: "odf-storagecluster-ceph-rbd"
+  # Storage type for platform detection (odf for OpenShift, minio for Kubernetes)
+  storageType: "odf"
+  pullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+# Reduced resource requirements for testing environment
+# Production recommendation: Increase memory for Kruize (2-4Gi)
+resources:
+  application:
+    requests:
+      memory: "512Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+  kruize:
+    requests:
+      memory: "1Gi"
+      cpu: "200m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+
+# Use smaller storage sizes for testing
+# Production recommendation: 100Gi for ros/kruize, 50Gi for sources
+database:
+  ros:
+    storage:
+      size: "5Gi"
+      class: "odf-storagecluster-ceph-rbd"
+  
+  kruize:
+    storage:
+      size: "5Gi"
+      class: "odf-storagecluster-ceph-rbd"
+  
+  sources:
+    storage:
+      size: "5Gi"
+      class: "odf-storagecluster-ceph-rbd"
+
+# Kafka configuration
+# IMPORTANT: Kafka/Strimzi deployment is NOT managed by this Helm chart!
+# The install-helm-chart.sh script installs Strimzi operator and creates Kafka cluster separately
+# This section only contains connection settings for the deployed application
+kafka:
+  # Bootstrap servers for Kafka cluster (auto-configured by script)
+  bootstrapServers: "ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
+  securityProtocol: "PLAINTEXT"
+
+# Valkey (Production Cache - for OpenShift deployments)
+# Replaces Redis on OpenShift
+valkey:
+  image:
+    repository: registry.redhat.io/rhel10/valkey-8
+    tag: "latest"
+  bindAddress: "0.0.0.0"
+
+# ODF (Production Storage - for OpenShift deployments)
+# Replaces MinIO on OpenShift
+odf:
+  endpoint: ""  # Auto-detected from NooBaa CRD status
+  port: 443
+  region: "us-east-1"
+  useSSL: true
+  bucket: "ros-data"
+  pathStyle: true
+  credentials:
+    secretName: "ros-ocp-odf-credentials"
+
+# Kruize OpenShift-specific configuration
+kruize:
+  env:
+    k8sType: openshift  # Override default kubernetes value
+
+# Authentication configuration
+# OpenShift uses native OAuth/RBAC, so we disable custom JWT auth
+ingress:
+  auth:
+    enabled: false  # Use OpenShift native authentication
+  upload:
+    requireAuth: false  # Authentication handled by OpenShift Routes
+
+# OpenShift Routes configuration (automatically used when deploying to OpenShift)
+serviceRoute:
+  enabled: true
+  annotations:
+    # OpenShift-specific route annotations
+    haproxy.router.openshift.io/timeout: "300s"
+    haproxy.router.openshift.io/rewrite-target: ""
+  hosts:
+    - host: ""  # Empty host uses cluster's default route domain
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    # Uncomment to enable TLS termination
+    # termination: edge
+    # insecureEdgeTerminationPolicy: Redirect
