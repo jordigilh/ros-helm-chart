@@ -1,3 +1,4 @@
+{{- if .Values.kafka.bootstrapServers }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -8,9 +9,10 @@ metadata:
     app.kubernetes.io/component: kafka-alias
 spec:
   type: ExternalName
-  externalName: {{ include "ros-ocp.fullname" . }}-kafka.{{ .Release.Namespace }}.svc.cluster.local
+  externalName: {{ include "ros-ocp.kafkaHost" . }}
   ports:
-    - port: 29092
-      targetPort: 29092
+    - port: {{ include "ros-ocp.kafkaPort" . }}
+      targetPort: {{ include "ros-ocp.kafkaPort" . }}
       protocol: TCP
       name: kafka
+{{- end }}

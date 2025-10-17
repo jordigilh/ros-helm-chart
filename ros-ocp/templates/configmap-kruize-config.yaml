@@ -22,8 +22,8 @@ data:
         "brokers": [
           {
             "authtype": "sasl",
-            "hostname": "{{ include "ros-ocp.fullname" . }}-kafka",
-            "port": {{ .Values.kafka.broker.port }},
+            "hostname": "{{ include "ros-ocp.kafkaHost" . }}",
+            "port": {{ include "ros-ocp.kafkaPort" . }},
             "sasl": {
               "password": "",
               "saslMechanism": "PLAIN",

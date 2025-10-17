@@ -40,18 +40,19 @@ spec:
               done
               echo "Sources database is ready"
               echo "Sources database is ready"
+        {{- if .Values.kafka.bootstrapServers }}
         - name: wait-for-kafka
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
           command: ['bash', '-c']
           args:
             - |
-              echo "Waiting for Kafka at {{ include "ros-ocp.fullname" . }}-kafka:{{ .Values.kafka.broker.port }}..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "ros-ocp.fullname" . }}-kafka/{{ .Values.kafka.broker.port }}" 2>/dev/null; do
+              echo "Waiting for Kafka at {{ include "ros-ocp.kafkaHost" . }}:{{ include "ros-ocp.kafkaPort" . }}..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "ros-ocp.kafkaHost" . }}/{{ include "ros-ocp.kafkaPort" . }}" 2>/dev/null; do
                 echo "Kafka not ready yet, retrying in 5 seconds..."
                 sleep 5
               done
               echo "Kafka is ready"
-              echo "Kafka is ready"
+        {{- end }}
         - name: wait-for-{{ $cacheName }}
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
           command: ['bash', '-c']
@@ -95,9 +96,9 @@ spec:
             - name: BYPASS_RBAC
               value: {{ .Values.sourcesApi.bypassRbac | quote }}
             - name: QUEUE_HOST
-              value: {{ include "ros-ocp.fullname" . }}-kafka
+              value: {{ include "ros-ocp.kafkaHost" . }}
             - name: QUEUE_PORT
-              value: {{ .Values.kafka.broker.port | quote }}
+              value: {{ include "ros-ocp.kafkaPort" . | quote }}
             - name: ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
