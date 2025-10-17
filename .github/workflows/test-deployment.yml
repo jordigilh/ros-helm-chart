@@ -1,6 +1,11 @@
 name: Helm Chart Quality Test
 
 # This workflow tests the ROS-OCP Helm chart deployment on Kind using the local chart
+# Deployment flow:
+#   1. Setup KIND cluster
+#   2. Deploy Kafka infrastructure (Strimzi + Kafka) - prerequisite
+#   3. Deploy ROS-OCP application
+#
 # Uses alternative registries to avoid Docker Hub rate limiting:
 # - public.ecr.aws for official images (postgres, redis, busybox, confluent)
 # - quay.io for application images (already configured)
@@ -13,6 +18,7 @@ on:
     paths:
       - 'ros-ocp/**'
       - 'scripts/install-helm-chart.sh'
+      - 'scripts/deploy-strimzi.sh'
       - 'scripts/deploy-kind.sh'
 
   workflow_dispatch:
@@ -99,6 +105,23 @@ jobs:
           kubectl cluster-info
           kubectl get nodes -o wide
 
+
+      - name: Deploy Kafka Infrastructure
+        timeout-minutes: 10
+        run: |
+          cd scripts
+
+          # Make script executable
+          chmod +x deploy-strimzi.sh
+
+          # Deploy Strimzi and Kafka (uses default KAFKA_NAMESPACE=kafka)
+          echo "Deploying Kafka infrastructure..."
+          ./deploy-strimzi.sh
+
+          # Verify Kafka deployment
+          echo "Verifying Kafka deployment..."
+          kubectl get pods -n kafka
+          kubectl get kafka -n kafka
 
       - name: Deploy Helm Chart
         timeout-minutes: 20
@@ -208,7 +231,19 @@ jobs:
           kubectl cluster-info || true
           kubectl version || true
 
-          echo "=== Pods Status ==="
+          echo "=== Kafka Infrastructure Status ==="
+          echo "Kafka Pods:"
+          kubectl get pods -n kafka -o wide || true
+          echo "Kafka Cluster:"
+          kubectl get kafka -n kafka || true
+          echo "Kafka Topics:"
+          kubectl get kafkatopic -n kafka || true
+          echo "Strimzi Operator:"
+          kubectl get pods -n kafka -l name=strimzi-cluster-operator || true
+          echo "Kafka Events:"
+          kubectl get events -n kafka --sort-by='.lastTimestamp' || true
+
+          echo "=== ROS-OCP Pods Status ==="
           kubectl get pods -n ${{ env.NAMESPACE }} -o wide || true
           kubectl get pods --all-namespaces | head -20 || true
 
@@ -221,6 +256,7 @@ jobs:
 
           echo "=== Persistent Volumes ==="
           kubectl get pv,pvc -n ${{ env.NAMESPACE }} || true
+          kubectl get pv,pvc -n kafka || true
 
           echo "=== Node Status ==="
           kubectl get nodes -o wide || true
@@ -242,6 +278,12 @@ jobs:
           echo "RBAC Check:"
           kubectl auth can-i get pods --as=system:serviceaccount:${{ env.NAMESPACE }}:insights-ros-ingress -n ${{ env.NAMESPACE }} || true
 
+          echo "=== Kafka/Strimzi Logs ==="
+          echo "Strimzi Operator Logs:"
+          kubectl logs -n kafka -l name=strimzi-cluster-operator --tail=50 || true
+          echo "Kafka Broker Logs:"
+          kubectl logs -n kafka -l strimzi.io/name=ros-ocp-kafka-kafka --tail=30 || true
+          
           echo "=== Ingress Service Logs ==="
           kubectl logs -n ${{ env.NAMESPACE }} -l app.kubernetes.io/name=ingress --tail=30 || true
           echo "=== Recent Logs ==="
