@@ -262,41 +262,89 @@ configure_kafka_connectivity() {
     HELM_EXTRA_ARGS+=("--set" "kafka.bootstrapServers=$kafka_bootstrap_servers")
 }
 
-# Function to ensure Strimzi and Kafka are deployed
-ensure_strimzi_and_kafka() {
-    echo_info "Ensuring Strimzi operator and Kafka cluster are deployed..."
+# Function to verify Strimzi and Kafka prerequisites
+verify_strimzi_and_kafka() {
+    echo_info "Verifying Strimzi operator and Kafka cluster prerequisites..."
     
-    # Call deploy-strimzi.sh script
-    local deploy_script="$SCRIPT_DIR/deploy-strimzi.sh"
+    # If user provided external Kafka bootstrap servers, skip verification
+    if [ -n "$KAFKA_BOOTSTRAP_SERVERS" ]; then
+        echo_info "Using provided Kafka bootstrap servers: $KAFKA_BOOTSTRAP_SERVERS"
+        HELM_EXTRA_ARGS+=("--set" "kafka.bootstrapServers=$KAFKA_BOOTSTRAP_SERVERS")
+        echo_success "Kafka configuration verified"
+        return 0
+    fi
     
-    if [ ! -f "$deploy_script" ]; then
-        echo_error "deploy-strimzi.sh not found at: $deploy_script"
+    # Determine which namespace to check
+    local check_namespace="${KAFKA_NAMESPACE:-kafka}"
+    
+    # Check if Strimzi operator exists
+    local strimzi_found=false
+    local strimzi_ns=""
+    
+    # Look for Strimzi operator in any namespace
+    strimzi_ns=$(kubectl get pods -A -l name=strimzi-cluster-operator -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || echo "")
+    
+    if [ -n "$strimzi_ns" ]; then
+        echo_success "Found Strimzi operator in namespace: $strimzi_ns"
+        strimzi_found=true
+        check_namespace="$strimzi_ns"
+    else
+        echo_error "Strimzi operator not found in cluster"
+        echo_info ""
+        echo_info "Strimzi operator is required to manage Kafka clusters."
+        echo_info "Please deploy Strimzi before installing ROS-OCP:"
+        echo_info ""
+        echo_info "  cd $SCRIPT_DIR"
+        echo_info "  ./deploy-strimzi.sh"
+        echo_info ""
+        echo_info "Or set KAFKA_BOOTSTRAP_SERVERS to use an existing Kafka cluster:"
+        echo_info "  export KAFKA_BOOTSTRAP_SERVERS=my-kafka-bootstrap.my-namespace:9092"
+        echo_info "  $0"
+        echo_info ""
         return 1
     fi
     
-    # Pass environment variables to deploy script
-    export KAFKA_ENVIRONMENT
-    export STRIMZI_NAMESPACE
-    export KAFKA_NAMESPACE
-    export KAFKA_BOOTSTRAP_SERVERS
-    export STORAGE_CLASS
-    
-    # Run deployment (will skip if already exists)
-    if ! bash "$deploy_script"; then
-        echo_error "Strimzi/Kafka deployment failed"
+    # Check if Kafka cluster exists
+    if ! kubectl get kafka -n "$check_namespace" >/dev/null 2>&1; then
+        echo_error "No Kafka cluster found in namespace: $check_namespace"
+        echo_info ""
+        echo_info "A Kafka cluster is required for ROS-OCP."
+        echo_info "Please deploy a Kafka cluster before installing ROS-OCP:"
+        echo_info ""
+        echo_info "  cd $SCRIPT_DIR"
+        echo_info "  ./deploy-strimzi.sh"
+        echo_info ""
         return 1
     fi
     
-    # Import Kafka bootstrap servers from deployment
-    if [ -f /tmp/kafka-bootstrap-servers.env ]; then
-        source /tmp/kafka-bootstrap-servers.env
-        if [ -n "$KAFKA_BOOTSTRAP_SERVERS" ]; then
-            HELM_EXTRA_ARGS+=("--set" "kafka.bootstrapServers=$KAFKA_BOOTSTRAP_SERVERS")
-            echo_info "Configured Kafka bootstrap servers: $KAFKA_BOOTSTRAP_SERVERS"
+    # Get Kafka cluster details
+    local kafka_cluster=$(kubectl get kafka -n "$check_namespace" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [ -n "$kafka_cluster" ]; then
+        echo_success "Found Kafka cluster: $kafka_cluster in namespace: $check_namespace"
+        
+        # Check Kafka status
+        local kafka_ready=$(kubectl get kafka "$kafka_cluster" -n "$check_namespace" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "False")
+        if [ "$kafka_ready" != "True" ]; then
+            echo_warning "Kafka cluster is not ready yet. Installation may fail if Kafka is not fully operational."
+        fi
+        
+        # Import Kafka bootstrap servers if available from deploy-strimzi.sh output
+        if [ -f /tmp/kafka-bootstrap-servers.env ]; then
+            source /tmp/kafka-bootstrap-servers.env
+            if [ -n "$KAFKA_BOOTSTRAP_SERVERS" ]; then
+                HELM_EXTRA_ARGS+=("--set" "kafka.bootstrapServers=$KAFKA_BOOTSTRAP_SERVERS")
+                echo_info "Using Kafka bootstrap servers: $KAFKA_BOOTSTRAP_SERVERS"
+            fi
+        else
+            # Fallback: auto-detect bootstrap servers
+            local bootstrap_servers="${kafka_cluster}-kafka-bootstrap.${check_namespace}.svc.cluster.local:9092"
+            HELM_EXTRA_ARGS+=("--set" "kafka.bootstrapServers=$bootstrap_servers")
+            echo_info "Auto-detected Kafka bootstrap servers: $bootstrap_servers"
         fi
     fi
     
-    echo_success "Strimzi and Kafka are ready"
+    echo_success "Strimzi and Kafka verification completed"
+    return 0
 }
 
 # Function to create storage credentials secret
@@ -934,32 +982,12 @@ run_health_checks() {
 # Function to cleanup
 cleanup() {
     local complete_cleanup=false
-    local strimzi_cleanup=false
 
     # Parse arguments
     while [ $# -gt 0 ]; do
         case "$1" in
-            --strimzi-conflicts)
-                echo_info "Cleaning up Strimzi conflicts only..."
-                local deploy_script="$SCRIPT_DIR/deploy-strimzi.sh"
-                if [ -f "$deploy_script" ]; then
-                    # Use timeout to prevent hanging (no interactive prompt needed)
-                    if timeout 300 bash "$deploy_script" cleanup; then
-                        echo_success "Strimzi cleanup completed via deploy-strimzi.sh"
-                    else
-                        echo_warning "deploy-strimzi.sh cleanup timed out or failed, falling back to manual cleanup..."
-                        cleanup_existing_strimzi
-                    fi
-                else
-                    echo_error "deploy-strimzi.sh not found at: $deploy_script"
-                    echo_info "Performing manual Strimzi cleanup..."
-                    cleanup_existing_strimzi
-                fi
-                return 0
-                ;;
             --complete)
                 complete_cleanup=true
-                strimzi_cleanup=true
                 ;;
             *)
                 echo_warning "Unknown cleanup option: $1"
@@ -968,26 +996,10 @@ cleanup() {
         shift
     done
 
-    # Clean up Strimzi first if requested
-    if [ "$strimzi_cleanup" = true ]; then
-        echo_info "Cleaning up Strimzi operator and Kafka resources..."
-        local deploy_script="$SCRIPT_DIR/deploy-strimzi.sh"
-        if [ -f "$deploy_script" ]; then
-            # Use timeout to prevent hanging (no interactive prompt needed)
-            if timeout 300 bash "$deploy_script" cleanup; then
-                echo_success "Strimzi cleanup completed via deploy-strimzi.sh"
-            else
-                echo_warning "deploy-strimzi.sh cleanup timed out or failed, falling back to manual cleanup..."
-                cleanup_existing_strimzi
-            fi
-        else
-            echo_warning "deploy-strimzi.sh not found at: $deploy_script"
-            echo_info "Performing manual Strimzi cleanup..."
-            cleanup_existing_strimzi
-        fi
-    fi
-
-    echo_info "Cleaning up Helm deployment..."
+    echo_info "Cleaning up ROS-OCP Helm deployment..."
+    echo_info "Note: This will NOT remove Strimzi/Kafka. To clean them up separately:"
+    echo_info "  ./deploy-strimzi.sh cleanup"
+    echo ""
 
     # Check if namespace exists
     if ! kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
@@ -1300,9 +1312,9 @@ main() {
         exit 1
     fi
 
-    # Ensure Strimzi operator and Kafka cluster are deployed
-    if ! ensure_strimzi_and_kafka; then
-        echo_error "Strimzi operator and Kafka setup failed"
+    # Verify Strimzi operator and Kafka cluster are available
+    if ! verify_strimzi_and_kafka; then
+        echo_error "Strimzi/Kafka prerequisites not met"
         exit 1
     fi
 
@@ -1377,11 +1389,17 @@ case "${1:-}" in
         echo "  - OpenShift (production configuration: HA, large resources, ODF storage)"
         echo "  - Kubernetes (development configuration: single node, small resources)"
         echo ""
+        echo "Prerequisites:"
+        echo "  Before running this installation, ensure you have:"
+        echo "  1. Strimzi operator and Kafka cluster deployed (run ./deploy-strimzi.sh)"
+        echo "     OR provide KAFKA_BOOTSTRAP_SERVERS for existing Kafka"
+        echo "  2. For OpenShift with JWT auth: RHSSO/Keycloak (optional, run ./deploy-rhsso.sh)"
+        echo ""
         echo "Commands:"
         echo "  (none)              - Install ROS-OCP Helm chart"
         echo "  cleanup             - Delete Helm release and namespace (preserves PVs)"
-        echo "  cleanup --complete  - Complete removal including Persistent Volumes and Strimzi"
-        echo "  cleanup --strimzi-conflicts - Clean up Strimzi operator conflicts only"
+        echo "  cleanup --complete  - Complete removal including Persistent Volumes"
+        echo "                        Note: Strimzi/Kafka are NOT removed. Use ./deploy-strimzi.sh cleanup"
         echo "  status              - Show deployment status"
         echo "  health              - Run health checks"
         echo "  help                - Show this help message"
@@ -1394,12 +1412,14 @@ case "${1:-}" in
         echo ""
         echo "Uninstall/Reinstall Workflow:"
         echo "  # For clean reinstall with fresh data:"
-        echo "  $0 cleanup --complete    # Remove everything including data and Strimzi"
+        echo "  $0 cleanup --complete    # Remove everything including data volumes"
+        echo "  ./deploy-strimzi.sh cleanup  # Optional: remove Kafka/Strimzi too"
+        echo "  ./deploy-strimzi.sh      # Optional: reinstall Kafka/Strimzi"
         echo "  $0                       # Fresh installation"
         echo ""
         echo "  # For reinstall preserving data:"
-        echo "  $0 cleanup               # Remove workloads but keep volumes and Strimzi"
-        echo "  $0                       # Reinstall (reuses existing volumes and Strimzi)"
+        echo "  $0 cleanup               # Remove workloads but keep volumes"
+        echo "  $0                       # Reinstall (reuses existing volumes and Kafka)"
         echo ""
         echo "Environment Variables:"
         echo "  HELM_RELEASE_NAME       - Name of Helm release (default: ros-ocp)"
@@ -1407,12 +1427,8 @@ case "${1:-}" in
         echo "  VALUES_FILE             - Path to custom values file (optional)"
         echo "  USE_LOCAL_CHART         - Use local chart instead of GitHub release (default: false)"
         echo "  LOCAL_CHART_PATH        - Path to local chart directory (default: ../helm/ros-ocp)"
-        echo "  KAFKA_BOOTSTRAP_SERVERS - Bootstrap servers for existing Kafka on cluster (skips Strimzi deployment)"
-        echo "  STRIMZI_NAMESPACE       - Use existing Strimzi operator in this namespace (optional)"
-        echo "  KAFKA_NAMESPACE         - Use existing Kafka cluster in this namespace (optional)"
-        echo "                            Note: Both must be set together. Existing infrastructure must be"
-        echo "                            compatible (Strimzi 0.43-0.45.x, Kafka 3.8.0). Cross-namespace"
-        echo "                            communication is automatically configured"
+        echo "  KAFKA_BOOTSTRAP_SERVERS - Bootstrap servers for existing Kafka (skips verification)"
+        echo "                            Example: my-kafka-bootstrap.kafka:9092"
         echo ""
         echo "Chart Source Options:"
         echo "  - Default: Downloads latest release from GitHub (recommended)"
@@ -1423,16 +1439,17 @@ case "${1:-}" in
         echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-helm-chart/ros-ocp $0"
         echo ""
         echo "Examples:"
-        echo "  # Basic deployment (auto-detects platform)"
-        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp $0"
+        echo "  # Complete fresh installation"
+        echo "  ./deploy-strimzi.sh                           # Install Strimzi and Kafka first"
+        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp $0  # Then install ROS-OCP"
+        echo ""
+        echo "  # Install from GitHub release (with Strimzi already deployed)"
+        echo "  ./deploy-strimzi.sh                           # Install prerequisites"
+        echo "  $0                                            # Install ROS-OCP from latest release"
         echo ""
         echo "  # Custom namespace and release name"
         echo "  NAMESPACE=my-namespace HELM_RELEASE_NAME=my-release \\"
         echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp $0"
-        echo ""
-        echo "  # Use existing Strimzi/Kafka infrastructure"
-        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp \\"
-        echo "    STRIMZI_NAMESPACE=my-strimzi KAFKA_NAMESPACE=my-kafka $0"
         echo ""
         echo "  # Use existing Kafka on cluster (deployed by other means)"
         echo "  KAFKA_BOOTSTRAP_SERVERS=my-kafka-bootstrap.my-namespace:9092 $0"
@@ -1451,22 +1468,23 @@ case "${1:-}" in
         echo "  - Automatically detects Kubernetes vs OpenShift"
         echo "  - Uses openshift-values.yaml for OpenShift if available"
         echo "  - Auto-detects optimal storage class for platform"
-        echo "  - Installs Strimzi operator and creates Kafka cluster"
-        echo "  - Ensures required Kafka topics are created"
+        echo "  - Verifies Strimzi operator and Kafka cluster prerequisites"
         echo ""
         echo "Deployment Scenarios:"
-        echo "  1. Fresh deployment: $0"
+        echo "  1. Fresh deployment (recommended):"
+        echo "     ./deploy-strimzi.sh    # Deploy Strimzi and Kafka first"
+        echo "     $0                     # Deploy ROS-OCP"
         echo "     - Auto-detects platform (OpenShift or Kubernetes)"
-        echo "     - Installs Strimzi operator and Kafka cluster"
+        echo "     - Verifies Strimzi/Kafka prerequisites"
         echo "     - Deploys ROS-OCP with platform-specific configuration"
         echo ""
-        echo "  2. Existing Kafka infrastructure:"
-        echo "     STRIMZI_NAMESPACE=strimzi KAFKA_NAMESPACE=kafka $0"
-        echo "     - Validates version compatibility (Strimzi 0.43-0.45.x, Kafka 3.8.0)"
-        echo "     - Automatically configures cross-namespace Kafka connectivity"
-        echo "     - Skips Strimzi/Kafka installation"
+        echo "  2. With existing Kafka (external):"
+        echo "     KAFKA_BOOTSTRAP_SERVERS=kafka.example.com:9092 $0"
+        echo "     - Uses provided Kafka bootstrap servers"
+        echo "     - Skips Strimzi/Kafka verification"
         echo ""
         echo "  3. Custom configuration:"
+        echo "     ./deploy-strimzi.sh"
         echo "     $0 --set key=value"
         echo "     - Override any Helm value"
         echo "     - Platform detection still applies"
