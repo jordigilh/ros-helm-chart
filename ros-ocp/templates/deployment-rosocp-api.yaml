@@ -105,7 +105,7 @@ spec:
               ./rosocp db migrate up
               ./rosocp start api
           ports:
-            - name: {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }} http-api {{- else }} http {{- end }}
+            - name: http
               containerPort: {{ .Values.rosocp.api.port }}
               protocol: TCP
             - name: metrics

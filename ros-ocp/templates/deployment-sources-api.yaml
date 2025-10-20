@@ -66,54 +66,11 @@ spec:
               echo "{{ $cacheName | title }} is ready"
               echo "{{ $cacheName | title }} is ready"
       containers:
-        {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
-        # Envoy sidecar for native JWT authentication
-        - name: envoy-proxy
-          image: "{{ .Values.jwt_auth.envoy.image.repository }}:{{ .Values.jwt_auth.envoy.image.tag }}"
-          imagePullPolicy: {{ .Values.global.pullPolicy }}
-          ports:
-            - name: http-proxy
-              containerPort: {{ .Values.jwt_auth.envoy.port }}
-              protocol: TCP
-            - name: admin
-              containerPort: {{ .Values.jwt_auth.envoy.adminPort }}
-              protocol: TCP
-          command:
-            - /usr/local/bin/envoy
-          args:
-            - -c
-            - /etc/envoy/envoy.yaml
-            - --log-level
-            - {{ .Values.jwt_auth.envoy.logLevel | default "info" }}
-          volumeMounts:
-            - name: envoy-config
-              mountPath: /etc/envoy
-              readOnly: true
-          livenessProbe:
-            httpGet:
-              path: /ready
-              port: {{ .Values.jwt_auth.envoy.adminPort }}
-            initialDelaySeconds: 15
-            periodSeconds: 20
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: {{ .Values.jwt_auth.envoy.adminPort }}
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          resources:
-            limits:
-              cpu: 500m
-              memory: 256Mi
-            requests:
-              cpu: 100m
-              memory: 128Mi
-        {{- end }}
         - name: sources-api
           image: "{{ .Values.sourcesApi.image.repository }}:{{ .Values.sourcesApi.image.tag }}"
           imagePullPolicy: {{ .Values.sourcesApi.image.pullPolicy | default .Values.global.pullPolicy }}
           ports:
-            - name: {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }} http-sources {{- else }} http {{- end }}
+            - name: http
               containerPort: {{ .Values.sourcesApi.port }}
               protocol: TCP
           env:
@@ -167,13 +124,3 @@ spec:
             failureThreshold: {{ .Values.probes.failureThreshold }}
           resources:
             {{- toYaml .Values.resources.application | nindent 12 }}
-      volumes:
-        {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
-        # Envoy configuration volume
-        - name: envoy-config
-          configMap:
-            name: {{ include "ros-ocp.fullname" . }}-envoy-config-sources-api
-            items:
-              - key: envoy.yaml
-                path: envoy.yaml
-        {{- end }}
