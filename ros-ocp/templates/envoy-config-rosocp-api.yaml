@@ -57,6 +57,7 @@ data:
                           seconds: 300
                       forward: true
                       forward_payload_header: jwt-payload
+                      payload_in_metadata: keycloak
                   rules:
                   - match:
                       prefix: "/"
@@ -96,10 +97,17 @@ data:
                     function envoy_on_request(request_handle)
                       -- Get JWT payload from dynamic metadata (set by jwt_authn filter)
                       local metadata = request_handle:streamInfo():dynamicMetadata()
-                      local jwt_data = metadata:get("envoy.filters.http.jwt_authn")
+                      local jwt_metadata = metadata:get("envoy.filters.http.jwt_authn")
 
+                      if jwt_metadata == nil then
+                        request_handle:logWarn("No JWT metadata found")
+                        return
+                      end
+
+                      -- Extract JWT payload from the keycloak provider
+                      local jwt_data = jwt_metadata["keycloak"]
                       if jwt_data == nil then
-                        request_handle:logWarn("No JWT data found in metadata")
+                        request_handle:logWarn("No JWT data found for keycloak provider in metadata")
                         return
                       end
 
@@ -121,8 +129,20 @@ data:
                       local xrhid_json = build_xrhid_json(org_id, account_number, "User")
                       local xrhid_b64 = request_handle:base64Escape(xrhid_json)
 
-                      -- Inject header
+                      -- Inject X-Rh-Identity header (for standard identity-based systems)
                       request_handle:headers():add("X-Rh-Identity", xrhid_b64)
+
+                      -- Inject headers for insights-ros-ingress app (expects JWT token directly)
+                      request_handle:headers():add("X-ROS-Authenticated", "true")
+                      -- Forward the original Authorization header as X-Bearer-Token
+                      local auth_header = request_handle:headers():get("authorization")
+                      if auth_header then
+                        -- Extract Bearer token from Authorization header
+                        local bearer_token = string.match(auth_header, "^Bearer%s+(.+)$")
+                        if bearer_token then
+                          request_handle:headers():add("X-Bearer-Token", bearer_token)
+                        end
+                      end
 
                       -- Log for debugging
                       request_handle:logInfo(string.format("JWT Authentication successful - org_id: %s, account: %s",
