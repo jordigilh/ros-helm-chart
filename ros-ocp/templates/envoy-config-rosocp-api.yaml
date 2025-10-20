@@ -24,7 +24,7 @@ data:
           - name: envoy.filters.network.http_connection_manager
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-              stat_prefix: ingress_http
+              stat_prefix: rosocp_api_http
               codec_type: AUTO
               route_config:
                 name: local_route
@@ -35,7 +35,7 @@ data:
                   - match:
                       prefix: "/"
                     route:
-                      cluster: ros-ingress-backend
+                      cluster: rosocp-api-backend
               http_filters:
               # JWT authentication filter
               - name: envoy.filters.http.jwt_authn
@@ -135,11 +135,11 @@ data:
 
       clusters:
       # ROS OCP API backend (port 8000)
-      - name: ros-ingress-backend
+      - name: rosocp-api-backend
         connect_timeout: 5s
         type: STATIC
         load_assignment:
-          cluster_name: ros-ingress-backend
+          cluster_name: rosocp-api-backend
           endpoints:
           - lb_endpoints:
             - endpoint:

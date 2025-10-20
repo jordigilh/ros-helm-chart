@@ -43,7 +43,8 @@ helm install ros-ocp ros-ocp/ros-ocp --namespace ros-ocp --create-namespace
 | **[Installation Guide](docs/installation.md)** | Complete installation methods and prerequisites |
 | **[Configuration Guide](docs/configuration.md)** | Resource requirements, storage, and access configuration |
 | **[Platform Guide](docs/platform-guide.md)** | Kubernetes vs OpenShift platform differences |
-| **[JWT Authentication](docs/native-jwt-authentication.md)** | Native JWT authentication with Envoy and Keycloak |
+| **[JWT Authentication](docs/native-jwt-authentication.md)** | Native JWT authentication architecture with Envoy |
+| **[Keycloak Setup Guide](docs/keycloak-jwt-authentication-setup.md)** | Complete Keycloak/RH SSO configuration for Cost Management Operator |
 | **[Helm Templates Reference](docs/helm-templates-reference.md)** | Technical details of chart templates and configuration |
 | **[TLS Setup](docs/cost-management-operator-tls-setup.md)** | Cost Management Operator TLS configuration |
 | **[Troubleshooting Guide](docs/troubleshooting.md)** | Common issues and solutions |
@@ -112,6 +113,30 @@ oc get routes -n ros-ocp
 ```
 
 **See [Platform Guide](docs/platform-guide.md) for platform-specific details**
+
+## 🔐 Authentication Setup
+
+### JWT Authentication (OpenShift/Production)
+
+For OpenShift deployments, JWT authentication is **automatically enabled** and requires Keycloak/RH SSO configuration:
+
+```bash
+# Step 1: Deploy Keycloak/RH SSO (if not already deployed)
+./scripts/deploy-rhsso.sh
+
+# Step 2: Configure Cost Management Operator with JWT credentials
+./scripts/setup-cost-mgmt-tls.sh
+```
+
+**📖 See [Keycloak Setup Guide](docs/keycloak-jwt-authentication-setup.md) for detailed configuration instructions**
+
+Key requirements:
+- ✅ Keycloak realm with `org_id` and `account_number` claims
+- ✅ Service account client credentials
+- ✅ Self-signed CA certificate bundle (auto-configured)
+- ✅ Cost Management Operator configured with JWT token URL
+
+**Architecture**: [JWT Authentication Overview](docs/native-jwt-authentication.md)
 
 ## 🔧 Common Operations
 
