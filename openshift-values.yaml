@@ -9,7 +9,9 @@
 global:
   # OpenShift Data Foundation (ODF) storage class
   # Common values: odf-storagecluster-ceph-rbd, ocs-storagecluster-ceph-rbd
-  storageClass: "odf-storagecluster-ceph-rbd"
+  # When left empty, the ros-ocp.storageClass helper will auto-discover the default storage class from the cluster
+  # Recommended: Leave empty for automatic detection
+  storageClass: ""
   # Storage type for platform detection (odf for OpenShift, minio for Kubernetes)
   storageType: "odf"
   pullPolicy: IfNotPresent
@@ -40,17 +42,14 @@ database:
   ros:
     storage:
       size: "5Gi"
-      class: "odf-storagecluster-ceph-rbd"
-  
+
   kruize:
     storage:
       size: "5Gi"
-      class: "odf-storagecluster-ceph-rbd"
-  
+
   sources:
     storage:
       size: "5Gi"
-      class: "odf-storagecluster-ceph-rbd"
 
 # Kafka configuration
 # IMPORTANT: Kafka/Strimzi deployment is NOT managed by this Helm chart!
