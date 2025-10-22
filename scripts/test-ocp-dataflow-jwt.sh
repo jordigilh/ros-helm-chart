@@ -232,23 +232,23 @@ validate_jwt_authentication() {
 
     # Test 3: Request with self-signed JWT (wrong signature)
     echo_info "Test 3: Request with JWT signed by wrong key"
-    
+
     if command -v openssl >/dev/null 2>&1; then
         # Generate a fake JWT with valid structure but wrong signature
         local temp_key=$(mktemp)
         openssl genrsa -out "$temp_key" 2048 2>/dev/null
-        
+
         local header_b64=$(echo -n '{"alg":"RS256","typ":"JWT","kid":"fake-key"}' | openssl base64 -e | tr -d '=' | tr '/+' '_-' | tr -d '\n')
         local payload_b64=$(echo -n '{"sub":"attacker","iss":"https://fake-issuer.com","aud":"cost-management-operator","exp":9999999999}' | openssl base64 -e | tr -d '=' | tr '/+' '_-' | tr -d '\n')
         local signature=$(echo -n "${header_b64}.${payload_b64}" | openssl dgst -sha256 -sign "$temp_key" | openssl base64 -e | tr -d '=' | tr '/+' '_-' | tr -d '\n')
         local fake_jwt="${header_b64}.${payload_b64}.${signature}"
-        
+
         http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
             -H "Authorization: Bearer $fake_jwt" \
             "$ingress_url/v1/upload" 2>/dev/null || echo "000")
-        
+
         rm -f "$temp_key"
-        
+
         if [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
             echo_success "  ✓ Correctly rejected JWT with invalid signature ($http_code)"
             test_passed=$((test_passed + 1))

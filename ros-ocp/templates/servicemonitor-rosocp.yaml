@@ -1,4 +1,4 @@
-{{- if .Values.monitoring.enabled }}
+{{- if and .Values.monitoring.enabled (eq (include "ros-ocp.isOpenShift" .) "true") }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -10,6 +10,9 @@ metadata:
     app.kubernetes.io/component: api
     app.kubernetes.io/name: rosocp-api
 spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
   selector:
     matchLabels:
       {{- include "ros-ocp.selectorLabels" . | nindent 6 }}
@@ -31,6 +34,9 @@ metadata:
     app.kubernetes.io/component: processor
     app.kubernetes.io/name: rosocp-processor
 spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
   selector:
     matchLabels:
       {{- include "ros-ocp.selectorLabels" . | nindent 6 }}
@@ -52,6 +58,9 @@ metadata:
     app.kubernetes.io/component: poller
     app.kubernetes.io/name: rosocp-recommendation-poller
 spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
   selector:
     matchLabels:
       {{- include "ros-ocp.selectorLabels" . | nindent 6 }}
@@ -73,6 +82,9 @@ metadata:
     app.kubernetes.io/component: optimization
     app.kubernetes.io/name: kruize
 spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
   selector:
     matchLabels:
       {{- include "ros-ocp.selectorLabels" . | nindent 6 }}
