@@ -1,4 +1,5 @@
 {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
+{{- $keycloakUrl := .Values.jwt_auth.keycloak.url | default (include "ros-ocp.keycloak.url" .) }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -14,17 +15,14 @@ metadata:
     service.beta.openshift.io/inject-cabundle: "true"
     {{- end }}
 data:
-  # Custom CA certificate for Keycloak (placeholder - will be updated by setup scripts)
+  # Custom CA certificate for Keycloak (optional - will auto-fetch if not provided)
   {{- if and .Values.jwt_auth.keycloak .Values.jwt_auth.keycloak.tls .Values.jwt_auth.keycloak.tls.caCert }}
   keycloak-ca.crt: |
 {{ .Values.jwt_auth.keycloak.tls.caCert | indent 4 }}
   {{- else }}
-  keycloak-ca.crt: |
-    # Placeholder CA certificate - replace with actual Keycloak CA
-    # This will be updated by the setup-cost-mgmt-tls.sh script
-    -----BEGIN CERTIFICATE-----
-    MIICljCCAX4CCQCKLnUhVP3GVDANBGKQHDAG1UECgwCVVMxCzAJBgNVBAgMAlZB
-    -----END CERTIFICATE-----
+  # No custom CA certificate provided - will dynamically fetch from Keycloak endpoint
+  # This is the preferred approach as it works automatically in any environment
+  keycloak-ca.crt: ""
   {{- end }}
 
   # Combined CA bundle script (run by init container)
@@ -51,7 +49,6 @@ data:
     # Add service account CA (Kubernetes/OpenShift)
     if [ -f /var/run/secrets/kubernetes.io/serviceaccount/ca.crt ]; then
         echo "📋 Adding Kubernetes service account CA..."
-        echo "# Kubernetes Service Account CA" >> /tmp/combined-ca.crt
         cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /tmp/combined-ca.crt
         echo "" >> /tmp/combined-ca.crt
     fi
@@ -59,23 +56,96 @@ data:
     # Add OpenShift service CA (if available)
     if [ -f /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt ]; then
         echo "📋 Adding OpenShift service CA..."
-        echo "# OpenShift Service CA" >> /tmp/combined-ca.crt
         cat /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt >> /tmp/combined-ca.crt
         echo "" >> /tmp/combined-ca.crt
     fi
 
-    # Add custom Keycloak CA
-    if [ -f /ca-source/keycloak-ca.crt ]; then
-        echo "📋 Adding custom Keycloak CA..."
-        echo "# Keycloak Custom CA" >> /tmp/combined-ca.crt
-        cat /ca-source/keycloak-ca.crt >> /tmp/combined-ca.crt
-        echo "" >> /tmp/combined-ca.crt
+    # Add custom Keycloak CA (if provided manually)
+    if [ -f /ca-source/keycloak-ca.crt ] && [ -s /ca-source/keycloak-ca.crt ]; then
+        # Validate it's a proper certificate
+        if openssl x509 -in /ca-source/keycloak-ca.crt -noout -text >/dev/null 2>&1; then
+            echo "📋 Adding manually provided Keycloak CA..."
+            cat /ca-source/keycloak-ca.crt >> /tmp/combined-ca.crt
+            echo "" >> /tmp/combined-ca.crt
+            echo "ℹ️  Using custom CA certificate from values.yaml"
+        else
+            echo "⚠️  Invalid CA certificate in values.yaml, will try to fetch dynamically..."
+        fi
+    else
+        echo "ℹ️  No custom CA certificate provided in values.yaml (this is fine - will auto-fetch)"
+    fi
+
+    # Dynamically fetch Keycloak CA certificate from running instance if not already added
+    KEYCLOAK_URL="{{ $keycloakUrl | replace "https://" "" | replace "http://" "" }}"
+    KEYCLOAK_CERT_COUNT_BEFORE=$(grep -c 'BEGIN CERTIFICATE' /tmp/combined-ca.crt 2>/dev/null || echo 0)
+    if [ -n "$KEYCLOAK_URL" ]; then
+        echo "🔍 Attempting to fetch Keycloak CA certificate chain from $KEYCLOAK_URL..."
+
+        # Extract the ENTIRE certificate chain from Keycloak endpoint (not just the leaf cert)
+        # This is more robust as it includes intermediate CAs
+        if timeout 10 openssl s_client -connect "$KEYCLOAK_URL:443" -showcerts </dev/null 2>/dev/null > /tmp/keycloak-chain.txt; then
+
+            # Extract all certificates from the chain (not just the first one)
+            # Split the chain into individual certificate files
+            csplit -z -f /tmp/keycloak-cert- -b '%02d.crt' /tmp/keycloak-chain.txt '/-----BEGIN CERTIFICATE-----/' '{*}' 2>/dev/null || true
+
+            # Add each valid certificate from the chain
+            local added_count=0
+            for cert_file in /tmp/keycloak-cert-*.crt; do
+                if [ -f "$cert_file" ] && grep -q 'BEGIN CERTIFICATE' "$cert_file" 2>/dev/null; then
+                    # Verify this is a valid certificate
+                    if openssl x509 -in "$cert_file" -noout -text >/dev/null 2>&1; then
+                        # Extract just the certificate (removes extra text from s_client output)
+                        openssl x509 -in "$cert_file" -outform PEM >> /tmp/keycloak-validated.crt 2>/dev/null || true
+                    fi
+                fi
+            done
+
+            # If we successfully extracted certificates, add them to the bundle
+            if [ -f /tmp/keycloak-validated.crt ] && [ -s /tmp/keycloak-validated.crt ]; then
+                local new_cert_count=$(grep -c 'BEGIN CERTIFICATE' /tmp/keycloak-validated.crt 2>/dev/null || echo 0)
+
+                if [ "$new_cert_count" -gt 0 ]; then
+                    # Check if we already have a custom CA (avoid duplicates)
+                    KEYCLOAK_CERT_COUNT_AFTER=$(grep -c 'BEGIN CERTIFICATE' /tmp/combined-ca.crt 2>/dev/null || echo 0)
+                    if [ "$KEYCLOAK_CERT_COUNT_AFTER" -eq "$KEYCLOAK_CERT_COUNT_BEFORE" ]; then
+                        echo "✅ Successfully fetched Keycloak certificate chain ($new_cert_count certificates)"
+                        cat /tmp/keycloak-validated.crt >> /tmp/combined-ca.crt
+                        echo "" >> /tmp/combined-ca.crt
+
+                        # Display certificate info for verification
+                        echo "📜 Keycloak Certificate Chain Info:"
+                        local cert_num=1
+                        for cert_file in /tmp/keycloak-cert-*.crt; do
+                            if [ -f "$cert_file" ] && grep -q 'BEGIN CERTIFICATE' "$cert_file" 2>/dev/null; then
+                                if openssl x509 -in "$cert_file" -noout -text >/dev/null 2>&1; then
+                                    echo "   Certificate $cert_num:"
+                                    openssl x509 -in "$cert_file" -noout -subject -issuer 2>/dev/null | sed 's/^/     /' || true
+                                    cert_num=$((cert_num + 1))
+                                fi
+                            fi
+                        done
+                    else
+                        echo "ℹ️  Keycloak CA already added from custom source, skipping dynamic fetch"
+                    fi
+                else
+                    echo "⚠️  No valid certificates extracted from Keycloak endpoint"
+                fi
+            else
+                echo "⚠️  Failed to extract certificates from Keycloak endpoint"
+            fi
+
+            # Cleanup temporary files
+            rm -f /tmp/keycloak-chain.txt /tmp/keycloak-validated.crt /tmp/keycloak-cert-*.crt
+        else
+            echo "⚠️  Could not connect to $KEYCLOAK_URL (may be using system CA or endpoint unreachable)"
+            echo "   This is normal if Keycloak uses a certificate signed by a system-trusted CA"
+        fi
     fi
 
     # Add injected OpenShift CA bundle (if available)
     if [ -f /ca-source/service-ca.crt ]; then
         echo "📋 Adding OpenShift injected CA bundle..."
-        echo "# OpenShift Injected CA Bundle" >> /tmp/combined-ca.crt
         cat /ca-source/service-ca.crt >> /tmp/combined-ca.crt
         echo "" >> /tmp/combined-ca.crt
     fi
@@ -95,7 +165,10 @@ data:
         echo "   ✅ OpenShift Service CA"
     fi
     if grep -q "Keycloak Custom CA" /ca-output/ca-bundle.crt; then
-        echo "   ✅ Keycloak Custom CA"
+        echo "   ✅ Keycloak Custom CA (manually provided)"
+    fi
+    if grep -q "Keycloak Dynamically Fetched CA" /ca-output/ca-bundle.crt; then
+        echo "   ✅ Keycloak CA (dynamically fetched)"
     fi
     if grep -q "OpenShift Injected CA Bundle" /ca-output/ca-bundle.crt; then
         echo "   ✅ OpenShift Injected CA Bundle"
