@@ -391,7 +391,8 @@ probes:
 
 # Monitoring configuration
 monitoring:
-  enabled: false  # Enable monitoring components (ServiceMonitor, etc.)
+  enabled: true  # Enable monitoring components (ServiceMonitor, etc.)
+  scrapeInterval: 30s  # Prometheus scrape interval for metrics collection
 
 # JWT Authentication configuration
 # JWT authentication with Keycloak/RHSSO using Envoy's native JWT filter
