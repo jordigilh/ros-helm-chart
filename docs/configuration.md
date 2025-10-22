@@ -242,9 +242,8 @@ Services accessible through OpenShift Routes:
 oc get routes -n ros-ocp
 
 # Example routes
-oc get route ros-ocp-main -n ros-ocp       # Main API
-oc get route ros-ocp-ingress -n ros-ocp    # Ingress API
-oc get route ros-ocp-kruize -n ros-ocp     # Kruize API
+oc get route ros-ocp-main -n ros-ocp       # Main API (ROS-OCP API)
+oc get route ros-ocp-ingress -n ros-ocp    # Ingress API (file upload)
 ```
 
 **Access Pattern:**
@@ -367,6 +366,7 @@ database:
 
   sources:
     host: internal
+    name: sources_api_development
     storage:
       size: 10Gi
 ```
@@ -397,8 +397,15 @@ kafka:
 rosocp:
   api:
     port: 8000
+    metricsPort: 9000
     pathPrefix: /api
     rbacEnable: false
+    logLevel: INFO
+  processor:
+    metricsPort: 9000
+    logLevel: INFO
+  recommendationPoller:
+    metricsPort: 9000
     logLevel: INFO
 
 # Kruize
@@ -408,6 +415,14 @@ kruize:
     loggingLevel: debug
     clusterType: kubernetes
     k8sType: openshift
+    logAllHttpReqAndResponse: true
+
+# Sources API
+sourcesApi:
+  port: 8000
+  logLevel: DEBUG
+  bypassRbac: true
+  sourcesEnv: prod
 
 # Ingress service
 ingress:
@@ -499,27 +514,45 @@ serviceAccount:
   name: ros-ocp-backend
 ```
 
-### RBAC Configuration
-
-```yaml
-# Enable RBAC for ROS API
-rosocp:
-  api:
-    rbacEnable: true
-
-# Cluster roles automatically created for:
-# - ros-ocp-backend
-# - kruize
-# - insights-ros-ingress
-```
-
 ### Network Policies
 
+Network policies are automatically deployed on OpenShift to secure service-to-service communication and enforce authentication through Envoy sidecars.
+
+**Purpose:**
+- ✅ Enforce authentication via Envoy sidecars (port 9080)
+- ✅ Restrict direct access to backend application containers
+- ✅ Allow Prometheus metrics scraping from `openshift-monitoring` namespace
+- ✅ Enable internal service-to-service communication within `ros-ocp` namespace
+
+**Key Policies:**
+1. **Ingress Network Policy**: Allows external file uploads from `openshift-ingress` namespace to Envoy sidecar on port 9080
+2. **Kruize Network Policy**: Allows internal service communication only (processor, poller, housekeeper) on port 8080
+3. **ROS-OCP Metrics Policies**: Allow Prometheus metrics scraping on port 9000 for API, Processor, and Recommendation Poller
+4. **ROS-OCP API Access Policy**: Allows external REST API access from `openshift-ingress` namespace to Envoy sidecar on port 9080
+5. **Sources API Policy**: Allows internal service communication only (housekeeper) on port 8000
+
+**Platform-Specific:**
 ```yaml
-# Enable network policies (if supported)
+# OpenShift - Automatically enabled with JWT auth
+jwt_auth:
+  enabled: true  # Auto-detected
 networkPolicy:
-  enabled: true
+  enabled: true  # Deployed automatically
+
+# Kubernetes/KIND - Disabled (no JWT auth)
+jwt_auth:
+  enabled: false  # Auto-detected
+networkPolicy:
+  enabled: false  # Not deployed
 ```
+
+**Impact on Service Communication:**
+- External requests MUST go through Envoy sidecars (port 9080) with proper authentication
+- Direct access to backend ports (8000, 8081) is blocked from outside the namespace
+- Prometheus can access `/metrics` endpoints (port 9000) without authentication
+- Internal services can communicate freely within the same namespace
+
+**See [JWT Authentication Guide](native-jwt-authentication.md#network-policies) for detailed policy configuration**
 
 ### Pod Security
 
