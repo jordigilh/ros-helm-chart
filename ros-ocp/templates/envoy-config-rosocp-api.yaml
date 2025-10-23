@@ -72,6 +72,10 @@ data:
                 name: local_route
                 virtual_hosts:
                 - name: backend
+                  # Wildcard domain appropriate for sidecar pattern:
+                  # - External host validation occurs at OpenShift Route level
+                  # - Envoy receives internal pod traffic (localhost/service names)
+                  # - No host header injection risk in this architecture
                   domains: ["*"]
                   routes:
                   - match:
@@ -281,6 +285,29 @@ data:
                       end
                     end
 
+              # Compression filter for response optimization
+              - name: envoy.filters.http.compressor
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.compressor.v3.Compressor
+                  response_direction_config:
+                    common_config:
+                      min_content_length: 1024
+                      content_type:
+                      - application/json
+                      - application/javascript
+                      - text/css
+                      - text/html
+                      - text/plain
+                      - text/xml
+                    disable_on_etag_header: true
+                  compressor_library:
+                    name: text_optimized
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.compression.gzip.compressor.v3.Gzip
+                      memory_level: 6
+                      window_bits: 12
+                      compression_level: BEST_SPEED
+
               - name: envoy.filters.http.router
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -312,7 +339,7 @@ data:
           unhealthy_threshold: 3
           healthy_threshold: 2
           http_health_check:
-            path: "/health"
+            path: "/status"
             expected_statuses:
             - start: 200
               end: 299
