@@ -79,7 +79,7 @@ kafka:
   # Bootstrap servers for Kafka cluster
   # This is auto-configured by the install script based on the Kafka cluster it creates
   bootstrapServers: "ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
-  
+
   # Security protocol (PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL)
   securityProtocol: "PLAINTEXT"
 
@@ -391,7 +391,8 @@ probes:
 
 # Monitoring configuration
 monitoring:
-  enabled: false  # Enable monitoring components (ServiceMonitor, etc.)
+  enabled: true  # Enable monitoring components (ServiceMonitor, etc.)
+  scrapeInterval: 30s  # Prometheus scrape interval for metrics collection
 
 # JWT Authentication configuration
 # JWT authentication with Keycloak/RHSSO using Envoy's native JWT filter
@@ -409,7 +410,7 @@ jwt_auth:
       repository: registry.redhat.io/openshift-service-mesh/proxyv2-rhel9
       tag: "2.6"
       pullPolicy: IfNotPresent
-    port: 8080
+    port: 9080
     adminPort: 9901
     logLevel: info
 

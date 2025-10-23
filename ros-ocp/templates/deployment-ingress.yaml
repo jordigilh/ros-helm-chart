@@ -61,6 +61,21 @@ spec:
               done
               echo "Kafka is ready"
         {{- end }}
+        {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
+        # Init container to prepare CA bundle for Envoy TLS validation
+        - name: prepare-ca-bundle
+          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+          command: ['bash', '/scripts/combine-ca.sh']
+          volumeMounts:
+            - name: ca-scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: ca-source
+              mountPath: /ca-source
+              readOnly: true
+            - name: ca-bundle
+              mountPath: /ca-output
+        {{- end }}
       serviceAccountName: insights-ros-ingress
       containers:
         {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
@@ -86,6 +101,9 @@ spec:
             - name: envoy-config
               mountPath: /etc/envoy
               readOnly: true
+            - name: ca-bundle
+              mountPath: /etc/ca-certificates
+              readOnly: true
           livenessProbe:
             httpGet:
               path: /ready
@@ -110,7 +128,7 @@ spec:
           image: "{{ .Values.ingress.image.repository }}:{{ .Values.ingress.image.tag }}"
           imagePullPolicy: {{ .Values.ingress.image.pullPolicy | default .Values.global.pullPolicy }}
           ports:
-            - name: {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }} http-ingress {{- else }} http {{- end }}
+            - name: http
               containerPort: {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }} 8081 {{- else }} {{ .Values.ingress.port }} {{- end }}
               protocol: TCP
           env:
@@ -233,10 +251,23 @@ spec:
         # Envoy configuration volume
         - name: envoy-config
           configMap:
-            name: {{ include "ros-ocp.fullname" . }}-envoy-config
+            name: {{ include "ros-ocp.fullname" . }}-envoy-config-ingress
             items:
               - key: envoy.yaml
                 path: envoy.yaml
+        # CA bundle preparation volumes
+        - name: ca-scripts
+          configMap:
+            name: {{ include "ros-ocp.fullname" . }}-keycloak-ca
+            items:
+              - key: combine-ca.sh
+                path: combine-ca.sh
+                mode: 0755
+        - name: ca-source
+          configMap:
+            name: {{ include "ros-ocp.fullname" . }}-keycloak-ca
+        - name: ca-bundle
+          emptyDir: {}
         {{- end }}
         {{- if eq (include "ros-ocp.isOpenShift" .) "true" }}
         - name: service-ca-cert

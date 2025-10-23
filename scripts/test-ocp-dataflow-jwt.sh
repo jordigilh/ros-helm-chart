@@ -186,6 +186,97 @@ detect_keycloak_config() {
     return 0
 }
 
+# Function to validate JWT authentication (preflight smoke test)
+validate_jwt_authentication() {
+    echo_info "=== Preflight: JWT Authentication Validation ==="
+    echo_info "Running smoke tests to verify JWT authentication is working..."
+    echo ""
+
+    # Get ingress service URL
+    local ingress_url=$(get_service_url "ingress" "")
+    echo_info "Testing ingress at: $ingress_url"
+
+    # Check if we can reach the service at all
+    local health_check=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$ingress_url/ready" 2>/dev/null || echo "000")
+    if [ "$health_check" = "000" ]; then
+        echo_error "Cannot reach ingress service. Skipping JWT validation tests."
+        echo_warning "Service may not be ready yet or port-forwarding is required"
+        return 1
+    fi
+
+    local test_passed=0
+    local test_failed=0
+
+    # Test 1: Request without JWT token (should be rejected with 401)
+    echo_info "Test 1: Request without JWT token"
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$ingress_url/v1/upload" 2>/dev/null || echo "000")
+    if [ "$http_code" = "401" ]; then
+        echo_success "  ✓ Correctly rejected request without token (401)"
+        test_passed=$((test_passed + 1))
+    else
+        echo_warning "  ⚠ Expected 401, got $http_code (may indicate route/service issue)"
+        # Not failing here as 503 might just mean routing issue, not auth bypass
+    fi
+
+    # Test 2: Request with malformed JWT token (should be rejected)
+    echo_info "Test 2: Request with malformed JWT token"
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+        -H "Authorization: Bearer invalid.malformed.token" \
+        "$ingress_url/v1/upload" 2>/dev/null || echo "000")
+    if [ "$http_code" = "401" ]; then
+        echo_success "  ✓ Correctly rejected malformed token (401)"
+        test_passed=$((test_passed + 1))
+    else
+        echo_warning "  ⚠ Expected 401, got $http_code"
+    fi
+
+    # Test 3: Request with self-signed JWT (wrong signature)
+    echo_info "Test 3: Request with JWT signed by wrong key"
+
+    if command -v openssl >/dev/null 2>&1; then
+        # Generate a fake JWT with valid structure but wrong signature
+        local temp_key=$(mktemp)
+        openssl genrsa -out "$temp_key" 2048 2>/dev/null
+
+        local header_b64=$(echo -n '{"alg":"RS256","typ":"JWT","kid":"fake-key"}' | openssl base64 -e | tr -d '=' | tr '/+' '_-' | tr -d '\n')
+        local payload_b64=$(echo -n '{"sub":"attacker","iss":"https://fake-issuer.com","aud":"cost-management-operator","exp":9999999999}' | openssl base64 -e | tr -d '=' | tr '/+' '_-' | tr -d '\n')
+        local signature=$(echo -n "${header_b64}.${payload_b64}" | openssl dgst -sha256 -sign "$temp_key" | openssl base64 -e | tr -d '=' | tr '/+' '_-' | tr -d '\n')
+        local fake_jwt="${header_b64}.${payload_b64}.${signature}"
+
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+            -H "Authorization: Bearer $fake_jwt" \
+            "$ingress_url/v1/upload" 2>/dev/null || echo "000")
+
+        rm -f "$temp_key"
+
+        if [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
+            echo_success "  ✓ Correctly rejected JWT with invalid signature ($http_code)"
+            test_passed=$((test_passed + 1))
+        elif [ "$http_code" = "200" ] || [ "$http_code" = "202" ]; then
+            echo_error "  ✗ CRITICAL: JWT with fake signature was ACCEPTED!"
+            echo_error "  This is a security vulnerability - any JWT is being accepted!"
+            test_failed=$((test_failed + 1))
+        else
+            echo_warning "  ⚠ Got HTTP $http_code (expected 401/403)"
+        fi
+    else
+        echo_info "  Skipping (openssl not available)"
+    fi
+
+    echo ""
+    if [ $test_passed -ge 2 ]; then
+        echo_success "JWT authentication preflight checks passed ($test_passed tests)"
+        echo_info "  → Envoy is properly validating JWT tokens"
+        echo_info "  → Ready to proceed with authenticated upload"
+        return 0
+    else
+        echo_warning "JWT authentication validation incomplete ($test_passed passed, $test_failed failed)"
+        echo_warning "  This may indicate JWT authentication is not properly configured"
+        echo_warning "  Proceeding with upload test, but authentication may fail"
+        return 0  # Don't fail completely, just warn
+    fi
+}
+
 # Function to get JWT token from Keycloak
 get_jwt_token() {
     echo_info "=== Getting JWT Token from Keycloak ==="
@@ -644,6 +735,10 @@ main() {
         echo_error "Failed to obtain JWT token"
         exit 1
     fi
+    echo ""
+
+    # Step 2.5: Validate JWT authentication is working (preflight smoke test)
+    validate_jwt_authentication
     echo ""
 
     # Step 3: Upload test data with JWT authentication

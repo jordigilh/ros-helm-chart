@@ -8,9 +8,31 @@ This document provides detailed information about the Helm templates used in the
 
 ## JWT Authentication Templates
 
+### Overview
+
+**Two backend services** are deployed with Envoy proxy sidecars on OpenShift:
+
+| Template File | Service | Purpose |
+|---------------|---------|---------|
+| `deployment-ingress.yaml` | Ingress | JWT validation from Cost Management Operator |
+| `deployment-rosocp-api.yaml` | ROS-OCP API | X-Rh-Identity authentication for API requests |
+
+**Services without Envoy sidecars** (protected by network policies):
+
+| Template File | Service | Authentication Method |
+|---------------|---------|----------------------|
+| `deployment-sources-api.yaml` | Sources API | Mixed: X-Rh-Identity middleware for protected endpoints, some endpoints unauthenticated for internal use |
+| `deployment-kruize.yaml` | Kruize | Internal service accessed via ROS-OCP API |
+
+**Common Sidecar Configuration:**
+- Envoy listens on port **8080** (public-facing, authenticated)
+- Application container listens on internal port (**8001** for ROS-OCP API, **8081** for Ingress)
+- Network policies provide defense-in-depth for services without sidecars
+- Metrics endpoints remain accessible to Prometheus
+
 ### `ros-ocp/templates/deployment-ingress.yaml`
 
-**Purpose**: Enhanced ingress deployment with Envoy sidecar for native JWT authentication.
+**Purpose**: Enhanced ingress deployment with Envoy sidecar for native JWT authentication from Cost Management Operator.
 
 **Key Features**:
 - Envoy proxy sidecar with native JWT filter

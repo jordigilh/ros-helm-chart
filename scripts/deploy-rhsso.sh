@@ -282,7 +282,6 @@ spec:
   realm:
     accessTokenLifespan: 300
     bruteForceProtected: true
-    clientSessionMaxLifespan: 300
     displayName: Kubernetes Realm
     enabled: true
     failureFactor: 30
@@ -293,8 +292,16 @@ spec:
     registrationAllowed: false
     rememberMe: true
     resetPasswordAllowed: true
-    ssoSessionMaxLifespan: 36000
     verifyEmail: false
+    clientScopes:
+    - name: api.console
+      description: API Console access scope for cost management
+      protocol: openid-connect
+      attributes:
+        include.in.token.scope: "true"
+        display.on.consent.screen: "false"
+    defaultDefaultClientScopes:
+    - api.console
 EOF
         echo_success "✓ Kubernetes realm created"
     fi
@@ -374,6 +381,26 @@ spec:
         claim.value: api.console
         id.token.claim: "false"
       name: api-console-mock
+      protocol: openid-connect
+      protocolMapper: oidc-hardcoded-claim-mapper
+    - config:
+        access.token.claim: "true"
+        claim.name: org_id
+        claim.value: "12345"
+        id.token.claim: "false"
+        jsonType.label: String
+        userinfo.token.claim: "false"
+      name: org-id-mapper
+      protocol: openid-connect
+      protocolMapper: oidc-hardcoded-claim-mapper
+    - config:
+        access.token.claim: "true"
+        claim.name: account_number
+        claim.value: "7890123"
+        id.token.claim: "false"
+        jsonType.label: String
+        userinfo.token.claim: "false"
+      name: account-number-mapper
       protocol: openid-connect
       protocolMapper: oidc-hardcoded-claim-mapper
     publicClient: false
@@ -704,6 +731,7 @@ display_summary() {
     echo_info "  Client ID: $COST_MGMT_CLIENT_ID"
     echo_info "  Client Type: Service Account (client_credentials flow)"
     echo_info "  Default Scopes: openid, profile, email, api.console"
+    echo_info "  Note: api.console scope is defined at realm level in clientScopes"
     echo ""
 
     # Display client secret retrieval command
