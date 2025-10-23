@@ -32,6 +32,74 @@ kubectl label namespace ros-ocp cost_management_optimizations-
 
 ---
 
+### Testing and Validating the Upload Pipeline
+
+**Problem**: You want to test the end-to-end data flow (Operator → Ingress → Processor → Kruize) without waiting 6 hours for the automatic upload cycle.
+
+**Solution**: Use the force upload feature to manually trigger packaging and upload immediately.
+
+**Quick Test:**
+```bash
+# Run the convenience script
+./scripts/force-operator-package-upload.sh
+```
+
+This bypasses the default 6-hour packaging/upload cycle and lets you validate:
+- ✅ Operator is collecting ROS metrics (container and namespace CSVs)
+- ✅ Ingress accepts and processes the upload
+- ✅ Processor consumes Kafka messages
+- ✅ Kruize receives experiment data
+
+**Important Note**: Kruize uses a 15-minute default measurement duration and maintains a unique constraint on `(experiment_name, interval_end_time)`. It will reject duplicate uploads with the same `interval_end_time`. This is **expected behavior** when testing - the pipeline is still working correctly even if Kruize shows "already exists" errors. This actually **proves** the data reached Kruize! See the [Force Operator Upload Guide](force-operator-upload.md) for details.
+
+**Manual Commands:**
+```bash
+# Step 1: Reset packaging timestamp to bypass 6-hour timer
+kubectl patch costmanagementmetricsconfig \
+  -n costmanagement-metrics-operator costmanagementmetricscfg-tls \
+  --type='json' \
+  -p='[{"op": "replace", "path": "/status/packaging/last_successful_packaging_time", "value": "2020-01-01T00:00:00Z"}]' \
+  --subresource=status
+
+# Step 2: Trigger operator reconciliation
+kubectl annotate -n costmanagement-metrics-operator \
+  costmanagementmetricsconfig costmanagementmetricscfg-tls \
+  clusterconfig.openshift.io/force-collection="$(date +%s)" --overwrite
+
+# Step 3: Verify upload (wait ~60 seconds)
+kubectl get costmanagementmetricsconfig -n costmanagement-metrics-operator \
+  costmanagementmetricscfg-tls -o jsonpath='{.status.upload.last_upload_status}'
+# Should show: 202 Accepted
+```
+
+**Verification Steps:**
+
+1. **Check Ingress Logs**:
+   ```bash
+   kubectl logs -n ros-ocp -l app.kubernetes.io/component=ingress -c ingress --tail=50
+   # Look for: "Successfully identified ROS files", "Successfully sent ROS event message"
+   ```
+
+2. **Check Processor Logs**:
+   ```bash
+   kubectl logs -n ros-ocp -l app.kubernetes.io/component=processor --tail=50
+   # Look for: "Message received from kafka hccm.ros.events"
+   ```
+
+3. **Check Kruize Logs**:
+   ```bash
+   kubectl logs -n ros-ocp -l app.kubernetes.io/name=kruize --tail=100 | grep experiment
+   # Look for: experiment_name with your cluster UUID
+   ```
+
+**📖 See [Force Operator Upload Guide](force-operator-upload.md) for complete documentation, including:**
+- Detailed explanation of what each command does
+- All verification steps with expected outputs
+- Troubleshooting common issues
+- Understanding Kruize's 15-minute bucket behavior
+
+---
+
 ### Pods Getting OOMKilled (Out of Memory)
 
 **Problem**: Pods crashing with OOMKilled status.
@@ -146,6 +214,115 @@ kubectl get pvc -n ros-ocp
 kubectl get storageclass
 ```
 
+### Network Policy Issues (OpenShift)
+
+**Problem**: Service-to-service communication failing or Prometheus not scraping metrics.
+
+**Symptoms**:
+- External requests to backend services getting connection refused or timeouts
+- Prometheus metrics missing in monitoring dashboards
+- Services can't communicate with each other
+
+**Diagnosis**:
+```bash
+# Check if network policies are deployed
+oc get networkpolicies -n ros-ocp
+
+# Describe specific policy
+oc describe networkpolicy kruize-allow-ingress -n ros-ocp
+oc describe networkpolicy rosocp-metrics-allow-ingress -n ros-ocp
+oc describe networkpolicy sources-api-allow-ingress -n ros-ocp
+
+# Test connectivity from within namespace (should work)
+oc exec -n ros-ocp deployment/ros-ocp-rosocp-processor -- \
+  curl -s http://ros-ocp-kruize:8080/listApplications
+
+# Test connectivity from monitoring namespace (Prometheus - should work for metrics)
+oc exec -n openshift-monitoring prometheus-k8s-0 -- \
+  curl -s http://ros-ocp-kruize.ros-ocp.svc:8080/metrics
+```
+
+**Common Causes and Fixes**:
+
+1. **External traffic not using Envoy sidecar (port 8080)**
+   - **Symptom**: Direct access to backend ports (8000, 8001, 8081) fails
+   - **Fix**: Ensure routes and ingresses point to port 8080, not backend ports
+   ```bash
+   # Check route configuration
+   oc get route ros-ocp-main -n ros-ocp -o yaml | grep targetPort
+   # Should show: targetPort: 8080
+   ```
+
+2. **Prometheus can't scrape metrics**
+   - **Symptom**: Metrics missing from Prometheus/Grafana
+   - **Fix**: Verify network policies allow `openshift-monitoring` namespace
+   ```bash
+   # Check if monitoring namespace selector is present
+   oc get networkpolicy kruize-allow-ingress -n ros-ocp -o yaml | \
+     grep -A3 "namespaceSelector"
+   # Should include: name: openshift-monitoring
+   ```
+
+3. **Services in different namespaces can't communicate**
+   - **Symptom**: Cross-namespace communication blocked
+   - **Fix**: This is expected behavior. Network policies restrict to same namespace and monitoring.
+   - **Solution**: Deploy services in the same namespace or add explicit network policy rules
+
+**Reference**: See [JWT Authentication Guide - Network Policies](native-jwt-authentication.md#network-policies) for detailed configuration
+
+---
+
+### JWT Authentication Issues (OpenShift)
+
+**Problem**: Authentication failures or missing X-Rh-Identity header.
+
+**Symptoms**:
+- 401 Unauthorized errors
+- Logs show "Invalid or missing identity"
+- Envoy sidecar not injecting headers
+
+**Diagnosis**:
+```bash
+# Check if Envoy sidecars are running
+oc get pods -n ros-ocp -o json | \
+  jq -r '.items[] | select(.spec.containers | length > 1) | .metadata.name'
+# Should show pods with multiple containers (app + envoy-proxy)
+
+# Check Envoy logs
+oc logs -n ros-ocp deployment/ros-ocp-ingress -c envoy-proxy --tail=50
+
+# Check Envoy configuration
+oc get configmap ros-ocp-envoy-config-ingress -n ros-ocp -o yaml
+
+# Verify Keycloak connectivity
+oc exec -n ros-ocp deployment/ros-ocp-ingress -c envoy-proxy -- \
+  curl -k -I https://keycloak-rhsso.apps.example.com
+```
+
+**Common Causes and Fixes**:
+
+1. **Envoy sidecar not deployed**
+   - **Cause**: Platform not detected as OpenShift or JWT disabled
+   - **Fix**: Verify OpenShift API groups are available
+   ```bash
+   kubectl api-resources | grep route.openshift.io
+   ```
+
+2. **Keycloak URL not reachable from Envoy**
+   - **Cause**: Network connectivity or DNS issues
+   - **Fix**: Check Keycloak route and connectivity
+   ```bash
+   oc get route keycloak -n rhsso -o jsonpath='{.spec.host}'
+   ```
+
+3. **JWT missing org_id claim**
+   - **Cause**: Keycloak client not configured with org_id mapper
+   - **Fix**: See [Keycloak Setup Guide](keycloak-jwt-authentication-setup.md)
+
+**Reference**: See [JWT Authentication Guide](native-jwt-authentication.md) for detailed troubleshooting
+
+---
+
 ### Debug Commands
 
 ```bash
@@ -160,4 +337,10 @@ helm get values ros-ocp -n ros-ocp
 
 # Check cluster info
 kubectl cluster-info
+
+# Check network policies (OpenShift)
+oc get networkpolicies -n ros-ocp
+
+# Check Envoy sidecars (OpenShift)
+oc get pods -n ros-ocp -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.name}{" "}{end}{"\n"}{end}'
 ```

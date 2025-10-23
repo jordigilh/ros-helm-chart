@@ -37,17 +37,18 @@ helm install ros-ocp ros-ocp/ros-ocp --namespace ros-ocp --create-namespace
 
 ## 📚 Documentation
 
-| Document | Description |
-|----------|-------------|
-| **[Quick Start Guide](docs/quickstart.md)** | Step-by-step deployment walkthrough |
-| **[Installation Guide](docs/installation.md)** | Complete installation methods and prerequisites |
-| **[Configuration Guide](docs/configuration.md)** | Resource requirements, storage, and access configuration |
-| **[Platform Guide](docs/platform-guide.md)** | Kubernetes vs OpenShift platform differences |
-| **[JWT Authentication](docs/native-jwt-authentication.md)** | Native JWT authentication with Envoy and Keycloak |
-| **[Helm Templates Reference](docs/helm-templates-reference.md)** | Technical details of chart templates and configuration |
-| **[TLS Setup](docs/cost-management-operator-tls-setup.md)** | Cost Management Operator TLS configuration |
-| **[Troubleshooting Guide](docs/troubleshooting.md)** | Common issues and solutions |
-| **[Scripts Reference](scripts/README.md)** | Automation scripts documentation |
+> **📖 [Complete Documentation Index →](docs/README.md)**
+> Comprehensive guides organized by use case, with detailed descriptions and navigation.
+
+### Essential Guides
+
+| 🚀 Getting Started | 🏭 Production Setup | 🔧 Operations |
+|-------------------|-------------------|---------------|
+| [Quick Start](docs/quickstart.md)<br/>*Fast deployment walkthrough* | [Installation Guide](docs/installation.md)<br/>*Detailed installation instructions* | [Troubleshooting](docs/troubleshooting.md)<br/>*Common issues & solutions* |
+| [Platform Guide](docs/platform-guide.md)<br/>*Kubernetes vs OpenShift* | [JWT Authentication](docs/native-jwt-authentication.md)<br/>*Authentication architecture* | [Force Upload](docs/force-operator-upload.md)<br/>*Testing & validation* |
+| | [Keycloak Setup](docs/keycloak-jwt-authentication-setup.md)<br/>*SSO configuration* | [Scripts Reference](scripts/README.md)<br/>*Automation scripts* |
+
+**Need more?** Configuration, security, templates, and specialized guides are available in the [Complete Documentation Index](docs/README.md).
 
 ## 🏗️ Chart Structure
 
@@ -73,14 +74,21 @@ ros-helm-chart/
 - **Kafka 3.8.0**: Message streaming with persistent storage (deployed via Strimzi CRDs)
 
 ### Application Services
-- **Ingress**: File upload API and routing gateway
-- **ROS-OCP API**: Main REST API for recommendations and status
+- **Ingress**: File upload API and routing gateway (with Envoy sidecar for JWT authentication on OpenShift)
+- **ROS-OCP API**: Main REST API for recommendations and status (with Envoy sidecar for authentication on OpenShift)
 - **ROS-OCP Processor**: Data processing service for cost optimization
 - **ROS-OCP Recommendation Poller**: Kruize integration for recommendations
 - **ROS-OCP Housekeeper**: Maintenance tasks and data cleanup
-- **Kruize Autotune**: Optimization recommendation engine
-- **Sources API**: Source management and integration
+- **Kruize Autotune**: Optimization recommendation engine (direct authentication, protected by network policies)
+- **Sources API**: Source management and integration (middleware-based authentication for protected endpoints, unauthenticated metadata endpoints for internal use)
 - **Redis**: Caching layer for performance
+
+**Security Architecture (OpenShift)**:
+- **Envoy Sidecars**: Ingress and ROS-OCP API use Envoy proxy sidecars for JWT authentication
+- **Network Policies**: Restrict direct access to backend services (Kruize, Sources API) while allowing Prometheus metrics scraping
+- **Multi-tenancy**: `org_id` and `account_number` from JWT enable data isolation across organizations and accounts
+
+**See [JWT Authentication Guide](docs/native-jwt-authentication.md) for detailed architecture**
 
 ## ⚙️ Configuration
 
@@ -112,6 +120,30 @@ oc get routes -n ros-ocp
 ```
 
 **See [Platform Guide](docs/platform-guide.md) for platform-specific details**
+
+## 🔐 Authentication Setup
+
+### JWT Authentication (OpenShift/Production)
+
+For OpenShift deployments, JWT authentication is **automatically enabled** and requires Keycloak/RH SSO configuration:
+
+```bash
+# Step 1: Deploy Keycloak/RH SSO (if not already deployed)
+./scripts/deploy-rhsso.sh
+
+# Step 2: Configure Cost Management Operator with JWT credentials
+./scripts/setup-cost-mgmt-tls.sh
+```
+
+**📖 See [Keycloak Setup Guide](docs/keycloak-jwt-authentication-setup.md) for detailed configuration instructions**
+
+Key requirements:
+- ✅ Keycloak realm with `org_id` and `account_number` claims
+- ✅ Service account client credentials
+- ✅ Self-signed CA certificate bundle (auto-configured)
+- ✅ Cost Management Operator configured with JWT token URL
+
+**Architecture**: [JWT Authentication Overview](docs/native-jwt-authentication.md)
 
 ## 🔧 Common Operations
 
@@ -171,5 +203,5 @@ See [Quick Start Guide](docs/quickstart.md) for development environment setup.
 
 For issues and questions:
 - **Issues**: [GitHub Issues](https://github.com/insights-onprem/ros-helm-chart/issues)
-- **Documentation**: [docs/](docs/)
-- **Scripts**: [scripts/README.md](scripts/README.md)
+- **Documentation**: [Complete Documentation Index](docs/README.md)
+- **Scripts**: [Automation Scripts Reference](scripts/README.md)
