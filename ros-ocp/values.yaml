@@ -24,10 +24,6 @@ serviceAccount:
   create: true
   name: ros-ocp-backend
 
-# Auth Configuration
-auth:
-  provider: "oauth2"
-
 # Database configurations
 database:
   ros: # Database configuration for ros-ocp services

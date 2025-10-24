@@ -163,8 +163,6 @@ spec:
               value: {{ include "ros-ocp.kafkaBootstrapServers" . | quote }}
             - name: KAFKA_SECURITY_PROTOCOL
               value: {{ include "ros-ocp.kafkaSecurityProtocol" . | quote }}
-            - name: ID_PROVIDER
-              value: {{ .Values.auth.provider | quote }}
           livenessProbe:
             httpGet:
               path: /status
