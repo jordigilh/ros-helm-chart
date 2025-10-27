@@ -386,7 +386,7 @@ spec:
     - config:
         access.token.claim: "true"
         claim.name: org_id
-        claim.value: "12345"
+        claim.value: "1"
         id.token.claim: "false"
         jsonType.label: String
         userinfo.token.claim: "false"
@@ -396,7 +396,7 @@ spec:
     - config:
         access.token.claim: "true"
         claim.name: account_number
-        claim.value: "7890123"
+        claim.value: "1"
         id.token.claim: "false"
         jsonType.label: String
         userinfo.token.claim: "false"
