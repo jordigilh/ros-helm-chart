@@ -53,6 +53,8 @@ spec:
             - "6379"
             - --protected-mode
             - "no"
+            - --save
+            - ""
           {{- end }}
           livenessProbe:
             exec:
