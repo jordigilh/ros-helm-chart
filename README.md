@@ -33,6 +33,8 @@ helm repo add ros-ocp https://insights-onprem.github.io/ros-helm-chart
 helm install ros-ocp ros-ocp/ros-ocp --namespace ros-ocp --create-namespace
 ```
 
+**Note for OpenShift:** See [Authentication Setup](#-authentication-setup) section for required prerequisites (Authorino and Keycloak)
+
 📖 **See [Installation Guide](docs/installation.md) for detailed installation options**
 
 ## 📚 Documentation
@@ -45,8 +47,9 @@ helm install ros-ocp ros-ocp/ros-ocp --namespace ros-ocp --create-namespace
 | 🚀 Getting Started | 🏭 Production Setup | 🔧 Operations |
 |-------------------|-------------------|---------------|
 | [Quick Start](docs/quickstart.md)<br/>*Fast deployment walkthrough* | [Installation Guide](docs/installation.md)<br/>*Detailed installation instructions* | [Troubleshooting](docs/troubleshooting.md)<br/>*Common issues & solutions* |
-| [Platform Guide](docs/platform-guide.md)<br/>*Kubernetes vs OpenShift* | [JWT Authentication](docs/native-jwt-authentication.md)<br/>*Authentication architecture* | [Force Upload](docs/force-operator-upload.md)<br/>*Testing & validation* |
-| | [Keycloak Setup](docs/keycloak-jwt-authentication-setup.md)<br/>*SSO configuration* | [Scripts Reference](scripts/README.md)<br/>*Automation scripts* |
+| [Platform Guide](docs/platform-guide.md)<br/>*Kubernetes vs OpenShift* | [JWT Authentication](docs/native-jwt-authentication.md)<br/>*Ingress authentication (Keycloak)* | [Force Upload](docs/force-operator-upload.md)<br/>*Testing & validation* |
+| | [OAuth2 TokenReview](docs/oauth2-tokenreview-authentication.md)<br/>*Backend authentication (Authorino)* | [Scripts Reference](scripts/README.md)<br/>*Automation scripts* |
+| | [Keycloak Setup](docs/keycloak-jwt-authentication-setup.md)<br/>*SSO configuration* | |
 
 **Need more?** Configuration, security, templates, and specialized guides are available in the [Complete Documentation Index](docs/README.md).
 
@@ -84,11 +87,12 @@ ros-helm-chart/
 - **Redis**: Caching layer for performance
 
 **Security Architecture (OpenShift)**:
-- **Envoy Sidecars**: Ingress and ROS-OCP API use Envoy proxy sidecars for JWT authentication
+- **Ingress Authentication**: Envoy sidecar with JWT validation (Keycloak) for external uploads
+- **Backend Authentication**: Envoy sidecar with OAuth2 TokenReview (Authorino) for OpenShift Console UI access
 - **Network Policies**: Restrict direct access to backend services (Kruize, Sources API) while allowing Prometheus metrics scraping
-- **Multi-tenancy**: `org_id` and `account_number` from JWT enable data isolation across organizations and accounts
+- **Multi-tenancy**: `org_id` and `account_number` from authentication enable data isolation across organizations and accounts
 
-**See [JWT Authentication Guide](docs/native-jwt-authentication.md) for detailed architecture**
+**See [JWT Authentication Guide](docs/native-jwt-authentication.md) and [OAuth2 TokenReview Guide](docs/oauth2-tokenreview-authentication.md) for detailed architecture**
 
 ## ⚙️ Configuration
 
@@ -125,13 +129,16 @@ oc get routes -n ros-ocp
 
 ### JWT Authentication (OpenShift/Production)
 
-For OpenShift deployments, JWT authentication is **automatically enabled** and requires Keycloak/RH SSO configuration:
+For OpenShift deployments, JWT authentication is **automatically enabled** and requires Keycloak/RH SSO and Authorino configuration:
 
 ```bash
 # Step 1: Deploy Keycloak/RH SSO (if not already deployed)
 ./scripts/deploy-rhsso.sh
 
-# Step 2: Configure Cost Management Operator with JWT credentials
+# Step 2: Install Authorino for OAuth2 authentication
+./scripts/install-authorino.sh
+
+# Step 3: Configure Cost Management Operator with JWT credentials
 ./scripts/setup-cost-mgmt-tls.sh
 ```
 

@@ -1,0 +1,40 @@
+{{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "ros-ocp.fullname" . }}-authorino-tokenreview
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino-rbac
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "ros-ocp.fullname" . }}-authorino-tokenreview
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino-rbac
+rules:
+- apiGroups: ["authentication.k8s.io"]
+  resources: ["tokenreviews"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "ros-ocp.fullname" . }}-authorino-tokenreview
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino-rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "ros-ocp.fullname" . }}-authorino-tokenreview
+subjects:
+- kind: ServiceAccount
+  name: authorino-authorino
+  namespace: {{ .Release.Namespace }}
+{{- end }}
+

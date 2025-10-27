@@ -52,24 +52,9 @@ spec:
               done
               echo "Kafka is ready"
         {{- end }}
-        {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
-        # Init container to prepare CA bundle for Envoy TLS validation
-        - name: prepare-ca-bundle
-          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
-          command: ['bash', '/scripts/combine-ca.sh']
-          volumeMounts:
-            - name: ca-scripts
-              mountPath: /scripts
-              readOnly: true
-            - name: ca-source
-              mountPath: /ca-source
-              readOnly: true
-            - name: ca-bundle
-              mountPath: /ca-output
-        {{- end }}
       containers:
         {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
-        # Envoy sidecar for native JWT authentication
+        # Envoy sidecar for OAuth2 TokenReview authentication
         - name: envoy-proxy
           image: "{{ .Values.jwt_auth.envoy.image.repository }}:{{ .Values.jwt_auth.envoy.image.tag }}"
           imagePullPolicy: {{ .Values.global.pullPolicy }}
@@ -90,9 +75,6 @@ spec:
           volumeMounts:
             - name: envoy-config
               mountPath: /etc/envoy
-              readOnly: true
-            - name: ca-bundle
-              mountPath: /etc/ca-certificates
               readOnly: true
           livenessProbe:
             httpGet:
@@ -192,17 +174,4 @@ spec:
             items:
               - key: envoy.yaml
                 path: envoy.yaml
-        # CA bundle preparation volumes
-        - name: ca-scripts
-          configMap:
-            name: {{ include "ros-ocp.fullname" . }}-keycloak-ca
-            items:
-              - key: combine-ca.sh
-                path: combine-ca.sh
-                mode: 0755
-        - name: ca-source
-          configMap:
-            name: {{ include "ros-ocp.fullname" . }}-keycloak-ca
-        - name: ca-bundle
-          emptyDir: {}
         {{- end }}
