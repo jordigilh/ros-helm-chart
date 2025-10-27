@@ -821,34 +821,32 @@ validate_setup() {
 show_completion_summary() {
     print_header "Setup Complete!"
 
-    cat << EOF
-
-${GREEN}🎉 Cost Management Operator TLS Setup Completed Successfully!${NC}
-
-${BLUE}What was configured:${NC}
-• ✅ Cost Management Operator installed in namespace: $NAMESPACE
-• ✅ CA certificates extracted and configured for self-signed cert support
-• ✅ Keycloak JWT authentication configured (service-account type)
-• ✅ Client credentials: $CLIENT_ID (stored in cost-management-auth-secret)
-• ✅ CostManagementMetricsConfig created with local ROS ingress URL
-• ✅ API URL set to ${INGRESS_URL:-local ROS ingress} (NOT console.redhat.com)
-• ✅ TLS certificate validation disabled for self-signed Keycloak certificates
-• ✅ Operator will acquire JWT tokens via client_credentials flow
-• ✅ All components validated and ready for use
-
-${BLUE}Next steps:${NC}
-• The operator will automatically start collecting metrics
-• Check operator logs: ${YELLOW}oc logs -n $NAMESPACE deployment/costmanagement-metrics-operator${NC}
-• Monitor uploads: ${YELLOW}oc get costmanagementmetricsconfig -n $NAMESPACE -o yaml${NC}
-
-${BLUE}Troubleshooting:${NC}
-• Documentation: docs/cost-management-operator-tls-setup.md
-• CA bundle functionality: integrated in this script (setup-cost-mgmt-tls.sh)
-• Test script: scripts/test-ocp-dataflow-cost-management.sh
-
-${GREEN}Your Cost Management Operator is now ready to work with self-signed certificates!${NC}
-
-EOF
+    echo ""
+    echo -e "${GREEN}🎉 Cost Management Operator TLS Setup Completed Successfully!${NC}"
+    echo ""
+    echo -e "${BLUE}What was configured:${NC}"
+    echo -e "• ✅ Cost Management Operator installed in namespace: $NAMESPACE"
+    echo -e "• ✅ CA certificates extracted and configured for self-signed cert support"
+    echo -e "• ✅ Keycloak JWT authentication configured (service-account type)"
+    echo -e "• ✅ Client credentials: $CLIENT_ID (stored in cost-management-auth-secret)"
+    echo -e "• ✅ CostManagementMetricsConfig created with local ROS ingress URL"
+    echo -e "• ✅ API URL set to ${INGRESS_URL:-local ROS ingress} (NOT console.redhat.com)"
+    echo -e "• ✅ TLS certificate validation disabled for self-signed Keycloak certificates"
+    echo -e "• ✅ Operator will acquire JWT tokens via client_credentials flow"
+    echo -e "• ✅ All components validated and ready for use"
+    echo ""
+    echo -e "${BLUE}Next steps:${NC}"
+    echo -e "• The operator will automatically start collecting metrics"
+    echo -e "• Check operator logs: ${YELLOW}oc logs -n $NAMESPACE deployment/costmanagement-metrics-operator${NC}"
+    echo -e "• Monitor uploads: ${YELLOW}oc get costmanagementmetricsconfig -n $NAMESPACE -o yaml${NC}"
+    echo ""
+    echo -e "${BLUE}Troubleshooting:${NC}"
+    echo -e "• Documentation: docs/cost-management-operator-tls-setup.md"
+    echo -e "• CA bundle functionality: integrated in this script (setup-cost-mgmt-tls.sh)"
+    echo -e "• Test script: scripts/test-ocp-dataflow-cost-management.sh"
+    echo ""
+    echo -e "${GREEN}Your Cost Management Operator is now ready to work with self-signed certificates!${NC}"
+    echo ""
 }
 
 # Parse command line arguments
