@@ -55,6 +55,18 @@ Ensure you have:
 
 The easiest way to install using the automation script:
 
+**For OpenShift clusters, install Authorino first:**
+
+```bash
+# Step 1: Install Authorino (OpenShift only)
+./scripts/install-authorino.sh
+
+# Step 2: Install ROS-OCP
+./scripts/install-helm-chart.sh
+```
+
+**For Kubernetes/KIND clusters:**
+
 ```bash
 # Install latest release with default settings
 ./scripts/install-helm-chart.sh
@@ -297,13 +309,202 @@ oc auth can-i create deployments -n ros-ocp
 oc auth can-i create routes -n ros-ocp
 ```
 
-### 4. Resource Requirements
+### 4. Authorino Setup for OAuth2 Authentication
+
+Authorino is required for OAuth2 TokenReview authentication on the backend API. This enables OpenShift Console UI users to access the ROS-OCP backend with their session tokens.
+
+**Security Features:**
+- **TLS Encryption**: All communication between Envoy and Authorino is encrypted using TLS
+- **Certificate Management**: Certificates are automatically generated and rotated by OpenShift's service-ca operator
+- **NetworkPolicy**: Access to Authorino is restricted to authorized pods only (critical for access control)
+- **Namespace-Scoped**: Authorino is configured with `clusterWide: false` to limit blast radius
+
+#### Install Authorino Using Automated Script
+
+The easiest way to set up Authorino:
+
+```bash
+# Install Authorino Operator and create instance
+./scripts/install-authorino.sh
+
+# Custom namespace (must match your ROS-OCP deployment)
+NAMESPACE=ros-production ./scripts/install-authorino.sh
+
+# Verify installation
+./scripts/install-authorino.sh --verify-only
+```
+
+#### Manual Authorino Installation
+
+If you prefer manual installation:
+
+**Step 1: Install Authorino Operator**
+
+```bash
+# Create OperatorGroup
+oc apply -f - <<EOF
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: authorino-operator-group
+  namespace: openshift-operators
+spec: {}
+EOF
+
+# Create Subscription
+oc apply -f - <<EOF
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: authorino-operator
+  namespace: openshift-operators
+spec:
+  channel: tech-preview-v1
+  name: authorino-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic
+EOF
+
+# Wait for operator to be ready
+oc get csv -n openshift-operators | grep authorino
+```
+
+**Step 2: Create TLS Service for Authorino**
+
+```bash
+# Create service with annotation to trigger certificate generation
+oc apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: authorino-tls
+  namespace: ros-ocp
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: authorino-server-cert
+spec:
+  selector:
+    app: authorino
+  ports:
+  - name: grpc
+    port: 50051
+    targetPort: 50051
+    protocol: TCP
+  type: ClusterIP
+EOF
+
+# Wait for service-ca to generate certificate
+oc wait --for=jsonpath='{.data.tls\.crt}' secret/authorino-server-cert -n ros-ocp --timeout=60s
+```
+
+**Step 3: Create Authorino Instance with TLS**
+
+```bash
+# Create Authorino CR with TLS enabled
+oc apply -f - <<EOF
+apiVersion: operator.authorino.kuadrant.io/v1beta1
+kind: Authorino
+metadata:
+  name: authorino
+  namespace: ros-ocp
+spec:
+  clusterWide: false
+  listener:
+    tls:
+      enabled: true
+      certSecretRef:
+        name: authorino-server-cert
+  oidcServer:
+    tls:
+      enabled: false
+EOF
+
+# Wait for Authorino pods to be ready
+oc wait --for=condition=Ready pod -l app.kubernetes.io/name=authorino -n ros-ocp --timeout=120s
+```
+
+**Step 4: Create RBAC for TokenReview**
+
+```bash
+# Create ClusterRole
+oc apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: authorino-tokenreview
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+EOF
+
+# Create ClusterRoleBinding
+oc apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: authorino-tokenreview-ros-ocp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: authorino-tokenreview
+subjects:
+- kind: ServiceAccount
+  name: authorino-authorino
+  namespace: ros-ocp
+EOF
+```
+
+**Step 4: Verify Installation**
+
+```bash
+# Check Operator
+oc get csv -n openshift-operators | grep authorino
+
+# Check Authorino instance
+oc get authorino -n ros-ocp
+
+# Check Authorino pods
+oc get pods -n ros-ocp -l app.kubernetes.io/name=authorino
+
+# Check Authorino service
+oc get svc -n ros-ocp | grep authorino
+
+# Check RBAC
+oc get clusterrole authorino-tokenreview
+oc get clusterrolebinding authorino-tokenreview-ros-ocp
+```
+
+#### What Authorino Does
+
+Authorino provides:
+- **OAuth2 TokenReview**: Validates user session tokens from OpenShift Console
+- **Token Validation**: Authenticates requests via Kubernetes TokenReview API
+- **Header Injection**: Extracts username and UID for rh-identity header transformation
+- **Audience Validation**: Ensures tokens are intended for the correct service
+
+**Authentication Flow:**
+1. User accesses ROS-OCP via OpenShift Console UI
+2. Console includes user's session token in request
+3. Envoy proxy forwards request to Authorino for validation
+4. Authorino validates token via Kubernetes TokenReview API
+5. If valid, Authorino injects headers (username, UID)
+6. Envoy transforms headers into rh-identity format
+7. Backend receives authenticated request
+
+**For more details, see [OAuth2 TokenReview Authentication Guide](oauth2-tokenreview-authentication.md)**
+
+### 5. Resource Requirements
 
 **Single Node OpenShift (SNO):**
 - SNO cluster with ODF installed
 - 30GB+ block devices for ODF
 - Additional 6GB RAM for ROS-OCP workloads
 - Additional 2 CPU cores
+- Authorino resources (minimal: ~100Mi RAM, 0.1 CPU)
 
 **See [Configuration Guide](configuration.md) for detailed requirements**
 
@@ -502,10 +703,11 @@ kubectl top nodes  # requires metrics-server
 
 After successful installation:
 
-1. **Configure Access**: See [Configuration Guide](configuration.md)
-2. **Set Up JWT Auth**: See [JWT Authentication Guide](native-jwt-authentication.md)
-3. **Configure TLS**: See [TLS Setup Guide](cost-management-operator-tls-setup.md)
-4. **Run Tests**: See [Scripts Reference](../scripts/README.md)
+1. **Set Up Authorino** (OpenShift only): See [Authorino Setup](#4-authorino-setup-for-oauth2-authentication)
+2. **Configure Access**: See [Configuration Guide](configuration.md)
+3. **Set Up JWT Auth**: See [JWT Authentication Guide](native-jwt-authentication.md)
+4. **Configure TLS**: See [TLS Setup Guide](cost-management-operator-tls-setup.md)
+5. **Run Tests**: See [Scripts Reference](../scripts/README.md)
 
 ---
 

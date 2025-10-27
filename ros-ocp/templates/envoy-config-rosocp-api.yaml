@@ -1,7 +1,4 @@
 {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
-{{- $keycloakUrl := .Values.jwt_auth.keycloak.url | default (include "ros-ocp.keycloak.url" .) }}
-{{- $issuerUrl := include "ros-ocp.keycloak.issuerUrl" . }}
-{{- $jwksUrl := include "ros-ocp.keycloak.jwksUrl" . }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -78,6 +75,17 @@ data:
                   # - No host header injection risk in this architecture
                   domains: ["*"]
                   routes:
+                  # Health endpoint - bypass authentication for Kubernetes probes
+                  - match:
+                      path: "/status"
+                    route:
+                      cluster: rosocp-api-backend
+                      timeout: 5s
+                    typed_per_filter_config:
+                      envoy.filters.http.ext_authz:
+                        "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                        disabled: true
+                  # All other routes - require authentication
                   - match:
                       prefix: "/"
                     route:
@@ -88,200 +96,63 @@ data:
                         num_retries: 2
                         per_try_timeout: 10s
               http_filters:
-              # JWT authentication filter
-              - name: envoy.filters.http.jwt_authn
+              # External authorization via Authorino (gRPC)
+              # Headers are automatically included in gRPC CheckRequest by default
+              - name: envoy.filters.http.ext_authz
                 typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
-                  providers:
-                    keycloak:
-                      issuer: {{ $issuerUrl }}
-                      audiences:
-                      {{- range .Values.jwt_auth.keycloak.audiences }}
-                        - {{ . }}
-                      {{- end }}
-                      remote_jwks:
-                        http_uri:
-                          uri: {{ $jwksUrl }}
-                          cluster: keycloak_jwks
-                          timeout: 5s
-                        cache_duration:
-                          seconds: 300
-                      forward: true
-                      # TODO: Review if forward_payload_header is needed for compatibility.
-                      # Forwarding full JWT payload in headers poses information disclosure risk
-                      # if backend services log headers. Consider removing in future if not required.
-                      forward_payload_header: jwt-payload
-                      payload_in_metadata: keycloak
-                  rules:
-                  - match:
-                      prefix: "/"
-                    requires:
-                      provider_name: keycloak
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                  transport_api_version: V3
+                  grpc_service:
+                    envoy_grpc:
+                      cluster_name: authorino_cluster
+                    timeout: 5s
+                  failure_mode_allow: false
+                  status_on_error:
+                    code: 503
 
-              # Lua filter to extract JWT claims and inject X-Rh-Identity header
+              # Lua filter to transform username into rh-identity header
               - name: envoy.filters.http.lua
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
                   inline_code: |
-                    -- Helper function to get claim value with fallbacks
-                    local function get_claim(payload, ...)
-                      for _, key in ipairs({...}) do
-                        if payload[key] ~= nil and payload[key] ~= "" then
-                          return tostring(payload[key])
-                        end
-                      end
-                      return ""
-                    end
-
-                    -- Helper function to validate org_id and account_number
-                    local function validate_identifier(value, field_name, max_length)
-                      max_length = max_length or 128  -- Default max length
-
-                      if value == "" then
-                        return false, field_name .. " is empty"
-                      end
-
-                      if #value > max_length then
-                        return false, field_name .. " exceeds maximum length of " .. max_length
-                      end
-
-                      -- Only allow alphanumeric, dashes, underscores, and dots
-                      if not string.match(value, "^[a-zA-Z0-9._-]+$") then
-                        return false, field_name .. " contains invalid characters"
-                      end
-
-                      return true, nil
-                    end
-
-                    -- Helper function to build JSON manually (no json lib in Envoy Lua)
-                    local function build_xrhid_json(org_id, account_number, user_type)
-                      -- Properly escape JSON special characters
-                      local function escape_json(str)
-                        if type(str) ~= "string" then
-                          str = tostring(str)
-                        end
-                        str = string.gsub(str, "\\", "\\\\")  -- Backslash first
-                        str = string.gsub(str, '"', '\\"')    -- Double quote
-                        str = string.gsub(str, "\n", "\\n")   -- Newline
-                        str = string.gsub(str, "\r", "\\r")   -- Carriage return
-                        str = string.gsub(str, "\t", "\\t")   -- Tab
-                        str = string.gsub(str, "\b", "\\b")   -- Backspace
-                        str = string.gsub(str, "\f", "\\f")   -- Form feed
-                        return str
-                      end
-
-                      org_id = escape_json(org_id)
-                      account_number = escape_json(account_number)
-                      user_type = escape_json(user_type)
-
-                      return string.format('{"identity":{"org_id":"%s","account_number":"%s","type":"%s"}}',
-                                          org_id, account_number, user_type)
-                    end
-
                     function envoy_on_request(request_handle)
-                      -- Wrap entire function in error handler to prevent crashes
-                      local success, err = pcall(function()
-                        -- Get JWT payload from dynamic metadata (set by jwt_authn filter)
-                        local metadata = request_handle:streamInfo():dynamicMetadata()
-                        local jwt_metadata = metadata:get("envoy.filters.http.jwt_authn")
+                      -- Get the authenticated username from Authorino
+                      local username = request_handle:headers():get("x-auth-username")
 
-                      if jwt_metadata == nil then
-                        request_handle:logWarn("No JWT metadata found")
-                        request_handle:respond(
-                          {[":status"] = "401"},
-                          "Unauthorized: No JWT metadata found"
-                        )
-                        return
-                      end
+                      if username ~= nil and username ~= "" then
+                        -- Build rh-identity JSON structure
+                        local identity_json = string.format([[{
+                          "identity": {
+                            "org_id": "1",
+                            "account_number": "1",
+                            "type": "User",
+                            "user": {
+                              "username": "%s",
+                              "email": "",
+                              "first_name": "",
+                              "last_name": "",
+                              "is_active": true,
+                              "is_org_admin": false,
+                              "is_internal": false,
+                              "locale": "en_US"
+                            },
+                            "internal": {
+                              "org_id": "1",
+                              "auth_type": "kubernetes-tokenreview",
+                              "auth_time": 0
+                            }
+                          }
+                        }]], username)
 
-                      -- Extract JWT payload from the keycloak provider
-                      local jwt_data = jwt_metadata["keycloak"]
-                      if jwt_data == nil then
-                        request_handle:logWarn("No JWT data found for keycloak provider in metadata")
-                        request_handle:respond(
-                          {[":status"] = "401"},
-                          "Unauthorized: No JWT data found for keycloak provider"
-                        )
-                        return
-                      end
+                        -- Base64 encode the JSON
+                        local b64_identity = request_handle:base64Escape(identity_json)
 
-                      -- Extract org_id with fallbacks
-                      local org_id = get_claim(jwt_data, "org_id", "organization_id", "tenant_id")
-                      if org_id == "" then
-                        request_handle:logWarn("Missing org_id in JWT claims")
-                        request_handle:respond(
-                          {[":status"] = "401"},
-                          "Unauthorized: Missing organization ID in JWT claims"
-                        )
-                        return
-                      end
+                        -- Set the X-Rh-Identity header
+                        request_handle:headers():add("x-rh-identity", b64_identity)
 
-                      -- Validate org_id
-                      local valid, err_msg = validate_identifier(org_id, "org_id")
-                      if not valid then
-                        request_handle:logWarn("Invalid org_id: " .. err_msg)
-                        request_handle:respond(
-                          {[":status"] = "401"},
-                          "Unauthorized: Invalid organization ID"
-                        )
-                        return
-                      end
-
-                      -- Extract account_number with fallbacks
-                      local account_number = get_claim(jwt_data, "account_number", "account_id", "account")
-                      if account_number == "" then
-                        account_number = org_id  -- Fallback to org_id
-                      end
-
-                      -- Validate account_number
-                      local valid, err_msg = validate_identifier(account_number, "account_number")
-                      if not valid then
-                        request_handle:logWarn("Invalid account_number: " .. err_msg)
-                        request_handle:respond(
-                          {[":status"] = "401"},
-                          "Unauthorized: Invalid account number"
-                        )
-                        return
-                      end
-
-                      -- Build and encode X-Rh-Identity header
-                      local xrhid_json = build_xrhid_json(org_id, account_number, "User")
-                      local xrhid_b64 = request_handle:base64Escape(xrhid_json)
-
-                      -- Inject X-Rh-Identity header (for standard identity-based systems)
-                      -- Use replace to avoid duplicate headers
-                      request_handle:headers():replace("X-Rh-Identity", xrhid_b64)
-
-                      -- Inject headers for insights-ros-ingress app (expects JWT token directly)
-                      request_handle:headers():replace("X-ROS-Authenticated", "true")
-
-                      -- Forward the original Authorization header as X-Bearer-Token
-                      -- Try both capitalization variants for case-insensitive lookup
-                      local auth_header = request_handle:headers():get("authorization")
-                      if not auth_header then
-                        auth_header = request_handle:headers():get("Authorization")
-                      end
-
-                      if auth_header then
-                        -- Extract Bearer token from Authorization header
-                        local bearer_token = string.match(auth_header, "^[Bb]earer%s+(.+)$")
-                        if bearer_token and bearer_token ~= "" then
-                          request_handle:headers():replace("X-Bearer-Token", bearer_token)
-                        end
-                      end
-
-                        -- Log for debugging (redact sensitive data)
-                        local masked_org = string.sub(org_id, 1, 4) .. "***"
-                        request_handle:logInfo(string.format("JWT Authentication successful - org_id: %s", masked_org))
-                      end)
-
-                      -- Handle any errors that occurred
-                      if not success then
-                        request_handle:logErr("Lua filter error: " .. tostring(err))
-                        request_handle:respond(
-                          {[":status"] = "500"},
-                          "Internal Server Error: Authentication processing failed"
-                        )
+                        -- Remove the temporary header from Authorino
+                        request_handle:headers():remove("x-auth-username")
+                        request_handle:headers():remove("x-auth-uid")
                       end
                     end
 
@@ -308,6 +179,7 @@ data:
                       window_bits: 12
                       compression_level: BEST_SPEED
 
+              # Router filter (must be last)
               - name: envoy.filters.http.router
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -344,49 +216,38 @@ data:
             - start: 200
               end: 299
 
-      # Keycloak JWKS endpoint for JWT signature verification
-      - name: keycloak_jwks
-        connect_timeout: 5s
-        type: STRICT_DNS
-        dns_refresh_rate: 30s
-        circuit_breakers:
-          thresholds:
-          - priority: DEFAULT
-            max_connections: 512
-            max_pending_requests: 512
-            max_requests: 512
+      # Authorino cluster for external authorization (gRPC with TLS)
+      - name: authorino_cluster
+        connect_timeout: 1s
+        type: LOGICAL_DNS
+        # Respect DNS TTL
+        dns_lookup_family: V4_ONLY
         load_assignment:
-          cluster_name: keycloak_jwks
+          cluster_name: authorino_cluster
           endpoints:
           - lb_endpoints:
             - endpoint:
                 address:
                   socket_address:
-                    address: {{ $keycloakUrl | replace "https://" "" | replace "http://" "" }}
-                    port_value: 443
+                    address: authorino-authorino-authorization.ros-ocp.svc.cluster.local
+                    port_value: 50051
+        # TLS configuration for secure communication with Authorino
         transport_socket:
           name: envoy.transport_sockets.tls
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-            sni: {{ $keycloakUrl | replace "https://" "" | replace "http://" "" }}
             common_tls_context:
-              tls_params:
-                tls_minimum_protocol_version: TLSv1_2
-                tls_maximum_protocol_version: TLSv1_3
-                cipher_suites:
-                - ECDHE-ECDSA-AES128-GCM-SHA256
-                - ECDHE-RSA-AES128-GCM-SHA256
-                - ECDHE-ECDSA-AES256-GCM-SHA384
-                - ECDHE-RSA-AES256-GCM-SHA384
-                - ECDHE-ECDSA-CHACHA20-POLY1305
-                - ECDHE-RSA-CHACHA20-POLY1305
               validation_context:
                 trusted_ca:
-                  filename: /etc/ca-certificates/ca-bundle.crt
-                match_typed_subject_alt_names:
-                  - san_type: DNS
-                    matcher:
-                      exact: {{ $keycloakUrl | replace "https://" "" | replace "http://" "" }}
+                  filename: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+            # SNI for proper certificate validation
+            sni: authorino-authorino-authorization.ros-ocp.svc.cluster.local
+        # HTTP/2 for gRPC
+        typed_extension_protocol_options:
+          envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+            "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+            explicit_http_config:
+              http2_protocol_options: {}
 
     admin:
       address:
@@ -394,4 +255,3 @@ data:
           address: 0.0.0.0
           port_value: {{ .Values.jwt_auth.envoy.adminPort }}
 {{- end }}
-
