@@ -976,7 +976,7 @@ Kafka service host resolver (supports both internal Strimzi and external Kafka)
     {{- end -}}
   {{- end -}}
 {{- else -}}
-ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local
+{{- .Release.Name }}-kafka-kafka-bootstrap.kafka.svc.cluster.local
 {{- end -}}
 {{- end }}
 
@@ -1012,7 +1012,7 @@ Kafka bootstrap servers resolver (supports both internal Strimzi and external Ka
 {{- if .Values.kafka.bootstrapServers -}}
 {{- .Values.kafka.bootstrapServers -}}
 {{- else -}}
-ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092
+{{- .Release.Name }}-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092
 {{- end -}}
 {{- end }}
 

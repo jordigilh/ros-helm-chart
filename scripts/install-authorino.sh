@@ -160,7 +160,7 @@ metadata:
     service.beta.openshift.io/serving-cert-secret-name: authorino-server-cert
 spec:
   selector:
-    app: authorino
+    app.kubernetes.io/name: authorino
   ports:
   - name: grpc
     port: 50051
