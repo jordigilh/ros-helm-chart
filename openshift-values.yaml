@@ -67,6 +67,8 @@ valkey:
     repository: registry.redhat.io/rhel10/valkey-8
     tag: "latest"
   bindAddress: "0.0.0.0"
+  maxMemory: 512mb
+  maxMemoryPolicy: allkeys-lru
 
 # ODF (Production Storage - for OpenShift deployments)
 # Replaces MinIO on OpenShift
