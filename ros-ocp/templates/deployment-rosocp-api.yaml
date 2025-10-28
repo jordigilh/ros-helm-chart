@@ -58,6 +58,14 @@ spec:
         - name: envoy-proxy
           image: "{{ .Values.jwt_auth.envoy.image.repository }}:{{ .Values.jwt_auth.envoy.image.tag }}"
           imagePullPolicy: {{ .Values.global.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           ports:
             - name: http-proxy
               containerPort: {{ .Values.jwt_auth.envoy.port }}
@@ -76,6 +84,8 @@ spec:
             - name: envoy-config
               mountPath: /etc/envoy
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
           livenessProbe:
             httpGet:
               path: /ready
@@ -99,6 +109,13 @@ spec:
         - name: rosocp-api
           image: "{{ .Values.rosocp.api.image.repository }}:{{ .Values.rosocp.api.image.tag }}"
           imagePullPolicy: {{ .Values.rosocp.api.image.pullPolicy | default .Values.global.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           command: ["sh", "-c"]
           args:
             - |
@@ -174,4 +191,7 @@ spec:
             items:
               - key: envoy.yaml
                 path: envoy.yaml
+        # Temporary directory for Envoy (required with read-only root filesystem)
+        - name: tmp
+          emptyDir: {}
         {{- end }}
