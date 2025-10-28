@@ -1,14 +1,7 @@
 {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
 ---
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: {{ include "ros-ocp.fullname" . }}-authorino-tokenreview
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "ros-ocp.labels" . | nindent 4 }}
-    app.kubernetes.io/component: authorino-rbac
----
+# ClusterRole to allow Authorino to perform TokenReview for validating Kubernetes tokens
+# This permission is granted to the Authorino operator's service account (authorino-authorino)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
