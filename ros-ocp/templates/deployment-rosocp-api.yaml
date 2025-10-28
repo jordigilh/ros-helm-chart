@@ -29,6 +29,15 @@ spec:
       initContainers:
         - name: wait-for-db-ros
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           command: ['bash', '-c']
           args:
             - |
@@ -42,6 +51,15 @@ spec:
         {{- if .Values.kafka.bootstrapServers }}
         - name: wait-for-kafka
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           command: ['bash', '-c']
           args:
             - |
@@ -66,6 +84,8 @@ spec:
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - name: http-proxy
               containerPort: {{ .Values.jwt_auth.envoy.port }}
@@ -116,6 +136,8 @@ spec:
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
           command: ["sh", "-c"]
           args:
             - |
