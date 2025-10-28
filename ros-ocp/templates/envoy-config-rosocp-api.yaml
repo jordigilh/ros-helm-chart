@@ -138,7 +138,7 @@ data:
                       if username ~= nil and username ~= "" then
                         -- Escape username for safe JSON embedding
                         local username_escaped = escape_json(username)
-                        
+
                         -- Build rh-identity JSON structure
                         local identity_json = string.format([[{
                           "identity": {
@@ -271,6 +271,6 @@ data:
     admin:
       address:
         socket_address:
-          address: 0.0.0.0
+          address: 127.0.0.1  # Restricted to localhost only
           port_value: {{ .Values.jwt_auth.envoy.adminPort }}
 {{- end }}
