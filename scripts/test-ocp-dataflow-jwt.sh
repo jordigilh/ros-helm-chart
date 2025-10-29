@@ -29,7 +29,7 @@ NC='\033[0m' # No Color
 # Configuration
 NAMESPACE=${NAMESPACE:-ros-ocp}
 HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-ros-ocp}
-KEYCLOAK_NAMESPACE=${KEYCLOAK_NAMESPACE:-rhsso}
+KEYCLOAK_NAMESPACE=${KEYCLOAK_NAMESPACE:-keycloak}
 
 # Authentication variables
 # Keycloak JWT for ingress (external uploads)
@@ -296,7 +296,8 @@ get_jwt_token() {
 
     # Determine the correct realm and token endpoint
     local realm="kubernetes"
-    local token_url="$KEYCLOAK_URL/auth/realms/$realm/protocol/openid-connect/token"
+    # RHBK v22+ does not use /auth prefix
+    local token_url="$KEYCLOAK_URL/realms/$realm/protocol/openid-connect/token"
 
     echo_info "Getting token from: $token_url"
     echo_info "Client ID: $CLIENT_ID"
@@ -1061,7 +1062,7 @@ case "${1:-}" in
         echo "Environment Variables:"
         echo "  NAMESPACE              Target namespace (default: ros-ocp)"
         echo "  HELM_RELEASE_NAME      Helm release name (default: ros-ocp)"
-        echo "  KEYCLOAK_NAMESPACE     Keycloak namespace (default: rhsso)"
+        echo "  KEYCLOAK_NAMESPACE     Keycloak namespace (default: keycloak)"
         echo ""
         echo "This script tests both authentication mechanisms:"
         echo ""
