@@ -53,6 +53,12 @@ spec:
             - "6379"
             - --protected-mode
             - "no"
+            - --save
+            - ""
+            - --maxmemory
+            - "{{ $cacheConfig.maxMemory }}"
+            - --maxmemory-policy
+            - "{{ $cacheConfig.maxMemoryPolicy }}"
           {{- end }}
           livenessProbe:
             exec:
