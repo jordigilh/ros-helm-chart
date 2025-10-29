@@ -15,7 +15,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Default configuration
 DEFAULT_NAMESPACE="costmanagement-metrics-operator"
-DEFAULT_KEYCLOAK_NAMESPACE="rhsso"
+DEFAULT_KEYCLOAK_NAMESPACE="keycloak"
 DEFAULT_CLIENT_ID="cost-management-operator"
 DEFAULT_INGRESS_URL=""
 DEFAULT_KEYCLOAK_URL=""
@@ -715,7 +715,7 @@ create_metrics_config() {
 
     # Use auto-detected URLs or defaults
     INGRESS_URL="${DEFAULT_INGRESS_URL:-https://ros-ocp-ingress-ros-ocp.apps.cluster.local}"
-    KEYCLOAK_URL="${DEFAULT_KEYCLOAK_URL:-https://keycloak-rhsso.apps.cluster.local}"
+    KEYCLOAK_URL="${DEFAULT_KEYCLOAK_URL:-https://keycloak-keycloak.apps.cluster.local}"
 
     print_status "Using ingress URL: $INGRESS_URL"
     print_status "Using Keycloak URL: $KEYCLOAK_URL"
