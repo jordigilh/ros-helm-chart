@@ -29,6 +29,15 @@ spec:
       initContainers:
         - name: wait-for-db-ros
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           command: ['bash', '-c']
           args:
             - |
@@ -42,6 +51,15 @@ spec:
         {{- if .Values.kafka.bootstrapServers }}
         - name: wait-for-kafka
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           command: ['bash', '-c']
           args:
             - |
@@ -52,27 +70,22 @@ spec:
               done
               echo "Kafka is ready"
         {{- end }}
-        {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
-        # Init container to prepare CA bundle for Envoy TLS validation
-        - name: prepare-ca-bundle
-          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
-          command: ['bash', '/scripts/combine-ca.sh']
-          volumeMounts:
-            - name: ca-scripts
-              mountPath: /scripts
-              readOnly: true
-            - name: ca-source
-              mountPath: /ca-source
-              readOnly: true
-            - name: ca-bundle
-              mountPath: /ca-output
-        {{- end }}
       containers:
         {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
-        # Envoy sidecar for native JWT authentication
+        # Envoy sidecar for OAuth2 TokenReview authentication
         - name: envoy-proxy
           image: "{{ .Values.jwt_auth.envoy.image.repository }}:{{ .Values.jwt_auth.envoy.image.tag }}"
           imagePullPolicy: {{ .Values.global.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - name: http-proxy
               containerPort: {{ .Values.jwt_auth.envoy.port }}
@@ -91,9 +104,8 @@ spec:
             - name: envoy-config
               mountPath: /etc/envoy
               readOnly: true
-            - name: ca-bundle
-              mountPath: /etc/ca-certificates
-              readOnly: true
+            - name: tmp
+              mountPath: /tmp
           livenessProbe:
             httpGet:
               path: /ready
@@ -117,6 +129,15 @@ spec:
         - name: rosocp-api
           image: "{{ .Values.rosocp.api.image.repository }}:{{ .Values.rosocp.api.image.tag }}"
           imagePullPolicy: {{ .Values.rosocp.api.image.pullPolicy | default .Values.global.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           command: ["sh", "-c"]
           args:
             - |
@@ -192,17 +213,7 @@ spec:
             items:
               - key: envoy.yaml
                 path: envoy.yaml
-        # CA bundle preparation volumes
-        - name: ca-scripts
-          configMap:
-            name: {{ include "ros-ocp.fullname" . }}-keycloak-ca
-            items:
-              - key: combine-ca.sh
-                path: combine-ca.sh
-                mode: 0755
-        - name: ca-source
-          configMap:
-            name: {{ include "ros-ocp.fullname" . }}-keycloak-ca
-        - name: ca-bundle
+        # Temporary directory for Envoy (required with read-only root filesystem)
+        - name: tmp
           emptyDir: {}
         {{- end }}
