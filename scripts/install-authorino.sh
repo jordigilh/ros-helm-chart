@@ -76,10 +76,17 @@ install_operator() {
         return 0
     fi
 
-    echo_info "Creating OperatorGroup for AllNamespaces..."
+    # Check if an OperatorGroup already exists in the namespace
+    local existing_og=$(oc get operatorgroups -n "$AUTHORINO_OPERATOR_NAMESPACE" -o name 2>/dev/null | head -1)
 
-    # Create OperatorGroup for all namespaces
-    cat <<EOF | oc apply -f -
+    if [ -n "$existing_og" ]; then
+        echo_info "OperatorGroup already exists in namespace: $existing_og"
+        echo_success "Using existing OperatorGroup"
+    else
+        echo_info "Creating OperatorGroup for AllNamespaces..."
+
+        # Create OperatorGroup for all namespaces
+        cat <<EOF | oc apply -f -
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:
@@ -88,7 +95,8 @@ metadata:
 spec: {}
 EOF
 
-    echo_success "OperatorGroup created"
+        echo_success "OperatorGroup created"
+    fi
 
     echo_info "Creating Subscription for Authorino Operator..."
 
@@ -100,7 +108,7 @@ metadata:
   name: authorino-operator
   namespace: ${AUTHORINO_OPERATOR_NAMESPACE}
 spec:
-  channel: tech-preview-v1
+  channel: stable
   name: authorino-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
