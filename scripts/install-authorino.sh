@@ -220,7 +220,7 @@ EOF
 
     echo_info "Waiting for Authorino operator to create deployment (this may take several minutes)..."
     echo_info "The Authorino operator needs time to reconcile and create the deployment"
-    
+
     local max_wait=360  # 6 minutes timeout
     local wait_count=0
     local deployment_found=false
@@ -237,7 +237,7 @@ EOF
         if [ $((wait_count % 30)) -eq 0 ] && [ $wait_count -gt 0 ]; then
             echo_info "Still waiting for operator to create deployment... (${wait_count}s elapsed)"
         fi
-        
+
         sleep 5
         wait_count=$((wait_count + 5))
     done
@@ -252,10 +252,10 @@ EOF
 
     # Step 2: Wait for deployment to be ready
     echo_info "Step 2/2: Waiting for Authorino deployment to be ready..."
-    
+
     if oc wait --for=condition=Available deployment/authorino -n "$NAMESPACE" --timeout=$((max_wait - wait_count))s 2>/dev/null; then
         echo_success "✓ Authorino deployment is ready"
-        
+
         # Verify pods are running (using correct label selector)
         local ready_pods=$(oc get pods -n "$NAMESPACE" -l authorino-resource=authorino 2>/dev/null | grep "Running" | wc -l | tr -d ' ')
         if [ "$ready_pods" -gt 0 ]; then
