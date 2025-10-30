@@ -1178,92 +1178,26 @@ detect_keycloak() {
     fi
 }
 
-# Function to automatically extract and create Keycloak client secret
-ensure_keycloak_client_secret() {
+# Function to verify Keycloak client secret exists
+# NOTE: Simplified - deploy-rhbk.sh now handles secret creation automatically
+# This function only verifies the secret exists
+verify_keycloak_client_secret() {
     local client_id="${1:-cost-management-operator}"
-    local realm="${2:-kubernetes}"
 
     if [ -z "$KEYCLOAK_NAMESPACE" ]; then
-        echo_warning "Keycloak namespace not set, skipping client secret extraction"
+        echo_warning "Keycloak namespace not set, skipping client secret verification"
         return 1
     fi
 
-    # Check if secret already exists
+    # Check if secret exists
     local secret_name="keycloak-client-secret-$client_id"
     if kubectl get secret "$secret_name" -n "$KEYCLOAK_NAMESPACE" >/dev/null 2>&1; then
-        echo_success "Client secret already exists: $secret_name"
-        return 0
-    fi
-
-    echo_info "Client secret not found, attempting to extract from Keycloak..."
-
-    # Get Keycloak URL from Route
-    local keycloak_url=$(kubectl get route keycloak -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
-    if [ -z "$keycloak_url" ]; then
-        echo_warning "Could not determine Keycloak URL, skipping automatic secret extraction"
-        echo_info "You may need to manually create the secret or run deploy-rhbk.sh"
-        return 1
-    fi
-
-    keycloak_url="https://$keycloak_url"
-
-    # Get the actual admin password from the RHBK operator-generated secret
-    local admin_password=$(kubectl get secret rhsso-keycloak-initial-admin -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d)
-
-    if [ -z "$admin_password" ]; then
-        echo_warning "Could not retrieve admin password from RHBK operator secret"
-        return 1
-    fi
-
-    # Get admin token (suppress curl output for cleaner logs)
-    local token_response=$(curl -sk -X POST "$keycloak_url/realms/master/protocol/openid-connect/token" \
-        -H "Content-Type: application/x-www-form-urlencoded" \
-        -d "username=admin" \
-        -d "password=$admin_password" \
-        -d "grant_type=password" \
-        -d "client_id=admin-cli" 2>/dev/null)
-
-    local access_token=$(echo "$token_response" | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
-
-    if [ -z "$access_token" ]; then
-        echo_warning "Could not obtain admin token from Keycloak"
-        return 1
-    fi
-
-    # Get client UUID
-    local client_data=$(curl -sk -X GET "$keycloak_url/admin/realms/$realm/clients" \
-        -H "Authorization: Bearer $access_token" 2>/dev/null)
-
-    local client_uuid=$(echo "$client_data" | grep -o "\"id\":\"[^\"]*\"[^}]*\"clientId\":\"$client_id\"" | grep -o "\"id\":\"[^\"]*\"" | cut -d'"' -f4 | head -1)
-
-    if [ -z "$client_uuid" ]; then
-        echo_warning "Could not find client '$client_id' in realm '$realm'"
-        return 1
-    fi
-
-    # Get client secret
-    local client_secret_response=$(curl -sk -X GET "$keycloak_url/admin/realms/$realm/clients/$client_uuid/client-secret" \
-        -H "Authorization: Bearer $access_token" 2>/dev/null)
-
-    local client_secret=$(echo "$client_secret_response" | grep -o '"value":"[^"]*' | cut -d'"' -f4)
-
-    if [ -z "$client_secret" ]; then
-        echo_warning "Could not retrieve client secret from Keycloak"
-        return 1
-    fi
-
-    # Create Kubernetes secret
-    kubectl create secret generic "$secret_name" \
-        -n "$KEYCLOAK_NAMESPACE" \
-        --from-literal=CLIENT_ID="$client_id" \
-        --from-literal=CLIENT_SECRET="$client_secret" \
-        --dry-run=client -o yaml | kubectl apply -f - >/dev/null 2>&1
-
-    if [ $? -eq 0 ]; then
-        echo_success "✓ Automatically created client secret: $secret_name"
+        echo_success "✓ Client secret exists: $secret_name"
         return 0
     else
-        echo_warning "Failed to create client secret"
+        echo_warning "Client secret not found: $secret_name"
+        echo_info "  Run deploy-rhbk.sh to automatically create the client secret"
+        echo_info "  The bulletproof deployment script handles secret extraction automatically"
         return 1
     fi
 }
@@ -1284,10 +1218,10 @@ setup_jwt_authentication() {
             echo_info "  RHBK Namespace: $KEYCLOAK_NAMESPACE"
             echo_info "  RHBK API: $KEYCLOAK_API_VERSION"
 
-            # Automatically ensure client secret exists
-            echo_info "Ensuring Keycloak client secret is available..."
-            ensure_keycloak_client_secret "cost-management-operator" "kubernetes" || \
-                echo_warning "Client secret not created automatically. Manual creation may be required."
+            # Verify client secret exists (created by deploy-rhbk.sh)
+            echo_info "Verifying Keycloak client secret exists..."
+            verify_keycloak_client_secret "cost-management-operator" || \
+                echo_warning "Client secret not found. Run ./deploy-rhbk.sh to create it."
         else
             echo_warning "RHBK not detected - ensure it's deployed before using JWT authentication"
         fi
