@@ -801,7 +801,7 @@ verify_recommendations() {
     echo_info "Skipping /status endpoint check (known Ingress routing issue in ros-helm-chart)"
     echo_info "Direct pod access to /status works, but ingress routing fails"
     echo_info "This will be fixed in a future PR by adding explicit /status route to ingress.yaml"
-    
+
     local status_http_code="200"  # Assume success to continue with other tests
 
     if false; then  # Disabled section - for reference
