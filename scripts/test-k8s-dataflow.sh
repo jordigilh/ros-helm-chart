@@ -634,7 +634,7 @@ $now_date,$now_date,$interval_start_3,$interval_end_3,test-container,test-pod-12
     # Create presigned URL matching insights-ros-ingress format
     local date_partition="$(date +%Y-%m-%d)"
     local object_key="ros/org_${org_id}/source=${cluster_id}/date=${date_partition}/${csv_filename}"
-    local minio_url="http://ros-ocp-minio:9000/ros-data/${object_key}"
+    local minio_url="http://${HELM_RELEASE_NAME}-minio:9000/ros-data/${object_key}"
     local presigned_url="${minio_url}?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=minioaccesskey%2F$(date +%Y%m%d)%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=$(date +%Y%m%dT%H%M%SZ)&X-Amz-Expires=172800&X-Amz-SignedHeaders=host&X-Amz-Signature=test-signature"
 
     # Construct complete Kafka message as single line (kafka-console-producer sends line-by-line)
