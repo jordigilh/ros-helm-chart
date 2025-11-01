@@ -11,7 +11,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: authorino
+      authorino-resource: authorino
   policyTypes:
   - Ingress
   ingress:

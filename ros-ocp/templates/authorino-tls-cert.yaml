@@ -12,10 +12,11 @@ metadata:
     app.kubernetes.io/part-of: ros-ocp
   annotations:
     # Request certificate from OpenShift service-ca operator
-    service.beta.openshift.io/serving-cert-secret-name: authorino-server-cert
+    service.beta.openshift.io/serving-cert-secret-name: {{ include "ros-ocp.fullname" . }}-authorino-server-cert
 spec:
   selector:
-    app.kubernetes.io/name: authorino
+    {{- include "ros-ocp.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino
   ports:
   - name: grpc
     port: 50051

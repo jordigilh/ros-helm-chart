@@ -1,30 +1,34 @@
 {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
 ---
-# ClusterRole to allow Authorino to perform TokenReview for validating Kubernetes tokens
-# This permission is granted to the Authorino operator's service account (authorino-authorino)
+# Role to allow Authorino to manage AuthConfigs and Secrets in its namespace
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  name: {{ include "ros-ocp.fullname" . }}-authorino-tokenreview
+  name: {{ include "ros-ocp.fullname" . }}-authorino
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino-rbac
 rules:
-- apiGroups: ["authentication.k8s.io"]
-  resources: ["tokenreviews"]
-  verbs: ["create"]
+- apiGroups: ["authorino.kuadrant.io"]
+  resources: ["authconfigs", "authconfigs/status"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: {{ include "ros-ocp.fullname" . }}-authorino-tokenreview
+  name: {{ include "ros-ocp.fullname" . }}-authorino
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ros-ocp.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino-rbac
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: {{ include "ros-ocp.fullname" . }}-authorino-tokenreview
+  kind: Role
+  name: {{ include "ros-ocp.fullname" . }}-authorino
 subjects:
 - kind: ServiceAccount
   name: {{ include "ros-ocp.fullname" . }}-authorino

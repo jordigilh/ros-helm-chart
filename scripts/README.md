@@ -7,8 +7,7 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 | Script | Purpose | Environment |
 |--------|---------|-------------|
 | `deploy-strimzi.sh` | Deploy Kafka infrastructure | All environments |
-| `install-helm-chart.sh` | Deploy ROS Helm chart | All environments |
-| `install-authorino.sh` | Deploy Authorino for OAuth2 | OpenShift |
+| `install-helm-chart.sh` | Deploy ROS Helm chart (includes Authorino) | All environments |
 | `deploy-rhbk.sh` | Deploy Red Hat Build of Keycloak | OpenShift |
 | `setup-cost-mgmt-tls.sh` | Configure TLS certificates | OpenShift |
 | `test-ocp-dataflow-jwt.sh` | Test JWT + recommendations | JWT-enabled clusters |
@@ -26,15 +25,14 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 # 2. Deploy Kafka infrastructure
 ./deploy-strimzi.sh
 
-# 3. Deploy Authorino for OAuth2 authentication
-./install-authorino.sh
-
-# 4. Deploy ROS
+# 3. Deploy ROS (Authorino is automatically deployed)
 ./install-helm-chart.sh
 
-# 5. Test the deployment (if JWT enabled)
+# 4. Test the deployment (if JWT enabled)
 ./test-ocp-dataflow-jwt.sh
 ```
+
+**Note:** Authorino is now automatically deployed by the Helm chart when JWT authentication is enabled on OpenShift.
 
 ### JWT Authentication Setup
 ```bash
@@ -44,17 +42,14 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 # 2. Deploy Kafka infrastructure
 ./deploy-strimzi.sh
 
-# 3. Deploy Authorino for OAuth2 authentication
-./install-authorino.sh
-
-# 4. Deploy ROS with JWT authentication
+# 3. Deploy ROS with JWT authentication (Authorino is automatically deployed)
 export JWT_AUTH_ENABLED=true
 ./install-helm-chart.sh
 
-# 5. Configure TLS certificates
+# 4. Configure TLS certificates
 ./setup-cost-mgmt-tls.sh
 
-# 6. Test JWT flow
+# 5. Test JWT flow
 ./test-ocp-dataflow-jwt.sh
 ```
 
@@ -145,72 +140,6 @@ RHBK_NAMESPACE=my-keycloak ./deploy-rhbk.sh
 # Clean up deployment
 ./deploy-rhbk.sh cleanup
 ```
-
----
-
-### `install-authorino.sh`
-Deploy Authorino Operator and configure OAuth2 TokenReview authentication for the ROS-OCP backend API.
-
-**What it does:**
-- Installs Authorino Operator (Red Hat certified catalog)
-- Creates Authorino instance in target namespace
-- Configures RBAC for Kubernetes TokenReview API access
-- Validates installation and service availability
-
-**Authentication flow:**
-1. User accesses ROS-OCP via OpenShift Console UI
-2. Console includes user's session token in request
-3. Envoy proxy forwards request to Authorino
-4. Authorino validates token via Kubernetes TokenReview API
-5. If valid, Authorino injects headers (username, UID)
-6. Envoy transforms headers into rh-identity format
-7. Backend receives authenticated request
-
-**Usage:**
-```bash
-# Install to default namespace (ros-ocp)
-./install-authorino.sh
-
-# Install to custom namespace
-NAMESPACE=ros-production ./install-authorino.sh
-
-# Verify existing installation
-./install-authorino.sh --verify-only
-
-# Update RBAC only
-./install-authorino.sh --rbac-only
-
-# Show help
-./install-authorino.sh --help
-```
-
-**Environment variables:**
-- `NAMESPACE`: Target namespace (default: `ros-ocp`)
-- `AUTHORINO_OPERATOR_NAMESPACE`: Operator namespace (default: `openshift-operators`)
-
-**What gets installed:**
-- Authorino Operator (Red Hat catalog, tech-preview-v1 channel)
-- Authorino CR with gRPC authorization service
-- ClusterRole for TokenReview API access
-- ClusterRoleBinding for Authorino ServiceAccount
-- Authorino service on port 50051 (gRPC)
-
-**Verification:**
-```bash
-# Check Operator
-oc get csv -n openshift-operators | grep authorino
-
-# Check Authorino instance
-oc get authorino -n ros-ocp
-
-# Check Authorino pods
-oc get pods -n ros-ocp | grep authorino
-
-# Check Authorino service
-oc get svc -n ros-ocp | grep authorino
-```
-
-**See [OAuth2 TokenReview Authentication Guide](../docs/oauth2-tokenreview-authentication.md) for architecture details**
 
 ---
 
