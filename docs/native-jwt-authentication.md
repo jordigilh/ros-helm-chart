@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ROS Helm Chart uses **Envoy's native JWT authentication filter** for validating JWT tokens from Keycloak/RHSSO. This provides secure, low-latency authentication for file uploads and API requests.
+The ROS Helm Chart uses **Envoy's native JWT authentication filter** for validating JWT tokens from Keycloak (RHBK). This provides secure, low-latency authentication for file uploads and API requests.
 
 ## Architecture
 

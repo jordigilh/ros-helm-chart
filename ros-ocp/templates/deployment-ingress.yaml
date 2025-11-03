@@ -110,12 +110,14 @@ spec:
               port: {{ .Values.jwt_auth.envoy.adminPort }}
             initialDelaySeconds: 15
             periodSeconds: 20
+            timeoutSeconds: 3
           readinessProbe:
             httpGet:
               path: /ready
               port: {{ .Values.jwt_auth.envoy.adminPort }}
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 3
           resources:
             limits:
               cpu: 500m

@@ -5,7 +5,7 @@
 # Similar to deploy-kind.sh but for Cost Management TLS setup
 #
 # Usage: ./setup-cost-mgmt-tls.sh [options]
-# Prerequisites: OpenShift cluster with Keycloak/RHSSO installed
+# Prerequisites: OpenShift cluster with Keycloak (RHBK) installed
 
 set -euo pipefail
 
@@ -404,7 +404,7 @@ OPTIONS:
 
 PREREQUISITES:
     • OpenShift cluster with admin access
-    • Keycloak/RHSSO installed and configured
+    • Keycloak (RHBK) installed and configured
     • oc CLI tool configured and logged in
 
 EXAMPLES:
@@ -456,7 +456,7 @@ check_prerequisites() {
     # Check if Keycloak namespace exists
     if ! oc get namespace "$KEYCLOAK_NAMESPACE" &> /dev/null; then
         print_error "Keycloak namespace '$KEYCLOAK_NAMESPACE' not found."
-        print_error "Please install Keycloak/RHSSO first or specify correct namespace with -k"
+        print_error "Please install Keycloak (RHBK) first or specify correct namespace with -k"
         exit 1
     fi
 

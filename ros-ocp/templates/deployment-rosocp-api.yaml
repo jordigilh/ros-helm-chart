@@ -81,13 +81,13 @@ spec:
               port: {{ .Values.jwt_auth.envoy.port }}
             initialDelaySeconds: 15
             periodSeconds: 20
-            timeoutSeconds: 1
+            timeoutSeconds: 3
           readinessProbe:
             tcpSocket:
               port: {{ .Values.jwt_auth.envoy.port }}
             initialDelaySeconds: 10
             periodSeconds: 10
-            timeoutSeconds: 1
+            timeoutSeconds: 3
           resources:
             limits:
               cpu: 500m
