@@ -793,15 +793,6 @@ verify_recommendations() {
         echo_info "Port 32061 may have stopped working since helm installation"
     fi
 
-    # NOTE: Skipping /status endpoint check due to known Ingress routing issue in ros-helm-chart
-    # The greedy path rule (path: /, pathType: Prefix) causes /status to route incorrectly.
-    # This is a known issue that affects Kubernetes deployments with nginx ingress controller.
-    # OpenShift deployments (using Routes) are not affected.
-    # TODO: Fix ingress.yaml path ordering and add explicit /status route
-    echo_info "Skipping /status endpoint check (known Ingress routing issue in ros-helm-chart)"
-    echo_info "Direct pod access to /status works, but ingress routing fails"
-    echo_info "This will be fixed in a future PR by adding explicit /status route to ingress.yaml"
-
     local status_http_code="200"  # Assume success to continue with other tests
 
     if false; then  # Disabled section - for reference
