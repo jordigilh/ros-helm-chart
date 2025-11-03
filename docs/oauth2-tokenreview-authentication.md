@@ -438,7 +438,7 @@ curl -v -H "Authorization: Bearer $TOKEN" \
 ## Notes
 
 - **insights-ros-ingress** still uses Keycloak JWT authentication (unchanged)
-- This implementation is OpenShift/Kubernetes-specific
+- This implementation is OpenShift-specific
 - **Authorino is automatically deployed** by the Helm chart when JWT auth is enabled (OpenShift only)
 - No separate Authorino installation required - it's embedded in the Helm chart
 - Envoy communicates with Authorino over gRPC with mTLS
