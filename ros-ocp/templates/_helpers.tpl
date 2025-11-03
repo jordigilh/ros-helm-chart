@@ -731,7 +731,7 @@ Only supports: k8s.keycloak.org/v2alpha1 (RHBK v22+)
 {{- /* Fallback: try namespace pattern matching if no CRs found */ -}}
 {{- if not $keycloakFound -}}
   {{- range $ns := (lookup "v1" "Namespace" "" "").items -}}
-    {{- if or (contains "keycloak" $ns.metadata.name) (contains "rhsso" $ns.metadata.name) -}}
+    {{- if or (contains "keycloak" $ns.metadata.name) (contains "sso" $ns.metadata.name) -}}
       {{- $keycloakFound = true -}}
       {{- break -}}
     {{- end -}}
@@ -762,7 +762,7 @@ Only supports RHBK (v2alpha1) operator
   {{- /* Final fallback: try namespace pattern matching if no CRs found */ -}}
   {{- if not $keycloakNs -}}
     {{- range $ns := (lookup "v1" "Namespace" "" "").items -}}
-      {{- if or (contains "keycloak" $ns.metadata.name) (contains "rhsso" $ns.metadata.name) (contains "sso" $ns.metadata.name) -}}
+      {{- if or (contains "keycloak" $ns.metadata.name) (contains "sso" $ns.metadata.name) -}}
         {{- $keycloakNs = $ns.metadata.name -}}
         {{- break -}}
       {{- end -}}
@@ -890,7 +890,7 @@ Get complete Keycloak issuer URL with realm
   {{- printf "%s/realms/%s" $baseUrl .Values.jwt_auth.keycloak.realm -}}
 {{- else -}}
   {{- /* No Keycloak URL found - fail with helpful message (OpenShift only) */ -}}
-  {{- fail "Keycloak URL not found on OpenShift cluster. JWT authentication requires Red Hat Build of Keycloak. Please either:\n  1. Set jwt_auth.keycloak.url in values.yaml, or\n  2. Ensure Keycloak is deployed with a Route in a common namespace (keycloak, rhsso, sso), or\n  3. Deploy Keycloak using the provided scripts/deploy-rhbk.sh script\n\nNote: JWT authentication is only supported on OpenShift. For KIND/Kubernetes, authentication is automatically disabled." -}}
+  {{- fail "Keycloak URL not found on OpenShift cluster. JWT authentication requires Red Hat Build of Keycloak. Please either:\n  1. Set jwt_auth.keycloak.url in values.yaml, or\n  2. Ensure Keycloak is deployed with a Route in a common namespace (keycloak, sso), or\n  3. Deploy Keycloak using the provided scripts/deploy-rhbk.sh script\n\nNote: JWT authentication is only supported on OpenShift. For KIND/Kubernetes, authentication is automatically disabled." -}}
 {{- end -}}
 {{- end }}
 
