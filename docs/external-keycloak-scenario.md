@@ -185,7 +185,7 @@ jwt_auth:
 **Symptom:** Deployment fails with error
 
 ```
-ERROR: Keycloak URL not found on OpenShift cluster. JWT authentication requires Keycloak/RHSSO...
+ERROR: Keycloak URL not found on OpenShift cluster. JWT authentication requires Keycloak (RHBK)...
 ```
 
 **Cause:** `jwt_auth.keycloak.url` not set, auto-discovery finds no local Keycloak
