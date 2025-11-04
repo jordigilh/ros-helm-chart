@@ -52,7 +52,7 @@ graph TB
     end
 
     subgraph external["External Cluster / Data Center"]
-        Keycloak["🔑 Keycloak / RH SSO<br/>keycloak.external-company.com<br/><br/>• /realms/production<br/>• /protocol/openid-connect/certs<br/>• Issues JWT tokens<br/>• Provides JWKS endpoint"]
+        Keycloak["🔑 Red Hat Build of Keycloak<br/>keycloak.external-company.com<br/><br/>• /realms/production<br/>• /protocol/openid-connect/certs<br/>• Issues JWT tokens<br/>• Provides JWKS endpoint"]
     end
 
     Envoy -.->|"🌍 HTTPS Egress<br/>Fetch JWKS<br/>(requires network connectivity)"| Keycloak
@@ -185,7 +185,7 @@ jwt_auth:
 **Symptom:** Deployment fails with error
 
 ```
-ERROR: Keycloak URL not found on OpenShift cluster. JWT authentication requires Keycloak/RHSSO...
+ERROR: Keycloak URL not found on OpenShift cluster. JWT authentication requires Keycloak (RHBK)...
 ```
 
 **Cause:** `jwt_auth.keycloak.url` not set, auto-discovery finds no local Keycloak
