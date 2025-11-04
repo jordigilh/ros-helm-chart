@@ -31,7 +31,9 @@ spec:
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
           securityContext:
             runAsNonRoot: true
+            {{- if eq (include "ros-ocp.isOpenShift" .) "false" }}
             runAsUser: 1000
+            {{- end }}
             allowPrivilegeEscalation: false
             capabilities:
               drop:
@@ -53,7 +55,9 @@ spec:
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
           securityContext:
             runAsNonRoot: true
+            {{- if eq (include "ros-ocp.isOpenShift" .) "false" }}
             runAsUser: 1000
+            {{- end }}
             allowPrivilegeEscalation: false
             capabilities:
               drop:
@@ -78,7 +82,9 @@ spec:
           imagePullPolicy: {{ .Values.global.pullPolicy }}
           securityContext:
             runAsNonRoot: true
+            {{- if eq (include "ros-ocp.isOpenShift" .) "false" }}
             runAsUser: 1000
+            {{- end }}
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
@@ -131,7 +137,9 @@ spec:
           imagePullPolicy: {{ .Values.rosocp.api.image.pullPolicy | default .Values.global.pullPolicy }}
           securityContext:
             runAsNonRoot: true
+            {{- if eq (include "ros-ocp.isOpenShift" .) "false" }}
             runAsUser: 1000
+            {{- end }}
             allowPrivilegeEscalation: false
             capabilities:
               drop:
