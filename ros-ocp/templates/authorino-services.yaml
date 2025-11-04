@@ -1,6 +1,8 @@
 {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
 ---
 # Main gRPC authorization service used by Envoy ext_authz
+# Purpose: Handles actual authorization requests from Envoy
+# Note: Separate from authorino-tls service which only exists for certificate generation
 apiVersion: v1
 kind: Service
 metadata:

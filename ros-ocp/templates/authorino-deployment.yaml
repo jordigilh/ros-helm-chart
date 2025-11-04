@@ -25,8 +25,8 @@ spec:
       serviceAccountName: {{ include "ros-ocp.fullname" . }}-authorino
       containers:
       - name: authorino
-        image: registry.redhat.io/rhcl-1/authorino-rhel9@sha256:22d44b5bccacac44ffe96206e69ac91e22557f1c4fbfd46252c6ba9b720d7d6a
-        imagePullPolicy: IfNotPresent
+        image: {{ .Values.jwt_auth.authorino.image.repository }}@{{ .Values.jwt_auth.authorino.image.digest }}
+        imagePullPolicy: {{ .Values.jwt_auth.authorino.image.pullPolicy }}
         args:
         - --watch-namespace={{ .Release.Namespace }}
         - --tls-cert=/etc/ssl/certs/tls.crt
@@ -72,12 +72,7 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 3
         resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 512Mi
+          {{- toYaml .Values.jwt_auth.authorino.resources | nindent 10 }}
       volumes:
       - name: tls-cert
         secret:

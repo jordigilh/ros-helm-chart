@@ -1,6 +1,9 @@
 {{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
-# Service for Authorino with service-ca annotation to generate TLS certificates
-# OpenShift's service-ca operator will automatically create a secret with the certificate
+# Service for TLS certificate generation via OpenShift service-ca operator
+# Purpose: Triggers automatic TLS certificate creation for Authorino
+# Note: This is separate from authorino-authorization service which handles actual gRPC traffic
+# The service-ca operator watches for the service.beta.openshift.io/serving-cert-secret-name annotation
+# and generates a certificate/key pair in the specified secret
 apiVersion: v1
 kind: Service
 metadata:
