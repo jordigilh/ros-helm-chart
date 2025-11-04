@@ -33,7 +33,7 @@ spec:
     - host: {{ .host | quote }}
       http:
         paths:
-        # Kruize API (ML recommendations) - strips /api/kruize prefix
+        # Kruize API (recommendations) - strips /api/kruize prefix
         - path: /api/kruize/(.*)
           pathType: ImplementationSpecific
           backend:

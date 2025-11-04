@@ -241,7 +241,7 @@ show_help() {
     cat << EOF
 Usage: $0 [OPTION]
 
-Query Kruize database for experiments and ML recommendations
+Query Kruize database for experiments and recommendations
 
 OPTIONS:
   --experiments, -e              List all experiments
@@ -281,7 +281,7 @@ DATABASE ACCESS:
 
   Available tables:
     - kruize_experiments: Experiment definitions and status
-    - kruize_recommendations: Generated ML recommendations
+    - kruize_recommendations: Generated recommendations
 
   SQL Query Examples:
     - Count experiments: SELECT COUNT(*) FROM kruize_experiments;
