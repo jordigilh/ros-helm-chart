@@ -1,0 +1,148 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cost-mgmt.fullname" . }}-rosocp-recommendation-poller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: poller
+    app.kubernetes.io/name: rosocp-recommendation-poller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: poller
+      app.kubernetes.io/name: rosocp-recommendation-poller
+  template:
+    metadata:
+      labels:
+        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: poller
+        app.kubernetes.io/name: rosocp-recommendation-poller
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-db-ros
+          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+          command: ['bash', '-c']
+          args:
+            - |
+              echo "Waiting for ROS database at {{ include "cost-mgmt.fullname" . }}-db-ros:{{ .Values.database.ros.port }}..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-db-ros/{{ .Values.database.ros.port }}" 2>/dev/null; do
+                echo "Database not ready yet, retrying in 5 seconds..."
+                sleep 5
+              done
+              echo "ROS database is ready"
+              echo "ROS database is ready"
+        {{- if .Values.kafka.bootstrapServers }}
+        - name: wait-for-kafka
+          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+          command: ['bash', '-c']
+          args:
+            - |
+              echo "Waiting for Kafka at {{ include "cost-mgmt.kafka.host" . }}:{{ include "cost-mgmt.kafka.port" . }}..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.kafka.host" . }}/{{ include "cost-mgmt.kafka.port" . }}" 2>/dev/null; do
+                echo "Kafka not ready yet, retrying in 5 seconds..."
+                sleep 5
+              done
+              echo "Kafka is ready"
+        {{- end }}
+        - name: wait-for-kruize
+          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+          command: ['bash', '-c']
+          args:
+            - |
+              echo "Waiting for Kruize at {{ include "cost-mgmt.fullname" . }}-kruize:{{ .Values.kruize.port }}..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-kruize/{{ .Values.kruize.port }}" 2>/dev/null; do
+                echo "Kruize not ready yet, retrying in 5 seconds..."
+                sleep 5
+              done
+              echo "Kruize is ready"
+              echo "Kruize is ready"
+      containers:
+        - name: rosocp-recommendation-poller
+          image: "{{ .Values.ros.recommendationPoller.image.repository }}:{{ .Values.ros.recommendationPoller.image.tag }}"
+          imagePullPolicy: {{ .Values.ros.recommendationPoller.image.pullPolicy | default .Values.global.pullPolicy }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo 'Waiting for dependencies (Kafka, Kruize) to be ready...'
+              sleep 60
+              echo 'Starting recommendation-poller...'
+              ./rosocp db migrate up
+              ./rosocp start recommendation-poller
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.ros.recommendationPoller.metricsPort }}
+              protocol: TCP
+          volumeMounts:
+            - name: cdapp-config
+              mountPath: /cdapp
+              readOnly: true
+          env:
+            - name: CLOWDER_ENABLED
+              value: "false"
+            - name: KRUIZE_HOST
+              value: {{ include "cost-mgmt.fullname" . }}-kruize
+            - name: KRUIZE_PORT
+              value: {{ .Values.kruize.port | quote }}
+            - name: KRUIZE_WAIT_TIME
+              value: {{ .Values.ros.recommendationPoller.kruizeWaitTime | quote }}
+            - name: SERVICE_NAME
+              value: {{ .Values.ros.recommendationPoller.serviceName | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.ros.recommendationPoller.logLevel | quote }}
+            - name: DB_HOST
+              value: {{ include "cost-mgmt.database.host" (list . "ros") }}
+            - name: DB_PORT
+              value: {{ .Values.database.ros.port | quote }}
+            - name: DB_NAME
+              value: {{ .Values.database.ros.name | quote }}
+            - name: DB_USER
+              value: {{ .Values.database.ros.user | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-mgmt.fullname" . }}-db-credentials
+                  key: ros-password
+            - name: DATABASE_URL
+              value: {{ include "cost-mgmt.database.url" . }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ include "cost-mgmt.kafka.bootstrapServers" . | quote }}
+            - name: KAFKA_SECURITY_PROTOCOL
+              value: {{ include "cost-mgmt.kafka.securityProtocol" . | quote }}
+            - name: KAFKA_CONSUMER_GROUP_ID
+              value: {{ .Values.ros.recommendationPoller.kafkaConsumerGroupId | quote }}
+            - name: KAFKA_AUTO_COMMIT
+              value: {{ .Values.ros.recommendationPoller.kafkaAutoCommit | quote }}
+            - name: RECOMMENDATION_TOPIC
+              value: {{ .Values.ros.recommendationPoller.recommendationTopic | quote }}
+            - name: PROMETHEUS_PORT
+              value: {{ .Values.ros.recommendationPoller.metricsPort | quote }}
+          # Re-enable probes now that PROMETHEUS_PORT environment variable is correctly set
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9000
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9000
+            initialDelaySeconds: 90
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.resources.application | nindent 12 }}
+      volumes:
+        - name: cdapp-config
+          configMap:
+            name: {{ include "cost-mgmt.fullname" . }}-cdapp-config

@@ -1,0 +1,82 @@
+{{- $isOpenShift := eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
+{{- $cacheName := include "cost-mgmt.cache.name" . }}
+{{- $cacheConfig := ternary .Values.valkey .Values.redis $isOpenShift }}
+{{- $cacheCliCommand := include "cost-mgmt.cache.cli" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cost-mgmt.fullname" . }}-{{ $cacheName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/name: {{ $cacheName }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cache
+      app.kubernetes.io/name: {{ $cacheName }}
+  template:
+    metadata:
+      labels:
+        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: cache
+        app.kubernetes.io/name: {{ $cacheName }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $cacheName }}
+          image: "{{ $cacheConfig.image.repository }}:{{ $cacheConfig.image.tag }}"
+          imagePullPolicy: {{ .Values.global.pullPolicy }}
+          ports:
+            - name: {{ $cacheName }}
+              containerPort: 6379
+              protocol: TCP
+          {{- if not $isOpenShift }}
+          env:
+            - name: REDIS_MAXMEMORY
+              value: {{ .Values.redis.maxMemory | quote }}
+            - name: REDIS_MAXMEMORY_POLICY
+              value: {{ .Values.redis.maxMemoryPolicy | quote }}
+          {{- else }}
+          command:
+            - valkey-server
+          args:
+            - --bind
+            - "{{ $cacheConfig.bindAddress }}"
+            - --port
+            - "6379"
+            - --protected-mode
+            - "no"
+            - --save
+            - ""
+            - --maxmemory
+            - "{{ $cacheConfig.maxMemory }}"
+            - --maxmemory-policy
+            - "{{ $cacheConfig.maxMemoryPolicy }}"
+          {{- end }}
+          livenessProbe:
+            exec:
+              command:
+                - {{ $cacheCliCommand }}
+                - ping
+            initialDelaySeconds: {{ .Values.probes.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.failureThreshold }}
+          readinessProbe:
+            exec:
+              command:
+                - {{ $cacheCliCommand }}
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: {{ .Values.probes.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.failureThreshold }}
+          resources:
+            {{- toYaml .Values.resources.application | nindent 12 }}

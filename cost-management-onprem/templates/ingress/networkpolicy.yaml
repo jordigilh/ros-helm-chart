@@ -1,0 +1,33 @@
+{{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+---
+# NetworkPolicy to allow external traffic to Ingress service for file uploads via Envoy sidecar
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cost-mgmt.fullname" . }}-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: networkpolicy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: ingress
+      app.kubernetes.io/name: ingress
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow traffic from OpenShift router/ingress to Envoy sidecar for JWT validation
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-ingress
+      ports:
+        - protocol: TCP
+          port: {{ .Values.jwtAuth.envoy.port }}  # Envoy sidecar port (9080 by default)
+{{- end }}
+

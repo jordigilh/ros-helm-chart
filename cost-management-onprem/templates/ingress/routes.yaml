@@ -1,0 +1,84 @@
+{{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
+{{- /*
+ROUTES CONFIGURATION
+
+This file contains only the essential routes required for external access:
+
+1. Main route (/) - ROS-OCP API status and recommendations endpoints
+2. Ingress route (/api/ingress) - File upload and version check
+
+INTERNAL-ONLY SERVICES (no routes, accessed via network policies):
+- Kruize - Accessed only by internal services (processor, poller, housekeeper)
+- Sources API - Accessed only by internal services (housekeeper)
+
+REMOVED ROUTES (previously defined, not needed):
+- Kruize route (/api/kruize) - Internal only, blocked by network policy
+- ROS API route (/api/ros) - Alternative API path
+- Sources API route (/api/sources) - Internal only
+- MinIO Console route (/minio) - Not needed for ODF
+*/ -}}
+---
+# Main route for ROS-OCP API (serves as main entry point in OCP)
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "cost-mgmt.fullname" . }}-main
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: main
+  annotations:
+    {{- with .Values.serviceRoute.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with (index .Values.serviceRoute.hosts 0) }}
+  {{- if .host }}
+  host: {{ .host | quote }}
+  {{- end }}
+  {{- end }}
+  path: /
+  to:
+    kind: Service
+    name: {{ include "cost-mgmt.fullname" . }}-rosocp-api
+    weight: 100
+  port:
+    targetPort: http
+  {{- if and .Values.serviceRoute.tls .Values.serviceRoute.tls.termination }}
+  tls:
+    termination: {{ .Values.serviceRoute.tls.termination }}
+    {{- if .Values.serviceRoute.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ .Values.serviceRoute.tls.insecureEdgeTerminationPolicy }}
+    {{- end }}
+  {{- end }}
+---
+# Route for file upload service
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "cost-mgmt.fullname" . }}-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress
+spec:
+  {{- with (index .Values.serviceRoute.hosts 0) }}
+  {{- if .host }}
+  host: {{ .host | quote }}
+  {{- end }}
+  {{- end }}
+  path: /api/ingress
+  to:
+    kind: Service
+    name: {{ include "cost-mgmt.fullname" . }}-ingress
+    weight: 100
+  port:
+    targetPort: http
+  {{- if and .Values.serviceRoute.tls .Values.serviceRoute.tls.termination }}
+  tls:
+    termination: {{ .Values.serviceRoute.tls.termination }}
+    {{- if .Values.serviceRoute.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ .Values.serviceRoute.tls.insecureEdgeTerminationPolicy }}
+    {{- end }}
+  {{- end }}
+{{- end }}

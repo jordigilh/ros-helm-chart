@@ -1,0 +1,227 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cost-mgmt.fullname" . }}-rosocp-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+    app.kubernetes.io/name: rosocp-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+      app.kubernetes.io/name: rosocp-api
+  template:
+    metadata:
+      labels:
+        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+        app.kubernetes.io/name: rosocp-api
+    spec:
+      serviceAccountName: {{ include "cost-mgmt.serviceAccountName" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-db-ros
+          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+          securityContext:
+            runAsNonRoot: true
+            {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
+            runAsUser: 1000
+            {{- end }}
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          command: ['bash', '-c']
+          args:
+            - |
+              echo "Waiting for ROS database at {{ include "cost-mgmt.fullname" . }}-db-ros:{{ .Values.database.ros.port }}..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-db-ros/{{ .Values.database.ros.port }}" 2>/dev/null; do
+                echo "Database not ready yet, retrying in 5 seconds..."
+                sleep 5
+              done
+              echo "ROS database is ready"
+              echo "ROS database is ready"
+        {{- if .Values.kafka.bootstrapServers }}
+        - name: wait-for-kafka
+          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+          securityContext:
+            runAsNonRoot: true
+            {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
+            runAsUser: 1000
+            {{- end }}
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          command: ['bash', '-c']
+          args:
+            - |
+              echo "Waiting for Kafka at {{ include "cost-mgmt.kafka.host" . }}:{{ include "cost-mgmt.kafka.port" . }}..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.kafka.host" . }}/{{ include "cost-mgmt.kafka.port" . }}" 2>/dev/null; do
+                echo "Kafka not ready yet, retrying in 5 seconds..."
+                sleep 5
+              done
+              echo "Kafka is ready"
+        {{- end }}
+      containers:
+        {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+        # Envoy sidecar for OAuth2 TokenReview authentication
+        - name: envoy-proxy
+          image: "{{ .Values.jwtAuth.envoy.image.repository }}:{{ .Values.jwtAuth.envoy.image.tag }}"
+          imagePullPolicy: {{ .Values.global.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
+            runAsUser: 1000
+            {{- end }}
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          ports:
+            - name: http-proxy
+              containerPort: {{ .Values.jwtAuth.envoy.port }}
+              protocol: TCP
+            - name: admin
+              containerPort: {{ .Values.jwtAuth.envoy.adminPort }}
+              protocol: TCP
+          command:
+            - /usr/local/bin/envoy
+          args:
+            - -c
+            - /etc/envoy/envoy.yaml
+            - --log-level
+            - {{ .Values.jwtAuth.envoy.logLevel | default "info" }}
+          volumeMounts:
+            - name: envoy-config
+              mountPath: /etc/envoy
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.jwtAuth.envoy.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.jwtAuth.envoy.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+        {{- end }}
+        - name: rosocp-api
+          image: "{{ .Values.ros.api.image.repository }}:{{ .Values.ros.api.image.tag }}"
+          imagePullPolicy: {{ .Values.ros.api.image.pullPolicy | default .Values.global.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
+            runAsUser: 1000
+            {{- end }}
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          command: ["sh", "-c"]
+          args:
+            - |
+              ./rosocp db migrate up
+              ./rosocp start api
+          ports:
+            - name: http
+              containerPort: {{ .Values.ros.api.port }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.ros.api.metricsPort }}
+              protocol: TCP
+          env:
+            - name: PATH_PREFIX
+              value: {{ .Values.ros.api.pathPrefix | quote }}
+            - name: CLOWDER_ENABLED
+              value: "false"
+            - name: RBAC_ENABLE
+              value: {{ .Values.ros.api.rbacEnable | quote }}
+            - name: DB_POOL_SIZE
+              value: {{ .Values.ros.api.dbPoolSize | quote }}
+            - name: DB_MAX_OVERFLOW
+              value: {{ .Values.ros.api.dbMaxOverflow | quote }}
+            - name: SERVICE_NAME
+              value: {{ .Values.ros.api.serviceName | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.ros.api.logLevel | quote }}
+            - name: DB_HOST
+              value: {{ include "cost-mgmt.database.host" (list . "ros") }}
+            - name: DB_PORT
+              value: {{ .Values.database.ros.port | quote }}
+            - name: DB_NAME
+              value: {{ .Values.database.ros.name | quote }}
+            - name: DB_USER
+              value: {{ .Values.database.ros.user | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-mgmt.fullname" . }}-db-credentials
+                  key: ros-password
+            - name: DATABASE_URL
+              value: {{ include "cost-mgmt.database.url" . }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ include "cost-mgmt.kafka.bootstrapServers" . | quote }}
+            - name: KAFKA_SECURITY_PROTOCOL
+              value: {{ include "cost-mgmt.kafka.securityProtocol" . | quote }}
+            - name: ID_PROVIDER
+              value: {{ .Values.auth.provider | quote }}
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: {{ .Values.ros.api.port }}
+            initialDelaySeconds: {{ .Values.probes.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: {{ .Values.ros.api.port }}
+            initialDelaySeconds: 15
+            periodSeconds: {{ .Values.probes.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.failureThreshold }}
+          resources:
+            {{- toYaml .Values.resources.application | nindent 12 }}
+      volumes:
+        {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+        # Envoy configuration volume
+        - name: envoy-config
+          configMap:
+            name: {{ include "cost-mgmt.fullname" . }}-envoy-config-rosocp-api
+            items:
+              - key: envoy.yaml
+                path: envoy.yaml
+        # Temporary directory for Envoy (required with read-only root filesystem)
+        - name: tmp
+          emptyDir: {}
+        {{- end }}

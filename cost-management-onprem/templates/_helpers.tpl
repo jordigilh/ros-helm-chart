@@ -2,7 +2,7 @@
 Expand the name of the chart.
 */}}
 {{/* prettier-ignore */}}
-{{- define "ros-ocp.name" -}}
+{{- define "cost-mgmt.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
@@ -11,7 +11,7 @@ Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 */}}
-{{- define "ros-ocp.fullname" -}}
+{{- define "cost-mgmt.fullname" -}}
   {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
   {{- else -}}
@@ -27,16 +27,16 @@ If release name contains chart name it will be used as a full name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "ros-ocp.chart" -}}
+{{- define "cost-mgmt.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "ros-ocp.labels" -}}
-helm.sh/chart: {{ include "ros-ocp.chart" . }}
-{{ include "ros-ocp.selectorLabels" . }}
+{{- define "cost-mgmt.labels" -}}
+helm.sh/chart: {{ include "cost-mgmt.chart" . }}
+{{ include "cost-mgmt.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -46,17 +46,17 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "ros-ocp.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "ros-ocp.name" . }}
+{{- define "cost-mgmt.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "cost-mgmt.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 Create the name of the service account to use
 */}}
-{{- define "ros-ocp.serviceAccountName" -}}
+{{- define "cost-mgmt.serviceAccountName" -}}
   {{- if .Values.serviceAccount.create -}}
-{{- default (include "ros-ocp.fullname" .) .Values.serviceAccount.name -}}
+{{- default (include "cost-mgmt.fullname" .) .Values.serviceAccount.name -}}
   {{- else -}}
 {{- default "default" .Values.serviceAccount.name -}}
   {{- end -}}
@@ -64,14 +64,14 @@ Create the name of the service account to use
 
 {{/*
 Generic database host resolver - returns internal service name if "internal", otherwise returns the configured host
-Usage: {{ include "ros-ocp.databaseHost" (list . "ros") }}
+Usage: {{ include "cost-mgmt.database.host" (list . "ros") }}
 */}}
-{{- define "ros-ocp.databaseHost" -}}
+{{- define "cost-mgmt.database.host" -}}
   {{- $root := index . 0 -}}
   {{- $dbType := index . 1 -}}
   {{- $hostValue := index $root.Values.database $dbType "host" -}}
   {{- if eq $hostValue "internal" -}}
-{{- printf "%s-db-%s" (include "ros-ocp.fullname" $root) $dbType -}}
+{{- printf "%s-db-%s" (include "cost-mgmt.fullname" $root) $dbType -}}
   {{- else -}}
 {{- $hostValue -}}
   {{- end -}}
@@ -80,29 +80,29 @@ Usage: {{ include "ros-ocp.databaseHost" (list . "ros") }}
 {{/*
 Get the database URL - returns complete postgresql connection string
 */}}
-{{- define "ros-ocp.databaseUrl" -}}
-{{- printf "postgresql://postgres:$(DB_PASSWORD)@%s:%s/%s?sslmode=%s" (include "ros-ocp.databaseHost" (list . "ros")) (.Values.database.ros.port | toString) .Values.database.ros.name .Values.database.ros.sslMode }}
+{{- define "cost-mgmt.database.url" -}}
+{{- printf "postgresql://postgres:$(DB_PASSWORD)@%s:%s/%s?sslmode=%s" (include "cost-mgmt.database.host" (list . "ros")) (.Values.database.ros.port | toString) .Values.database.ros.name .Values.database.ros.sslMode }}
 {{- end }}
 
 {{/*
 Get the kruize database host - returns internal service name if "internal", otherwise returns the configured host
 */}}
-{{- define "ros-ocp.kruizeDatabaseHost" -}}
-{{- include "ros-ocp.databaseHost" (list . "kruize") -}}
+{{- define "cost-mgmt.kruize.databaseHost" -}}
+{{- include "cost-mgmt.database.host" (list . "kruize") -}}
 {{- end }}
 
 {{/*
 Get the sources database host - returns internal service name if "internal", otherwise returns the configured host
 */}}
-{{- define "ros-ocp.sourcesDatabaseHost" -}}
-{{- include "ros-ocp.databaseHost" (list . "sources") -}}
+{{- define "cost-mgmt.sources.databaseHost" -}}
+{{- include "cost-mgmt.database.host" (list . "sources") -}}
 {{- end }}
 
 {{/*
 Detect if running on OpenShift by checking for OpenShift-specific API resources
 Returns true if OpenShift is detected, false otherwise
 */}}
-{{- define "ros-ocp.isOpenShift" -}}
+{{- define "cost-mgmt.platform.isOpenShift" -}}
   {{- if .Values.global.storageType -}}
     {{- if eq .Values.global.storageType "odf" -}}
 true
@@ -122,7 +122,7 @@ false
 Extract domain from cluster ingress configuration
 Returns domain if found, empty string otherwise
 */}}
-{{- define "ros-ocp.getDomainFromIngressConfig" -}}
+{{- define "cost-mgmt.platform.getDomainFromIngressConfig" -}}
   {{- $ingressConfig := lookup "config.openshift.io/v1" "Ingress" "" "cluster" -}}
   {{- if and $ingressConfig $ingressConfig.spec $ingressConfig.spec.domain -}}
 {{- $ingressConfig.spec.domain -}}
@@ -135,7 +135,7 @@ Returns domain if found, empty string otherwise
 Extract domain from ingress controller
 Returns domain if found, empty string otherwise
 */}}
-{{- define "ros-ocp.getDomainFromIngressController" -}}
+{{- define "cost-mgmt.platform.getDomainFromIngressController" -}}
   {{- $ingressController := lookup "operator.openshift.io/v1" "IngressController" "openshift-ingress-operator" "default" -}}
   {{- if and $ingressController $ingressController.status $ingressController.status.domain -}}
 {{- $ingressController.status.domain -}}
@@ -148,7 +148,7 @@ Returns domain if found, empty string otherwise
 Extract domain from existing routes
 Returns domain if found, empty string otherwise
 */}}
-{{- define "ros-ocp.getDomainFromRoutes" -}}
+{{- define "cost-mgmt.platform.getDomainFromRoutes" -}}
   {{- $routes := lookup "route.openshift.io/v1" "Route" "" "" -}}
   {{- $clusterDomain := "" -}}
   {{- if and $routes $routes.items -}}
@@ -169,16 +169,16 @@ Returns domain if found, empty string otherwise
 Get OpenShift cluster domain dynamically
 Returns the cluster's default route domain (e.g., "apps.mycluster.example.com")
 STRICT MODE: Fails deployment if cluster domain cannot be detected
-Usage: {{ include "ros-ocp.clusterDomain" . }}
+Usage: {{ include "cost-mgmt.platform.clusterDomain" . }}
 */}}
-{{- define "ros-ocp.clusterDomain" -}}
+{{- define "cost-mgmt.platform.clusterDomain" -}}
   {{- /* Try multiple strategies to detect cluster domain */ -}}
-  {{- $domain := include "ros-ocp.getDomainFromIngressConfig" . -}}
+  {{- $domain := include "cost-mgmt.platform.getDomainFromIngressConfig" . -}}
   {{- if eq $domain "" -}}
-    {{- $domain = include "ros-ocp.getDomainFromIngressController" . -}}
+    {{- $domain = include "cost-mgmt.platform.getDomainFromIngressController" . -}}
   {{- end -}}
   {{- if eq $domain "" -}}
-    {{- $domain = include "ros-ocp.getDomainFromRoutes" . -}}
+    {{- $domain = include "cost-mgmt.platform.getDomainFromRoutes" . -}}
   {{- end -}}
 
   {{- if eq $domain "" -}}
@@ -193,7 +193,7 @@ Usage: {{ include "ros-ocp.clusterDomain" . }}
 Extract cluster name from Infrastructure resource
 Returns name if found, empty string otherwise
 */}}
-{{- define "ros-ocp.getClusterNameFromInfrastructure" -}}
+{{- define "cost-mgmt.platform.getClusterNameFromInfrastructure" -}}
   {{- $infrastructure := lookup "config.openshift.io/v1" "Infrastructure" "" "cluster" -}}
   {{- if and $infrastructure $infrastructure.status $infrastructure.status.infrastructureName -}}
 {{- $infrastructure.status.infrastructureName -}}
@@ -206,7 +206,7 @@ Returns name if found, empty string otherwise
 Extract cluster name from ClusterVersion resource
 Returns name if found, empty string otherwise
 */}}
-{{- define "ros-ocp.getClusterNameFromClusterVersion" -}}
+{{- define "cost-mgmt.platform.getClusterNameFromClusterVersion" -}}
   {{- $clusterVersion := lookup "config.openshift.io/v1" "ClusterVersion" "" "version" -}}
   {{- if and $clusterVersion $clusterVersion.spec $clusterVersion.spec.clusterID -}}
 {{- printf "cluster-%s" (substr 0 8 $clusterVersion.spec.clusterID) -}}
@@ -219,13 +219,13 @@ Returns name if found, empty string otherwise
 Get OpenShift cluster name dynamically
 Returns the cluster's infrastructure name (e.g., "mycluster-abcd1")
 STRICT MODE: Fails deployment if cluster name cannot be detected
-Usage: {{ include "ros-ocp.clusterName" . }}
+Usage: {{ include "cost-mgmt.platform.clusterName" . }}
 */}}
-{{- define "ros-ocp.clusterName" -}}
+{{- define "cost-mgmt.platform.clusterName" -}}
   {{- /* Try multiple strategies to detect cluster name */ -}}
-  {{- $name := include "ros-ocp.getClusterNameFromInfrastructure" . -}}
+  {{- $name := include "cost-mgmt.platform.getClusterNameFromInfrastructure" . -}}
   {{- if eq $name "" -}}
-    {{- $name = include "ros-ocp.getClusterNameFromClusterVersion" . -}}
+    {{- $name = include "cost-mgmt.platform.getClusterNameFromClusterVersion" . -}}
   {{- end -}}
 
   {{- if eq $name "" -}}
@@ -238,13 +238,13 @@ Usage: {{ include "ros-ocp.clusterName" . }}
 
 {{/*
 Generate external URL for a service based on deployment platform (OpenShift Routes vs Kubernetes Ingress)
-Usage: {{ include "ros-ocp.externalUrl" (list . "service-name" "/path") }}
+Usage: {{ include "cost-mgmt.externalUrl" (list . "service-name" "/path") }}
 */}}
-{{- define "ros-ocp.externalUrl" -}}
+{{- define "cost-mgmt.externalUrl" -}}
   {{- $root := index . 0 -}}
   {{- $service := index . 1 -}}
   {{- $path := index . 2 -}}
-  {{- if eq (include "ros-ocp.isOpenShift" $root) "true" -}}
+  {{- if eq (include "cost-mgmt.platform.isOpenShift" $root) "true" -}}
     {{- /* OpenShift: Use Route configuration */ -}}
     {{- $scheme := "http" -}}
     {{- if $root.Values.serviceRoute.tls.termination -}}
@@ -254,7 +254,7 @@ Usage: {{ include "ros-ocp.externalUrl" (list . "service-name" "/path") }}
       {{- if .host -}}
 {{- printf "%s://%s%s" $scheme .host $path -}}
       {{- else -}}
-{{- printf "%s://%s-%s.%s%s" $scheme $service $root.Release.Namespace (include "ros-ocp.clusterDomain" $root) $path -}}
+{{- printf "%s://%s-%s.%s%s" $scheme $service $root.Release.Namespace (include "cost-mgmt.platform.clusterDomain" $root) $path -}}
       {{- end -}}
     {{- end -}}
   {{- else -}}
@@ -272,21 +272,21 @@ Usage: {{ include "ros-ocp.externalUrl" (list . "service-name" "/path") }}
 {{/*
 Detect appropriate volume mode based on actual storage class provisioner
 Returns "Block" for block storage, "Filesystem" for filesystem storage
-Usage: {{ include "ros-ocp.volumeMode" . }}
+Usage: {{ include "cost-mgmt.storage.volumeMode" . }}
 */}}
-{{- define "ros-ocp.volumeMode" -}}
-  {{- $storageClass := include "ros-ocp.databaseStorageClass" . -}}
-{{- include "ros-ocp.volumeModeForStorageClass" (list . $storageClass) -}}
+{{- define "cost-mgmt.storage.volumeMode" -}}
+  {{- $storageClass := include "cost-mgmt.storage.databaseClass" . -}}
+{{- include "cost-mgmt.storage.volumeModeForStorageClass" (list . $storageClass) -}}
 {{- end }}
 
 {{/*
 Get storage class name - validates user-defined storage class exists, falls back to default
 Handles dry-run mode gracefully, fails deployment only if no suitable storage class is found during actual installation
-Usage: {{ include "ros-ocp.storageClass" . }}
+Usage: {{ include "cost-mgmt.storage.class" . }}
 */}}
-{{- define "ros-ocp.storageClass" -}}
+{{- define "cost-mgmt.storage.class" -}}
   {{- $storageClasses := lookup "storage.k8s.io/v1" "StorageClass" "" "" -}}
-  {{- $userDefinedClass := include "ros-ocp.getUserDefinedStorageClass" . -}}
+  {{- $userDefinedClass := include "cost-mgmt.storage.getUserDefinedClass" . -}}
 
   {{- /* Handle dry-run mode or cluster connectivity issues */ -}}
   {{- if not (and $storageClasses $storageClasses.items) -}}
@@ -295,12 +295,12 @@ Usage: {{ include "ros-ocp.storageClass" . }}
 {{- $userDefinedClass -}}
     {{- else -}}
       {{- /* In dry-run mode with no explicit storage class, use a reasonable default */ -}}
-{{- include "ros-ocp.getPlatformDefaultStorageClass" . -}}
+{{- include "cost-mgmt.storage.getPlatformDefault" . -}}
     {{- end -}}
   {{- else -}}
     {{- /* Normal operation - query cluster for available storage classes */ -}}
-    {{- $defaultFound := include "ros-ocp.findDefaultStorageClass" . -}}
-    {{- $userClassExists := include "ros-ocp.userStorageClassExists" . -}}
+    {{- $defaultFound := include "cost-mgmt.storage.findDefault" . -}}
+    {{- $userClassExists := include "cost-mgmt.storage.userClassExists" . -}}
 
     {{- if $userDefinedClass -}}
       {{- if eq $userClassExists "true" -}}
@@ -327,7 +327,7 @@ Usage: {{ include "ros-ocp.storageClass" . }}
 Extract user-defined storage class from values
 Returns the storage class name if defined, empty string otherwise
 */}}
-{{- define "ros-ocp.getUserDefinedStorageClass" -}}
+{{- define "cost-mgmt.storage.getUserDefinedClass" -}}
   {{- if and .Values.global.storageClass (ne .Values.global.storageClass "") -}}
 {{- .Values.global.storageClass -}}
   {{- else -}}
@@ -339,8 +339,8 @@ Returns the storage class name if defined, empty string otherwise
 Get platform-specific default storage class
 Returns appropriate default storage class based on platform
 */}}
-{{- define "ros-ocp.getPlatformDefaultStorageClass" -}}
-  {{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- define "cost-mgmt.storage.getPlatformDefault" -}}
+  {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" -}}
 ocs-storagecluster-ceph-rbd
   {{- else -}}
 standard
@@ -351,7 +351,7 @@ standard
 Find default storage class from cluster
 Returns the name of the default storage class if found, empty string otherwise
 */}}
-{{- define "ros-ocp.findDefaultStorageClass" -}}
+{{- define "cost-mgmt.storage.findDefault" -}}
   {{- $storageClasses := lookup "storage.k8s.io/v1" "StorageClass" "" "" -}}
   {{- $defaultFound := "" -}}
   {{- if and $storageClasses $storageClasses.items -}}
@@ -368,8 +368,8 @@ Returns the name of the default storage class if found, empty string otherwise
 Check if user-defined storage class exists in cluster
 Returns true if found, false otherwise
 */}}
-{{- define "ros-ocp.userStorageClassExists" -}}
-  {{- $userDefinedClass := include "ros-ocp.getUserDefinedStorageClass" . -}}
+{{- define "cost-mgmt.storage.userClassExists" -}}
+  {{- $userDefinedClass := include "cost-mgmt.storage.getUserDefinedClass" . -}}
   {{- $storageClasses := lookup "storage.k8s.io/v1" "StorageClass" "" "" -}}
   {{- $exists := false -}}
   {{- if and $userDefinedClass $storageClasses $storageClasses.items -}}
@@ -385,18 +385,18 @@ Returns true if found, false otherwise
 {{/*
 Get storage class for database workloads - uses same logic as main storage class
 Only uses default storage class or user-defined, no fallbacks
-Usage: {{ include "ros-ocp.databaseStorageClass" . }}
+Usage: {{ include "cost-mgmt.storage.databaseClass" . }}
 */}}
-{{- define "ros-ocp.databaseStorageClass" -}}
-{{- include "ros-ocp.storageClass" . -}}
+{{- define "cost-mgmt.storage.databaseClass" -}}
+{{- include "cost-mgmt.storage.class" . -}}
 {{- end }}
 
 {{/*
 Check if a provisioner supports filesystem volumes
 Returns true if the provisioner is known to support filesystem volumes
-Usage: {{ include "ros-ocp.supportsFilesystem" (list . $provisioner $parameters $isOpenShift) }}
+Usage: {{ include "cost-mgmt.storage.supportsFilesystem" (list . $provisioner $parameters $isOpenShift) }}
 */}}
-{{- define "ros-ocp.supportsFilesystem" -}}
+{{- define "cost-mgmt.storage.supportsFilesystem" -}}
   {{- $root := index . 0 -}}
   {{- $provisioner := index . 1 -}}
   {{- $parameters := index . 2 -}}
@@ -436,9 +436,9 @@ true
 {{/*
 Check if a provisioner supports block volumes
 Returns true if the provisioner is known to support block volumes
-Usage: {{ include "ros-ocp.supportsBlock" (list . $provisioner $parameters $isOpenShift) }}
+Usage: {{ include "cost-mgmt.storage.supportsBlock" (list . $provisioner $parameters $isOpenShift) }}
 */}}
-{{- define "ros-ocp.supportsBlock" -}}
+{{- define "cost-mgmt.storage.supportsBlock" -}}
   {{- $root := index . 0 -}}
   {{- $provisioner := index . 1 -}}
   {{- $parameters := index . 2 -}}
@@ -473,12 +473,12 @@ false
 {{/*
 Detect volume mode by platform-aware analysis of storage class capabilities
 Handles OpenShift, vanilla Kubernetes, KIND, and other distributions appropriately
-Usage: {{ include "ros-ocp.volumeModeForStorageClass" (list . "storage-class-name") }}
+Usage: {{ include "cost-mgmt.storage.volumeModeForStorageClass" (list . "storage-class-name") }}
 */}}
-{{- define "ros-ocp.volumeModeForStorageClass" -}}
+{{- define "cost-mgmt.storage.volumeModeForStorageClass" -}}
   {{- $root := index . 0 -}}
   {{- $storageClassName := index . 1 -}}
-  {{- $isOpenShift := eq (include "ros-ocp.isOpenShift" $root) "true" -}}
+  {{- $isOpenShift := eq (include "cost-mgmt.platform.isOpenShift" $root) "true" -}}
 
   {{- /* Strategy 1: Check existing PVs for this storage class to see what volume modes are actually working */ -}}
   {{- $existingPVs := lookup "v1" "PersistentVolume" "" "" -}}
@@ -515,8 +515,8 @@ Block
 {{- $parameters.volumeMode -}}
       {{- else -}}
         {{- /* Strategy 3: Use helper functions to determine volume mode support */ -}}
-        {{- $supportsFilesystem := include "ros-ocp.supportsFilesystem" (list $root $provisioner $parameters $isOpenShift) -}}
-        {{- $supportsBlock := include "ros-ocp.supportsBlock" (list $root $provisioner $parameters $isOpenShift) -}}
+        {{- $supportsFilesystem := include "cost-mgmt.storage.supportsFilesystem" (list $root $provisioner $parameters $isOpenShift) -}}
+        {{- $supportsBlock := include "cost-mgmt.storage.supportsBlock" (list $root $provisioner $parameters $isOpenShift) -}}
 
         {{- /* Determine volume mode based on support */ -}}
         {{- if eq $supportsFilesystem "true" -}}
@@ -557,8 +557,8 @@ Filesystem
 {{/*
 Cache service name (redis or valkey based on platform)
 */}}
-{{- define "ros-ocp.cache.name" -}}
-{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- define "cost-mgmt.cache.name" -}}
+{{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" -}}
 valkey
 {{- else -}}
 redis
@@ -568,8 +568,8 @@ redis
 {{/*
 Cache configuration (returns the appropriate config object)
 */}}
-{{- define "ros-ocp.cache.config" -}}
-{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- define "cost-mgmt.cache.config" -}}
+{{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" -}}
 {{- .Values.valkey | toYaml -}}
 {{- else -}}
 {{- .Values.redis | toYaml -}}
@@ -579,8 +579,8 @@ Cache configuration (returns the appropriate config object)
 {{/*
 Cache CLI command (redis-cli or valkey-cli based on platform)
 */}}
-{{- define "ros-ocp.cache.cli" -}}
-{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- define "cost-mgmt.cache.cli" -}}
+{{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" -}}
 valkey-cli
 {{- else -}}
 redis-cli
@@ -590,8 +590,8 @@ redis-cli
 {{/*
 Storage service name (minio or odf based on platform)
 */}}
-{{- define "ros-ocp.storage.name" -}}
-{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- define "cost-mgmt.storage.name" -}}
+{{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" -}}
 odf
 {{- else -}}
 minio
@@ -601,8 +601,8 @@ minio
 {{/*
 Storage configuration (returns the appropriate config object)
 */}}
-{{- define "ros-ocp.storage.config" -}}
-{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- define "cost-mgmt.storage.config" -}}
+{{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" -}}
 {{- .Values.odf | toYaml -}}
 {{- else -}}
 {{- .Values.minio | toYaml -}}
@@ -612,8 +612,8 @@ Storage configuration (returns the appropriate config object)
 {{/*
 Storage endpoint (MinIO service or ODF endpoint)
 */}}
-{{- define "ros-ocp.storage.endpoint" -}}
-{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- define "cost-mgmt.storage.endpoint" -}}
+{{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" -}}
 {{- if and .Values.odf .Values.odf.endpoint -}}
 {{- .Values.odf.endpoint | quote -}}
 {{- else -}}
@@ -645,15 +645,15 @@ Storage endpoint (MinIO service or ODF endpoint)
 {{- end -}}
 {{- end -}}
 {{- else -}}
-{{- printf "%s-minio:%v" (include "ros-ocp.fullname" .) .Values.minio.ports.api | quote -}}
+{{- printf "%s-minio:%v" (include "cost-mgmt.fullname" .) .Values.minio.ports.api | quote -}}
 {{- end -}}
 {{- end }}
 
 {{/*
 Storage port (MinIO port or ODF port)
 */}}
-{{- define "ros-ocp.storage.port" -}}
-{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- define "cost-mgmt.storage.port" -}}
+{{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" -}}
 {{- if .Values.odf -}}
 {{- .Values.odf.port -}}
 {{- else -}}
@@ -667,22 +667,22 @@ Storage port (MinIO port or ODF port)
 {{/*
 Storage access key (MinIO root user - ODF uses noobaa-admin secret directly)
 */}}
-{{- define "ros-ocp.storage.accessKey" -}}
+{{- define "cost-mgmt.storage.accessKey" -}}
 {{- .Values.minio.rootUser -}}
 {{- end }}
 
 {{/*
 Storage secret key (MinIO root password - ODF uses noobaa-admin secret directly)
 */}}
-{{- define "ros-ocp.storage.secretKey" -}}
+{{- define "cost-mgmt.storage.secretKey" -}}
 {{- .Values.minio.rootPassword -}}
 {{- end }}
 
 {{/*
 Storage bucket name
 */}}
-{{- define "ros-ocp.storage.bucket" -}}
-{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- define "cost-mgmt.storage.bucket" -}}
+{{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" -}}
 {{- if .Values.odf -}}
 {{- .Values.odf.bucket -}}
 {{- else -}}
@@ -696,8 +696,8 @@ ros-data
 {{/*
 Storage use SSL flag
 */}}
-{{- define "ros-ocp.storage.useSSL" -}}
-{{- if eq (include "ros-ocp.isOpenShift" .) "true" -}}
+{{- define "cost-mgmt.storage.useSSL" -}}
+{{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" -}}
 {{- if .Values.odf -}}
 {{- .Values.odf.useSSL -}}
 {{- else -}}
@@ -717,7 +717,7 @@ Detect if Keycloak (RHBK) is installed in the cluster
 This helper looks for Keycloak Custom Resources from the RHBK operator
 Only supports: k8s.keycloak.org/v2alpha1 (RHBK v22+)
 */}}
-{{- define "ros-ocp.keycloak.isInstalled" -}}
+{{- define "cost-mgmt.keycloak.isInstalled" -}}
 {{- $keycloakFound := false -}}
 {{- /* Look for RHBK v2alpha1 CRs */ -}}
 {{- $keycloaks := lookup "k8s.keycloak.org/v2alpha1" "Keycloak" "" "" -}}
@@ -744,7 +744,7 @@ Only supports: k8s.keycloak.org/v2alpha1 (RHBK v22+)
 Find Keycloak namespace by looking for Keycloak CRs first, then fallback to patterns
 Only supports RHBK (v2alpha1) operator
 */}}
-{{- define "ros-ocp.keycloak.namespace" -}}
+{{- define "cost-mgmt.keycloak.namespace" -}}
 {{- $keycloakNs := "" -}}
 {{- /* First priority: check for explicit namespace override */ -}}
 {{- if .Values.jwt_auth.keycloak.namespace -}}
@@ -776,9 +776,9 @@ Only supports RHBK (v2alpha1) operator
 Find Keycloak service name by looking at Keycloak CRs first, then service discovery
 Only supports RHBK (v2alpha1) operator
 */}}
-{{- define "ros-ocp.keycloak.serviceName" -}}
+{{- define "cost-mgmt.keycloak.serviceName" -}}
 {{- $keycloakSvc := "" -}}
-{{- $ns := include "ros-ocp.keycloak.namespace" . -}}
+{{- $ns := include "cost-mgmt.keycloak.namespace" . -}}
 {{- if $ns -}}
   {{- /* Try RHBK v2alpha1 CR */ -}}
   {{- $keycloaks := lookup "k8s.keycloak.org/v2alpha1" "Keycloak" $ns "" -}}
@@ -808,9 +808,9 @@ Get Keycloak route URL (OpenShift) or construct service URL (Kubernetes)
 First try to get URL from Keycloak CR status, then fallback to route/ingress discovery
 Only supports RHBK (v2alpha1) operator
 */}}
-{{- define "ros-ocp.keycloak.url" -}}
+{{- define "cost-mgmt.keycloak.url" -}}
 {{- $keycloakUrl := "" -}}
-{{- $ns := include "ros-ocp.keycloak.namespace" . -}}
+{{- $ns := include "cost-mgmt.keycloak.namespace" . -}}
 {{- if $ns -}}
   {{- /* Try RHBK v2alpha1 CR status */ -}}
   {{- $keycloaks := lookup "k8s.keycloak.org/v2alpha1" "Keycloak" $ns "" -}}
@@ -828,7 +828,7 @@ Only supports RHBK (v2alpha1) operator
   {{- end -}}
   {{- /* Fallback: route/ingress discovery if CR doesn't have externalURL */ -}}
   {{- if not $keycloakUrl -}}
-    {{- if (include "ros-ocp.isOpenShift" .) -}}
+    {{- if (include "cost-mgmt.platform.isOpenShift" .) -}}
       {{- /* OpenShift: Look for Keycloak route */ -}}
       {{- range $route := (lookup "route.openshift.io/v1" "Route" $ns "").items -}}
         {{- if or (contains "keycloak" $route.metadata.name) (contains "sso" $route.metadata.name) -}}
@@ -861,7 +861,7 @@ Only supports RHBK (v2alpha1) operator
       {{- end -}}
       {{- if not $found -}}
         {{- /* Final fallback: construct service URL */ -}}
-        {{- $svcName := include "ros-ocp.keycloak.serviceName" . -}}
+        {{- $svcName := include "cost-mgmt.keycloak.serviceName" . -}}
         {{- if $svcName -}}
           {{- $servicePort := .Values.jwt_auth.keycloak.servicePort | default 8080 -}}
           {{- $keycloakUrl = printf "http://%s.%s.svc.cluster.local:%v" $svcName $ns $servicePort -}}
@@ -876,14 +876,14 @@ Only supports RHBK (v2alpha1) operator
 {{/*
 Get complete Keycloak issuer URL with realm
 */}}
-{{- define "ros-ocp.keycloak.issuerUrl" -}}
+{{- define "cost-mgmt.keycloak.issuerUrl" -}}
 {{- $baseUrl := "" -}}
 {{- if .Values.jwt_auth.keycloak.url -}}
   {{- /* Use explicitly configured URL */ -}}
   {{- $baseUrl = .Values.jwt_auth.keycloak.url -}}
 {{- else -}}
   {{- /* Auto-detect Keycloak URL */ -}}
-  {{- $baseUrl = include "ros-ocp.keycloak.url" . -}}
+  {{- $baseUrl = include "cost-mgmt.keycloak.url" . -}}
 {{- end -}}
 {{- if $baseUrl -}}
   {{- /* RHBK v22+ uses /realms/ without /auth prefix */ -}}
@@ -897,15 +897,15 @@ Get complete Keycloak issuer URL with realm
 {{/*
 Get Keycloak JWKS URL
 */}}
-{{- define "ros-ocp.keycloak.jwksUrl" -}}
-{{- printf "%s/protocol/openid-connect/certs" (include "ros-ocp.keycloak.issuerUrl" .) -}}
+{{- define "cost-mgmt.keycloak.jwksUrl" -}}
+{{- printf "%s/protocol/openid-connect/certs" (include "cost-mgmt.keycloak.issuerUrl" .) -}}
 {{- end }}
 
 {{/*
 Get Keycloak CR information for debugging
 Only supports RHBK (v2alpha1) operator
 */}}
-{{- define "ros-ocp.keycloak.crInfo" -}}
+{{- define "cost-mgmt.keycloak.crInfo" -}}
 {{- $info := dict -}}
 {{- $_ := set $info "apiVersion" "k8s.keycloak.org/v2alpha1" -}}
 {{- $_ := set $info "operator" "RHBK" -}}
@@ -950,14 +950,14 @@ Check if JWT authentication should be enabled
 Auto-detects based on platform: true for OpenShift, false for KIND/K8s
 JWT authentication requires Keycloak, which is only deployed on OpenShift
 */}}
-{{- define "ros-ocp.jwt.shouldEnable" -}}
-{{- include "ros-ocp.isOpenShift" . -}}
+{{- define "cost-mgmt.jwt.shouldEnable" -}}
+{{- include "cost-mgmt.platform.isOpenShift" . -}}
 {{- end }}
 
 {{/*
 Kafka service host resolver (supports both internal Strimzi and external Kafka)
 */}}
-{{- define "ros-ocp.kafkaHost" -}}
+{{- define "cost-mgmt.kafka.host" -}}
 {{- if .Values.kafka.bootstrapServers -}}
   {{- $bootstrapServers := .Values.kafka.bootstrapServers -}}
   {{- if contains "," $bootstrapServers -}}
@@ -982,7 +982,7 @@ Kafka service host resolver (supports both internal Strimzi and external Kafka)
 {{/*
 Kafka port resolver (supports both internal Strimzi and external Kafka)
 */}}
-{{- define "ros-ocp.kafkaPort" -}}
+{{- define "cost-mgmt.kafka.port" -}}
 {{- if .Values.kafka.bootstrapServers -}}
   {{- $bootstrapServers := .Values.kafka.bootstrapServers -}}
   {{- if contains "," $bootstrapServers -}}
@@ -1007,7 +1007,7 @@ Kafka port resolver (supports both internal Strimzi and external Kafka)
 {{/*
 Kafka bootstrap servers resolver (supports both internal Strimzi and external Kafka)
 */}}
-{{- define "ros-ocp.kafkaBootstrapServers" -}}
+{{- define "cost-mgmt.kafka.bootstrapServers" -}}
 {{- if .Values.kafka.bootstrapServers -}}
 {{- .Values.kafka.bootstrapServers -}}
 {{- else -}}
@@ -1018,6 +1018,6 @@ Kafka bootstrap servers resolver (supports both internal Strimzi and external Ka
 {{/*
 Kafka security protocol resolver (supports both internal Strimzi and external Kafka)
 */}}
-{{- define "ros-ocp.kafkaSecurityProtocol" -}}
+{{- define "cost-mgmt.kafka.securityProtocol" -}}
 {{- .Values.kafka.securityProtocol | default "PLAINTEXT" -}}
 {{- end }}

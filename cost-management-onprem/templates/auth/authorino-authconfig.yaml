@@ -1,0 +1,44 @@
+{{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+apiVersion: authorino.kuadrant.io/v1beta3
+kind: AuthConfig
+metadata:
+  name: {{ include "cost-mgmt.fullname" . }}-rosocp-api-auth
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino-authconfig
+    app.kubernetes.io/part-of: ros-ocp
+spec:
+  # Define the hosts that this AuthConfig applies to
+  # Use wildcard to match all hosts (Envoy is already doing host validation via routes)
+  hosts:
+    - "*"
+
+  # Authentication: Validate Kubernetes tokens via TokenReview
+  # Accepts tokens with the default Kubernetes API audience
+  # This includes:
+  #   - Interactive user tokens from OpenShift Console (primary use case)
+  #   - Service account tokens without explicit audience
+  # The Kubernetes TokenReview API validates the token authenticity
+  # Note: credentials defaults to Authorization header with "Bearer" prefix if omitted
+  # Note: Fine-grained authorization (e.g., blocking service accounts) should be
+  #       implemented at the application level based on the authenticated username
+  authentication:
+    "kubernetes-tokens":
+      kubernetesTokenReview:
+        audiences:
+          - "https://kubernetes.default.svc"  # Default Kubernetes API audience
+
+  # Response: Inject the authenticated username as a custom header
+  # This will be consumed by Envoy's Lua filter to build rh-identity
+  response:
+    success:
+      headers:
+        "X-Auth-Username":
+          plain:
+            selector: auth.identity.username
+        "X-Auth-Uid":
+          plain:
+            selector: auth.identity.uid
+{{- end }}
+

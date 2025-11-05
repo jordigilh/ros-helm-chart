@@ -1,0 +1,126 @@
+{{- $isOpenShift := eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
+{{- $cacheName := include "cost-mgmt.cache.name" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cost-mgmt.fullname" . }}-sources-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+    app.kubernetes.io/name: sources-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+      app.kubernetes.io/name: sources-api
+  template:
+    metadata:
+      labels:
+        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+        app.kubernetes.io/name: sources-api
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-db-sources
+          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+          command: ['bash', '-c']
+          args:
+            - |
+              echo "Waiting for Sources database at {{ include "cost-mgmt.sources.databaseHost" . }}:{{ .Values.database.sources.port }}..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.sources.databaseHost" . }}/{{ .Values.database.sources.port }}" 2>/dev/null; do
+                echo "Database not ready yet, retrying in 5 seconds..."
+                sleep 5
+              done
+              echo "Sources database is ready"
+              echo "Sources database is ready"
+        {{- if .Values.kafka.bootstrapServers }}
+        - name: wait-for-kafka
+          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+          command: ['bash', '-c']
+          args:
+            - |
+              echo "Waiting for Kafka at {{ include "cost-mgmt.kafka.host" . }}:{{ include "cost-mgmt.kafka.port" . }}..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.kafka.host" . }}/{{ include "cost-mgmt.kafka.port" . }}" 2>/dev/null; do
+                echo "Kafka not ready yet, retrying in 5 seconds..."
+                sleep 5
+              done
+              echo "Kafka is ready"
+        {{- end }}
+        - name: wait-for-{{ $cacheName }}
+          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+          command: ['bash', '-c']
+          args:
+            - |
+              echo "Waiting for {{ $cacheName | title }} at {{ include "cost-mgmt.fullname" . }}-{{ $cacheName }}:6379..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-{{ $cacheName }}/6379" 2>/dev/null; do
+                echo "{{ $cacheName | title }} not ready yet, retrying in 5 seconds..."
+                sleep 5
+              done
+              echo "{{ $cacheName | title }} is ready"
+              echo "{{ $cacheName | title }} is ready"
+      containers:
+        - name: sources-api
+          image: "{{ .Values.sourcesApi.image.repository }}:{{ .Values.sourcesApi.image.tag }}"
+          imagePullPolicy: {{ .Values.sourcesApi.image.pullPolicy | default .Values.global.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.sourcesApi.port }}
+              protocol: TCP
+          env:
+            - name: DATABASE_USER
+              value: {{ .Values.database.sources.user | quote }}
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-mgmt.fullname" . }}-db-credentials
+                  key: sources-password
+            - name: DATABASE_HOST
+              value: {{ include "cost-mgmt.sources.databaseHost" . }}
+            - name: DATABASE_PORT
+              value: {{ .Values.database.sources.port | quote }}
+            - name: DATABASE_NAME
+              value: {{ .Values.database.sources.name | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.sourcesApi.logLevel | quote }}
+            - name: REDIS_CACHE_HOST
+              value: {{ include "cost-mgmt.fullname" . }}-{{ $cacheName }}
+            - name: REDIS_CACHE_PORT
+              value: "6379"
+            - name: BYPASS_RBAC
+              value: {{ .Values.sourcesApi.bypassRbac | quote }}
+            - name: QUEUE_HOST
+              value: {{ include "cost-mgmt.kafka.host" . }}
+            - name: QUEUE_PORT
+              value: {{ include "cost-mgmt.kafka.port" . | quote }}
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-mgmt.fullname" . }}-sources-credentials
+                  key: encryption-key
+            - name: SOURCES_ENV
+              value: {{ .Values.sourcesApi.sourcesEnv | quote }}
+          livenessProbe:
+            httpGet:
+              path: /api/sources/v1.0/source_types
+              port: {{ .Values.sourcesApi.port }}
+            initialDelaySeconds: {{ .Values.probes.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /api/sources/v1.0/source_types
+              port: {{ .Values.sourcesApi.port }}
+            initialDelaySeconds: 15
+            periodSeconds: {{ .Values.probes.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.failureThreshold }}
+          resources:
+            {{- toYaml .Values.resources.application | nindent 12 }}
