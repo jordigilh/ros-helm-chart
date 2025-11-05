@@ -396,7 +396,8 @@ spec:
     httpEnabled: true
   hostname:
     hostname: $KEYCLOAK_HOSTNAME
-    strict: true
+    admin: $KEYCLOAK_HOSTNAME
+    strict: false
     strictBackchannel: false
   ingress:
     enabled: true
@@ -404,14 +405,17 @@ spec:
     podTemplate:
       spec:
         containers:
-          - name: keycloak
-            resources:
-              requests:
-                cpu: 500m
-                memory: 1Gi
-              limits:
-                cpu: 1000m
-                memory: 2Gi
+        - name: keycloak
+          env:
+          - name: KC_PROXY
+            value: edge
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
 EOF
         echo_success "✓ Keycloak instance created"
     fi
@@ -796,6 +800,102 @@ validate_deployment() {
     fi
 }
 
+# Function to configure security-admin-console client
+# This fixes the admin console loading issue by adding proper Web Origins and Redirect URIs
+configure_admin_console() {
+    echo_header "CONFIGURING ADMIN CONSOLE"
+    
+    # Get Keycloak URL
+    local KEYCLOAK_URL=$(oc get route keycloak -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+    if [ -z "$KEYCLOAK_URL" ]; then
+        echo_error "Could not get Keycloak route URL"
+        return 1
+    fi
+    
+    echo_info "Keycloak URL: https://$KEYCLOAK_URL"
+    
+    # Get admin credentials
+    local ADMIN_PASSWORD=$(oc get secret keycloak-initial-admin -n "$NAMESPACE" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d)
+    if [ -z "$ADMIN_PASSWORD" ]; then
+        echo_error "Could not retrieve admin password"
+        return 1
+    fi
+    
+    # Wait for Keycloak to be ready
+    echo_info "Waiting for Keycloak admin API to be available..."
+    local max_attempts=30
+    local attempt=0
+    local token_response=""
+    
+    while [ $attempt -lt $max_attempts ]; do
+        token_response=$(curl -sk -X POST "https://$KEYCLOAK_URL/realms/master/protocol/openid-connect/token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "username=admin" \
+            -d "password=$ADMIN_PASSWORD" \
+            -d "grant_type=password" \
+            -d "client_id=admin-cli" 2>/dev/null)
+        
+        local access_token=$(echo "$token_response" | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
+        
+        if [ -n "$access_token" ]; then
+            echo_success "✓ Admin API is available"
+            break
+        fi
+        
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+    
+    if [ -z "$access_token" ]; then
+        echo_error "Could not authenticate to Keycloak admin API"
+        return 1
+    fi
+    
+    # Get security-admin-console client ID
+    echo_info "Configuring security-admin-console client..."
+    local clients_response=$(curl -sk "https://$KEYCLOAK_URL/admin/realms/master/clients" \
+        -H "Authorization: Bearer $access_token" 2>/dev/null)
+    
+    local client_uuid=$(echo "$clients_response" | grep -o '"id":"[^"]*","clientId":"security-admin-console"' | grep -o '"id":"[^"]*' | cut -d'"' -f4)
+    
+    if [ -z "$client_uuid" ]; then
+        echo_error "Could not find security-admin-console client"
+        return 1
+    fi
+    
+    echo_info "Client UUID: $client_uuid"
+    
+    # Update client configuration to fix admin console loading issue
+    # This adds explicit Web Origins and Redirect URIs
+    local update_response=$(curl -sk -X PUT "https://$KEYCLOAK_URL/admin/realms/master/clients/$client_uuid" \
+        -H "Authorization: Bearer $access_token" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "id": "'"$client_uuid"'",
+            "clientId": "security-admin-console",
+            "webOrigins": [
+                "https://'"$KEYCLOAK_URL"'",
+                "+"
+            ],
+            "redirectUris": [
+                "https://'"$KEYCLOAK_URL"'/admin/master/console/*",
+                "/admin/master/console/*"
+            ]
+        }' 2>/dev/null)
+    
+    # Verify the update
+    local verify_response=$(curl -sk "https://$KEYCLOAK_URL/admin/realms/master/clients/$client_uuid" \
+        -H "Authorization: Bearer $access_token" 2>/dev/null)
+    
+    if echo "$verify_response" | grep -q "https://$KEYCLOAK_URL"; then
+        echo_success "✓ Admin console client configured successfully"
+        echo_info "  - Web Origins: https://$KEYCLOAK_URL"
+        echo_info "  - Redirect URIs: https://$KEYCLOAK_URL/admin/master/console/*"
+    else
+        echo_warning "Could not verify client configuration update"
+    fi
+}
+
 # Function to extract and store client secret
 extract_client_secret() {
     echo_header "EXTRACTING CLIENT SECRET"
@@ -1005,6 +1105,7 @@ main() {
     deploy_postgresql
     deploy_keycloak
     create_kubernetes_realm
+    configure_admin_console
     extract_client_secret
 
     # Validate and summarize
