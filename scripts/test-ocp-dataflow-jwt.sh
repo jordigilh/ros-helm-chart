@@ -747,7 +747,7 @@ verify_upload_processing() {
     return 0
 }
 
-# Function to check for ML recommendations for a specific upload
+# Function to check for recommendations for a specific upload
 check_for_recommendations() {
     local cluster_id="$1"
 
@@ -756,7 +756,7 @@ check_for_recommendations() {
         return 1
     fi
 
-    echo_info "=== STEP 3: Check for ML Recommendations ===="
+    echo_info "=== STEP 3: Check for Recommendations ===="
     echo_info "Checking recommendations for cluster: $cluster_id"
 
     # Wait for Kruize to process data and generate recommendations
@@ -818,7 +818,7 @@ check_for_recommendations() {
         "SELECT COUNT(*) FROM kruize_recommendations WHERE cluster_name LIKE '%${cluster_id}%';" 2>/dev/null | tr -d ' ' || echo "0")
 
     if [ "$rec_count" -eq 0 ]; then
-        echo_error "❌ No ML recommendations found for cluster: $cluster_id"
+        echo_error "❌ No recommendations found for cluster: $cluster_id"
         echo_warning "Experiments exist but no recommendations were generated for this upload"
         echo_info ""
         echo_info "Possible reasons:"
@@ -836,7 +836,7 @@ check_for_recommendations() {
         return 1
     fi
 
-    echo_success "✓ Found $rec_count ML recommendation(s) for cluster: $cluster_id!"
+    echo_success "✓ Found $rec_count recommendation(s) for cluster: $cluster_id!"
 
     # Show recommendation details for this cluster
     echo_info "Recommendation details for cluster $cluster_id:"
@@ -1013,7 +1013,7 @@ main() {
     if ! check_recommendations_with_retry "$UPLOAD_CLUSTER_ID"; then
         echo ""
         echo_error "❌ Hybrid Authentication Data Flow Test FAILED!"
-        echo_error "The upload was successful but no ML recommendations were generated for cluster: $UPLOAD_CLUSTER_ID"
+        echo_error "The upload was successful but no recommendations were generated for cluster: $UPLOAD_CLUSTER_ID"
         echo_info ""
         echo_info "Troubleshooting steps:"
         echo_info "  1. Check if data reached Kruize for this cluster:"
@@ -1039,7 +1039,7 @@ main() {
     echo_info "  ✓ Ingress processing with JWT authentication"
     echo_info "  ✓ Backend API queries with user token (simulates Console UI)"
     echo_info "  ✓ Backend processing and data aggregation"
-    echo_info "  ✓ Kruize ML recommendation generation for uploaded data"
+    echo_info "  ✓ Kruize recommendation generation for uploaded data"
     echo_info "  ✓ End-to-end data flow with optimization recommendations"
     echo_info ""
     echo_info "🎉 This confirms both authentication methods are working:"
@@ -1077,7 +1077,7 @@ case "${1:-}" in
         echo "  6. Obtains JWT token using client credentials flow"
         echo "  7. Uploads sample data using JWT Bearer authentication"
         echo "  8. Verifies the upload was processed successfully"
-        echo "  9. Validates ML recommendations were generated"
+        echo "  9. Validates recommendations were generated"
         echo ""
         echo "Note: The script validates the complete end-to-end flow including:"
         echo "      - OAuth2 TokenReview for UI/user access (simulates Console UI)"

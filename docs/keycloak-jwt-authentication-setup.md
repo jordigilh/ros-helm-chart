@@ -381,7 +381,7 @@ Ingress Application (port 8081)
 
 7. ROS-OCP API → Kruize (internal service)
    Request: HTTP call with org_id in query parameters
-   Kruize: Generates ML recommendations
+   Kruize: Generates recommendations
 ```
 
 **Summary**:

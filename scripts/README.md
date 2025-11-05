@@ -220,7 +220,7 @@ End-to-end test of JWT authentication flow with sample cost data.
 3. Creates test payload (CSV + manifest.json)
 4. Uploads data via JWT-authenticated endpoint
 5. Validates ingress processing
-6. Checks for ML recommendations
+6. Checks for recommendations
 
 **Usage:**
 ```bash
@@ -238,17 +238,17 @@ End-to-end test of JWT authentication flow with sample cost data.
 - JWT authentication enabled in ROS deployment
 - Red Hat Build of Keycloak (RHBK) with `cost-management-operator` client
 
-**Best for:** CI/CD pipelines, complete E2E validation including ML recommendations
+**Best for:** CI/CD pipelines, complete E2E validation including recommendations
 
 ---
 
 ### `query-kruize.sh`
-Query Kruize database for experiments and ML recommendations.
+Query Kruize database for experiments and recommendations.
 
 **What it does:**
 - Connects to Kruize PostgreSQL database directly
 - Lists experiments and their status
-- Shows generated ML recommendations
+- Shows generated recommendations
 - Supports custom SQL queries
 - Displays database schema
 
@@ -300,14 +300,14 @@ Use the JWT test script for comprehensive E2E validation:
 # 2. Deploy environment
 ./install-helm-chart.sh
 
-# 3. Validate full E2E with ML (quick synthetic test)
+# 3. Validate full E2E (quick synthetic test)
 ./test-ocp-dataflow-jwt.sh || exit 1
 ```
 
 The `test-ocp-dataflow-jwt.sh` script validates:
 - ✅ JWT authentication
 - ✅ Full data flow (ingress → processor → Kruize)
-- ✅ ML recommendation generation
+- ✅ Recommendation generation
 - ✅ Complete E2E functionality in ~2 minutes
 
 ---
