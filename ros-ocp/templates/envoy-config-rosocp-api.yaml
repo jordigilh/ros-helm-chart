@@ -248,7 +248,7 @@ data:
             - endpoint:
                 address:
                   socket_address:
-                    address: authorino-authorino-authorization.{{ .Release.Namespace }}.svc.cluster.local
+                    address: {{ include "ros-ocp.fullname" . }}-authorino-authorization.{{ .Release.Namespace }}.svc.cluster.local
                     port_value: 50051
         # TLS configuration for secure communication with Authorino
         transport_socket:
@@ -260,7 +260,7 @@ data:
                 trusted_ca:
                   filename: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
             # SNI for proper certificate validation
-            sni: authorino-authorino-authorization.{{ .Release.Namespace }}.svc.cluster.local
+            sni: {{ include "ros-ocp.fullname" . }}-authorino-authorization.{{ .Release.Namespace }}.svc.cluster.local
         # HTTP/2 for gRPC
         typed_extension_protocol_options:
           envoy.extensions.upstreams.http.v3.HttpProtocolOptions:

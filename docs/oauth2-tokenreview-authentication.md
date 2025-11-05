@@ -176,11 +176,19 @@ sequenceDiagram
 - **New File**: Allows rosocp-api pods to connect to Authorino on port 50051 (gRPC)
 - **Ingress Rules**: Permits traffic from rosocp-api and monitoring namespaces
 
-### 6. Installation Script (`install-authorino.sh`)
+### 6. Authorino Deployment Templates
 
-- **New File**: Installs Authorino Operator and deploys Authorino instance
-- **Operator**: Deployed to `openshift-operators` namespace
-- **Instance**: Deployed to same namespace as ros-ocp chart
+- **Authorino is now automatically deployed by the Helm chart** (as of v0.1.9)
+- **No operator dependency**: Standalone Authorino deployment
+- **Namespace-scoped**: Deployed to same namespace as ros-ocp chart
+- **Templates**:
+  - `authorino-deployment.yaml` - Main Authorino deployment
+  - `authorino-serviceaccount.yaml` - ServiceAccount for Authorino
+  - `authorino-role.yaml` - RBAC for AuthConfig management
+  - `authorino-rbac.yaml` - ClusterRole for TokenReview
+  - `authorino-services.yaml` - Services for gRPC, metrics, OIDC
+  - `authorino-tls-cert.yaml` - TLS certificate via service-ca
+  - `authorino-authconfig.yaml` - AuthConfig for OAuth2 TokenReview
 
 ## rh-identity Token Format
 
@@ -430,33 +438,35 @@ curl -v -H "Authorization: Bearer $TOKEN" \
 ## Notes
 
 - **insights-ros-ingress** still uses Keycloak JWT authentication (unchanged)
-- This implementation is OpenShift/Kubernetes-specific
-- **Authorino** must be installed before deploying ros-ocp-api with JWT auth enabled
-- Use `scripts/install-authorino.sh` to install Authorino Operator and instance
+- This implementation is OpenShift-specific
+- **Authorino is automatically deployed** by the Helm chart when JWT auth is enabled (OpenShift only)
+- No separate Authorino installation required - it's embedded in the Helm chart
 - Envoy communicates with Authorino over gRPC with mTLS
 - The `/status` health endpoint bypasses authentication for Kubernetes probes
 - AuthConfig CRD is automatically created by the Helm chart when JWT auth is enabled
 
 ## Installation Steps
 
-1. **Install Authorino** (one-time per cluster):
-   ```bash
-   cd scripts
-   ./install-authorino.sh
-   ```
-
-2. **Deploy ros-ocp chart** with JWT authentication enabled:
+1. **Deploy ros-ocp chart** with JWT authentication (automatically enabled on OpenShift):
    ```bash
    helm install ros-ocp ./ros-ocp -f openshift-values.yaml
    ```
 
-3. **Verify Authorino is running**:
+   This will automatically deploy:
+   - Authorino instance
+   - All required RBAC (ServiceAccount, Role, ClusterRole)
+   - TLS certificates via service-ca
+   - AuthConfig for OAuth2 TokenReview
+   - NetworkPolicy for secure communication
+
+2. **Verify Authorino is running**:
    ```bash
-   oc get pods -l app=authorino
-   oc get authconfig
+   oc get pods -n ros-ocp -l app.kubernetes.io/component=authorino
+   oc get authconfig -n ros-ocp
+   oc get secret -n ros-ocp | grep authorino-server-cert
    ```
 
-4. **Test authentication**:
+3. **Test authentication**:
    ```bash
    TOKEN=$(oc whoami -t)
    curl -H "Authorization: Bearer $TOKEN" https://<route>/api/ros/v1/status
