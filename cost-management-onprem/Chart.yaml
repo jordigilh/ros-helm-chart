@@ -1,16 +1,17 @@
 apiVersion: v2
-name: ros-ocp
-description: A Helm chart for ROS-OCP Backend services
+name: cost-management-onprem
+description: Cost Management On-Premise solution for Kubernetes/OpenShift
 type: application
-version: 0.1.9
+version: 0.2.0
 appVersion: "latest"
 
 keywords:
   - insights
-  - ros
-  - ocp
   - cost-management
-  - optimization
+  - resource-optimization
+  - ros
+  - openshift
+  - kubernetes
 
 maintainers:
   - name: Insights On-Premise Team
