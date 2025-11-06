@@ -1,7 +1,7 @@
 # DuckDB vs Trino: Confidence Assessment for Koku Migration
 
-**Date**: November 6, 2025  
-**Assessment Type**: Evidence-Based Validation  
+**Date**: November 6, 2025
+**Assessment Type**: Evidence-Based Validation
 **Methodology**: Source code analysis + documentation verification
 
 ---
@@ -117,11 +117,11 @@ DuckDB can replace Trino for Koku with high confidence, but with important cavea
 1. **SQL Migration Effort**: All 63 SQL files need syntax changes
    - Risk: 2-3 weeks migration effort
    - Mitigation: Clear patterns, scriptable changes
-   
+
 2. **Cross-Database Query Pattern**: Different from Trino
    - Risk: More complex than simple find/replace
    - Mitigation: Well-documented PostgreSQL extension
-   
+
 3. **Production Scale Testing**: Need to validate at scale
    - Risk: Unknown performance characteristics with Koku's data volumes
    - Mitigation: Gradual rollout, benchmarking
@@ -235,7 +235,7 @@ Before final decision, validate:
 
 ---
 
-**Assessment By**: AI Analysis  
-**Validated Against**: Koku source code (commit 50dfabd9) + DuckDB documentation (v1.4 stable)  
+**Assessment By**: AI Analysis
+**Validated Against**: Koku source code (commit 50dfabd9) + DuckDB documentation (v1.4 stable)
 **Review Status**: ✅ Evidence-based, Ready for stakeholder review
 
