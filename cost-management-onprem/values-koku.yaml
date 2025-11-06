@@ -640,6 +640,13 @@ trino:
         cpu: 250m
         memory: 512Mi
 
+    # Storage for warehouse directory (persistent across restarts)
+    storage:
+      size: 5Gi
+      accessModes:
+        - ReadWriteOnce
+      # storageClassName: ""  # Uses default storage class if not specified
+
     # Service configuration
     service:
       type: ClusterIP
