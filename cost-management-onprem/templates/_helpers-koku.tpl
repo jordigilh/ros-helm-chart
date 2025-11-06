@@ -472,9 +472,11 @@ Environment Variable Helpers
 Common environment variables for Koku API and Celery
 */}}
 {{- define "cost-mgmt.koku.commonEnv" -}}
-- name: DATABASE_HOST
+- name: DATABASE_SERVICE_NAME
+  value: "database"
+- name: DATABASE_SERVICE_HOST
   value: {{ include "cost-mgmt.koku.database.host" . | quote }}
-- name: DATABASE_PORT
+- name: DATABASE_SERVICE_PORT
   value: {{ include "cost-mgmt.koku.database.port" . | quote }}
 - name: DATABASE_NAME
   value: {{ include "cost-mgmt.koku.database.dbname" . | quote }}
