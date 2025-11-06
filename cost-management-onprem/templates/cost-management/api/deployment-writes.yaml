@@ -26,7 +26,7 @@ spec:
 
       containers:
       - name: koku-api
-        image: "{{ .Values.costManagement.api.image.repository }}:{{ .Values.costManagement.api.image.tag }}"
+        image: "{{ include "cost-mgmt.koku.image" . }}"
         imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
 
         command:
