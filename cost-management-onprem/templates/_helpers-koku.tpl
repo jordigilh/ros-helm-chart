@@ -521,12 +521,3 @@ Validate Celery Beat replicas (must be exactly 1)
 {{- end -}}
 {{- end -}}
 
-{{/*
-Validate Koku is enabled if Trino is enabled
-*/}}
-{{- define "cost-mgmt.trino.validateKokuEnabled" -}}
-{{- if and .Values.trino.enabled (not .Values.costManagement.enabled) -}}
-  {{- fail "Trino requires Koku to be enabled. Set costManagement.enabled to true" -}}
-{{- end -}}
-{{- end -}}
-

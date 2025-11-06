@@ -16,14 +16,10 @@
 # =============================================================================
 
 costManagement:
-  enabled: true
-  
   # ---------------------------------------------------------------------------
   # Koku API Configuration
   # ---------------------------------------------------------------------------
   api:
-    enabled: true
-    
     # Image configuration
     image:
       repository: quay.io/project-koku/koku
@@ -32,7 +28,6 @@ costManagement:
     
     # API Reads Deployment (read-only queries)
     reads:
-      enabled: true
       replicas: 2
       
       resources:
@@ -92,7 +87,6 @@ costManagement:
     
     # API Writes Deployment (write operations)
     writes:
-      enabled: true
       replicas: 1
       
       resources:
@@ -155,7 +149,6 @@ costManagement:
   celery:
     # Celery Beat Scheduler (must be exactly 1 replica)
     beat:
-      enabled: true
       replicas: 1  # MUST be exactly 1
       
       resources:
@@ -206,7 +199,6 @@ costManagement:
       
       # Essential Workers
       default:
-        enabled: true
         replicas: 1
         queue: default
         concurrency: 5
@@ -219,7 +211,6 @@ costManagement:
             memory: 400Mi
       
       priority:
-        enabled: true
         replicas: 1
         queue: priority
         concurrency: 5
@@ -232,7 +223,6 @@ costManagement:
             memory: 400Mi
       
       refresh:
-        enabled: true
         replicas: 1
         queue: refresh
         concurrency: 5
@@ -245,7 +235,6 @@ costManagement:
             memory: 400Mi
       
       summary:
-        enabled: true
         replicas: 1
         queue: summary
         concurrency: 5
@@ -258,7 +247,6 @@ costManagement:
             memory: 400Mi
       
       hcs:
-        enabled: true
         replicas: 1
         queue: hcs
         concurrency: 5
@@ -272,7 +260,6 @@ costManagement:
       
       # XL Workers (minimal for dev - same resources as essential)
       priorityXl:
-        enabled: true
         replicas: 1
         queue: priority,priority_xl
         concurrency: 5
@@ -285,7 +272,6 @@ costManagement:
             memory: 400Mi
       
       refreshXl:
-        enabled: true
         replicas: 1
         queue: refresh,refresh_xl
         concurrency: 5
@@ -298,7 +284,6 @@ costManagement:
             memory: 400Mi
       
       summaryXl:
-        enabled: true
         replicas: 1
         queue: summary,summary_xl
         concurrency: 5
@@ -312,7 +297,6 @@ costManagement:
       
       # Penalty Workers
       priorityPenalty:
-        enabled: true
         replicas: 1
         queue: priority,priority_penalty
         concurrency: 5
@@ -325,7 +309,6 @@ costManagement:
             memory: 400Mi
       
       refreshPenalty:
-        enabled: true
         replicas: 1
         queue: refresh,refresh_penalty
         concurrency: 5
@@ -338,7 +321,6 @@ costManagement:
             memory: 400Mi
       
       summaryPenalty:
-        enabled: true
         replicas: 1
         queue: summary,summary_penalty
         concurrency: 5
@@ -349,24 +331,11 @@ costManagement:
           limits:
             cpu: 200m
             memory: 400Mi
-      
-      # Disabled Workers (not deployed per ClowdApp)
-      subsExtraction:
-        enabled: false
-        replicas: 0
-        queue: subs_extraction
-      
-      subsTransmission:
-        enabled: false
-        replicas: 0
-        queue: subs_transmission
   
   # ---------------------------------------------------------------------------
   # Database Configuration
   # ---------------------------------------------------------------------------
   database:
-    enabled: true
-    
     # Database connection settings
     host: ""  # Auto-resolved by helper: cost-mgmt.database.host
     port: 5432
@@ -523,14 +492,12 @@ costManagement:
 # =============================================================================
 
 trino:
-  enabled: true
   profile: minimal  # minimal, dev, or production
   
   # ---------------------------------------------------------------------------
   # Trino Coordinator
   # ---------------------------------------------------------------------------
   coordinator:
-    enabled: true
     replicas: 1
     
     # Image configuration
@@ -598,7 +565,6 @@ trino:
       catalogs:
         # Hive catalog for Parquet files in MinIO
         hive:
-          enabled: true
           connector: hive-hadoop2
           metastoreUri: ""  # Auto-resolved: thrift://hive-metastore:9083
           s3:
@@ -609,7 +575,6 @@ trino:
         
         # PostgreSQL catalog for Koku database
         postgresql:
-          enabled: true
           connector: postgresql
           connectionUrl: ""  # Auto-resolved: jdbc:postgresql://koku-db:5432/koku
           user: ""  # Auto-resolved from Koku DB
@@ -619,7 +584,6 @@ trino:
   # Trino Workers
   # ---------------------------------------------------------------------------
   worker:
-    enabled: true
     replicas: 1  # Minimal: 1 worker for dev
     
     # Image configuration
@@ -657,7 +621,6 @@ trino:
   # Hive Metastore
   # ---------------------------------------------------------------------------
   metastore:
-    enabled: true
     replicas: 1
     
     # Image configuration
@@ -684,8 +647,6 @@ trino:
     
     # Database configuration
     database:
-      enabled: true
-      
       # Database connection
       host: ""  # Auto-resolved: hive-metastore-db
       port: 5432
