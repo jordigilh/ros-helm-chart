@@ -556,7 +556,7 @@ trino:
     config:
       jvm:
         maxHeapSize: "1G"
-        gcMethod: "UseG1GC"
+        gcMethod: "G1GC"  # Template already has -XX:+Use prefix
 
       # Coordinator configuration
       coordinator: true
@@ -614,7 +614,7 @@ trino:
     config:
       jvm:
         maxHeapSize: "1G"
-        gcMethod: "UseG1GC"
+        gcMethod: "G1GC"  # Template already has -XX:+Use prefix
 
       # Worker configuration
       coordinator: false
