@@ -1,6 +1,6 @@
 # Cost Management Deployment Status
-**Date**: November 6, 2025  
-**Cluster**: stress.parodos.dev  
+**Date**: November 6, 2025
+**Cluster**: stress.parodos.dev
 **Namespace**: cost-mgmt
 
 ---
@@ -195,6 +195,6 @@ To achieve full deployment:
 
 ---
 
-**Status**: 🟡 **Deployment In Progress - Infrastructure Images Blocked**  
+**Status**: 🟡 **Deployment In Progress - Infrastructure Images Blocked**
 **Next Action**: Choose infrastructure image strategy (pull secrets vs. Red Hat images)
 
