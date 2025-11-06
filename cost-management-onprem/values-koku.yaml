@@ -1,0 +1,825 @@
+# values-koku.yaml
+# Koku Cost Management Configuration for cost-management-onprem Chart
+# 
+# This file extends the base values.yaml (from PR #27) with Koku-specific configuration
+#
+# Usage:
+#   helm install cost-mgmt ./cost-management-onprem \
+#     -f cost-management-onprem/values.yaml \
+#     -f cost-management-onprem/values-koku.yaml
+#
+# Platform: OpenShift 4.10+ ONLY
+# Profile: Minimal (for development and integration testing)
+
+# =============================================================================
+# Koku Cost Management Configuration
+# =============================================================================
+
+costManagement:
+  enabled: true
+  
+  # ---------------------------------------------------------------------------
+  # Koku API Configuration
+  # ---------------------------------------------------------------------------
+  api:
+    enabled: true
+    
+    # Image configuration
+    image:
+      repository: quay.io/project-koku/koku
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    
+    # API Reads Deployment (read-only queries)
+    reads:
+      enabled: true
+      replicas: 2
+      
+      resources:
+        requests:
+          cpu: 300m
+          memory: 500Mi
+        limits:
+          cpu: 600m
+          memory: 1Gi
+      
+      # Health checks
+      livenessProbe:
+        httpGet:
+          path: /api/cost-management/v1/status/
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 30
+        periodSeconds: 20
+        timeoutSeconds: 10
+        failureThreshold: 5
+        successThreshold: 1
+      
+      readinessProbe:
+        httpGet:
+          path: /api/cost-management/v1/status/
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 30
+        periodSeconds: 20
+        timeoutSeconds: 10
+        failureThreshold: 5
+        successThreshold: 1
+      
+      # Environment variables
+      env:
+        API_PATH_PREFIX: /api/cost-management
+        DEVELOPMENT: "False"
+        GUNICORN_LOG_LEVEL: INFO
+        KOKU_LOG_LEVEL: INFO
+        DJANGO_LOG_LEVEL: INFO
+        DJANGO_LOG_FORMATTER: simple
+        DJANGO_LOG_HANDLERS: console
+        PROMETHEUS_MULTIPROC_DIR: /tmp
+        REQUESTED_BUCKET: koku-report
+        REQUESTED_ROS_BUCKET: ros-report
+        KOKU_ENABLE_SENTRY: "False"
+        CACHED_VIEWS_DISABLED: "False"
+        RETAIN_NUM_MONTHS: "3"
+        NOTIFICATION_CHECK_TIME: "08:00"
+        ENHANCED_ORG_ADMIN: "False"
+        RBAC_CACHE_TIMEOUT: "300"
+        CACHE_TIMEOUT: "3600"
+        TAG_ENABLED_LIMIT: "200"
+        USE_READREPLICA: "False"
+        GUNICORN_WORKERS: "2"
+        GUNICORN_THREADS: "4"
+    
+    # API Writes Deployment (write operations)
+    writes:
+      enabled: true
+      replicas: 1
+      
+      resources:
+        requests:
+          cpu: 300m
+          memory: 500Mi
+        limits:
+          cpu: 600m
+          memory: 1Gi
+      
+      # Health checks (same as reads)
+      livenessProbe:
+        httpGet:
+          path: /api/cost-management/v1/status/
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 30
+        periodSeconds: 20
+        timeoutSeconds: 10
+        failureThreshold: 5
+        successThreshold: 1
+      
+      readinessProbe:
+        httpGet:
+          path: /api/cost-management/v1/status/
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 30
+        periodSeconds: 20
+        timeoutSeconds: 10
+        failureThreshold: 5
+        successThreshold: 1
+      
+      # Environment variables (same as reads)
+      env:
+        API_PATH_PREFIX: /api/cost-management
+        DEVELOPMENT: "False"
+        GUNICORN_LOG_LEVEL: INFO
+        KOKU_LOG_LEVEL: INFO
+        DJANGO_LOG_LEVEL: INFO
+        DJANGO_LOG_FORMATTER: simple
+        DJANGO_LOG_HANDLERS: console
+        PROMETHEUS_MULTIPROC_DIR: /tmp
+        REQUESTED_BUCKET: koku-report
+        REQUESTED_ROS_BUCKET: ros-report
+        KOKU_ENABLE_SENTRY: "False"
+        GUNICORN_WORKERS: "1"
+        GUNICORN_THREADS: "4"
+    
+    # Service configuration
+    service:
+      type: ClusterIP
+      port: 8000
+      targetPort: 8000
+      name: koku-api
+  
+  # ---------------------------------------------------------------------------
+  # Celery Configuration
+  # ---------------------------------------------------------------------------
+  celery:
+    # Celery Beat Scheduler (must be exactly 1 replica)
+    beat:
+      enabled: true
+      replicas: 1  # MUST be exactly 1
+      
+      resources:
+        requests:
+          cpu: 100m
+          memory: 200Mi
+        limits:
+          cpu: 200m
+          memory: 400Mi
+      
+      # Health check (probe Redis connection)
+      livenessProbe:
+        exec:
+          command:
+            - /bin/sh
+            - -c
+            - celery -A koku inspect ping -d celery@$HOSTNAME
+        initialDelaySeconds: 30
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 3
+      
+      readinessProbe:
+        exec:
+          command:
+            - /bin/sh
+            - -c
+            - celery -A koku inspect ping -d celery@$HOSTNAME
+        initialDelaySeconds: 30
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 3
+      
+      env:
+        KOKU_LOG_LEVEL: INFO
+        DJANGO_LOG_LEVEL: INFO
+        PROMETHEUS_MULTIPROC_DIR: /tmp
+    
+    # Celery Workers
+    workers:
+      # Common environment variables for all workers
+      commonEnv:
+        KOKU_LOG_LEVEL: INFO
+        DJANGO_LOG_LEVEL: INFO
+        PROMETHEUS_MULTIPROC_DIR: /tmp
+        REQUESTED_BUCKET: koku-report
+        REQUESTED_ROS_BUCKET: ros-report
+      
+      # Essential Workers
+      default:
+        enabled: true
+        replicas: 1
+        queue: default
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+      
+      priority:
+        enabled: true
+        replicas: 1
+        queue: priority
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+      
+      refresh:
+        enabled: true
+        replicas: 1
+        queue: refresh
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+      
+      summary:
+        enabled: true
+        replicas: 1
+        queue: summary
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+      
+      hcs:
+        enabled: true
+        replicas: 1
+        queue: hcs
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+      
+      # XL Workers (minimal for dev - same resources as essential)
+      priorityXl:
+        enabled: true
+        replicas: 1
+        queue: priority,priority_xl
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+      
+      refreshXl:
+        enabled: true
+        replicas: 1
+        queue: refresh,refresh_xl
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+      
+      summaryXl:
+        enabled: true
+        replicas: 1
+        queue: summary,summary_xl
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+      
+      # Penalty Workers
+      priorityPenalty:
+        enabled: true
+        replicas: 1
+        queue: priority,priority_penalty
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+      
+      refreshPenalty:
+        enabled: true
+        replicas: 1
+        queue: refresh,refresh_penalty
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+      
+      summaryPenalty:
+        enabled: true
+        replicas: 1
+        queue: summary,summary_penalty
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+      
+      # Disabled Workers (not deployed per ClowdApp)
+      subsExtraction:
+        enabled: false
+        replicas: 0
+        queue: subs_extraction
+      
+      subsTransmission:
+        enabled: false
+        replicas: 0
+        queue: subs_transmission
+  
+  # ---------------------------------------------------------------------------
+  # Database Configuration
+  # ---------------------------------------------------------------------------
+  database:
+    enabled: true
+    
+    # Database connection settings
+    host: ""  # Auto-resolved by helper: cost-mgmt.database.host
+    port: 5432
+    name: koku
+    user: koku
+    sslMode: disable
+    
+    # PostgreSQL image
+    image:
+      repository: postgres
+      tag: "15-alpine"
+      pullPolicy: IfNotPresent
+    
+    # Resources for Koku database
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    
+    # Storage configuration
+    storage:
+      size: 20Gi
+      storageClassName: ""  # Use default storage class in cluster
+      accessModes:
+        - ReadWriteOnce
+    
+    # Environment variables for PostgreSQL
+    env:
+      POSTGRES_DB: koku
+      POSTGRES_USER: koku
+      # POSTGRES_PASSWORD: Auto-generated in secret
+      PGDATA: /var/lib/postgresql/data/pgdata
+  
+  # ---------------------------------------------------------------------------
+  # Django Configuration
+  # ---------------------------------------------------------------------------
+  django:
+    # Secret key auto-generated (50 alphanumeric characters)
+    secretKeyLength: 50
+  
+  # ---------------------------------------------------------------------------
+  # Service Account Configuration
+  # ---------------------------------------------------------------------------
+  serviceAccount:
+    create: true
+    name: koku
+    annotations: {}
+  
+  # ---------------------------------------------------------------------------
+  # NetworkPolicy Configuration (always enabled for OpenShift)
+  # ---------------------------------------------------------------------------
+  networkPolicies:
+    # Ingress rules for Koku API
+    api:
+      ingress:
+        - from:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: ingress
+          ports:
+            - protocol: TCP
+              port: 8000
+      egress:
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: postgresql
+          ports:
+            - protocol: TCP
+              port: 5432
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: redis
+          ports:
+            - protocol: TCP
+              port: 6379
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: kafka
+          ports:
+            - protocol: TCP
+              port: 29092
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: minio
+          ports:
+            - protocol: TCP
+              port: 9000
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: trino-coordinator
+          ports:
+            - protocol: TCP
+              port: 8080
+    
+    # Celery workers and beat
+    celery:
+      egress:
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: postgresql
+          ports:
+            - protocol: TCP
+              port: 5432
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: redis
+          ports:
+            - protocol: TCP
+              port: 6379
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: kafka
+          ports:
+            - protocol: TCP
+              port: 29092
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: minio
+          ports:
+            - protocol: TCP
+              port: 9000
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: trino-coordinator
+          ports:
+            - protocol: TCP
+              port: 8080
+    
+    # DNS egress for all pods
+    dnsEgress:
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                name: openshift-dns
+        ports:
+          - protocol: UDP
+            port: 53
+
+# =============================================================================
+# Trino Analytics Engine Configuration (Minimal Profile)
+# =============================================================================
+
+trino:
+  enabled: true
+  profile: minimal  # minimal, dev, or production
+  
+  # ---------------------------------------------------------------------------
+  # Trino Coordinator
+  # ---------------------------------------------------------------------------
+  coordinator:
+    enabled: true
+    replicas: 1
+    
+    # Image configuration
+    image:
+      repository: trinodb/trino
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    
+    # Resources (minimal profile)
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: 500m
+        memory: 2Gi
+    
+    # Storage for query spill
+    storage:
+      size: 5Gi
+      storageClassName: ""  # Use default storage class in cluster
+      accessModes:
+        - ReadWriteOnce
+    
+    # Service configuration
+    service:
+      type: ClusterIP
+      port: 8080
+      targetPort: 8080
+      name: trino-coordinator
+    
+    # Health checks
+    livenessProbe:
+      httpGet:
+        path: /v1/info
+        port: 8080
+        scheme: HTTP
+      initialDelaySeconds: 60
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 3
+    
+    readinessProbe:
+      httpGet:
+        path: /v1/info/state
+        port: 8080
+        scheme: HTTP
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    
+    # JVM configuration (minimal)
+    config:
+      jvm:
+        maxHeapSize: "1G"
+        gcMethod: "UseG1GC"
+      
+      # Coordinator configuration
+      coordinator: true
+      nodeScheduler:
+        includeCoordinator: false
+      
+      # Catalogs
+      catalogs:
+        # Hive catalog for Parquet files in MinIO
+        hive:
+          enabled: true
+          connector: hive-hadoop2
+          metastoreUri: ""  # Auto-resolved: thrift://hive-metastore:9083
+          s3:
+            endpoint: ""  # Auto-resolved from MinIO
+            accessKey: ""  # Auto-resolved from MinIO
+            secretKey: ""  # Auto-resolved from MinIO
+            pathStyleAccess: true
+        
+        # PostgreSQL catalog for Koku database
+        postgresql:
+          enabled: true
+          connector: postgresql
+          connectionUrl: ""  # Auto-resolved: jdbc:postgresql://koku-db:5432/koku
+          user: ""  # Auto-resolved from Koku DB
+          password: ""  # Auto-resolved from Koku DB
+  
+  # ---------------------------------------------------------------------------
+  # Trino Workers
+  # ---------------------------------------------------------------------------
+  worker:
+    enabled: true
+    replicas: 1  # Minimal: 1 worker for dev
+    
+    # Image configuration
+    image:
+      repository: trinodb/trino
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    
+    # Resources (minimal profile)
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: 500m
+        memory: 2Gi
+    
+    # Storage for query spill
+    storage:
+      size: 5Gi
+      storageClassName: ""  # Use default storage class in cluster
+      accessModes:
+        - ReadWriteOnce
+    
+    # JVM configuration (minimal)
+    config:
+      jvm:
+        maxHeapSize: "1G"
+        gcMethod: "UseG1GC"
+      
+      # Worker configuration
+      coordinator: false
+  
+  # ---------------------------------------------------------------------------
+  # Hive Metastore
+  # ---------------------------------------------------------------------------
+  metastore:
+    enabled: true
+    replicas: 1
+    
+    # Image configuration
+    image:
+      repository: apache/hive
+      tag: "3.1.3"
+      pullPolicy: IfNotPresent
+    
+    # Resources
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 250m
+        memory: 512Mi
+    
+    # Service configuration
+    service:
+      type: ClusterIP
+      port: 9083
+      targetPort: 9083
+      name: hive-metastore
+    
+    # Database configuration
+    database:
+      enabled: true
+      
+      # Database connection
+      host: ""  # Auto-resolved: hive-metastore-db
+      port: 5432
+      name: metastore
+      user: metastore
+      
+      # PostgreSQL image
+      image:
+        repository: postgres
+        tag: "15-alpine"
+        pullPolicy: IfNotPresent
+      
+      # Resources
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 100m
+          memory: 256Mi
+      
+      # Storage
+      storage:
+        size: 2Gi
+        storageClassName: ""  # Use default storage class in cluster
+        accessModes:
+          - ReadWriteOnce
+      
+      # Environment variables
+      env:
+        POSTGRES_DB: metastore
+        POSTGRES_USER: metastore
+        # POSTGRES_PASSWORD: Auto-generated in secret
+  
+  # ---------------------------------------------------------------------------
+  # Service Account Configuration
+  # ---------------------------------------------------------------------------
+  serviceAccount:
+    create: true
+    name: trino
+    annotations: {}
+  
+  # ---------------------------------------------------------------------------
+  # NetworkPolicy Configuration (always enabled for OpenShift)
+  # ---------------------------------------------------------------------------
+  networkPolicies:
+    # Trino Coordinator
+    coordinator:
+      ingress:
+        - from:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: cost-management-api
+          ports:
+            - protocol: TCP
+              port: 8080
+        - from:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: cost-management-celery
+          ports:
+            - protocol: TCP
+              port: 8080
+        - from:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: trino-worker
+          ports:
+            - protocol: TCP
+              port: 8080
+      egress:
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: hive-metastore
+          ports:
+            - protocol: TCP
+              port: 9083
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: minio
+          ports:
+            - protocol: TCP
+              port: 9000
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: postgresql
+          ports:
+            - protocol: TCP
+              port: 5432
+    
+    # Trino Workers
+    worker:
+      egress:
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: trino-coordinator
+          ports:
+            - protocol: TCP
+              port: 8080
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: minio
+          ports:
+            - protocol: TCP
+              port: 9000
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: postgresql
+          ports:
+            - protocol: TCP
+              port: 5432
+    
+    # Hive Metastore
+    metastore:
+      ingress:
+        - from:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: trino-coordinator
+          ports:
+            - protocol: TCP
+              port: 9083
+      egress:
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: hive-metastore-db
+          ports:
+            - protocol: TCP
+              port: 5432
+
