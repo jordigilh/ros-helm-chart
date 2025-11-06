@@ -34,10 +34,13 @@ spec:
           - /bin/sh
           - -c
           - |
-            # Start Celery Beat scheduler
-            celery -A koku beat --loglevel=INFO
+            # Start Celery Beat scheduler (Koku format)
+            cd $APP_HOME
+            PYTHONPATH=$APP_HOME celery -A koku beat -l ${CELERY_LOG_LEVEL:-info}
 
         env:
+        - name: CELERY_LOG_LEVEL
+          value: "info"
         {{- include "cost-mgmt.koku.commonEnv" . | nindent 8 }}
         {{- range $key, $value := .Values.costManagement.celery.beat.env }}
         - name: {{ $key }}
