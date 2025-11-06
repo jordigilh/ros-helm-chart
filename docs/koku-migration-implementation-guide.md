@@ -1,6 +1,6 @@
 # Koku Migration to Helm Chart - Implementation Guide
 
-**Date**: November 6, 2025  
+**Date**: November 6, 2025
 **Purpose**: Practical guide to add Koku API and Trino components to the existing ROS Helm chart
 
 ## Current State
@@ -35,20 +35,20 @@ koku:
     repository: quay.io/cloudservices/koku  # Same as ClowdApp IMAGE parameter
     tag: "latest"  # Use IMAGE_TAG from ClowdApp
     pullPolicy: Always
-  
+
   # API Reads deployment (read-only queries)
   apiReads:
     enabled: true
     replicas: 3
     port: 8000
     pathPrefix: "/api/cost-management"
-    
+
     # Gunicorn configuration
     gunicorn:
       workers: 4  # Auto-calculated based on CPU if not set
       threads: 4
       logLevel: "info"
-    
+
     # Resource configuration
     resources:
       requests:
@@ -57,26 +57,26 @@ koku:
       limits:
         cpu: 1000m
         memory: 3Gi
-    
+
     # Database connection (read replica)
     database:
       useReadReplica: true  # Route to read replica
       poolSize: 10
       maxOverflow: 20
-  
+
   # API Writes deployment (mutations and updates)
   apiWrites:
     enabled: true
     replicas: 2
     port: 8000
     pathPrefix: "/api/cost-management"
-    
+
     # Gunicorn configuration
     gunicorn:
       workers: 4
       threads: 4
       logLevel: "info"
-    
+
     # Resource configuration
     resources:
       requests:
@@ -85,13 +85,13 @@ koku:
       limits:
         cpu: 1000m
         memory: 2Gi
-    
+
     # Database connection (primary)
     database:
       useReadReplica: false  # Route to primary
       poolSize: 10
       maxOverflow: 20
-  
+
   # Common Koku environment configuration
   env:
     clowderEnabled: false
@@ -117,7 +117,7 @@ koku:
     qeSchema: ""
     enhancedOrgAdmin: "False"
     tagEnabledLimit: "200"
-  
+
   # Django secret key (generate with: python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())')
   djangoSecretKey: ""  # Override in deployment
 ```
@@ -156,7 +156,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      
+
       initContainers:
         # Wait for database
         - name: wait-for-db
@@ -175,26 +175,26 @@ spec:
                 sleep 5
               done
               echo "Database ready"
-      
+
       containers:
         - name: koku-api-reads
           image: "{{ .Values.koku.image.repository }}:{{ .Values.koku.image.tag }}"
           imagePullPolicy: {{ .Values.koku.image.pullPolicy }}
-          
+
           command: ["/bin/bash"]
           args:
             - -c
             - |
               # Run migrations (read-only, safe to run multiple times)
               python manage.py migrate --noinput || echo "Migrations already applied"
-              
+
               # Start Gunicorn with auto-calculated workers if not specified
               if [ -z "$GUNICORN_WORKERS" ]; then
                 WORKERS=$((2 * $(nproc) + 1))
               else
                 WORKERS=$GUNICORN_WORKERS
               fi
-              
+
               exec gunicorn \
                 --bind=0.0.0.0:{{ .Values.koku.apiReads.port }} \
                 --workers=$WORKERS \
@@ -204,17 +204,17 @@ spec:
                 --access-logfile=- \
                 --error-logfile=- \
                 koku.wsgi:application
-          
+
           ports:
             - name: http
               containerPort: {{ .Values.koku.apiReads.port }}
               protocol: TCP
-          
+
           env:
             # Clowder
             - name: CLOWDER_ENABLED
               value: {{ .Values.koku.env.clowderEnabled | quote }}
-            
+
             # Database configuration (read replica)
             - name: DATABASE_ENGINE
               value: "postgresql"
@@ -238,7 +238,7 @@ spec:
               value: {{ .Values.database.koku.port | quote }}
             - name: DATABASE_SSLMODE
               value: {{ .Values.database.koku.sslMode | quote }}
-            
+
             # Django configuration
             - name: DJANGO_SECRET_KEY
               valueFrom:
@@ -253,7 +253,7 @@ spec:
               value: {{ .Values.koku.env.djangoLogFormatter | quote }}
             - name: DJANGO_LOG_HANDLERS
               value: {{ .Values.koku.env.djangoLogHandlers | quote }}
-            
+
             # Koku configuration
             - name: KOKU_LOG_LEVEL
               value: {{ .Values.koku.env.kokuLogLevel | quote }}
@@ -263,7 +263,7 @@ spec:
               value: {{ .Values.koku.env.appDomain | quote }}
             - name: DEVELOPMENT
               value: {{ .Values.koku.env.development | quote }}
-            
+
             # Gunicorn
             - name: GUNICORN_WORKERS
               value: {{ .Values.koku.apiReads.gunicorn.workers | quote }}
@@ -271,32 +271,32 @@ spec:
               value: {{ .Values.koku.apiReads.gunicorn.threads | quote }}
             - name: GUNICORN_LOG_LEVEL
               value: {{ .Values.koku.apiReads.gunicorn.logLevel | quote }}
-            
+
             # CPU limits (for auto-calculating workers)
             - name: POD_CPU_LIMIT
               valueFrom:
                 resourceFieldRef:
                   containerName: koku-api-reads
                   resource: limits.cpu
-            
+
             # Database pool configuration
             - name: DB_POOL_SIZE
               value: {{ .Values.koku.apiReads.database.poolSize | quote }}
             - name: DB_MAX_OVERFLOW
               value: {{ .Values.koku.apiReads.database.maxOverflow | quote }}
-            
+
             # RBAC
             - name: RBAC_SERVICE_PATH
               value: {{ .Values.koku.env.rbacServicePath | quote }}
             - name: RBAC_CACHE_TTL
               value: {{ .Values.koku.env.rbacCacheTtl | quote }}
-            
+
             # Kafka configuration
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: {{ include "ros-ocp.kafkaBootstrapServers" . | quote }}
             - name: KAFKA_SECURITY_PROTOCOL
               value: {{ include "ros-ocp.kafkaSecurityProtocol" . | quote }}
-            
+
             # Object storage (MinIO/ODF)
             - name: S3_BUCKET_NAME
               value: "koku-bucket"
@@ -316,7 +316,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "ros-ocp.fullname" . }}-storage-credentials
                   key: secret-key
-            
+
             # Redis/Celery
             - name: REDIS_HOST
               {{- if eq (include "ros-ocp.isOpenShift" .) "true" }}
@@ -326,11 +326,11 @@ spec:
               {{- end }}
             - name: REDIS_PORT
               value: "6379"
-            
+
             # Prometheus
             - name: PROMETHEUS_MULTIPROC_DIR
               value: {{ .Values.koku.env.prometheusMultiprocDir | quote }}
-            
+
             # Sentry (optional)
             {{- if .Values.koku.env.enableSentry }}
             - name: KOKU_ENABLE_SENTRY
@@ -344,7 +344,7 @@ spec:
                   key: dsn
                   optional: true
             {{- end }}
-            
+
             # Other Koku settings
             - name: RETAIN_NUM_MONTHS
               value: {{ .Values.koku.env.retainNumMonths | quote }}
@@ -354,7 +354,7 @@ spec:
               value: {{ .Values.koku.env.cachedViewsDisabled | quote }}
             - name: TAG_ENABLED_LIMIT
               value: {{ .Values.koku.env.tagEnabledLimit | quote }}
-          
+
           volumeMounts:
             # Temporary directory for Prometheus multiproc
             - name: tmp-prometheus
@@ -371,7 +371,7 @@ spec:
               mountPath: /etc/gcp
               readOnly: true
             {{- end }}
-          
+
           livenessProbe:
             httpGet:
               path: {{ .Values.koku.env.apiPathPrefix }}/status/
@@ -381,7 +381,7 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 10
             failureThreshold: 5
-          
+
           readinessProbe:
             httpGet:
               path: {{ .Values.koku.env.apiPathPrefix }}/status/
@@ -391,15 +391,15 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 10
             failureThreshold: 5
-          
+
           resources:
             {{- toYaml .Values.koku.apiReads.resources | nindent 12 }}
-      
+
       volumes:
         # Temporary directories
         - name: tmp-prometheus
           emptyDir: {}
-        
+
         # Cloud provider credentials
         {{- if .Values.koku.cloudProviders.aws.enabled }}
         - name: aws-credentials
@@ -409,7 +409,7 @@ spec:
               - key: aws-credentials
                 path: aws-credentials
         {{- end }}
-        
+
         {{- if .Values.koku.cloudProviders.gcp.enabled }}
         - name: gcp-credentials
           secret:
@@ -484,20 +484,20 @@ stringData:
 # Trino (query engine for cost data)
 trino:
   enabled: true
-  
+
   image:
     repository: trinodb/trino
     tag: "435"  # Match version from ClowdApp if specified
     pullPolicy: IfNotPresent
-  
+
   coordinator:
     replicas: 1
     port: 8080
-    
+
     jvm:
       maxHeapSize: "4G"
       heapHeadroom: "1G"
-    
+
     resources:
       requests:
         cpu: 1000m
@@ -505,15 +505,15 @@ trino:
       limits:
         cpu: 2000m
         memory: 8Gi
-  
+
   worker:
     replicas: 2
     port: 8080
-    
+
     jvm:
       maxHeapSize: "4G"
       heapHeadroom: "1G"
-    
+
     resources:
       requests:
         cpu: 1000m
@@ -521,7 +521,7 @@ trino:
       limits:
         cpu: 2000m
         memory: 8Gi
-  
+
   # Trino catalog configuration
   catalogs:
     hive:
@@ -564,16 +564,16 @@ spec:
         - name: trino-coordinator
           image: "{{ .Values.trino.image.repository }}:{{ .Values.trino.image.tag }}"
           imagePullPolicy: {{ .Values.trino.image.pullPolicy }}
-          
+
           ports:
             - name: http
               containerPort: {{ .Values.trino.coordinator.port }}
               protocol: TCP
-          
+
           env:
             - name: TRINO_ENVIRONMENT
               value: "production"
-          
+
           volumeMounts:
             - name: config
               mountPath: /etc/trino
@@ -581,10 +581,10 @@ spec:
               mountPath: /etc/trino/catalog
             - name: data
               mountPath: /data/trino
-          
+
           resources:
             {{- toYaml .Values.trino.coordinator.resources | nindent 12 }}
-          
+
           livenessProbe:
             httpGet:
               path: /v1/info
@@ -593,7 +593,7 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 5
-          
+
           readinessProbe:
             httpGet:
               path: /v1/info
@@ -602,7 +602,7 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
-      
+
       volumes:
         - name: config
           configMap:
@@ -610,7 +610,7 @@ spec:
         - name: catalog
           configMap:
             name: {{ include "ros-ocp.fullname" . }}-trino-catalog-config
-  
+
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -647,7 +647,7 @@ data:
     node.environment=production
     node.id={{ include "ros-ocp.fullname" . }}-coordinator
     node.data-dir=/data/trino
-  
+
   jvm.config: |
     -server
     -Xmx{{ .Values.trino.coordinator.jvm.maxHeapSize }}
@@ -657,7 +657,7 @@ data:
     -XX:+HeapDumpOnOutOfMemoryError
     -XX:+ExitOnOutOfMemoryError
     -Djdk.attach.allowAttachSelf=true
-  
+
   config.properties: |
     coordinator=true
     node-scheduler.include-coordinator=false
@@ -694,11 +694,11 @@ celery:
   # Celery broker (Redis)
   broker:
     url: ""  # Auto-generated from Redis service
-  
+
   # Result backend
   resultBackend:
     url: ""  # Auto-generated from PostgreSQL
-  
+
   # Worker pools
   workers:
     # Default/Download worker
@@ -714,7 +714,7 @@ celery:
         limits:
           cpu: 200m
           memory: 500Mi
-    
+
     # Priority worker
     priority:
       enabled: true
@@ -728,7 +728,7 @@ celery:
         limits:
           cpu: 300m
           memory: 750Mi
-    
+
     # Priority XL worker (large tasks)
     priorityXl:
       enabled: true
@@ -742,7 +742,7 @@ celery:
         limits:
           cpu: 400m
           memory: 1Gi
-    
+
     # Refresh worker
     refresh:
       enabled: true
@@ -756,7 +756,7 @@ celery:
         limits:
           cpu: 200m
           memory: 512Mi
-    
+
     # Summary worker (report generation)
     summary:
       enabled: true
@@ -770,9 +770,9 @@ celery:
         limits:
           cpu: 200m
           memory: 750Mi
-    
+
     # Add other worker types as needed...
-  
+
   # Celery Beat (scheduler)
   beat:
     enabled: true
@@ -818,7 +818,7 @@ spec:
         - name: celery-worker
           image: "{{ $.Values.koku.image.repository }}:{{ $.Values.koku.image.tag }}"
           imagePullPolicy: {{ $.Values.koku.image.pullPolicy }}
-          
+
           command: ["/bin/bash"]
           args:
             - -c
@@ -830,7 +830,7 @@ spec:
                 --queues={{ $workerConfig.queue }} \
                 --concurrency={{ $workerConfig.concurrency }} \
                 --hostname={{ $workerName }}@%h
-          
+
           env:
             # Same environment variables as Koku API
             - name: CELERY_BROKER_URL
@@ -838,7 +838,7 @@ spec:
             - name: CELERY_RESULT_BACKEND
               value: "db+postgresql://{{ $.Values.database.koku.user }}:{{ $.Values.database.koku.password }}@{{ include \"ros-ocp.fullname\" $ }}-db-koku:5432/{{ $.Values.database.koku.name }}"
             # ... (include all Koku env vars)
-          
+
           resources:
             {{- toYaml $workerConfig.resources | nindent 12 }}
 {{- end }}
@@ -877,7 +877,7 @@ spec:
         - name: celery-beat
           image: "{{ .Values.koku.image.repository }}:{{ .Values.koku.image.tag }}"
           imagePullPolicy: {{ .Values.koku.image.pullPolicy }}
-          
+
           command: ["/bin/bash"]
           args:
             - -c
@@ -887,13 +887,13 @@ spec:
                 beat \
                 --loglevel=INFO \
                 --scheduler django_celery_beat.schedulers:DatabaseScheduler
-          
+
           env:
             # Same as workers
             - name: CELERY_BROKER_URL
               value: "redis://{{ include \"ros-ocp.fullname\" . }}-redis:6379/0"
             # ... (include all Koku env vars)
-          
+
           resources:
             {{- toYaml .Values.celery.beat.resources | nindent 12 }}
 {{- end }}
@@ -910,7 +910,7 @@ Update `values.yaml`:
 ```yaml
 database:
   # ... existing ros, kruize, sources ...
-  
+
   # Koku database (cost management)
   koku:
     image:
@@ -924,7 +924,7 @@ database:
     user: koku
     password: koku_password
     sslMode: disable
-    
+
     # Read replica support
     readReplica:
       enabled: false  # Enable when ready

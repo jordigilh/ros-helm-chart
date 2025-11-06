@@ -6,13 +6,13 @@ Helm chart for deploying Trino distributed SQL query engine for Koku cost manage
 
 This chart deploys a minimal Trino cluster consisting of:
 - **Trino Coordinator** (1 pod) - Query planning and orchestration
-- **Trino Workers** (2+ pods) - Query execution 
+- **Trino Workers** (2+ pods) - Query execution
 - **Hive Metastore** (1 pod) - Metadata storage for Trino catalogs
 - **PostgreSQL** (1 pod) - Database for Hive Metastore
 
 ## Why Trino?
 
-Trino is **required** by Koku for querying cost data stored in Parquet format on S3/MinIO. 
+Trino is **required** by Koku for querying cost data stored in Parquet format on S3/MinIO.
 Koku's Celery workers use Trino to:
 - Read raw cost data from object storage
 - Process and transform data
