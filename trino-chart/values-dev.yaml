@@ -8,12 +8,12 @@
 # Trino Coordinator - Development configuration
 coordinator:
   enabled: true
-  
+
   # JVM configuration - Minimal heap for development
   jvm:
     maxHeapSize: "2G"      # Reduced from 6G
     initialHeapSize: "2G"  # Reduced from 6G
-  
+
   # Resource limits - Minimal for development
   resources:
     requests:
@@ -22,7 +22,7 @@ coordinator:
     limits:
       cpu: 1000m         # Reduced from 2000m
       memory: 3Gi        # Reduced from 8Gi
-  
+
   # Storage - Smaller size
   storage:
     size: 10Gi           # Reduced from 50Gi
@@ -31,12 +31,12 @@ coordinator:
 worker:
   enabled: true
   replicas: 1            # Reduced from 2 - Single worker for dev
-  
+
   # JVM configuration - Minimal heap for development
   jvm:
     maxHeapSize: "2G"    # Reduced from 6G
     initialHeapSize: "2G" # Reduced from 6G
-  
+
   # Resource limits - Minimal for development
   resources:
     requests:
@@ -45,11 +45,11 @@ worker:
     limits:
       cpu: 1000m         # Reduced from 2000m
       memory: 3Gi        # Reduced from 8Gi
-  
+
   # Storage - Smaller size
   storage:
     size: 10Gi           # Reduced from 50Gi
-  
+
   # Disable autoscaling for dev
   autoscaling:
     enabled: false
@@ -57,7 +57,7 @@ worker:
 # Hive Metastore - Development configuration
 metastore:
   enabled: true
-  
+
   # Resource limits - Minimal for development
   resources:
     requests:
@@ -66,11 +66,11 @@ metastore:
     limits:
       cpu: 500m          # Reduced from 1000m
       memory: 1Gi        # Reduced from 4Gi
-  
+
   # Database configuration
   database:
     external: false      # Use internal PostgreSQL
-    
+
     # Internal database - Minimal resources
     internal:
       storage:

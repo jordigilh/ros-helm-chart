@@ -1,6 +1,6 @@
 # Trino Deployment Options for Koku Helm Migration
 
-**Date**: November 6, 2025  
+**Date**: November 6, 2025
 **Context**: Current Koku production uses AWS-managed Trino (not self-hosted)
 
 ## Current Production Architecture
@@ -71,19 +71,19 @@ Koku Helm Chart (on AWS/EKS)
 
 ### Pros
 
-✅ **Zero infrastructure** - No Trino pods to manage  
-✅ **Serverless** - Auto-scales, no capacity planning  
-✅ **AWS-optimized** - 2.7x faster than open-source Trino  
-✅ **Cost-effective for low/medium usage** - Pay per query  
-✅ **No operational overhead** - AWS manages everything  
-✅ **Same SQL interface** - Uses Trino engine  
+✅ **Zero infrastructure** - No Trino pods to manage
+✅ **Serverless** - Auto-scales, no capacity planning
+✅ **AWS-optimized** - 2.7x faster than open-source Trino
+✅ **Cost-effective for low/medium usage** - Pay per query
+✅ **No operational overhead** - AWS manages everything
+✅ **Same SQL interface** - Uses Trino engine
 
 ### Cons
 
-❌ **AWS-only** - Cannot use on-prem or other clouds  
-❌ **Cost can be high** - $5 per TB scanned  
-❌ **Vendor lock-in** - Tied to AWS  
-❌ **Network latency** - If pods in different region  
+❌ **AWS-only** - Cannot use on-prem or other clouds
+❌ **Cost can be high** - $5 per TB scanned
+❌ **Vendor lock-in** - Tied to AWS
+❌ **Network latency** - If pods in different region
 
 ### Configuration
 
@@ -160,18 +160,18 @@ Koku Helm Chart (on AWS/EKS)
 
 ### Pros
 
-✅ **Managed infrastructure** - AWS handles provisioning  
-✅ **Optimized performance** - 2.7x faster than open-source  
-✅ **Flexible sizing** - Choose instance types  
-✅ **Lower per-query cost** - Flat EC2 pricing  
-✅ **AWS-integrated** - Works with Glue, S3, IAM  
+✅ **Managed infrastructure** - AWS handles provisioning
+✅ **Optimized performance** - 2.7x faster than open-source
+✅ **Flexible sizing** - Choose instance types
+✅ **Lower per-query cost** - Flat EC2 pricing
+✅ **AWS-integrated** - Works with Glue, S3, IAM
 
 ### Cons
 
-❌ **AWS-only** - Cannot use elsewhere  
-❌ **Always-on cost** - Pay for EC2 even when idle  
-❌ **Some operational overhead** - Cluster management  
-❌ **Vendor lock-in** - Tied to AWS  
+❌ **AWS-only** - Cannot use elsewhere
+❌ **Always-on cost** - Pay for EC2 even when idle
+❌ **Some operational overhead** - Cluster management
+❌ **Vendor lock-in** - Tied to AWS
 
 ### Configuration
 
@@ -240,19 +240,19 @@ Koku Helm Chart (anywhere)
 
 ### Pros
 
-✅ **Cloud-agnostic** - Works anywhere (AWS, GCP, Azure, on-prem)  
-✅ **Full control** - Complete configurability  
-✅ **No vendor lock-in** - Open source Apache 2.0  
-✅ **Predictable costs** - Only infrastructure costs  
-✅ **No per-query charges** - Flat infrastructure cost  
+✅ **Cloud-agnostic** - Works anywhere (AWS, GCP, Azure, on-prem)
+✅ **Full control** - Complete configurability
+✅ **No vendor lock-in** - Open source Apache 2.0
+✅ **Predictable costs** - Only infrastructure costs
+✅ **No per-query charges** - Flat infrastructure cost
 
 ### Cons
 
-❌ **High resource requirements** - 18-24GB RAM minimum  
-❌ **Operational overhead** - Must manage, monitor, scale  
-❌ **Complex deployment** - Multiple components  
-❌ **Performance tuning required** - Java heap, GC, etc.  
-❌ **HA complexity** - Coordinator is single point of failure  
+❌ **High resource requirements** - 18-24GB RAM minimum
+❌ **Operational overhead** - Must manage, monitor, scale
+❌ **Complex deployment** - Multiple components
+❌ **Performance tuning required** - Java heap, GC, etc.
+❌ **HA complexity** - Coordinator is single point of failure
 
 ### Components Required
 
@@ -278,7 +278,7 @@ Koku Helm Chart (anywhere)
 ```yaml
 trino:
   enabled: true  # Deploy Trino in Helm chart
-  
+
   coordinator:
     replicas: 1
     resources:
@@ -288,7 +288,7 @@ trino:
       limits:
         memory: 8Gi
         cpu: 2000m
-  
+
   worker:
     replicas: 2
     resources:
@@ -298,7 +298,7 @@ trino:
       limits:
         memory: 8Gi
         cpu: 2000m
-  
+
   metastore:
     enabled: true
     resources:
@@ -449,7 +449,7 @@ trino:
     replicas: 1
   worker:
     replicas: 2
-    
+
 # Must also deploy Hive Metastore
 trino:
   metastore:
@@ -469,14 +469,14 @@ trino:
 trino:
   # Option 1: Deploy self-hosted Trino
   enabled: true  # Set to true for self-hosted
-  
+
   # Option 2: Use external Trino (Athena/EMR)
   external:
     enabled: false  # Set to true for external
     host: "athena.us-east-1.amazonaws.com"
     port: 443
     catalog: "awsdatacatalog"
-  
+
   # Coordinator configuration (if enabled=true)
   coordinator:
     replicas: 1
@@ -487,7 +487,7 @@ trino:
       limits:
         memory: 8Gi
         cpu: 2000m
-  
+
   # Worker configuration (if enabled=true)
   worker:
     replicas: 2
@@ -498,7 +498,7 @@ trino:
       limits:
         memory: 8Gi
         cpu: 2000m
-  
+
   # Hive Metastore (if enabled=true)
   metastore:
     enabled: true
@@ -694,9 +694,9 @@ helm install koku ./ros-ocp -f values-aws-athena.yaml
 
 ---
 
-**Document Status**: ✅ Complete  
-**Recommendation**: Flexible Helm chart supporting all 3 options  
-**Default**: Self-hosted (for maximum compatibility)  
-**AWS Users**: Provide override for Athena/EMR  
+**Document Status**: ✅ Complete
+**Recommendation**: Flexible Helm chart supporting all 3 options
+**Default**: Self-hosted (for maximum compatibility)
+**AWS Users**: Provide override for Athena/EMR
 **Next Action**: Implement conditional Trino deployment in Helm templates
 

@@ -87,7 +87,7 @@ conn.execute("INSTALL httpfs; LOAD httpfs;")
 2. **SQL queries remain mostly the same**:
 ```python
 # Trino SQL
-SELECT * FROM hive.koku.cost_data 
+SELECT * FROM hive.koku.cost_data
 WHERE year=2024 AND month=11
 
 # DuckDB SQL (nearly identical)
@@ -511,13 +511,13 @@ class DuckDBConnection:
     def __init__(self):
         self.conn = duckdb.connect(':memory:')
         self._configure_s3()
-    
+
     def _configure_s3(self):
         self.conn.execute("INSTALL httpfs; LOAD httpfs;")
         self.conn.execute(f"SET s3_endpoint='{settings.S3_ENDPOINT}';")
         self.conn.execute(f"SET s3_access_key_id='{settings.S3_ACCESS_KEY}';")
         self.conn.execute(f"SET s3_secret_access_key='{settings.S3_SECRET_KEY}';")
-    
+
     def execute(self, query):
         return self.conn.execute(query).fetchall()
 ```
@@ -602,7 +602,7 @@ results = conn.execute("SELECT * FROM 's3://koku-bucket/cost_data/*.parquet'")
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: November 6, 2025  
+**Document Version**: 1.0
+**Last Updated**: November 6, 2025
 **Status**: Analysis Complete
 

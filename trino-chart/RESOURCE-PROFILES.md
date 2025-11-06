@@ -351,7 +351,7 @@ Solution: Reduce query complexity or upgrade profile
 
 **Symptom**: Slow queries
 ```
-Solution: 
+Solution:
 1. Optimize query (add partition filters)
 2. Upgrade to Production profile
 3. Add more workers
@@ -450,12 +450,12 @@ TRINO_PROFILE=minimal ./scripts/deploy-trino.sh
 | **Data Size** | < 100MB | < 1GB | 10+ GB |
 | **Cost (AWS)** | $100/mo | $200/mo | $400+/mo |
 
-**⭐ Recommended for Koku ClowdApp → Helm migration validation**: Minimal Profile  
+**⭐ Recommended for Koku ClowdApp → Helm migration validation**: Minimal Profile
 **Recommended for Koku feature development**: Development Profile
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: November 6, 2025  
+**Document Version**: 1.0
+**Last Updated**: November 6, 2025
 **Default Profile**: Development (for local/testing)
 

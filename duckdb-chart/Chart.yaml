@@ -1,0 +1,24 @@
+apiVersion: v2
+name: duckdb
+description: DuckDB analytical database for Koku cost management (lightweight Trino alternative)
+type: application
+version: 0.1.0
+appVersion: "0.10.0"
+keywords:
+  - duckdb
+  - sql
+  - parquet
+  - analytics
+  - koku
+home: https://duckdb.org
+sources:
+  - https://github.com/duckdb/duckdb
+  - https://github.com/insights-onprem/ros-helm-chart
+maintainers:
+  - name: ROS Engineering Team
+annotations:
+  description: |
+    Lightweight alternative to Trino for on-prem deployments.
+    95% less resources than Trino (1-2GB vs 20+ GB).
+    Perfect for Koku cost management on resource-constrained environments.
+
