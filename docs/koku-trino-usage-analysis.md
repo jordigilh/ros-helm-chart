@@ -26,7 +26,7 @@
 - [Python DB API](https://duckdb.org/docs/stable/api/python/dbapi)
 - [Python Connection](https://duckdb.org/docs/stable/api/python/connection)
 
-**Trino Code** ([`koku/trino_database.py`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/koku/trino_database.py#L184-L211) - `connect` function, lines 184-211):
+**Trino Code** ([`koku/trino_database.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/koku/trino_database.py#L184-L211) - `connect()` function):
 
 ```python
 import trino.dbapi
@@ -93,7 +93,7 @@ results = cursor.fetchall()
 - [Parquet Import Guide](https://duckdb.org/docs/stable/guides/file_formats/parquet_import)
 - [Querying Parquet Files](https://duckdb.org/docs/stable/guides/file_formats/query_parquet)
 
-**Trino Pattern** ([`masu/processor/report_parquet_processor_base.py`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/processor/report_parquet_processor_base.py#L55-L72) - `_execute_trino_sql` method, lines 55-72):
+**Trino Pattern** ([`masu/processor/report_parquet_processor_base.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/processor/report_parquet_processor_base.py#L56-L79) - `_execute_trino_sql()` method):
 
 ```python
 # Trino uses Hive catalog to query Parquet files
@@ -204,7 +204,7 @@ sql = f"""
 - [WITH Clause (CTEs)](https://duckdb.org/docs/stable/sql/query_syntax/with)
 - [Window Functions](https://duckdb.org/docs/stable/sql/window_functions)
 
-**Trino SQL** ([`masu/database/trino_sql/reporting_ocpusagelineitem_daily_summary.sql`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/database/trino_sql/reporting_ocpusagelineitem_daily_summary.sql#L1-L50) - SQL query structure, lines 1-50 of 667):
+**Trino SQL** ([`masu/database/trino_sql/reporting_ocpusagelineitem_daily_summary.sql`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/database/trino_sql/reporting_ocpusagelineitem_daily_summary.sql#L1-L667) - Complex CTE query):
 
 ```sql
 -- Complex query with CTEs, joins, aggregations
@@ -851,35 +851,31 @@ Based on DuckDB benchmarks and [production case studies](https://motherduck.com/
 ### Koku Source Files Analyzed
 
 1. **Core Trino Integration**:
-   - [`koku/trino_database.py`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/koku/trino_database.py#L1-L250) - Connection management and SQL execution
-     - Lines 10-13: Trino imports (`import trino`, `TrinoExternalError`, `TrinoQueryError`)
-     - Lines 184-211: `connect()` function - establishes Trino connections
-     - Lines 213-248: `executescript()` function - executes SQL scripts
-   - [`koku/settings.py`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/koku/settings.py#L1-L900) - Trino configuration settings
-     - Search for `TRINO_HOST`, `TRINO_PORT`, `TRINO_USER`, `TRINO_DEFAULT_CATALOG`
+   - [`koku/trino_database.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/koku/trino_database.py#L10-L13) - Trino imports
+   - [`koku/trino_database.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/koku/trino_database.py#L184-L211) - `connect()` function establishes Trino connections
+   - [`koku/trino_database.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/koku/trino_database.py#L213-L248) - `executescript()` executes SQL scripts
+   - [`koku/settings.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/koku/settings.py) - Trino configuration (`TRINO_HOST`, `TRINO_PORT`, `TRINO_USER`, `TRINO_DEFAULT_CATALOG`)
 
 2. **Data Processing**:
-   - [`masu/processor/report_parquet_processor_base.py`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/processor/report_parquet_processor_base.py#L55-L72) - Parquet processing
-     - Lines 55-72: `_execute_trino_sql()` method - executes Trino queries for Parquet data
-     - Line 60: `trino.dbapi.connect()` - direct Trino connection
-   - [`masu/api/trino.py`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/api/trino.py#L28-L72) - Trino API endpoints
-     - Lines 28-72: `trino_query()` function - REST API endpoint for Trino queries
-     - Lines 74-100: `trino_ui()` function - UI endpoint for Trino interface
+   - [`masu/processor/report_parquet_processor_base.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/processor/report_parquet_processor_base.py#L56-L79) - `_execute_trino_sql()` executes Trino queries
+   - [`masu/processor/report_parquet_processor_base.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/processor/report_parquet_processor_base.py#L95-L100) - `schema_exists()` checks for Trino schema
+   - [`masu/processor/report_parquet_processor_base.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/processor/report_parquet_processor_base.py#L102-L109) - `table_exists()` checks for Trino table
+   - [`masu/processor/report_parquet_processor_base.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/processor/report_parquet_processor_base.py#L111-L115) - `create_schema()` creates Trino schema
+   - [`masu/processor/report_parquet_processor_base.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/processor/report_parquet_processor_base.py#L122-L159) - `_generate_create_table_sql()` generates CREATE TABLE with Hive partitioning
+   - [`masu/processor/report_parquet_processor_base.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/processor/report_parquet_processor_base.py#L161-L166) - `create_table()` creates Parquet table in Trino
+   - [`masu/api/trino.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/api/trino.py#L28-L72) - `trino_query()` REST API endpoint
+   - [`masu/api/trino.py`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/api/trino.py#L74-L100) - `trino_ui()` UI endpoint
 
 3. **SQL Queries**:
-   - [`masu/database/trino_sql/`](https://github.com/insights-onprem/koku/tree/7612acfd/koku/masu/database/trino_sql) - 50+ SQL files for Trino queries
-   - Examples:
-     - [`reporting_ocpusagelineitem_daily_summary.sql`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/database/trino_sql/reporting_ocpusagelineitem_daily_summary.sql) (667 lines)
-     - [`reporting_ocpstoragelineitem_daily_summary.sql`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/database/trino_sql/reporting_ocpstoragelineitem_daily_summary.sql)
-     - [`reporting_awscostentrylineitem_daily_summary.sql`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/database/trino_sql/reporting_awscostentrylineitem_daily_summary.sql)
+   - [`masu/database/trino_sql/`](https://github.com/project-koku/koku/tree/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/database/trino_sql) - Directory with 50+ SQL files
+   - [`reporting_ocpusagelineitem_daily_summary.sql`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/database/trino_sql/reporting_ocpusagelineitem_daily_summary.sql#L1-L667) - OCP usage summary (667 lines)
+   - [`reporting_ocpstoragelineitem_daily_summary.sql`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/database/trino_sql/reporting_ocpstoragelineitem_daily_summary.sql) - OCP storage summary
+   - [`reporting_awscostentrylineitem_daily_summary.sql`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/koku/masu/database/trino_sql/reporting_awscostentrylineitem_daily_summary.sql) - AWS cost summary
 
 4. **Configuration Files**:
-   - [`docker-compose.yml`](https://github.com/insights-onprem/koku/blob/7612acfd/docker-compose.yml#L1-L200) - Development environment with Trino
-     - Search for `TRINO_HOST` and `TRINO_PORT` environment variables
-   - [`deploy/clowdapp.yaml`](https://github.com/insights-onprem/koku/blob/7612acfd/deploy/clowdapp.yaml#L1-L500) - Production deployment manifest
-     - Koku deployments reference Trino via environment variables
-   - [`deploy/kustomize/patches/`](https://github.com/insights-onprem/koku/tree/7612acfd/deploy/kustomize/patches) - Kustomize patches for workers
-     - Worker patches set Trino environment variables
+   - [`docker-compose.yml`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/docker-compose.yml) - Development environment with `TRINO_HOST` and `TRINO_PORT`
+   - [`deploy/clowdapp.yaml`](https://github.com/project-koku/koku/blob/50dfabd97ca86eff867330ec8df3be21688afa6f/deploy/clowdapp.yaml) - Production deployment manifest
+   - [`deploy/kustomize/patches/`](https://github.com/project-koku/koku/tree/50dfabd97ca86eff867330ec8df3be21688afa6f/deploy/kustomize/patches) - Kustomize patches with Trino environment variables
 
 ### DuckDB Official Documentation
 - See complete documentation reference section above for 50+ links covering all features
