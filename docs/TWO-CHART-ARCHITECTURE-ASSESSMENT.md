@@ -180,7 +180,7 @@ Shared:
   ✅ Kafka (cluster-wide)
   ✅ MinIO/ODF (shared storage, different buckets)
   ✅ Ingress/Authorino (shared gateway)
-  
+
 Separate:
   ✅ PostgreSQL (separate DBs for isolation)
   ✅ Redis (separate instances for performance)
@@ -232,7 +232,7 @@ helm list
 # ros-ocp/values.yaml
 infrastructure:
   deploy: true  # ROS chart deploys infrastructure
-  
+
   postgresql:
     enabled: true
     databases:
@@ -240,27 +240,27 @@ infrastructure:
       - kruize
       - sources
       - koku  # ← Add Koku database
-      
+
   redis:
     enabled: true
-    
+
   minio:
     enabled: true
 
 # koku/values.yaml
 infrastructure:
   deploy: false  # Koku uses ROS infrastructure
-  
+
 externalServices:
   postgresql:
     host: db-ros.ros-ocp.svc.cluster.local
     port: 5432
     database: koku
-    
+
   redis:
     host: redis.ros-ocp.svc.cluster.local
     port: 6379
-    
+
   minio:
     endpoint: minio.ros-ocp.svc.cluster.local:9000
 ```
@@ -394,7 +394,7 @@ metadata:
 ### Example 1: GitLab Helm Charts
 **Architecture**: Separate charts for components
 - `gitlab/gitlab` - Main application
-- `gitlab/certmanager` - Certificate management  
+- `gitlab/certmanager` - Certificate management
 - `gitlab/nginx-ingress` - Ingress
 - `gitlab/postgresql` - Database
 
@@ -444,7 +444,7 @@ database:
     name: koku
     user: koku
     password: koku123
-    
+
 # Add service exposure for cross-namespace access
 services:
   exposeExternal: true  # Allow access from other namespaces
@@ -666,8 +666,8 @@ This approach:
 
 ---
 
-**Document Version**: 1.0  
-**Date**: November 6, 2025  
-**Status**: ✅ **APPROVED - Ready for Implementation**  
+**Document Version**: 1.0
+**Date**: November 6, 2025
+**Status**: ✅ **APPROVED - Ready for Implementation**
 **Confidence**: 🟢 **95% HIGH CONFIDENCE**
 
