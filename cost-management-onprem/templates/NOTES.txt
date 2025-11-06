@@ -29,12 +29,9 @@ Wait for all pods to be ready:
 OpenShift Routes:
   oc get routes -n {{ $namespace }}
 
-Main Ingress Route:
-{{- if .Values.ingress.route.host }}
-  https://{{ .Values.ingress.route.host }}
-{{- else }}
-  oc get route {{ $fullName }}-ingress -n {{ $namespace }} -o jsonpath='{.spec.host}'
-{{- end }}
+Get Main Route URL:
+  export ROUTE_HOST=$(oc get route {{ $fullName }}-ingress -n {{ $namespace }} -o jsonpath='{.spec.host}')
+  echo "https://$ROUTE_HOST"
 
 API Endpoints:
   - ROS API: /api/ros/*
