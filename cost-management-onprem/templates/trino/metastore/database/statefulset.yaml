@@ -37,11 +37,11 @@ spec:
           protocol: TCP
 
         env:
-        - name: POSTGRES_DB
+        - name: POSTGRESQL_DATABASE
           value: {{ .Values.trino.metastore.database.env.POSTGRES_DB | quote }}
-        - name: POSTGRES_USER
+        - name: POSTGRESQL_USER
           value: {{ .Values.trino.metastore.database.env.POSTGRES_USER | quote }}
-        - name: POSTGRES_PASSWORD
+        - name: POSTGRESQL_PASSWORD
           valueFrom:
             secretKeyRef:
               name: {{ include "cost-mgmt.trino.metastore.database.secretName" . }}
