@@ -1,6 +1,6 @@
 # OpenShift-Only Deployment Decision
 
-**Date**: November 6, 2025  
+**Date**: November 6, 2025
 **Decision**: This chart will **ONLY** be deployed on OpenShift
 
 ---
@@ -230,7 +230,7 @@ helm install cost-mgmt ./cost-management-onprem \
 
 ---
 
-**Status**: ✅ **DECISION CONFIRMED**  
-**Impact**: 🟢 **POSITIVE** (Simplifies implementation)  
+**Status**: ✅ **DECISION CONFIRMED**
+**Impact**: 🟢 **POSITIVE** (Simplifies implementation)
 **Next Action**: Update templates to remove conditional logic
 
