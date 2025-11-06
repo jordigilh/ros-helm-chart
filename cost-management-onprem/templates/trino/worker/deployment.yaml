@@ -36,13 +36,13 @@ spec:
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
-              name: minio-credentials
-              key: accesskey
+              name: noobaa-admin
+              key: AWS_ACCESS_KEY_ID
         - name: AWS_SECRET_ACCESS_KEY
           valueFrom:
             secretKeyRef:
-              name: minio-credentials
-              key: secretkey
+              name: noobaa-admin
+              key: AWS_SECRET_ACCESS_KEY
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
