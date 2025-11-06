@@ -1,7 +1,7 @@
 # Koku Deployment Progress Summary
 
-**Date**: 2025-11-06  
-**Session**: Koku Integration Post-PR27  
+**Date**: 2025-11-06
+**Session**: Koku Integration Post-PR27
 **Status**: Infrastructure Layer Complete ✅
 
 ---
@@ -61,13 +61,13 @@
    - Error: `Unrecognized VM option 'UseUseG1GC'`
    - Fixed: Changed `gcMethod: "UseG1GC"` → `gcMethod: "G1GC"`
    - Template already had `-XX:+Use` prefix
-   
+
 2. ✅ **Deprecated Configuration Property**
    - Error: `Configuration property 'discovery-server.enabled' was not used`
    - Fixed: Removed deprecated `discovery-server.enabled=true`
    - Kept: `discovery.uri=http://localhost:8080`
 
-**Result**: 
+**Result**:
 - ✅ Trino Worker: Running (1/1)
 - 🔄 Trino Coordinator: Final config applied (pending restart)
 
@@ -113,7 +113,7 @@ trino.metastore.image.repository: quay.io/insights-onprem/hive:3.1.3
 ```yaml
 # Koku DB & Metastore DB use:
 - name: POSTGRESQL_DATABASE  # was POSTGRES_DB
-- name: POSTGRESQL_USER      # was POSTGRES_USER  
+- name: POSTGRESQL_USER      # was POSTGRES_USER
 - name: POSTGRESQL_PASSWORD  # was POSTGRES_PASSWORD
 ```
 
