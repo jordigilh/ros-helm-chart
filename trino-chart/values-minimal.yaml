@@ -8,12 +8,12 @@
 # Trino Coordinator - Minimal configuration
 coordinator:
   enabled: true
-  
+
   # JVM configuration - Absolute minimum heap
   jvm:
     maxHeapSize: "1G"      # Minimum viable for Trino
     initialHeapSize: "1G"
-  
+
   # Resource limits - Bare minimum
   resources:
     requests:
@@ -22,7 +22,7 @@ coordinator:
     limits:
       cpu: 500m
       memory: 2Gi
-  
+
   # Storage - Minimal size
   storage:
     size: 5Gi
@@ -31,12 +31,12 @@ coordinator:
 worker:
   enabled: true
   replicas: 1              # Single worker only
-  
+
   # JVM configuration - Absolute minimum heap
   jvm:
     maxHeapSize: "1G"      # Minimum viable for Trino
     initialHeapSize: "1G"
-  
+
   # Resource limits - Bare minimum
   resources:
     requests:
@@ -45,11 +45,11 @@ worker:
     limits:
       cpu: 500m
       memory: 2Gi
-  
+
   # Storage - Minimal size
   storage:
     size: 5Gi
-  
+
   # No autoscaling
   autoscaling:
     enabled: false
@@ -57,7 +57,7 @@ worker:
 # Hive Metastore - Minimal configuration
 metastore:
   enabled: true
-  
+
   # Resource limits - Bare minimum
   resources:
     requests:
@@ -66,11 +66,11 @@ metastore:
     limits:
       cpu: 250m
       memory: 512Mi
-  
+
   # Database configuration
   database:
     external: false
-    
+
     # Internal database - Minimal
     internal:
       storage:

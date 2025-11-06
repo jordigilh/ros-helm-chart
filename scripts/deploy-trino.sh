@@ -242,7 +242,7 @@ deploy_trino() {
         log_info "Please check LOCAL_CHART_PATH or run from the correct directory"
         exit 1
     fi
-    
+
     # Deploy chart
     log_info "Using local chart: $LOCAL_CHART_PATH"
     helm upgrade --install "$TRINO_RELEASE_NAME" "$LOCAL_CHART_PATH" \
