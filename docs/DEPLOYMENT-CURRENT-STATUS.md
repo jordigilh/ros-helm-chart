@@ -14,7 +14,7 @@
 
 **Current Error**:
 ```
-Failed to pull image "trinodb/trino:latest": 
+Failed to pull image "trinodb/trino:latest":
 toomanyrequests: You have reached your unauthenticated pull rate limit.
 https://www.docker.com/increase-rate-limit
 ```

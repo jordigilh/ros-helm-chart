@@ -3,7 +3,7 @@
 #
 # Usage:
 #   QUAY_ORG=insights-onprem QUAY_USER=myuser QUAY_PASS=mypass ./mirror-images-to-quay.sh
-#   
+#
 # Or with skopeo:
 #   QUAY_ORG=insights-onprem skopeo login quay.io
 #   ./mirror-images-to-quay.sh
@@ -96,11 +96,11 @@ SUCCEEDED_IMAGES=()
 for source in "${!IMAGES[@]}"; do
     target_name="${IMAGES[$source]}"
     destination="${QUAY_REGISTRY}/${QUAY_ORG}/${target_name}"
-    
+
     log_info "Mirroring: $(basename "$source")"
     echo "  Source:      $source"
     echo "  Destination: $destination"
-    
+
     # Copy with skopeo (preserves all layers, multi-arch manifests, etc.)
     if skopeo copy \
         --override-os linux \
@@ -109,7 +109,7 @@ for source in "${!IMAGES[@]}"; do
         --preserve-digests \
         "docker://$source" \
         "docker://$destination" 2>&1; then
-        
+
         log_success "Successfully mirrored: $(basename "$source")"
         SUCCEEDED_IMAGES+=("$source -> $destination")
     else
