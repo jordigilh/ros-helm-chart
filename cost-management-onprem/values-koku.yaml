@@ -347,8 +347,8 @@ costManagement:
 
     # PostgreSQL image
     image:
-      repository: postgres
-      tag: "15-alpine"
+      repository: registry.access.redhat.com/rhscl/postgresql-15-rhel7  # Avoid Docker Hub rate limit
+      tag: "latest"
       pullPolicy: IfNotPresent
 
     # Resources for Koku database
@@ -504,7 +504,7 @@ trino:
 
     # Image configuration
     image:
-      repository: trinodb/trino
+      repository: quay.io/trinodb/trino  # Avoid Docker Hub rate limit
       tag: "latest"
       pullPolicy: IfNotPresent
 
@@ -590,7 +590,7 @@ trino:
 
     # Image configuration
     image:
-      repository: trinodb/trino
+      repository: quay.io/trinodb/trino  # Avoid Docker Hub rate limit
       tag: "latest"
       pullPolicy: IfNotPresent
 
@@ -627,7 +627,7 @@ trino:
 
     # Image configuration
     image:
-      repository: apache/hive
+      repository: quay.io/apache/hive  # Avoid Docker Hub rate limit
       tag: "3.1.3"
       pullPolicy: IfNotPresent
 
@@ -657,8 +657,8 @@ trino:
 
       # PostgreSQL image
       image:
-        repository: postgres
-        tag: "15-alpine"
+        repository: registry.access.redhat.com/rhscl/postgresql-15-rhel7  # Avoid Docker Hub rate limit
+        tag: "latest"
         pullPolicy: IfNotPresent
 
       # Resources
