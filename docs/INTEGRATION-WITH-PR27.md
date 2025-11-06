@@ -1,7 +1,7 @@
 # Integration with PR #27: Chart Refactoring
 
-**PR**: [#27 - Refactor: Rename Chart to Cost Management On-Premise](https://github.com/insights-onprem/ros-helm-chart/pull/27)  
-**Status**: ✅ **PERFECT ALIGNMENT** - Our Koku integration fits their vision!  
+**PR**: [#27 - Refactor: Rename Chart to Cost Management On-Premise](https://github.com/insights-onprem/ros-helm-chart/pull/27)
+**Status**: ✅ **PERFECT ALIGNMENT** - Our Koku integration fits their vision!
 **Date**: November 6, 2025
 
 ---
@@ -30,7 +30,7 @@ Version: 0.1.9 → 0.2.0 (breaking changes)
 OLD values.yaml:
   rosocp.*           → ros.*
   jwt_auth.*         → jwtAuth.*
-  
+
 NEW additions:
   costManagement.*   ← PLACEHOLDER FOR US! 🎯
 ```
@@ -71,9 +71,9 @@ Examples:
 
 ### Approach: Add `values-koku.yaml` (Avoid Conflicts)
 
-**Rationale**: 
+**Rationale**:
 - PR #27 updates main `values.yaml`
-- We create separate `values-koku.yaml` 
+- We create separate `values-koku.yaml`
 - After PR #27 merges, we integrate both
 
 ```bash
@@ -178,7 +178,7 @@ global:
 # Extend costManagement section (placeholder exists in PR #27)
 costManagement:
   enabled: true
-  
+
   # Koku API Configuration
   api:
     enabled: true
@@ -186,7 +186,7 @@ costManagement:
       repository: quay.io/project-koku/koku
       tag: "latest"
       pullPolicy: IfNotPresent
-    
+
     reads:
       enabled: true
       replicas: 2
@@ -197,21 +197,21 @@ costManagement:
         limits:
           cpu: 600m
           memory: 1Gi
-      
+
       livenessProbe:
         httpGet:
           path: /api/cost-management/v1/status/
           port: 8000
         initialDelaySeconds: 30
         periodSeconds: 20
-      
+
       readinessProbe:
         httpGet:
           path: /api/cost-management/v1/status/
           port: 8000
         initialDelaySeconds: 30
         periodSeconds: 20
-    
+
     writes:
       enabled: true
       replicas: 1
@@ -222,7 +222,7 @@ costManagement:
         limits:
           cpu: 600m
           memory: 1Gi
-  
+
   # Celery Configuration
   celery:
     beat:
@@ -235,7 +235,7 @@ costManagement:
         limits:
           cpu: 200m
           memory: 400Mi
-    
+
     workers:
       # Essential workers
       default:
@@ -249,7 +249,7 @@ costManagement:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       priority:
         enabled: true
         replicas: 1
@@ -261,7 +261,7 @@ costManagement:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       refresh:
         enabled: true
         replicas: 1
@@ -273,7 +273,7 @@ costManagement:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       summary:
         enabled: true
         replicas: 1
@@ -285,7 +285,7 @@ costManagement:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       hcs:
         enabled: true
         replicas: 1
@@ -297,7 +297,7 @@ costManagement:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       # XL workers (minimal for dev)
       priorityXl:
         enabled: true
@@ -310,7 +310,7 @@ costManagement:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       priorityPenalty:
         enabled: true
         replicas: 1
@@ -322,7 +322,7 @@ costManagement:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       refreshXl:
         enabled: true
         replicas: 1
@@ -334,7 +334,7 @@ costManagement:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       refreshPenalty:
         enabled: true
         replicas: 1
@@ -346,7 +346,7 @@ costManagement:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       summaryXl:
         enabled: true
         replicas: 1
@@ -358,7 +358,7 @@ costManagement:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       summaryPenalty:
         enabled: true
         replicas: 1
@@ -370,18 +370,18 @@ costManagement:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       # Disabled workers (per ClowdApp)
       subsExtraction:
         enabled: false
         replicas: 0
         queue: subs_extraction
-      
+
       subsTransmission:
         enabled: false
         replicas: 0
         queue: subs_transmission
-  
+
   # Database Configuration
   database:
     # Uses shared PostgreSQL from infrastructure
@@ -391,23 +391,23 @@ costManagement:
     name: koku
     user: koku
     sslMode: disable
-    
+
     # Storage for Koku database
     storage:
       size: 20Gi
       storageClass: ""  # Use default
-  
+
   # Django Configuration
   django:
     # Secret key auto-generated
     secretKeyLength: 50
-  
+
   # Service Configuration
   service:
     type: ClusterIP
     port: 8000
     targetPort: 8000
-  
+
   # Service Account
   serviceAccount:
     create: true
@@ -418,16 +418,16 @@ costManagement:
 trino:
   enabled: true
   profile: minimal  # minimal, dev, or production
-  
+
   coordinator:
     enabled: true
     replicas: 1
-    
+
     image:
       repository: trinodb/trino
       tag: "latest"
       pullPolicy: IfNotPresent
-    
+
     resources:
       requests:
         cpu: 250m
@@ -435,36 +435,36 @@ trino:
       limits:
         cpu: 500m
         memory: 2Gi
-    
+
     storage:
       size: 5Gi
       storageClass: ""
-    
+
     config:
       # Trino coordinator configuration
       jvm:
         maxHeapSize: "1G"
         gcMethod: "UseG1GC"
-      
+
       # Catalog configuration
       catalogs:
         hive:
           enabled: true
           metastoreUri: "thrift://hive-metastore:9083"
-        
+
         postgresql:
           enabled: true
           connectionUrl: ""  # Auto-resolved
-  
+
   worker:
     enabled: true
     replicas: 1  # Minimal for dev
-    
+
     image:
       repository: trinodb/trino
       tag: "latest"
       pullPolicy: IfNotPresent
-    
+
     resources:
       requests:
         cpu: 250m
@@ -472,25 +472,25 @@ trino:
       limits:
         cpu: 500m
         memory: 2Gi
-    
+
     storage:
       size: 5Gi
       storageClass: ""
-    
+
     config:
       jvm:
         maxHeapSize: "1G"
         gcMethod: "UseG1GC"
-  
+
   metastore:
     enabled: true
     replicas: 1
-    
+
     image:
       repository: apache/hive
       tag: "3.1.3"
       pullPolicy: IfNotPresent
-    
+
     resources:
       requests:
         cpu: 100m
@@ -498,7 +498,7 @@ trino:
       limits:
         cpu: 250m
         memory: 512Mi
-    
+
     database:
       # Uses shared PostgreSQL
       host: ""  # Auto-resolved
@@ -506,20 +506,20 @@ trino:
       name: metastore
       user: metastore
       sslMode: disable
-      
+
       storage:
         size: 2Gi
         storageClass: ""
-  
+
   service:
     coordinator:
       type: ClusterIP
       port: 8080
-    
+
     metastore:
       type: ClusterIP
       port: 9083
-  
+
   serviceAccount:
     create: true
     name: trino
@@ -705,17 +705,17 @@ spec:
       serviceAccountName: {{ include "cost-mgmt.serviceAccountName" . }}
       securityContext:
         {{- include "cost-mgmt.securityContext.pod" . | nindent 8 }}
-      
+
       containers:
       - name: koku-api
         image: "{{ .Values.costManagement.api.image.repository }}:{{ .Values.costManagement.api.image.tag }}"
         imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
-        
+
         ports:
         - name: http
           containerPort: 8000
           protocol: TCP
-        
+
         env:
         - name: DATABASE_HOST
           value: {{ include "cost-mgmt.database.host" (dict "context" . "database" "koku") }}
@@ -732,16 +732,16 @@ spec:
             secretKeyRef:
               name: koku-django-secret
               key: secret-key
-        
+
         resources:
           {{- toYaml .Values.costManagement.api.reads.resources | nindent 10 }}
-        
+
         livenessProbe:
           {{- toYaml .Values.costManagement.api.reads.livenessProbe | nindent 10 }}
-        
+
         readinessProbe:
           {{- toYaml .Values.costManagement.api.reads.readinessProbe | nindent 10 }}
-        
+
         securityContext:
           {{- include "cost-mgmt.securityContext.container" . | nindent 10 }}
 {{- end }}
@@ -803,14 +803,14 @@ Our Integration:
 - ✅ Adds `templates/trino/` (new service)
 - ✅ Ready to implement while waiting for merge
 
-**Confidence**: 🟢 **98% HIGH CONFIDENCE**  
-**Timeline**: Start now, integrate after #27 merges  
+**Confidence**: 🟢 **98% HIGH CONFIDENCE**
+**Timeline**: Start now, integrate after #27 merges
 **Risk**: ⚠️ LOW (separate files, clean structure)
 
 ---
 
-**Document Version**: 1.0  
-**Date**: November 6, 2025  
-**Status**: ✅ **READY TO PROCEED**  
+**Document Version**: 1.0
+**Date**: November 6, 2025
+**Status**: ✅ **READY TO PROCEED**
 **Next Action**: Create `values-koku.yaml` and templates
 
