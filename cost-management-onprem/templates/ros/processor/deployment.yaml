@@ -1,25 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-rosocp-processor
+  name: {{ include "cost-mgmt.fullname" . }}-ros-processor
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
     app.kubernetes.io/component: processor
-    app.kubernetes.io/name: rosocp-processor
+    app.kubernetes.io/name: ros-processor
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: processor
-      app.kubernetes.io/name: rosocp-processor
+      app.kubernetes.io/name: ros-processor
   template:
     metadata:
       labels:
         {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: processor
-        app.kubernetes.io/name: rosocp-processor
+        app.kubernetes.io/name: ros-processor
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -64,7 +64,7 @@ spec:
               echo "Kruize is ready"
               echo "Kruize is ready"
       containers:
-        - name: rosocp-processor
+        - name: ros-processor
           image: "{{ .Values.ros.processor.image.repository }}:{{ .Values.ros.processor.image.tag }}"
           imagePullPolicy: {{ .Values.ros.processor.image.pullPolicy | default .Values.global.pullPolicy }}
           command: ["sh", "-c"]

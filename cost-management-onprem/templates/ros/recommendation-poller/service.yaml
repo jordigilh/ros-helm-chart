@@ -1,12 +1,12 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-rosocp-recommendation-poller
+  name: {{ include "cost-mgmt.fullname" . }}-ros-rec-poller
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
-    app.kubernetes.io/component: poller
-    app.kubernetes.io/name: rosocp-recommendation-poller
+    app.kubernetes.io/component: recommendation-poller
+    app.kubernetes.io/name: ros-rec-poller
 spec:
   type: ClusterIP
   ports:
@@ -16,6 +16,6 @@ spec:
       name: metrics
   selector:
     {{- include "cost-mgmt.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: poller
-    app.kubernetes.io/name: rosocp-recommendation-poller
+    app.kubernetes.io/component: recommendation-poller
+    app.kubernetes.io/name: ros-rec-poller
 

@@ -1,36 +1,43 @@
-{{- if .Values.ros.partitionCleaner.enabled }}
+{{- if .Values.ros.housekeeper.partitionCleaner.enabled }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: delete-rosocp-partitions
+  name: {{ include "cost-mgmt.fullname" . }}-ros-partition-cleaner
+  namespace: {{ .Release.Namespace }}
   labels:
-    app: delete-rosocp-partitions
-    component: partition-cleaner
+    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: partition-cleaner
+    app.kubernetes.io/name: ros-partition-cleaner
 spec:
-  schedule: {{ .Values.ros.partitionCleaner.schedule | quote }}
+  schedule: {{ .Values.ros.housekeeper.partitionCleaner.schedule | quote }}
   jobTemplate:
     spec:
       template:
         metadata:
           labels:
-            app: delete-rosocp-partitions
-            component: partition-cleaner
+            {{- include "cost-mgmt.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: partition-cleaner
+            app.kubernetes.io/name: ros-partition-cleaner
         spec:
           restartPolicy: OnFailure
-          serviceAccountName: {{ .Values.serviceAccount.name }}
+          serviceAccountName: {{ .Values.ros.serviceAccount.name }}
+          {{- with .Values.global.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 10 }}
+          {{- end }}
           containers:
-          - name: rosocp-partition-cleaner
-            image: {{ .Values.ros.partitionCleaner.image.repository }}:{{ .Values.ros.partitionCleaner.image.tag }}
-            imagePullPolicy: {{ .Values.ros.partitionCleaner.image.pullPolicy | default .Values.global.pullPolicy }}
+          - name: ros-partition-cleaner
+            image: {{ .Values.ros.housekeeper.partitionCleaner.image.repository }}:{{ .Values.ros.housekeeper.partitionCleaner.image.tag }}
+            imagePullPolicy: {{ .Values.ros.housekeeper.partitionCleaner.image.pullPolicy | default .Values.global.pullPolicy }}
             command: ["sh"]
             args: ["-c", "./rosocp db migrate up && ./rosocp start housekeeper --partitions"]
             env:
             - name: CLOWDER_ENABLED
               value: "false"
             - name: SERVICE_NAME
-              value: {{ .Values.ros.partitionCleaner.serviceName | quote }}
+              value: {{ .Values.ros.housekeeper.partitionCleaner.serviceName | quote }}
             - name: LOG_LEVEL
-              value: {{ .Values.ros.partitionCleaner.logLevel | quote }}
+              value: {{ .Values.ros.housekeeper.partitionCleaner.logLevel | quote }}
             - name: DB_HOST
               value: {{ include "cost-mgmt.database.host" (list . "ros") }}
             - name: DB_PORT
@@ -46,12 +53,6 @@ spec:
                   key: ros-password
             - name: DATABASE_URL
               value: {{ include "cost-mgmt.database.url" . }}
-            {{- if .Values.ros.partitionCleaner.resources }}
             resources:
-              {{- toYaml .Values.ros.partitionCleaner.resources | nindent 14 }}
-            {{- end }}
-          {{- with .Values.global.imagePullSecrets }}
-          imagePullSecrets:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+              {{- toYaml .Values.ros.housekeeper.partitionCleaner.resources | nindent 14 }}
 {{- end }}

@@ -76,7 +76,7 @@ spec:
             - name: ca-bundle
               mountPath: /ca-output
         {{- end }}
-      serviceAccountName: insights-ros-ingress
+      serviceAccountName: {{ .Values.ingress.serviceAccount.name }}
       containers:
         {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
         # Envoy sidecar for native JWT authentication

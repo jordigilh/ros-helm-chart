@@ -34,7 +34,7 @@ spec:
           pathType: Prefix
           backend:
             service:
-              name: {{ include "cost-mgmt.fullname" $ }}-rosocp-api
+              name: {{ include "cost-mgmt.fullname" $ }}-ros-api
               port:
                 number: {{ $.Values.ros.api.port }}
         # File upload service (ingress)
@@ -58,7 +58,7 @@ spec:
           pathType: Prefix
           backend:
             service:
-              name: {{ include "cost-mgmt.fullname" $ }}-rosocp-api
+              name: {{ include "cost-mgmt.fullname" $ }}-ros-api
               port:
                 number: {{ $.Values.ros.api.port }}
         # Sources API (source management)

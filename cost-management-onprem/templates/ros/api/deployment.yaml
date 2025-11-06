@@ -1,27 +1,27 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-rosocp-api
+  name: {{ include "cost-mgmt.fullname" . }}-ros-api
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
-    app.kubernetes.io/name: rosocp-api
+    app.kubernetes.io/name: ros-api
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: api
-      app.kubernetes.io/name: rosocp-api
+      app.kubernetes.io/name: ros-api
   template:
     metadata:
       labels:
         {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: api
-        app.kubernetes.io/name: rosocp-api
+        app.kubernetes.io/name: ros-api
     spec:
-      serviceAccountName: {{ include "cost-mgmt.serviceAccountName" . }}
+      serviceAccountName: {{ .Values.ros.serviceAccount.name }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -132,7 +132,7 @@ spec:
               cpu: 100m
               memory: 128Mi
         {{- end }}
-        - name: rosocp-api
+        - name: ros-api
           image: "{{ .Values.ros.api.image.repository }}:{{ .Values.ros.api.image.tag }}"
           imagePullPolicy: {{ .Values.ros.api.image.pullPolicy | default .Values.global.pullPolicy }}
           securityContext:
@@ -217,7 +217,7 @@ spec:
         # Envoy configuration volume
         - name: envoy-config
           configMap:
-            name: {{ include "cost-mgmt.fullname" . }}-envoy-config-rosocp-api
+            name: {{ include "cost-mgmt.fullname" . }}-envoy-config-ros-api
             items:
               - key: envoy.yaml
                 path: envoy.yaml

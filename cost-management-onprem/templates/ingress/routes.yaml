@@ -40,7 +40,7 @@ spec:
   path: /
   to:
     kind: Service
-    name: {{ include "cost-mgmt.fullname" . }}-rosocp-api
+    name: {{ include "cost-mgmt.fullname" . }}-ros-api
     weight: 100
   port:
     targetPort: http

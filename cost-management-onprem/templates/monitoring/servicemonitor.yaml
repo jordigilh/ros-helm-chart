@@ -3,12 +3,12 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-rosocp-api
+  name: {{ include "cost-mgmt.fullname" . }}-ros-api
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
-    app.kubernetes.io/name: rosocp-api
+    app.kubernetes.io/name: ros-api
 spec:
   namespaceSelector:
     matchNames:
@@ -17,7 +17,7 @@ spec:
     matchLabels:
       {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: api
-      app.kubernetes.io/name: rosocp-api
+      app.kubernetes.io/name: ros-api
   endpoints:
     - port: metrics
       interval: {{ .Values.monitoring.scrapeInterval }}
@@ -27,12 +27,12 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-rosocp-processor
+  name: {{ include "cost-mgmt.fullname" . }}-ros-processor
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
     app.kubernetes.io/component: processor
-    app.kubernetes.io/name: rosocp-processor
+    app.kubernetes.io/name: ros-processor
 spec:
   namespaceSelector:
     matchNames:
@@ -41,7 +41,7 @@ spec:
     matchLabels:
       {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: processor
-      app.kubernetes.io/name: rosocp-processor
+      app.kubernetes.io/name: ros-processor
   endpoints:
     - port: metrics
       interval: {{ .Values.monitoring.scrapeInterval }}
@@ -56,7 +56,7 @@ metadata:
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
     app.kubernetes.io/component: poller
-    app.kubernetes.io/name: rosocp-recommendation-poller
+    app.kubernetes.io/name: ros-rec-poller
 spec:
   namespaceSelector:
     matchNames:
@@ -65,7 +65,7 @@ spec:
     matchLabels:
       {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: poller
-      app.kubernetes.io/name: rosocp-recommendation-poller
+      app.kubernetes.io/name: ros-rec-poller
   endpoints:
     - port: metrics
       interval: {{ .Values.monitoring.scrapeInterval }}

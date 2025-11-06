@@ -14,10 +14,10 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: ros-ocp-backend-tokenreview-binding
+  name: {{ include "cost-mgmt.fullname" . }}-ros-tokenreview-binding
 subjects:
 - kind: ServiceAccount
-  name: {{ include "cost-mgmt.serviceAccountName" . }}
+  name: {{ .Values.ros.serviceAccount.name }}
   namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole

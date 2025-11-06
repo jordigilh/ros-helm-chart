@@ -1,25 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-rosocp-recommendation-poller
+  name: {{ include "cost-mgmt.fullname" . }}-ros-rec-poller
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
-    app.kubernetes.io/component: poller
-    app.kubernetes.io/name: rosocp-recommendation-poller
+    app.kubernetes.io/component: recommendation-poller
+    app.kubernetes.io/name: ros-rec-poller
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: poller
-      app.kubernetes.io/name: rosocp-recommendation-poller
+      app.kubernetes.io/component: recommendation-poller
+      app.kubernetes.io/name: ros-rec-poller
   template:
     metadata:
       labels:
         {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: poller
-        app.kubernetes.io/name: rosocp-recommendation-poller
+        app.kubernetes.io/component: recommendation-poller
+        app.kubernetes.io/name: ros-rec-poller
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -64,7 +64,7 @@ spec:
               echo "Kruize is ready"
               echo "Kruize is ready"
       containers:
-        - name: rosocp-recommendation-poller
+        - name: ros-rec-poller
           image: "{{ .Values.ros.recommendationPoller.image.repository }}:{{ .Values.ros.recommendationPoller.image.tag }}"
           imagePullPolicy: {{ .Values.ros.recommendationPoller.image.pullPolicy | default .Values.global.pullPolicy }}
           command: ["sh", "-c"]

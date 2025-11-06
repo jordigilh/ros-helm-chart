@@ -1,12 +1,12 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-rosocp-processor
+  name: {{ include "cost-mgmt.fullname" . }}-ros-processor
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
     app.kubernetes.io/component: processor
-    app.kubernetes.io/name: rosocp-processor
+    app.kubernetes.io/name: ros-processor
 spec:
   type: ClusterIP
   ports:
@@ -17,5 +17,5 @@ spec:
   selector:
     {{- include "cost-mgmt.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: processor
-    app.kubernetes.io/name: rosocp-processor
+    app.kubernetes.io/name: ros-processor
 

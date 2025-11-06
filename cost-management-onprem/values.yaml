@@ -124,8 +124,14 @@ ros:
 
     # Partition Cleaner CronJob
     partitionCleaner:
+      enabled: true
       schedule: "0 0 */15 * *"  # Every 15 days at midnight
+      image:
+        repository: quay.io/insights-onprem/ros-ocp-backend
+        tag: "latest"
+        pullPolicy: Always
       serviceName: ros-housekeeper-partition
+      logLevel: INFO
       resources:
         requests:
           memory: "256Mi"

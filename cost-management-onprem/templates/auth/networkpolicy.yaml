@@ -15,11 +15,11 @@ spec:
   policyTypes:
   - Ingress
   ingress:
-  # Allow connections from rosocp-api pods (Envoy sidecar)
+  # Allow connections from ros-api pods (Envoy sidecar)
   - from:
     - podSelector:
         matchLabels:
-          app.kubernetes.io/name: rosocp-api
+          app.kubernetes.io/name: ros-api
     ports:
     - protocol: TCP
       port: 50051  # gRPC authorization service

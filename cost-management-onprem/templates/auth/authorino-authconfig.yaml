@@ -2,7 +2,7 @@
 apiVersion: authorino.kuadrant.io/v1beta3
 kind: AuthConfig
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-rosocp-api-auth
+  name: {{ include "cost-mgmt.fullname" . }}-ros-api-auth
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}

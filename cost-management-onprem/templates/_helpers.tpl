@@ -52,17 +52,6 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-Create the name of the service account to use
-*/}}
-{{- define "cost-mgmt.serviceAccountName" -}}
-  {{- if .Values.serviceAccount.create -}}
-{{- default (include "cost-mgmt.fullname" .) .Values.serviceAccount.name -}}
-  {{- else -}}
-{{- default "default" .Values.serviceAccount.name -}}
-  {{- end -}}
-{{- end }}
-
-{{/*
 Generic database host resolver - returns internal service name if "internal", otherwise returns the configured host
 Usage: {{ include "cost-mgmt.database.host" (list . "ros") }}
 */}}
@@ -747,8 +736,8 @@ Only supports RHBK (v2alpha1) operator
 {{- define "cost-mgmt.keycloak.namespace" -}}
 {{- $keycloakNs := "" -}}
 {{- /* First priority: check for explicit namespace override */ -}}
-{{- if .Values.jwt_auth.keycloak.namespace -}}
-  {{- $keycloakNs = .Values.jwt_auth.keycloak.namespace -}}
+{{- if .Values.jwtAuth.keycloak.namespace -}}
+  {{- $keycloakNs = .Values.jwtAuth.keycloak.namespace -}}
 {{- else -}}
   {{- /* Second priority: try to find namespace from RHBK v2alpha1 CRs */ -}}
   {{- $keycloaks := lookup "k8s.keycloak.org/v2alpha1" "Keycloak" "" "" -}}
@@ -863,7 +852,7 @@ Only supports RHBK (v2alpha1) operator
         {{- /* Final fallback: construct service URL */ -}}
         {{- $svcName := include "cost-mgmt.keycloak.serviceName" . -}}
         {{- if $svcName -}}
-          {{- $servicePort := .Values.jwt_auth.keycloak.servicePort | default 8080 -}}
+          {{- $servicePort := .Values.jwtAuth.keycloak.servicePort | default 8080 -}}
           {{- $keycloakUrl = printf "http://%s.%s.svc.cluster.local:%v" $svcName $ns $servicePort -}}
         {{- end -}}
       {{- end -}}
@@ -878,19 +867,19 @@ Get complete Keycloak issuer URL with realm
 */}}
 {{- define "cost-mgmt.keycloak.issuerUrl" -}}
 {{- $baseUrl := "" -}}
-{{- if .Values.jwt_auth.keycloak.url -}}
+{{- if .Values.jwtAuth.keycloak.url -}}
   {{- /* Use explicitly configured URL */ -}}
-  {{- $baseUrl = .Values.jwt_auth.keycloak.url -}}
+  {{- $baseUrl = .Values.jwtAuth.keycloak.url -}}
 {{- else -}}
   {{- /* Auto-detect Keycloak URL */ -}}
   {{- $baseUrl = include "cost-mgmt.keycloak.url" . -}}
 {{- end -}}
 {{- if $baseUrl -}}
   {{- /* RHBK v22+ uses /realms/ without /auth prefix */ -}}
-  {{- printf "%s/realms/%s" $baseUrl .Values.jwt_auth.keycloak.realm -}}
+  {{- printf "%s/realms/%s" $baseUrl .Values.jwtAuth.keycloak.realm -}}
 {{- else -}}
   {{- /* No Keycloak URL found - fail with helpful message (OpenShift only) */ -}}
-  {{- fail "Keycloak URL not found on OpenShift cluster. JWT authentication requires Red Hat Build of Keycloak. Please either:\n  1. Set jwt_auth.keycloak.url in values.yaml, or\n  2. Ensure Keycloak is deployed with a Route in a common namespace (keycloak, sso), or\n  3. Deploy Keycloak using the provided scripts/deploy-rhbk.sh script\n\nNote: JWT authentication is only supported on OpenShift. For KIND/Kubernetes, authentication is automatically disabled." -}}
+  {{- fail "Keycloak URL not found on OpenShift cluster. JWT authentication requires Red Hat Build of Keycloak. Please either:\n  1. Set jwtAuth.keycloak.url in values.yaml, or\n  2. Ensure Keycloak is deployed with a Route in a common namespace (keycloak, sso), or\n  3. Deploy Keycloak using the provided scripts/deploy-rhbk.sh script\n\nNote: JWT authentication is only supported on OpenShift. For KIND/Kubernetes, authentication is automatically disabled." -}}
 {{- end -}}
 {{- end }}
 

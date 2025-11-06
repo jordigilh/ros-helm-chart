@@ -1,25 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-rosocp-housekeeper
+  name: {{ include "cost-mgmt.fullname" . }}-ros-housekeeper
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
     app.kubernetes.io/component: housekeeper
-    app.kubernetes.io/name: rosocp-housekeeper
+    app.kubernetes.io/name: ros-housekeeper
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: housekeeper
-      app.kubernetes.io/name: rosocp-housekeeper
+      app.kubernetes.io/name: ros-housekeeper
   template:
     metadata:
       labels:
         {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: housekeeper
-        app.kubernetes.io/name: rosocp-housekeeper
+        app.kubernetes.io/name: ros-housekeeper
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -76,7 +76,7 @@ spec:
               echo "Sources API is ready"
               echo "Sources API is ready"
       containers:
-        - name: rosocp-housekeeper
+        - name: ros-housekeeper
           image: "{{ .Values.ros.housekeeper.image.repository }}:{{ .Values.ros.housekeeper.image.tag }}"
           imagePullPolicy: {{ .Values.ros.housekeeper.image.pullPolicy | default .Values.global.pullPolicy }}
           command: ["sh", "-c"]

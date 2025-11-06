@@ -2,11 +2,11 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-envoy-config-rosocp-api
+  name: {{ include "cost-mgmt.fullname" . }}-envoy-config-ros-api
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
-    app.kubernetes.io/component: rosocp-api-envoy
+    app.kubernetes.io/component: ros-api-envoy
 data:
   envoy.yaml: |
     static_resources:
@@ -79,7 +79,7 @@ data:
                   - match:
                       path: "/status"
                     route:
-                      cluster: rosocp-api-backend
+                      cluster: ros-api-backend
                       timeout: 5s
                     typed_per_filter_config:
                       envoy.filters.http.ext_authz:
@@ -89,7 +89,7 @@ data:
                   - match:
                       prefix: "/"
                     route:
-                      cluster: rosocp-api-backend
+                      cluster: ros-api-backend
                       timeout: 30s
                       retry_policy:
                         retry_on: 5xx,reset,connect-failure,refused-stream
@@ -205,11 +205,11 @@ data:
 
       clusters:
       # ROS OCP API backend (port 8000)
-      - name: rosocp-api-backend
+      - name: ros-api-backend
         connect_timeout: 5s
         type: STATIC
         load_assignment:
-          cluster_name: rosocp-api-backend
+          cluster_name: ros-api-backend
           endpoints:
           - lb_endpoints:
             - endpoint:
