@@ -21,10 +21,8 @@
 
 ### 1. Connection Pattern
 
-**📚 DuckDB Documentation**:
-- [Python Client API](https://duckdb.org/docs/api/python/overview)
-- [Python DB API](https://duckdb.org/docs/api/python/dbapi)
-- [Python Connection](https://duckdb.org/docs/api/python/connection)
+**📚 DuckDB Documentation**: [Main Docs](https://duckdb.org/docs/stable/) → Client APIs → Python
+- Topics: Overview, Connection, DB API, Data Ingestion
 
 **Trino Code** (from `koku/trino_database.py`):
 
@@ -88,10 +86,9 @@ results = cursor.fetchall()
 
 ### 2. Parquet File Queries
 
-**📚 DuckDB Documentation**: 
-- [Parquet Files](https://duckdb.org/docs/data/parquet/overview)
-- [Parquet Import](https://duckdb.org/docs/guides/import/parquet_import)
-- [Querying Parquet Files](https://duckdb.org/docs/guides/file_formats/query_parquet)
+**📚 DuckDB Documentation**: [Main Docs](https://duckdb.org/docs/stable/)
+- Data Import → Parquet Files (reading, writing, metadata)
+- Guides → File Formats → Parquet Import/Export
 
 **Trino Pattern** (from `masu/processor/report_parquet_processor_base.py`):
 
@@ -142,7 +139,7 @@ sql = """
 
 **Compatibility**: ✅ **Fully compatible** (DuckDB actually simpler - no table creation needed)
 
-**DuckDB Advantage**: DuckDB can query Parquet files directly without creating external tables. See [Direct Query on Parquet](https://duckdb.org/docs/data/parquet/overview#querying-parquet-files).
+**DuckDB Advantage**: DuckDB can query Parquet files directly without creating external tables (see Data Import → Parquet Files in docs).
 
 ---
 
@@ -198,11 +195,10 @@ sql = f"""
 
 ### 4. Complex Analytics Queries
 
-**📚 DuckDB Documentation**:
-- [PostgreSQL Extension](https://duckdb.org/docs/extensions/postgresql)
-- [ATTACH Statement](https://duckdb.org/docs/sql/statements/attach)
-- [Common Table Expressions (CTEs)](https://duckdb.org/docs/sql/query_syntax/with)
-- [Window Functions](https://duckdb.org/docs/sql/window_functions)
+**📚 DuckDB Documentation**: [Main Docs](https://duckdb.org/docs/stable/)
+- Extensions → PostgreSQL (for cross-database queries)
+- SQL → Statements → ATTACH
+- SQL → Query Syntax → WITH (CTEs), WINDOW
 
 **Trino SQL** (from `masu/database/trino_sql/reporting_ocpusagelineitem_daily_summary.sql`):
 
@@ -268,10 +264,9 @@ WHERE cluster_id IN (SELECT cluster_id FROM cte_pg_enabled_keys)
 
 ### 5. Hive Partitioning
 
-**📚 DuckDB Documentation**:
-- [Hive Partitioning](https://duckdb.org/docs/data/partitioning/hive_partitioning)
-- [Partitioned Writes](https://duckdb.org/docs/data/partitioning/partitioned_writes)
-- [read_parquet Function](https://duckdb.org/docs/data/parquet/overview#reading-parquet-files)
+**📚 DuckDB Documentation**: [Main Docs](https://duckdb.org/docs/stable/)
+- Data Import → Partitioning → Hive Partitioning (includes filter pushdown)
+- Data Import → Partitioning → Partitioned Writes
 
 **Trino Partitioning**:
 
@@ -318,10 +313,10 @@ SELECT * FROM 's3://koku-bucket/org1234567/aws_reports/source=*/year=2024/month=
 
 ### 6. Data Writes
 
-**📚 DuckDB Documentation**:
-- [COPY Statement](https://duckdb.org/docs/sql/statements/copy)
-- [Parquet Export](https://duckdb.org/docs/guides/import/parquet_export)
-- [Writing to S3](https://duckdb.org/docs/guides/import/s3_export)
+**📚 DuckDB Documentation**: [Main Docs](https://duckdb.org/docs/stable/)
+- SQL → Statements → COPY
+- Guides → File Formats → Parquet Export
+- Guides → Network and Cloud Storage → S3 Export
 
 **Trino Pattern**:
 
@@ -359,10 +354,10 @@ COPY (
 
 ## Key Differences & Adaptations Needed
 
-**📚 DuckDB Documentation References**:
-- [httpfs Extension (S3/MinIO)](https://duckdb.org/docs/extensions/httpfs)
-- [PostgreSQL Extension](https://duckdb.org/docs/extensions/postgresql)
-- [AWS Extension](https://duckdb.org/docs/extensions/aws)
+**📚 DuckDB Documentation**: [Main Docs](https://duckdb.org/docs/stable/) → Extensions
+- httpfs (for S3/MinIO access)
+- PostgreSQL (for cross-database queries)
+- AWS
 
 ### 1. Catalog System
 
@@ -403,27 +398,23 @@ sql = "SELECT * FROM cost_data"  # No change to existing queries
 
 ### 3. SQL Dialect
 
-**📚 DuckDB SQL Documentation**:
-- [SQL Introduction](https://duckdb.org/docs/sql/introduction)
-- [SELECT Statement](https://duckdb.org/docs/sql/statements/select)
-- [Aggregate Functions](https://duckdb.org/docs/sql/functions/aggregates)
-- [Window Functions](https://duckdb.org/docs/sql/window_functions)
-- [Date Functions](https://duckdb.org/docs/sql/functions/date)
-- [String Functions](https://duckdb.org/docs/sql/functions/char)
-- [List Functions](https://duckdb.org/docs/sql/functions/list) (DuckDB's arrays)
-- [JSON Functions](https://duckdb.org/docs/sql/functions/json)
+**📚 DuckDB SQL Documentation**: [Main Docs](https://duckdb.org/docs/stable/) → SQL
+- Introduction, Statements (SELECT, etc.), Query Syntax (FROM, WHERE, GROUP BY, WITH, WINDOW)
+- Functions: Aggregates, Date, String/Text, List (arrays), JSON
 
-| Feature | Trino | DuckDB | Compatible? | DuckDB Docs |
-|---------|-------|--------|-------------|-------------|
-| **SELECT** | ✅ | ✅ | ✅ Yes | [SELECT](https://duckdb.org/docs/sql/statements/select) |
-| **JOIN** | ✅ | ✅ | ✅ Yes | [FROM & JOIN](https://duckdb.org/docs/sql/query_syntax/from) |
-| **CTEs (WITH)** | ✅ | ✅ | ✅ Yes | [WITH Clause](https://duckdb.org/docs/sql/query_syntax/with) |
-| **Aggregations** | ✅ | ✅ | ✅ Yes | [Aggregates](https://duckdb.org/docs/sql/functions/aggregates) |
-| **Window Functions** | ✅ | ✅ | ✅ Yes | [Window Functions](https://duckdb.org/docs/sql/window_functions) |
-| **Date Functions** | `date_trunc()` | `date_trunc()` | ✅ Yes | [Date Functions](https://duckdb.org/docs/sql/functions/date) |
-| **String Functions** | `substr()` | `substr()` | ✅ Yes | [String Functions](https://duckdb.org/docs/sql/functions/char) |
-| **Array Functions** | `array_agg()` | `list_agg()` | ⚠️ Minor change | [List Functions](https://duckdb.org/docs/sql/functions/list) |
-| **JSON Functions** | ✅ | ✅ | ✅ Yes | [JSON Functions](https://duckdb.org/docs/sql/functions/json) |
+| Feature | Trino | DuckDB | Compatible? | DuckDB Docs Section |
+|---------|-------|--------|-------------|---------------------|
+| **SELECT** | ✅ | ✅ | ✅ Yes | SQL → Statements → SELECT |
+| **JOIN** | ✅ | ✅ | ✅ Yes | SQL → Query Syntax → FROM |
+| **CTEs (WITH)** | ✅ | ✅ | ✅ Yes | SQL → Query Syntax → WITH |
+| **Aggregations** | ✅ | ✅ | ✅ Yes | SQL → Functions → Aggregates |
+| **Window Functions** | ✅ | ✅ | ✅ Yes | SQL → Window Functions |
+| **Date Functions** | `date_trunc()` | `date_trunc()` | ✅ Yes | SQL → Functions → Date |
+| **String Functions** | `substr()` | `substr()` | ✅ Yes | SQL → Functions → Text |
+| **Array Functions** | `array_agg()` | `list_agg()` | ⚠️ Minor change | SQL → Functions → List |
+| **JSON Functions** | ✅ | ✅ | ✅ Yes | SQL → Functions → JSON |
+
+*All paths relative to https://duckdb.org/docs/stable/*
 
 **Compatibility**: 95%+ SQL compatible
 
@@ -466,22 +457,22 @@ sql = "SELECT * FROM cost_data"  # No change to existing queries
 
 ### What Koku Needs from Trino
 
-**📚 DuckDB Feature Documentation**:
-- [Extensions Overview](https://duckdb.org/docs/extensions/overview)
-- [Core Extensions](https://duckdb.org/docs/extensions/core_extensions)
-- [Installing Extensions](https://duckdb.org/docs/extensions/overview#installing-extensions)
+**📚 DuckDB Feature Documentation**: [Main Docs](https://duckdb.org/docs/stable/) → Extensions
+- Overview, Core Extensions, Installing Extensions
 
-| Requirement | Trino | DuckDB | Notes | DuckDB Docs |
+| Requirement | Trino | DuckDB | Notes | DuckDB Docs Section |
 |-------------|-------|--------|-------|
-| **Read Parquet from S3** | ✅ | ✅ | DuckDB: Native, optimized | [Parquet](https://duckdb.org/docs/data/parquet/overview) |
-| **Hive Partitioning** | ✅ | ✅ | DuckDB: Native support | [Hive Partitioning](https://duckdb.org/docs/data/partitioning/hive_partitioning) |
-| **SQL Analytics** | ✅ | ✅ | DuckDB: 95%+ compatible | [SQL Intro](https://duckdb.org/docs/sql/introduction) |
-| **CTEs, Window Functions** | ✅ | ✅ | DuckDB: Fully supported | [WITH](https://duckdb.org/docs/sql/query_syntax/with), [Window](https://duckdb.org/docs/sql/window_functions) |
-| **Cross-DB Queries** | ✅ | ✅ | DuckDB: Via extensions | [PostgreSQL Extension](https://duckdb.org/docs/extensions/postgresql) |
-| **Write Parquet to S3** | ✅ | ✅ | DuckDB: COPY TO | [COPY](https://duckdb.org/docs/sql/statements/copy) |
-| **Concurrent Queries** | ✅ 100+ | ✅ 10-30 | DuckDB: Scale horizontally | [Concurrency](https://duckdb.org/docs/connect/concurrency) |
-| **Horizontal Scaling** | ✅ | ✅ | DuckDB: Multiple instances | See production examples below |
+| **Read Parquet from S3** | ✅ | ✅ | DuckDB: Native, optimized | Data Import → Parquet |
+| **Hive Partitioning** | ✅ | ✅ | DuckDB: Native support | Data Import → Partitioning |
+| **SQL Analytics** | ✅ | ✅ | DuckDB: 95%+ compatible | SQL → Introduction |
+| **CTEs, Window Functions** | ✅ | ✅ | DuckDB: Fully supported | SQL → Query Syntax |
+| **Cross-DB Queries** | ✅ | ✅ | DuckDB: Via extensions | Extensions → PostgreSQL |
+| **Write Parquet to S3** | ✅ | ✅ | DuckDB: COPY TO | SQL → Statements → COPY |
+| **Concurrent Queries** | ✅ 100+ | ✅ 10-30 | DuckDB: Scale horizontally | Connect → Concurrency |
+| **Horizontal Scaling** | ✅ | ✅ | DuckDB: Multiple instances | See production examples |
 | **Resource Usage** | ❌ Heavy (20+ GB) | ✅ Light (2-8 GB) | DuckDB: 70-80% savings | [FAQ](https://duckdb.org/faq) |
+
+*Docs sections relative to https://duckdb.org/docs/stable/*
 
 ---
 
@@ -545,12 +536,10 @@ sql = "SELECT * FROM cost_data"  # No change to existing queries
 
 ## Code Examples: Koku with DuckDB
 
-**📚 DuckDB API Documentation**:
-- [Python API Overview](https://duckdb.org/docs/api/python/overview)
-- [Python Connection](https://duckdb.org/docs/api/python/connection)
-- [Executing SQL](https://duckdb.org/docs/api/python/dbapi#executing-queries)
-- [httpfs Extension](https://duckdb.org/docs/extensions/httpfs)
-- [PostgreSQL Extension](https://duckdb.org/docs/extensions/postgresql)
+**📚 DuckDB API Documentation**: [Main Docs](https://duckdb.org/docs/stable/)
+- Client APIs → Python (Overview, Connection, DB API, Executing SQL)
+- Extensions → httpfs (for S3/MinIO)
+- Extensions → PostgreSQL (for cross-database queries)
 
 ### 1. DuckDB Database Wrapper
 
@@ -649,11 +638,10 @@ def _execute_duckdb_sql(self, sql, schema_name: str):
 
 ### Query Performance
 
-**📚 Performance Documentation & Benchmarks**:
-- [DuckDB Benchmark Methodology](https://duckdb.org/docs/dev/benchmarking)
-- [Performance Guide](https://duckdb.org/docs/guides/performance/overview)
-- [TPC-H Benchmarks](https://duckdb.org/2025/10/09/benchmark-results-14-lts)
-- [My Workload is Slow](https://duckdb.org/docs/guides/performance/my_workload_is_slow)
+**📚 Performance Documentation**: [Main Docs](https://duckdb.org/docs/stable/)
+- Guides → Performance (Overview, "My Workload is Slow", Environment)
+- Development → Benchmarking
+- Recent TPC-H benchmarks: Search [DuckDB Blog](https://duckdb.org/news) for "benchmark"
 
 Based on [DuckDB benchmarks](https://duckdb.org/2025/10/09/benchmark-results-14-lts) and [production case studies](https://motherduck.com/blog/15-companies-duckdb-in-prod/):
 
@@ -760,82 +748,91 @@ Based on [DuckDB benchmarks](https://duckdb.org/2025/10/09/benchmark-results-14-
 
 ## Complete DuckDB Documentation References
 
+**Base URL**: https://duckdb.org/docs/stable/  
+*All paths below are relative to this base. If a specific link doesn't work, navigate from the base documentation.*
+
 ### Core Features
-- **Main Documentation**: https://duckdb.org/docs/
-- **Getting Started**: https://duckdb.org/docs/installation/
+- **Main Documentation**: https://duckdb.org/docs/stable/
+- **Installation**: Navigate to "Installation" from main docs
 
 ### Data Import/Export
-- **Parquet Files**: https://duckdb.org/docs/data/parquet/overview
-  - Reading: https://duckdb.org/docs/data/parquet/overview#reading-parquet-files
-  - Writing: https://duckdb.org/docs/data/parquet/overview#writing-parquet-files
-  - Metadata: https://duckdb.org/docs/data/parquet/metadata
-- **CSV Files**: https://duckdb.org/docs/data/csv/overview
-- **JSON Files**: https://duckdb.org/docs/data/json/overview
+- **Parquet Files**: https://duckdb.org/docs/stable/ → "Data Import" → "Parquet Files"
+  - Documentation covers: Reading Parquet, Writing Parquet, Parquet Metadata
+  - See also: Guides → "Parquet Import" and "Parquet Export"
+- **CSV Files**: Main docs → "Data Import" → "CSV Files"
+- **JSON Files**: Main docs → "Data Import" → "JSON Files"
 
 ### Partitioning
-- **Hive Partitioning**: https://duckdb.org/docs/data/partitioning/hive_partitioning
-- **Partitioned Writes**: https://duckdb.org/docs/data/partitioning/partitioned_writes
-- **Filter Pushdown**: https://duckdb.org/docs/data/partitioning/hive_partitioning#filter-pushdown
+- **Hive Partitioning**: Main docs → "Data Import" → "Partitioning" → "Hive Partitioning"
+  - Includes automatic partition pruning and filter pushdown
+- **Partitioned Writes**: Same section, "Partitioned Writes"
 
 ### Extensions
-- **Extensions Overview**: https://duckdb.org/docs/extensions/overview
-- **httpfs (S3/HTTP)**: https://duckdb.org/docs/extensions/httpfs
-  - S3 API Support: https://duckdb.org/docs/extensions/httpfs#s3-api-support
-  - HTTP Support: https://duckdb.org/docs/extensions/httpfs#http-support
-- **PostgreSQL**: https://duckdb.org/docs/extensions/postgresql
-- **AWS Extension**: https://duckdb.org/docs/extensions/aws
-- **Installing Extensions**: https://duckdb.org/docs/extensions/overview#installing-extensions
+- **Extensions**: https://duckdb.org/docs/stable/ → "Extensions"
+  - **httpfs (S3/MinIO)**: Extensions → "httpfs (HTTP and S3)"
+    - Covers S3 API support, MinIO, and HTTP file access
+  - **PostgreSQL**: Extensions → "PostgreSQL"  
+    - For cross-database queries
+  - **AWS**: Extensions → "AWS"
+  - See also: "Core Extensions" for full list
 
 ### SQL Reference
-- **SQL Introduction**: https://duckdb.org/docs/sql/introduction
-- **SELECT Statement**: https://duckdb.org/docs/sql/statements/select
-- **FROM and JOIN**: https://duckdb.org/docs/sql/query_syntax/from
-- **WHERE Clause**: https://duckdb.org/docs/sql/query_syntax/where
-- **GROUP BY**: https://duckdb.org/docs/sql/query_syntax/groupby
-- **WITH (CTEs)**: https://duckdb.org/docs/sql/query_syntax/with
-- **Window Functions**: https://duckdb.org/docs/sql/window_functions
-- **ATTACH Statement**: https://duckdb.org/docs/sql/statements/attach
-- **COPY Statement**: https://duckdb.org/docs/sql/statements/copy
+- **SQL**: https://duckdb.org/docs/stable/ → "SQL" section
+  - **Introduction**: SQL → "Introduction"
+  - **Statements**: SQL → "Statements" → "SELECT", "ATTACH", "COPY"
+  - **Query Syntax**: SQL → "Query Syntax" → "FROM and JOIN", "WHERE", "GROUP BY", "WITH", "WINDOW"
+  - All standard SQL features documented
 
 ### Functions
-- **Aggregate Functions**: https://duckdb.org/docs/sql/functions/aggregates
-- **Date Functions**: https://duckdb.org/docs/sql/functions/date
-- **String Functions**: https://duckdb.org/docs/sql/functions/char
-- **List Functions**: https://duckdb.org/docs/sql/functions/list
-- **JSON Functions**: https://duckdb.org/docs/sql/functions/json
-- **Numeric Functions**: https://duckdb.org/docs/sql/functions/numeric
+- **Functions**: Main docs → "SQL" → "Functions"
+  - **Aggregate Functions**: Functions → "Aggregate Functions"
+  - **Date Functions**: Functions → "Date Functions"
+  - **String Functions**: Functions → "Text Functions"
+  - **List Functions**: Functions → "List Functions" (DuckDB's arrays)
+  - **JSON Functions**: Functions → "JSON Functions"
+  - **Numeric Functions**: Functions → "Numeric Functions"
 
 ### API Documentation
-- **Python API Overview**: https://duckdb.org/docs/api/python/overview
-- **Python Connection**: https://duckdb.org/docs/api/python/connection
-- **Python DB API**: https://duckdb.org/docs/api/python/dbapi
-- **Data Ingestion**: https://duckdb.org/docs/api/python/data_ingestion
-- **Relational API**: https://duckdb.org/docs/api/python/relational_api
+- **Client APIs**: https://duckdb.org/docs/stable/ → "Client APIs"
+  - **Python**: Client APIs → "Python"
+    - Overview, Connection, DB API, Data Ingestion, Relational API
+    - All Python examples and API reference
 
 ### Performance & Operations
-- **Concurrency**: https://duckdb.org/docs/connect/concurrency
-- **Performance Guide**: https://duckdb.org/docs/guides/performance/overview
-- **Benchmarking**: https://duckdb.org/docs/dev/benchmarking
-- **My Workload is Slow**: https://duckdb.org/docs/guides/performance/my_workload_is_slow
-- **Environment**: https://duckdb.org/docs/guides/performance/environment
+- **Connect**: Main docs → "Connect" → "Concurrency"
+  - Covers multiple connections, read/write concurrency
+- **Performance**: Main docs → "Guides" → "Performance"
+  - Overview, Environment, "My Workload is Slow" troubleshooting
+- **Operations Manual**: Main docs → "Operations Manual"
+  - DuckDB Footprint, Limits, Logging
 
 ### Guides
-- **Parquet Import**: https://duckdb.org/docs/guides/import/parquet_import
-- **Parquet Export**: https://duckdb.org/docs/guides/import/parquet_export
-- **S3 Parquet Import**: https://duckdb.org/docs/guides/import/s3_import
-- **S3 Parquet Export**: https://duckdb.org/docs/guides/import/s3_export
-- **Querying Parquet Files**: https://duckdb.org/docs/guides/file_formats/query_parquet
-- **PostgreSQL Import**: https://duckdb.org/docs/guides/database_integration/postgres
+- **Guides**: Main docs → "Guides"
+  - **File Formats**: Guides → "File Formats"
+    - Parquet Import, Parquet Export, Querying Parquet Files
+  - **Network and Cloud Storage**: Guides → "Network and Cloud Storage"
+    - S3 Parquet Import, S3 Parquet Export
+  - **Database Integration**: Guides → "Database Integration"
+    - PostgreSQL Import, MySQL Import, SQLite Import
 
-### FAQ & Troubleshooting
-- **FAQ**: https://duckdb.org/faq
-- **DuckDB Footprint**: https://duckdb.org/docs/operations_manual/footprint
-- **Limits**: https://duckdb.org/docs/operations_manual/limits
+### FAQ & Resources
+- **FAQ**: https://duckdb.org/faq (main site, not versioned docs)
+- **Why DuckDB**: https://duckdb.org/why_duckdb
+- **DuckDB Blog**: https://duckdb.org/news
 
 ### Benchmarks & Case Studies
-- **TPC-H Benchmark Results**: https://duckdb.org/2025/10/09/benchmark-results-14-lts
+- **Benchmarks**: Search DuckDB blog (https://duckdb.org/news) for "benchmark" or "TPC-H"
+  - Recent benchmarks show 100TB dataset processing
 - **Production Case Studies**: https://motherduck.com/blog/15-companies-duckdb-in-prod/
-- **DuckDB Blog**: https://duckdb.org/news
+  - Watershed: 75,000 queries/day, 17M rows
+  - Multiple companies using DuckDB in production
+
+---
+
+**Note**: DuckDB documentation is actively maintained. If any specific path has changed:
+1. Start at https://duckdb.org/docs/stable/
+2. Use the search function (⌘+K or Ctrl+K)
+3. Or navigate through the left sidebar menu
 
 ---
 

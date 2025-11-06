@@ -41,7 +41,7 @@
 
 **Use Case**: Embedded analytics, interactive dashboards
 
-**Architecture**: 
+**Architecture**:
 - DuckDB compiled to WebAssembly
 - Runs entirely in browser (client-side)
 - No separate database server needed
@@ -435,7 +435,7 @@ def query_duckdb(sql):
 duckdb:
   enabled: true
   replicas: 3  # Start with 3, scale as needed
-  
+
   resources:
     requests:
       memory: 2Gi
@@ -443,12 +443,12 @@ duckdb:
     limits:
       memory: 4Gi
       cpu: 2000m
-  
+
   # Kubernetes handles load balancing
   service:
     type: ClusterIP
     port: 8080
-  
+
   # All instances read from same S3/MinIO
   s3:
     endpoint: "minio.ros-ocp.svc.cluster.local:9000"
@@ -479,7 +479,7 @@ duckdb:
 
 ## 🙏 Correction
 
-**I apologize for the misleading initial assessment.** 
+**I apologize for the misleading initial assessment.**
 
 I underestimated DuckDB based on assumptions rather than facts:
 - ❌ Assumed single-node = can't scale
@@ -496,8 +496,8 @@ I underestimated DuckDB based on assumptions rather than facts:
 
 ---
 
-**Document Version**: 2.0 (CORRECTED)  
-**Last Updated**: November 6, 2025  
-**Status**: Verified against official DuckDB documentation  
+**Document Version**: 2.0 (CORRECTED)
+**Last Updated**: November 6, 2025
+**Status**: Verified against official DuckDB documentation
 **Recommendation**: **DuckDB for most on-prem use cases** ⭐
 
