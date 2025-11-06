@@ -86,7 +86,7 @@ fi
 # Check if image was pushed
 if oc get imagestream "$BUILD_NAME" -n "$NAMESPACE" &>/dev/null; then
     log_success "Image pushed to ImageStream: $BUILD_NAME"
-    
+
     # Show image details
     log_info "Image details:"
     oc get imagestream "$BUILD_NAME" -n "$NAMESPACE" -o jsonpath='{.status.tags[?(@.tag=="'"$IMAGE_TAG"'")].items[0].dockerImageReference}{"\n"}'
