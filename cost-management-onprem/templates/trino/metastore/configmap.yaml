@@ -41,15 +41,8 @@ data:
       </property>
       <property>
         <name>metastore.warehouse.dir</name>
-        <value>s3a://{{ include "cost-mgmt.koku.s3.bucket" . }}/warehouse</value>
-      </property>
-      <property>
-        <name>fs.s3a.endpoint</name>
-        <value>{{ include "cost-mgmt.koku.s3.endpoint" . }}</value>
-      </property>
-      <property>
-        <name>fs.s3a.path.style.access</name>
-        <value>true</value>
+        <value>file:///tmp/warehouse</value>
+        <description>Default warehouse location (not used for external tables). Using local filesystem to avoid S3A dependencies for on-prem deployment.</description>
       </property>
     </configuration>
 
