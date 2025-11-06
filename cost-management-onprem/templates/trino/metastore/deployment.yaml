@@ -48,15 +48,21 @@ spec:
           - /bin/sh
           - -c
           - |
-            # Replace password placeholder in config
-            sed "s/METASTORE_DB_PASSWORD/$METASTORE_DB_PASSWORD/g" /opt/hive-metastore/conf/metastore-site.xml > /tmp/metastore-site.xml
-            cp /tmp/metastore-site.xml /opt/hive-metastore/conf/metastore-site.xml
-
-            # Initialize schema if needed
-            /opt/hive-metastore/bin/schematool -dbType postgres -initSchema || true
-
-            # Start metastore
-            /opt/hive-metastore/bin/start-metastore
+            # Create writable config directory
+            mkdir -p /tmp/hive-conf
+            
+            # Process config template (read from ConfigMap, write to writable location)
+            sed "s/METASTORE_DB_PASSWORD/$METASTORE_DB_PASSWORD/g" \
+              /config-template/metastore-site.xml > /tmp/hive-conf/metastore-site.xml
+            
+            # Copy to expected location
+            cp /tmp/hive-conf/metastore-site.xml /opt/hive/conf/hive-site.xml
+            
+            # Initialize schema if needed (correct path)
+            /opt/hive/bin/schematool -dbType postgres -initSchema || true
+            
+            # Start metastore service (correct path)
+            /opt/hive/bin/hive --service metastore
 
         ports:
         - name: thrift
@@ -75,8 +81,7 @@ spec:
 
         volumeMounts:
         - name: config
-          mountPath: /opt/hive-metastore/conf/metastore-site.xml
-          subPath: metastore-site.xml
+          mountPath: /config-template
         - name: tmp
           mountPath: /tmp
 

@@ -1,7 +1,7 @@
 # Hive Metastore Triage Report
 
-**Date**: November 6, 2025  
-**Status**: ⚠️ **NON-CRITICAL** - Not blocking Koku functionality  
+**Date**: November 6, 2025
+**Status**: ⚠️ **NON-CRITICAL** - Not blocking Koku functionality
 **Priority**: **P3 - Low** (Can be fixed later)
 
 ---
@@ -30,7 +30,7 @@
 cp: cannot create regular file '/opt/hive-metastore/conf/metastore-site.xml': Read-only file system
 ```
 
-**Cause**: 
+**Cause**:
 - ConfigMap mounted as `subPath` at line 78-79 of deployment.yaml
 - ConfigMap mounts are read-only in Kubernetes
 - Startup script (lines 52-53) tries to `sed` and copy back to same location
@@ -114,14 +114,14 @@ command:
   - |
     # Create writable config directory
     mkdir -p /tmp/hive-conf
-    
+
     # Copy and modify config (read from ConfigMap, write to /tmp)
     sed "s/METASTORE_DB_PASSWORD/$METASTORE_DB_PASSWORD/g" \
       /config-template/metastore-site.xml > /tmp/hive-conf/metastore-site.xml
-    
+
     # Export config location
     export METASTORE_HOME=/tmp/hive-conf
-    
+
     # Use correct binary paths (check image first!)
     /opt/hive/bin/schematool -dbType postgres -initSchema || true
     /opt/hive/bin/hive --service metastore
@@ -143,7 +143,7 @@ command:
 2. Configure Hive to read from environment variables
 3. Pass `METASTORE_DB_PASSWORD` directly to Hive
 
-**Pros**: Cleaner, no file manipulation needed  
+**Pros**: Cleaner, no file manipulation needed
 **Cons**: Requires understanding Hive's env var support
 
 ---
@@ -165,7 +165,7 @@ FROM apache/hive:3.1.3
 # Add startup script
 ```
 
-**Pros**: Purpose-built for metastore service  
+**Pros**: Purpose-built for metastore service
 **Cons**: More research needed, may not exist
 
 ---
@@ -236,7 +236,7 @@ Is Koku API working?
 
 ### Immediate (Now):
 1. ✅ **Document issue** (this report)
-2. ✅ **Continue with Koku validation** 
+2. ✅ **Continue with Koku validation**
 3. ✅ **Monitor for Hive-related errors**
 
 ### Short-term (1-2 weeks):
@@ -295,10 +295,10 @@ command:
     # Process config template
     sed "s/METASTORE_DB_PASSWORD/$METASTORE_DB_PASSWORD/g" \
       /config-template/metastore-site.xml > /opt/hive-metastore/conf/metastore-site.xml
-    
+
     # Initialize schema (use correct path!)
     /opt/hive/bin/schematool -dbType postgres -initSchema || true
-    
+
     # Start metastore (use correct path!)
     /opt/hive/bin/hive --service metastore
 ```
@@ -330,7 +330,7 @@ command:
 4. **No errors observed** in Trino or worker logs
 5. Current focus should be on **validating Koku functionality**, not optimizing all components
 
-**Recommendation**: 
+**Recommendation**:
 - ✅ **Mark as "Known Issue" in deployment docs**
 - ✅ **Continue with Koku API/worker testing**
 - 🔜 **Fix before data ingestion testing** (Week 2-3)
