@@ -657,7 +657,7 @@ trino:
 
       # PostgreSQL image
       image:
-        repository: registry.access.redhat.com/rhscl/postgresql-15-rhel7  # Avoid Docker Hub rate limit
+        repository: quay.io/sclorg/postgresql-13-c9s  # Public, no rate limits
         tag: "latest"
         pullPolicy: IfNotPresent
 
