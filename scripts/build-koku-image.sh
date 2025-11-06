@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 KOKU_SOURCE="${KOKU_SOURCE:-$(cd "${PROJECT_ROOT}/../koku" && pwd)}"
 NAMESPACE="${NAMESPACE:-cost-mgmt}"
-BUILD_NAME="${BUILD_NAME:-cost-mgmt-cost-management-onprem-koku}"
+BUILD_NAME="${BUILD_NAME:-cost-mgmt-cost-management-onprem-koku-api}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 
 # Colors for output
