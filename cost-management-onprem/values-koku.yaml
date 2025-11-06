@@ -547,10 +547,10 @@ trino:
         path: /v1/info/state
         port: 8080
         scheme: HTTP
-      initialDelaySeconds: 30
-      periodSeconds: 10
-      timeoutSeconds: 5
-      failureThreshold: 3
+      initialDelaySeconds: 60
+      periodSeconds: 15
+      timeoutSeconds: 10
+      failureThreshold: 6
 
     # JVM configuration (minimal)
     config:
