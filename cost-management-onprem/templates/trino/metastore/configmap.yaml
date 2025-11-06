@@ -41,8 +41,8 @@ data:
       </property>
       <property>
         <name>metastore.warehouse.dir</name>
-        <value>file:///tmp/warehouse</value>
-        <description>Default warehouse location (not used for external tables). Using local filesystem to avoid S3A dependencies for on-prem deployment.</description>
+        <value>file:///warehouse</value>
+        <description>Default warehouse location (not used for external tables). Using persistent volume to avoid S3A dependencies for on-prem deployment.</description>
       </property>
     </configuration>
 

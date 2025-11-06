@@ -1,5 +1,5 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ include "cost-mgmt.trino.metastore.name" . }}
   namespace: {{ .Release.Namespace }}
@@ -7,6 +7,7 @@ metadata:
     {{- include "cost-mgmt.trino.labels" . | nindent 4 }}
     app.kubernetes.io/component: hive-metastore
 spec:
+  serviceName: {{ include "cost-mgmt.trino.metastore.name" . }}
   replicas: {{ .Values.trino.metastore.replicas }}
   selector:
     matchLabels:
@@ -88,6 +89,8 @@ spec:
           mountPath: /config-template
         - name: tmp
           mountPath: /tmp
+        - name: warehouse
+          mountPath: /warehouse
 
         securityContext:
           {{- include "cost-mgmt.securityContext.container" . | nindent 10 }}
@@ -98,4 +101,20 @@ spec:
           name: {{ include "cost-mgmt.trino.metastore.name" . }}-config
       - name: tmp
         emptyDir: {}
+
+  volumeClaimTemplates:
+  - metadata:
+      name: warehouse
+      labels:
+        {{- include "cost-mgmt.trino.labels" . | nindent 8 }}
+        app.kubernetes.io/component: hive-metastore
+    spec:
+      accessModes:
+        {{- toYaml .Values.trino.metastore.storage.accessModes | nindent 8 }}
+      {{- if .Values.trino.metastore.storage.storageClassName }}
+      storageClassName: {{ .Values.trino.metastore.storage.storageClassName }}
+      {{- end }}
+      resources:
+        requests:
+          storage: {{ .Values.trino.metastore.storage.size }}
 
