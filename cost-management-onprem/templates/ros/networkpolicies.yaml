@@ -1,6 +1,6 @@
 {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
 ---
-# NetworkPolicy to secure metrics endpoints for ros-ocp-backend components
+# NetworkPolicy to secure metrics endpoints for ROS backend components
 # Allows access only from OpenShift monitoring namespace (Prometheus)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
