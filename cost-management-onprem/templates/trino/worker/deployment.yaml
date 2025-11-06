@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cost-mgmt.trino.worker.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.trino.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trino-worker
+spec:
+  replicas: {{ .Values.trino.worker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "cost-mgmt.trino.worker.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cost-mgmt.trino.labels" . | nindent 8 }}
+        app.kubernetes.io/component: trino-worker
+    spec:
+      serviceAccountName: {{ include "cost-mgmt.trino.serviceAccountName" . }}
+      
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+      
+      containers:
+      - name: trino
+        image: "{{ .Values.trino.worker.image.repository }}:{{ .Values.trino.worker.image.tag }}"
+        imagePullPolicy: {{ .Values.trino.worker.image.pullPolicy }}
+        
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: accesskey
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secretkey
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "cost-mgmt.koku.database.secretName" . }}
+              key: password
+        
+        resources:
+          {{- toYaml .Values.trino.worker.resources | nindent 10 }}
+        
+        volumeMounts:
+        - name: config
+          mountPath: /etc/trino
+        - name: data
+          mountPath: /data/trino
+        
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 1000
+      
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "cost-mgmt.trino.worker.name" . }}-config
+      - name: data
+        emptyDir:
+          sizeLimit: {{ .Values.trino.worker.storage.size }}
+

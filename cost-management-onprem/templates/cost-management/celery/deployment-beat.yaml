@@ -21,43 +21,43 @@ spec:
         celery-type: beat
     spec:
       serviceAccountName: {{ include "cost-mgmt.koku.serviceAccountName" . }}
-      
+
       securityContext:
         runAsNonRoot: true
         fsGroup: 1000
-      
+
       containers:
       - name: celery-beat
         image: "{{ .Values.costManagement.api.image.repository }}:{{ .Values.costManagement.api.image.tag }}"
         imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
-        
+
         command:
           - /bin/sh
           - -c
           - |
             # Start Celery Beat scheduler
             celery -A koku beat --loglevel=INFO
-        
+
         env:
         {{- include "cost-mgmt.koku.commonEnv" . | nindent 8 }}
         {{- range $key, $value := .Values.costManagement.celery.beat.env }}
         - name: {{ $key }}
           value: {{ $value | quote }}
         {{- end }}
-        
+
         resources:
           {{- toYaml .Values.costManagement.celery.beat.resources | nindent 10 }}
-        
+
         livenessProbe:
           {{- toYaml .Values.costManagement.celery.beat.livenessProbe | nindent 10 }}
-        
+
         readinessProbe:
           {{- toYaml .Values.costManagement.celery.beat.readinessProbe | nindent 10 }}
-        
+
         volumeMounts:
         - name: tmp
           mountPath: /tmp
-        
+
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -66,7 +66,7 @@ spec:
           readOnlyRootFilesystem: false
           runAsNonRoot: true
           runAsUser: 1000
-      
+
       volumes:
       - name: tmp
         emptyDir: {}
