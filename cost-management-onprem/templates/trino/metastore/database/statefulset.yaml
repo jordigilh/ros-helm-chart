@@ -20,22 +20,22 @@ spec:
         app.kubernetes.io/component: hive-metastore-db
     spec:
       serviceAccountName: {{ include "cost-mgmt.trino.serviceAccountName" . }}
-      
+
       securityContext:
         fsGroup: 26  # PostgreSQL UID/GID
         runAsNonRoot: true
         runAsUser: 26
-      
+
       containers:
       - name: postgresql
         image: "{{ .Values.trino.metastore.database.image.repository }}:{{ .Values.trino.metastore.database.image.tag }}"
         imagePullPolicy: {{ .Values.trino.metastore.database.image.pullPolicy }}
-        
+
         ports:
         - name: postgresql
           containerPort: 5432
           protocol: TCP
-        
+
         env:
         - name: POSTGRES_DB
           value: {{ .Values.trino.metastore.database.env.POSTGRES_DB | quote }}
@@ -48,7 +48,7 @@ spec:
               key: password
         - name: PGDATA
           value: /var/lib/postgresql/data/pgdata
-        
+
         livenessProbe:
           exec:
             command:
@@ -59,7 +59,7 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 6
-        
+
         readinessProbe:
           exec:
             command:
@@ -70,14 +70,14 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
-        
+
         resources:
           {{- toYaml .Values.trino.metastore.database.resources | nindent 10 }}
-        
+
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data
-        
+
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -86,7 +86,7 @@ spec:
           readOnlyRootFilesystem: false
           runAsNonRoot: true
           runAsUser: 26
-  
+
   volumeClaimTemplates:
   - metadata:
       name: data

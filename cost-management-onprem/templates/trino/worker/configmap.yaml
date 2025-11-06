@@ -13,7 +13,7 @@ data:
     query.max-memory=1GB
     query.max-memory-per-node=512MB
     discovery.uri=http://{{ include "cost-mgmt.trino.coordinator.name" . }}:8080
-  
+
   jvm.config: |
     -server
     -Xmx{{ .Values.trino.worker.config.jvm.maxHeapSize }}
@@ -24,11 +24,11 @@ data:
     -XX:+HeapDumpOnOutOfMemoryError
     -XX:+ExitOnOutOfMemoryError
     -Djdk.attach.allowAttachSelf=true
-  
+
   node.properties: |
     node.environment=production
     node.data-dir=/data/trino
-  
+
   log.properties: |
     io.trino=INFO
 

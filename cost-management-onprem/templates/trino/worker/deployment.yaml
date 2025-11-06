@@ -18,21 +18,21 @@ spec:
         app.kubernetes.io/component: trino-worker
     spec:
       serviceAccountName: {{ include "cost-mgmt.trino.serviceAccountName" . }}
-      
+
       securityContext:
         runAsNonRoot: true
         fsGroup: 1000
-      
+
       containers:
       - name: trino
         image: "{{ .Values.trino.worker.image.repository }}:{{ .Values.trino.worker.image.tag }}"
         imagePullPolicy: {{ .Values.trino.worker.image.pullPolicy }}
-        
+
         ports:
         - name: http
           containerPort: 8080
           protocol: TCP
-        
+
         env:
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
@@ -49,16 +49,16 @@ spec:
             secretKeyRef:
               name: {{ include "cost-mgmt.koku.database.secretName" . }}
               key: password
-        
+
         resources:
           {{- toYaml .Values.trino.worker.resources | nindent 10 }}
-        
+
         volumeMounts:
         - name: config
           mountPath: /etc/trino
         - name: data
           mountPath: /data/trino
-        
+
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -67,7 +67,7 @@ spec:
           readOnlyRootFilesystem: false
           runAsNonRoot: true
           runAsUser: 1000
-      
+
       volumes:
       - name: config
         configMap:

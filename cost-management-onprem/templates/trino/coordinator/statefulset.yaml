@@ -19,21 +19,21 @@ spec:
         app.kubernetes.io/component: trino-coordinator
     spec:
       serviceAccountName: {{ include "cost-mgmt.trino.serviceAccountName" . }}
-      
+
       securityContext:
         runAsNonRoot: true
         fsGroup: 1000
-      
+
       containers:
       - name: trino
         image: "{{ .Values.trino.coordinator.image.repository }}:{{ .Values.trino.coordinator.image.tag }}"
         imagePullPolicy: {{ .Values.trino.coordinator.image.pullPolicy }}
-        
+
         ports:
         - name: http
           containerPort: 8080
           protocol: TCP
-        
+
         env:
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
@@ -50,22 +50,22 @@ spec:
             secretKeyRef:
               name: {{ include "cost-mgmt.koku.database.secretName" . }}
               key: password
-        
+
         livenessProbe:
           {{- toYaml .Values.trino.coordinator.livenessProbe | nindent 10 }}
-        
+
         readinessProbe:
           {{- toYaml .Values.trino.coordinator.readinessProbe | nindent 10 }}
-        
+
         resources:
           {{- toYaml .Values.trino.coordinator.resources | nindent 10 }}
-        
+
         volumeMounts:
         - name: config
           mountPath: /etc/trino
         - name: data
           mountPath: /data/trino
-        
+
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -74,12 +74,12 @@ spec:
           readOnlyRootFilesystem: false
           runAsNonRoot: true
           runAsUser: 1000
-      
+
       volumes:
       - name: config
         configMap:
           name: {{ include "cost-mgmt.trino.coordinator.name" . }}-config
-  
+
   volumeClaimTemplates:
   - metadata:
       name: data
