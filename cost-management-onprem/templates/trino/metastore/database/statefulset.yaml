@@ -25,6 +25,8 @@ spec:
         fsGroup: 26  # PostgreSQL UID/GID
         runAsNonRoot: true
         runAsUser: 26
+        seccompProfile:
+          type: RuntimeDefault
 
       containers:
       - name: postgresql
@@ -86,6 +88,8 @@ spec:
           readOnlyRootFilesystem: false
           runAsNonRoot: true
           runAsUser: 26
+          seccompProfile:
+            type: RuntimeDefault
 
   volumeClaimTemplates:
   - metadata:
