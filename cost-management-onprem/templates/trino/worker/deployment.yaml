@@ -48,6 +48,15 @@ spec:
             secretKeyRef:
               name: {{ include "cost-mgmt.koku.database.secretName" . }}
               key: password
+        # Hadoop S3A configuration for MinIO/S3 access
+        - name: HADOOP_S3A_ENDPOINT
+          value: {{ include "cost-mgmt.koku.s3.endpoint" . | quote }}
+        - name: HADOOP_S3A_PATH_STYLE_ACCESS
+          value: "true"
+        - name: HADOOP_S3A_SSL_ENABLED
+          value: "false"
+        - name: HADOOP_S3A_CONNECTION_SSL_ENABLED
+          value: "false"
 
         resources:
           {{- toYaml .Values.trino.worker.resources | nindent 10 }}
