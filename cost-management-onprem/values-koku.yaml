@@ -347,8 +347,8 @@ costManagement:
 
     # PostgreSQL image
     image:
-      repository: quay.io/fedora/postgresql  # Avoid Docker Hub rate limit
-      tag: "15"
+      repository: quay.io/sclorg/postgresql-13-c9s  # Public, no rate limits
+      tag: "latest"
       pullPolicy: IfNotPresent
 
     # Resources for Koku database
@@ -504,7 +504,7 @@ trino:
 
     # Image configuration
     image:
-      repository: quay.io/trinodb/trino  # Avoid Docker Hub rate limit
+      repository: ghcr.io/trinodb/trino  # Public, no rate limits (GitHub Container Registry)
       tag: "latest"
       pullPolicy: IfNotPresent
 
@@ -590,7 +590,7 @@ trino:
 
     # Image configuration
     image:
-      repository: quay.io/trinodb/trino  # Avoid Docker Hub rate limit
+      repository: ghcr.io/trinodb/trino  # Public, no rate limits (GitHub Container Registry)
       tag: "latest"
       pullPolicy: IfNotPresent
 
