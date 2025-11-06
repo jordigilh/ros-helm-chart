@@ -102,7 +102,6 @@ Security context for pods
 */}}
 {{- define "cost-mgmt.securityContext.pod" -}}
 runAsNonRoot: true
-fsGroup: 1000
 seccompProfile:
   type: RuntimeDefault
 {{- end -}}
@@ -117,7 +116,6 @@ capabilities:
     - ALL
 readOnlyRootFilesystem: false
 runAsNonRoot: true
-runAsUser: 1000
 seccompProfile:
   type: RuntimeDefault
 {{- end -}}
