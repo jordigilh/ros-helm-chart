@@ -4,6 +4,59 @@
 
 ---
 
+## Table of Contents
+
+1. [Executive Summary](#executive-summary)
+2. [How Koku Uses Trino](#how-koku-uses-trino)
+   - [Connection Pattern](#1-connection-pattern)
+   - [Parquet File Queries](#2-parquet-file-queries)
+   - [Schema and Table Management](#3-schema-and-table-management)
+   - [Complex Analytics Queries](#4-complex-analytics-queries)
+   - [Hive Partitioning](#5-hive-partitioning)
+   - [Data Writes](#6-data-writes)
+3. [Key Differences & Adaptations Needed](#key-differences--adaptations-needed)
+   - [Catalog System](#1-catalog-system)
+   - [Python API Wrapper](#2-python-api-wrapper)
+   - [SQL Dialect](#3-sql-dialect)
+4. [Feature Comparison](#feature-comparison)
+   - [What Koku Needs from Trino](#what-koku-needs-from-trino)
+5. [Recommended Migration Path](#recommended-migration-path)
+   - [Phase 1: Create DuckDB Wrapper](#phase-1-create-duckdb-wrapper-1-2-days)
+   - [Phase 2: Update Koku Code](#phase-2-update-koku-code-2-3-days)
+   - [Phase 3: Migrate SQL Files](#phase-3-migrate-sql-files-3-5-days)
+   - [Phase 4: Testing & Validation](#phase-4-testing--validation-2-3-days)
+6. [Code Examples: Koku with DuckDB](#code-examples-koku-with-duckdb)
+   - [DuckDB Database Wrapper](#1-duckdb-database-wrapper)
+   - [Updated Parquet Processor](#2-updated-parquet-processor)
+   - [SQL Query Migration Example](#3-sql-query-migration-example)
+7. [Performance Expectations](#performance-expectations)
+   - [Query Performance](#query-performance)
+   - [Resource Usage](#resource-usage)
+8. [Migration Risks & Mitigations](#migration-risks--mitigations)
+9. [Decision Matrix](#decision-matrix)
+   - [Stick with Trino If](#stick-with-trino-if)
+   - [Migrate to DuckDB If](#migrate-to-duckdb-if)
+10. [Conclusion](#conclusion)
+11. [Complete DuckDB Documentation References](#complete-duckdb-documentation-references)
+    - [Core Features](#core-features)
+    - [Data Import/Export](#data-importexport)
+    - [Partitioning](#partitioning)
+    - [Extensions](#extensions)
+    - [SQL Reference](#sql-reference)
+    - [Functions](#functions)
+    - [API Documentation](#api-documentation)
+    - [Performance & Operations](#performance--operations)
+    - [Guides](#guides)
+    - [FAQ & Resources](#faq--resources)
+    - [Benchmarks & Case Studies](#benchmarks--case-studies)
+12. [References](#references)
+    - [Koku Source Files Analyzed](#koku-source-files-analyzed)
+    - [DuckDB Official Documentation](#duckdb-official-documentation)
+    - [Production Case Studies](#production-case-studies)
+    - [Benchmarks](#benchmarks)
+
+---
+
 ## Executive Summary
 
 **Question**: Can DuckDB replace Trino for Koku?
