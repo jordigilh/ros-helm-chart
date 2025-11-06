@@ -22,7 +22,9 @@ costManagement:
   api:
     # Image configuration
     image:
-      repository: quay.io/cloudservices/koku
+      # Use ImageStream for in-cluster builds (set to false to use external registry)
+      useImageStream: true
+      repository: quay.io/cloudservices/koku  # Only used if useImageStream=false
       tag: "latest"
       pullPolicy: IfNotPresent
 

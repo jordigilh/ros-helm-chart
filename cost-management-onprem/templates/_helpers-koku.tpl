@@ -508,6 +508,24 @@ Common environment variables for Koku API and Celery
 
 {{/*
 =============================================================================
+Image Helpers
+=============================================================================
+*/}}
+
+{{/*
+Generate the Koku image reference
+Uses ImageStream if building in-cluster, otherwise uses external registry
+*/}}
+{{- define "cost-mgmt.koku.image" -}}
+{{- if .Values.costManagement.api.image.useImageStream -}}
+{{- printf "%s:%s" (include "cost-mgmt.koku.fullname" .) (.Values.costManagement.api.image.tag | default "latest") -}}
+{{- else -}}
+{{- printf "%s:%s" .Values.costManagement.api.image.repository (.Values.costManagement.api.image.tag | default "latest") -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+=============================================================================
 Validation Helpers
 =============================================================================
 */}}
