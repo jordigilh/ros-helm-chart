@@ -19,7 +19,7 @@ The three-chart approach is a **production-grade pattern** used by major platfor
 ## Proposed Architecture
 
 ### Chart 1: Infrastructure Chart (NEW)
-**Name**: `platform-infrastructure` or `ros-infrastructure`  
+**Name**: `platform-infrastructure` or `ros-infrastructure`
 **Purpose**: Shared platform services (data layer + messaging)
 
 **Components**:
@@ -32,7 +32,7 @@ The three-chart approach is a **production-grade pattern** used by major platfor
 **Lifecycle**: Deployed once, rarely updated
 
 ### Chart 2: ROS Chart (Existing, Modified)
-**Name**: `ros-ocp`  
+**Name**: `ros-ocp`
 **Purpose**: Resource Optimization Service
 
 **Components**:
@@ -47,7 +47,7 @@ The three-chart approach is a **production-grade pattern** used by major platfor
 **Lifecycle**: Updated frequently (application changes)
 
 ### Chart 3: Koku Chart (NEW)
-**Name**: `koku` or `cost-management`  
+**Name**: `koku` or `cost-management`
 **Purpose**: Cost Management platform
 
 **Components**:
@@ -110,11 +110,11 @@ Chart 1: gitlab/gitlab-infrastructure
   - Redis
   - PostgreSQL
   - Gitaly (storage)
-  
+
 Chart 2: gitlab/gitlab-webservice
   - Rails application
   - API
-  
+
 Chart 3: gitlab/gitlab-sidekiq
   - Background jobs
 ```
@@ -219,16 +219,16 @@ Cluster:
     - PostgreSQL (databases: ros-prod, koku-prod, ros-staging, koku-staging)
     - Redis (separate DBs: 0=prod, 1=staging)
     - MinIO (buckets: ros-prod, koku-prod, ros-staging, koku-staging)
-  
+
   Namespace: ros-production
     - ROS services (using platform-infra)
-  
+
   Namespace: koku-production
     - Koku services (using platform-infra)
-  
+
   Namespace: ros-staging
     - ROS services (using platform-infra, different DB)
-  
+
   Namespace: koku-staging
     - Koku services (using platform-infra, different DB)
 ```
@@ -362,7 +362,13 @@ helm upgrade koku koku-chart/ --version 2.1.0 -n koku
 │  │  │   ├── Bucket: koku-data                             │  │
 │  │  │   └── Bucket: shared-data                           │  │
 │  │  │                                                      │  │
-│  │  └── Ingress/Authorino (shared gateway)                │  │
+│  │  ├── Ingress (insights-ingress-go)                     │  │
+│  │  │   - Platform-wide ingress service                   │  │
+│  │  │   - Handles uploads for ROS & Koku                  │  │
+│  │  │   - Routes via content-type                         │  │
+│  │  │   - Produces to platform.upload.announce            │  │
+│  │  │                                                      │  │
+│  │  └── Authorino (shared auth gateway)                   │  │
 │  │                                                         │  │
 │  │  ✅ Stable, rarely updated                             │  │
 │  └─────────────────────────────────────────────────────────┘  │
@@ -461,7 +467,7 @@ postgresql:
   image:
     repository: quay.io/insights-onprem/postgresql
     tag: "16"
-  
+
   # Multi-tenant database configuration
   databases:
     - name: ros
@@ -476,11 +482,11 @@ postgresql:
     - name: koku
       user: koku_user
       password: koku_password
-  
+
   # Admin credentials
   adminUser: postgres
   adminPassword: postgres
-  
+
   resources:
     requests:
       cpu: 1000m
@@ -488,7 +494,7 @@ postgresql:
     limits:
       cpu: 2000m
       memory: 4Gi
-  
+
   storage:
     size: 50Gi
     storageClass: ""  # Use default
@@ -499,16 +505,16 @@ redis:
   image:
     repository: quay.io/insights-onprem/redis-ephemeral
     tag: "6"
-  
+
   # Database allocation
   databases:
     ros: 0
     koku: 1
     shared: 2
-  
+
   maxMemory: 2gb
   maxMemoryPolicy: allkeys-lru
-  
+
   resources:
     requests:
       cpu: 500m
@@ -523,7 +529,7 @@ minio:
   image:
     repository: quay.io/minio/minio
     tag: "RELEASE.2024-10-13T13-34-11Z"
-  
+
   # Bucket configuration
   buckets:
     - name: ros-data
@@ -532,10 +538,10 @@ minio:
       policy: private
     - name: shared-data
       policy: private
-  
+
   accessKey: minioadmin
   secretKey: minioadmin
-  
+
   resources:
     requests:
       cpu: 500m
@@ -543,7 +549,7 @@ minio:
     limits:
       cpu: 1000m
       memory: 2Gi
-  
+
   storage:
     size: 100Gi
     storageClass: ""
@@ -620,35 +626,35 @@ externalServices:
   postgresql:
     host: db-platform.platform-infra.svc.cluster.local
     port: 5432
-    
+
     # Individual database connections
     ros:
       database: ros
       user: ros_user
       password: ros_password
-    
+
     kruize:
       database: kruize
       user: kruize_user
       password: kruize_password
-    
+
     sources:
       database: sources
       user: sources_user
       password: sources_password
-  
+
   redis:
     host: redis.platform-infra.svc.cluster.local
     port: 6379
     database: 0  # Use DB 0 for ROS
-  
+
   minio:
     endpoint: minio.platform-infra.svc.cluster.local:9000
     accessKey: minioadmin
     secretKey: minioadmin
     buckets:
       ros: ros-data
-  
+
   kafka:
     bootstrapServers: ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092
 ```
@@ -704,7 +710,7 @@ koku:
     repository: quay.io/cloudservices/koku
     tag: "latest"  # Replace with actual tag
     pullPolicy: IfNotPresent
-  
+
   # API configuration
   api:
     reads:
@@ -716,7 +722,7 @@ koku:
         limits:
           cpu: 1000m
           memory: 2Gi
-    
+
     writes:
       replicas: 2
       resources:
@@ -726,7 +732,7 @@ koku:
         limits:
           cpu: 1000m
           memory: 2Gi
-  
+
   # Celery configuration
   celery:
     beat:
@@ -738,7 +744,7 @@ koku:
         limits:
           cpu: 200m
           memory: 512Mi
-    
+
     workers:
       default:
         replicas: 2
@@ -764,18 +770,18 @@ externalServices:
     database: koku
     user: koku_user
     password: koku_password
-  
+
   redis:
     host: redis.platform-infra.svc.cluster.local
     port: 6379
     database: 1  # Use DB 1 for Koku
-  
+
   minio:
     endpoint: minio.platform-infra.svc.cluster.local:9000
     accessKey: minioadmin
     secretKey: minioadmin
     bucket: koku-data
-  
+
   kafka:
     bootstrapServers: ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092
 ```
@@ -821,7 +827,7 @@ log_error() {
 # Step 1: Deploy Kafka (if not exists)
 deploy_kafka() {
     log_info "Step 1: Deploying Kafka..."
-    
+
     if kubectl get namespace "$KAFKA_NAMESPACE" &> /dev/null; then
         log_warn "Kafka namespace already exists, skipping..."
     else
@@ -833,37 +839,37 @@ deploy_kafka() {
 # Step 2: Deploy Infrastructure
 deploy_infrastructure() {
     log_info "Step 2: Deploying Platform Infrastructure..."
-    
+
     helm upgrade --install platform-infra \
         "${PROJECT_ROOT}/platform-infrastructure/" \
         --namespace "$INFRA_NAMESPACE" \
         --create-namespace \
         --wait \
         --timeout 10m
-    
+
     log_info "Waiting for infrastructure to be ready..."
     kubectl wait --for=condition=ready pod \
         -l app=postgresql \
         -n "$INFRA_NAMESPACE" \
         --timeout=300s
-    
+
     kubectl wait --for=condition=ready pod \
         -l app=redis \
         -n "$INFRA_NAMESPACE" \
         --timeout=300s
-    
+
     kubectl wait --for=condition=ready pod \
         -l app=minio \
         -n "$INFRA_NAMESPACE" \
         --timeout=300s
-    
+
     log_info "✅ Infrastructure deployed successfully"
 }
 
 # Step 3: Deploy ROS
 deploy_ros() {
     log_info "Step 3: Deploying ROS..."
-    
+
     helm upgrade --install ros \
         "${PROJECT_ROOT}/ros-ocp/" \
         --namespace "$ROS_NAMESPACE" \
@@ -874,14 +880,14 @@ deploy_ros() {
         --set externalServices.kafka.bootstrapServers="ros-ocp-kafka-kafka-bootstrap.${KAFKA_NAMESPACE}.svc.cluster.local:9092" \
         --wait \
         --timeout 10m
-    
+
     log_info "✅ ROS deployed successfully"
 }
 
 # Step 4: Deploy Koku
 deploy_koku() {
     log_info "Step 4: Deploying Koku..."
-    
+
     helm upgrade --install koku \
         "${PROJECT_ROOT}/koku-chart/" \
         --namespace "$KOKU_NAMESPACE" \
@@ -892,7 +898,7 @@ deploy_koku() {
         --set externalServices.kafka.bootstrapServers="ros-ocp-kafka-kafka-bootstrap.${KAFKA_NAMESPACE}.svc.cluster.local:9092" \
         --wait \
         --timeout 10m
-    
+
     log_info "✅ Koku deployed successfully"
 }
 
@@ -901,12 +907,12 @@ main() {
     log_info "========================================="
     log_info "Platform Deployment (3-Chart Architecture)"
     log_info "========================================="
-    
+
     deploy_kafka
     deploy_infrastructure
     deploy_ros
     deploy_koku
-    
+
     log_info ""
     log_info "========================================="
     log_info "✅ Platform deployed successfully!"
@@ -1079,7 +1085,7 @@ helm uninstall old-chart
 1. **Service Discovery Complexity** (1%)
    - Need to validate cross-namespace DNS resolution in your cluster
    - Solution: Test early in non-production
-   
+
 2. **Initial Setup Time** (1%)
    - Requires 1-2 weeks more than 2-chart approach
    - Solution: Worth the investment for long-term benefits
@@ -1232,9 +1238,9 @@ Storage: 150-200 GB
 
 ---
 
-**Document Version**: 1.0  
-**Date**: November 6, 2025  
-**Status**: ✅ **STRONGLY RECOMMENDED - Ready for Implementation**  
-**Confidence**: 🟢 **98% HIGH CONFIDENCE**  
+**Document Version**: 1.0
+**Date**: November 6, 2025
+**Status**: ✅ **STRONGLY RECOMMENDED - Ready for Implementation**
+**Confidence**: 🟢 **98% HIGH CONFIDENCE**
 **Improvement over 2-chart**: +3% confidence, significantly better architecture
 
