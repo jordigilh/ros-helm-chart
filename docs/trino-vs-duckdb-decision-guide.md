@@ -126,7 +126,7 @@ Savings: 60-70% less resources
 ```
 Trino: 1 coordinator + 2 workers
        8-10 GB RAM, 3-4 CPU
-       
+
 Can handle:
 - 20-30 concurrent queries
 - Consistent performance
@@ -165,7 +165,7 @@ Still limited to:
 ```
 Trino: 1 coordinator + 4-8 workers
        20-40 GB RAM, 8-16 CPU
-       
+
 Can handle:
 - 50-100 concurrent queries
 - Horizontal scaling for growth
@@ -319,7 +319,7 @@ Result: ✅ REQUIRED
 | DuckDB (8GB) | 1 pod, 8GB | ⚠️ Still no (10 queries max) | $800/yr |
 | **Trino (Minimal)** | 4 pods, 8-10GB | ✅ **Yes (20-30 queries)** | **$1,600/yr** |
 
-**Verdict**: 
+**Verdict**:
 - DuckDB at 8GB = same cost as Trino, but worse scalability
 - **Trino is the right choice**
 
@@ -446,12 +446,12 @@ Start: On-Prem Koku Deployment
 # values.yaml for ros-ocp chart
 koku:
   queryEngine: trino  # or duckdb
-  
+
   # Trino configuration
   trino:
     host: trino-coordinator.trino.svc.cluster.local
     port: 8080
-  
+
   # DuckDB configuration (fallback)
   duckdb:
     host: duckdb.duckdb.svc.cluster.local
@@ -581,7 +581,7 @@ TRINO_PROFILE=production TRINO_WORKER_REPLICAS=4 ./scripts/deploy-trino.sh
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: November 6, 2025  
+**Document Version**: 1.0
+**Last Updated**: November 6, 2025
 **Verdict**: DuckDB for dev/test, Trino for production
 
