@@ -1,8 +1,8 @@
 # Koku Deployment Test Guide
 **Testing Phases 1-4 Implementation on OpenShift**
 
-**Date**: November 6, 2025  
-**Cluster**: stress.parodos.dev  
+**Date**: November 6, 2025
+**Cluster**: stress.parodos.dev
 **Status**: 🧪 **READY FOR TESTING**
 
 ---
@@ -590,7 +590,7 @@ curl http://localhost:8000/api/cost-management/v1/status/
 
 ---
 
-**Status**: 🧪 **READY TO TEST**  
-**Confidence**: 🟢 **85% (High)** - Templates validated, may need infrastructure tweaks  
+**Status**: 🧪 **READY TO TEST**
+**Confidence**: 🟢 **85% (High)** - Templates validated, may need infrastructure tweaks
 **Estimated Time**: 15-30 minutes for full deployment
 
