@@ -50,17 +50,17 @@ spec:
           - |
             # Create writable config directory
             mkdir -p /tmp/hive-conf
-            
+
             # Process config template (read from ConfigMap, write to writable location)
             sed "s/METASTORE_DB_PASSWORD/$METASTORE_DB_PASSWORD/g" \
               /config-template/metastore-site.xml > /tmp/hive-conf/hive-site.xml
-            
+
             # Set Hive to use our config directory
             export HIVE_CONF_DIR=/tmp/hive-conf
-            
+
             # Initialize schema if needed (correct path, will now use our config)
             /opt/hive/bin/schematool -dbType postgres -initSchema || true
-            
+
             # Start metastore service (correct path, will use our config)
             /opt/hive/bin/hive --service metastore
 

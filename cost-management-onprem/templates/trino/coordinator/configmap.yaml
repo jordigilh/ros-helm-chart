@@ -34,7 +34,7 @@ data:
     io.trino=INFO
 
   hive.properties: |
-    connector.name=hive-hadoop2
+    connector.name=hive
     hive.metastore.uri={{ include "cost-mgmt.trino.metastore.uri" . }}
     hive.s3.endpoint={{ include "cost-mgmt.koku.s3.endpoint" . }}
     hive.s3.path-style-access=true
