@@ -1,7 +1,7 @@
 # insights-ingress-go: Reassessment Based on Actual Repository
 
-**Source**: `../insights-ingress-go` repository analysis  
-**Date**: November 6, 2025  
+**Source**: `../insights-ingress-go` repository analysis
+**Date**: November 6, 2025
 **Status**: ✅ **VALIDATED - Configuration Corrected**
 
 ---
@@ -164,15 +164,15 @@ readinessProbe:
 
 ingress:
   enabled: true
-  
+
   # ✅ CORRECTED: Actual image name
   image:
     repository: quay.io/cloudservices/insights-ingress  # NOT insights-ingress-go
     tag: "latest"  # Replace with specific version
     pullPolicy: IfNotPresent
-  
+
   replicas: 2
-  
+
   resources:
     requests:
       cpu: 200m       # Per clowdapp.yaml defaults
@@ -180,43 +180,43 @@ ingress:
     limits:
       cpu: 500m
       memory: 512Mi
-  
+
   # ✅ CORRECTED: Environment variables
   env:
     # Storage configuration
     INGRESS_STAGEBUCKET: "insights-upload-perma"
-    
+
     # ✅ UPDATED: Add our service types
     INGRESS_VALID_UPLOAD_TYPES: "resource-optimization,hccm,cost-management,advisor,compliance,qpc,rhv,openshift"
-    
+
     # Storage limits
     INGRESS_DEFAULTMAXSIZE: "104857600"  # 100MB
     INGRESS_MAXSIZEMAP: '{}'
-    
+
     # Kafka brokers (will be set by Helm)
     INGRESS_KAFKA_BROKERS: "ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
-    
+
     # MinIO endpoint (will be set by Helm)
     INGRESS_MINIOENDPOINT: "minio.platform-infra.svc.cluster.local:9000"
-    
+
     # Logging
     INGRESS_LOG_LEVEL: "INFO"
-    
+
     # Optional services
     INGRESS_PAYLOADTRACKERURL: ""  # Optional: payload-tracker service
     INGRESS_DENY_LISTED_ORGIDS: ""
-  
+
   # ✅ CORRECTED: MinIO credentials (separate from INGRESS_ env vars)
   storage:
     accessKey: "minioadmin"
     secretKey: "minioadmin"
-  
+
   # ✅ CORRECTED: Port configuration
   service:
     type: ClusterIP
     webPort: 8000      # NOT 8080!
     metricsPort: 8080
-  
+
   # ✅ CORRECTED: Health checks use root path
   livenessProbe:
     httpGet:
@@ -227,7 +227,7 @@ ingress:
     periodSeconds: 5
     failureThreshold: 3
     timeoutSeconds: 120
-  
+
   readinessProbe:
     httpGet:
       path: /          # NOT /api/ingress/v1/version
@@ -270,7 +270,7 @@ spec:
       - name: ingress
         image: "{{ .Values.ingress.image.repository }}:{{ .Values.ingress.image.tag }}"
         imagePullPolicy: {{ .Values.ingress.image.pullPolicy }}
-        
+
         ports:
         - containerPort: 8000
           name: web
@@ -278,77 +278,77 @@ spec:
         - containerPort: 8080
           name: metrics
           protocol: TCP
-        
+
         env:
         # Storage configuration
         - name: INGRESS_STAGEBUCKET
           value: {{ .Values.ingress.env.INGRESS_STAGEBUCKET | quote }}
-        
+
         - name: INGRESS_VALID_UPLOAD_TYPES
           value: {{ .Values.ingress.env.INGRESS_VALID_UPLOAD_TYPES | quote }}
-        
+
         - name: INGRESS_DEFAULTMAXSIZE
           value: {{ .Values.ingress.env.INGRESS_DEFAULTMAXSIZE | quote }}
-        
+
         - name: INGRESS_MAXSIZEMAP
           value: {{ .Values.ingress.env.INGRESS_MAXSIZEMAP | quote }}
-        
+
         # Kafka configuration
         - name: INGRESS_KAFKA_BROKERS
           value: {{ .Values.ingress.env.INGRESS_KAFKA_BROKERS | quote }}
-        
+
         # MinIO configuration
         - name: INGRESS_MINIOENDPOINT
           value: {{ .Values.ingress.env.INGRESS_MINIOENDPOINT | quote }}
-        
+
         - name: INGRESS_MINIOACCESSKEY
           valueFrom:
             secretKeyRef:
               name: minio-credentials
               key: accessKey
-        
+
         - name: INGRESS_MINIOSECRETKEY
           valueFrom:
             secretKeyRef:
               name: minio-credentials
               key: secretKey
-        
+
         # Logging
         - name: INGRESS_LOG_LEVEL
           value: {{ .Values.ingress.env.INGRESS_LOG_LEVEL | quote }}
-        
+
         # Optional
         {{- if .Values.ingress.env.INGRESS_PAYLOADTRACKERURL }}
         - name: INGRESS_PAYLOADTRACKERURL
           value: {{ .Values.ingress.env.INGRESS_PAYLOADTRACKERURL | quote }}
         {{- end }}
-        
+
         {{- if .Values.ingress.env.INGRESS_DENY_LISTED_ORGIDS }}
         - name: INGRESS_DENY_LISTED_ORGIDS
           value: {{ .Values.ingress.env.INGRESS_DENY_LISTED_ORGIDS | quote }}
         {{- end }}
-        
+
         # Required for temp uploads
         - name: OPENSHIFT_BUILD_COMMIT
           value: "helm-deployment"
-        
+
         # Disable Clowder (we're using Helm)
         - name: CLOWDER_ENABLED
           value: "false"
-        
+
         resources:
           {{- toYaml .Values.ingress.resources | nindent 10 }}
-        
+
         livenessProbe:
           {{- toYaml .Values.ingress.livenessProbe | nindent 10 }}
-        
+
         readinessProbe:
           {{- toYaml .Values.ingress.readinessProbe | nindent 10 }}
-        
+
         volumeMounts:
         - name: tmpdir
           mountPath: /tmp
-      
+
       volumes:
       - name: tmpdir
         emptyDir: {}
@@ -473,10 +473,10 @@ externalServices:
     host: ingress.platform-infra.svc.cluster.local
     port: 8000  # NOT 8080
     endpoint: "http://ingress.platform-infra.svc.cluster.local:8000"
-    
+
     # Upload endpoint
     uploadPath: "/api/ingress/v1/upload"
-    
+
     # Content type for ROS uploads
     contentType: "application/vnd.redhat.resource-optimization.report+tgz"
 ```
@@ -496,10 +496,10 @@ externalServices:
     host: ingress.platform-infra.svc.cluster.local
     port: 8000
     endpoint: "http://ingress.platform-infra.svc.cluster.local:8000"
-    
+
     # Upload endpoint
     uploadPath: "/api/ingress/v1/upload"
-    
+
     # Content types for Koku uploads
     contentTypes:
       costReport: "application/vnd.redhat.hccm.cost-report+tgz"
@@ -589,9 +589,9 @@ All configuration examples have been updated with:
 
 ---
 
-**Document Version**: 1.0  
-**Date**: November 6, 2025  
-**Status**: ✅ **VALIDATED - Configuration Corrected**  
-**Source**: Direct repository analysis of `../insights-ingress-go`  
+**Document Version**: 1.0
+**Date**: November 6, 2025
+**Status**: ✅ **VALIDATED - Configuration Corrected**
+**Source**: Direct repository analysis of `../insights-ingress-go`
 **Confidence**: 🟢 **99% HIGH CONFIDENCE** (validated against actual code)
 
