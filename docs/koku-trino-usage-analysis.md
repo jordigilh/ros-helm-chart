@@ -584,7 +584,7 @@ sql = "SELECT * FROM cost_data"  # No change to existing queries
    - Update cross-catalog queries to use PostgreSQL extension
    - Minimal SQL changes needed (95% compatible)
 
-**Total Estimated Effort**: **2-4 weeks**
+**Total Estimated Effort**: **4-5 weeks** (validated through source code analysis: 63 SQL files, 12 with cross-catalog queries)
 
 ---
 
