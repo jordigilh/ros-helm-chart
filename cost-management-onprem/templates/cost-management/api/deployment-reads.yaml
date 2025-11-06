@@ -29,15 +29,9 @@ spec:
         image: "{{ include "cost-mgmt.koku.image" . }}"
         imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
 
-        command:
-          - /bin/sh
-          - -c
-          - |
-            # Run database migrations (reads can run them too for HA)
-            python koku/manage.py migrate --noinput
-            # Start Gunicorn
-            gunicorn koku.wsgi --bind=0.0.0.0:8000 --access-logfile=- --error-logfile=- --config gunicorn_conf.py
-
+        # Use image's default entrypoint (./scripts/entrypoint.sh)
+        # which handles migrations and starts gunicorn correctly
+        
         ports:
         - name: http
           containerPort: 8000

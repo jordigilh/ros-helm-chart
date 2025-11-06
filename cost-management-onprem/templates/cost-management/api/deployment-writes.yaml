@@ -29,13 +29,8 @@ spec:
         image: "{{ include "cost-mgmt.koku.image" . }}"
         imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
 
-        command:
-          - /bin/sh
-          - -c
-          - |
-            # Start Gunicorn
-            gunicorn koku.wsgi --bind=0.0.0.0:8000 --access-logfile=- --error-logfile=- --config gunicorn_conf.py
-
+        # Use image's default entrypoint (./scripts/entrypoint.sh)
+        
         ports:
         - name: http
           containerPort: 8000
