@@ -22,6 +22,8 @@ spec:
       securityContext:
         runAsNonRoot: true
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
 
       initContainers:
       - name: wait-for-database
@@ -35,6 +37,14 @@ spec:
               sleep 2
             done
             echo "Metastore database is ready!"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 1000
 
       containers:
       - name: metastore
