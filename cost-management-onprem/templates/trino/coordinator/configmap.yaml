@@ -15,7 +15,7 @@ data:
     query.max-memory-per-node=512MB
     discovery-server.enabled=true
     discovery.uri=http://localhost:8080
-  
+
   jvm.config: |
     -server
     -Xmx{{ .Values.trino.coordinator.config.jvm.maxHeapSize }}
@@ -26,14 +26,14 @@ data:
     -XX:+HeapDumpOnOutOfMemoryError
     -XX:+ExitOnOutOfMemoryError
     -Djdk.attach.allowAttachSelf=true
-  
+
   node.properties: |
     node.environment=production
     node.data-dir=/data/trino
-  
+
   log.properties: |
     io.trino=INFO
-  
+
   hive.properties: |
     connector.name=hive-hadoop2
     hive.metastore.uri={{ include "cost-mgmt.trino.metastore.uri" . }}
@@ -42,7 +42,7 @@ data:
     hive.s3.ssl.enabled=false
     hive.non-managed-table-writes-enabled=true
     hive.allow-drop-table=true
-  
+
   postgresql.properties: |
     connector.name=postgresql
     connection-url={{ include "cost-mgmt.trino.metastore.database.url" . | replace "jdbc:postgresql" "jdbc:postgresql" }}
