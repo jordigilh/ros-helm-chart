@@ -26,7 +26,7 @@
 - [Python DB API](https://duckdb.org/docs/stable/api/python/dbapi)
 - [Python Connection](https://duckdb.org/docs/stable/api/python/connection)
 
-**Trino Code** (from `koku/trino_database.py`):
+**Trino Code** ([`koku/trino_database.py`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/koku/trino_database.py#L184-L211) - `connect` function, lines 184-211):
 
 ```python
 import trino.dbapi
@@ -88,12 +88,12 @@ results = cursor.fetchall()
 
 ### 2. Parquet File Queries
 
-**📚 DuckDB Documentation**: 
+**📚 DuckDB Documentation**:
 - [Parquet Files Overview](https://duckdb.org/docs/stable/data/parquet/overview)
 - [Parquet Import Guide](https://duckdb.org/docs/stable/guides/file_formats/parquet_import)
 - [Querying Parquet Files](https://duckdb.org/docs/stable/guides/file_formats/query_parquet)
 
-**Trino Pattern** (from `masu/processor/report_parquet_processor_base.py`):
+**Trino Pattern** ([`masu/processor/report_parquet_processor_base.py`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/processor/report_parquet_processor_base.py#L55-L72) - `_execute_trino_sql` method, lines 55-72):
 
 ```python
 # Trino uses Hive catalog to query Parquet files
@@ -204,7 +204,7 @@ sql = f"""
 - [WITH Clause (CTEs)](https://duckdb.org/docs/stable/sql/query_syntax/with)
 - [Window Functions](https://duckdb.org/docs/stable/sql/window_functions)
 
-**Trino SQL** (from `masu/database/trino_sql/reporting_ocpusagelineitem_daily_summary.sql`):
+**Trino SQL** ([`masu/database/trino_sql/reporting_ocpusagelineitem_daily_summary.sql`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/database/trino_sql/reporting_ocpusagelineitem_daily_summary.sql#L1-L50) - SQL query structure, lines 1-50 of 667):
 
 ```sql
 -- Complex query with CTEs, joins, aggregations
@@ -848,22 +848,49 @@ Based on DuckDB benchmarks and [production case studies](https://motherduck.com/
 
 ## References
 
-1. **Koku Source Files Analyzed**:
-   - `koku/trino_database.py` - Connection management
-   - `masu/processor/report_parquet_processor_base.py` - Parquet processing
-   - `masu/api/trino.py` - API endpoints
-   - `masu/database/trino_sql/*.sql` - 50+ SQL files
+### Koku Source Files Analyzed
 
-2. **DuckDB Official Documentation**:
-   - See complete documentation reference section above for 50+ links covering all features
-   - All claims in this document are backed by official DuckDB documentation
+1. **Core Trino Integration**:
+   - [`koku/trino_database.py`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/koku/trino_database.py#L1-L250) - Connection management and SQL execution
+     - Lines 10-13: Trino imports (`import trino`, `TrinoExternalError`, `TrinoQueryError`)
+     - Lines 184-211: `connect()` function - establishes Trino connections
+     - Lines 213-248: `executescript()` function - executes SQL scripts
+   - [`koku/settings.py`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/koku/settings.py#L1-L900) - Trino configuration settings
+     - Search for `TRINO_HOST`, `TRINO_PORT`, `TRINO_USER`, `TRINO_DEFAULT_CATALOG`
 
-3. **Production Case Studies**:
-   - [DuckDB in Production](https://motherduck.com/blog/15-companies-duckdb-in-prod/)
-   - [Watershed Case Study](https://motherduck.com/blog/15-companies-duckdb-in-prod/)
+2. **Data Processing**:
+   - [`masu/processor/report_parquet_processor_base.py`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/processor/report_parquet_processor_base.py#L55-L72) - Parquet processing
+     - Lines 55-72: `_execute_trino_sql()` method - executes Trino queries for Parquet data
+     - Line 60: `trino.dbapi.connect()` - direct Trino connection
+   - [`masu/api/trino.py`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/api/trino.py#L28-L72) - Trino API endpoints
+     - Lines 28-72: `trino_query()` function - REST API endpoint for Trino queries
+     - Lines 74-100: `trino_ui()` function - UI endpoint for Trino interface
 
-4. **Benchmarks**:
-   - [DuckDB 1.4 LTS Benchmarks](https://duckdb.org/2025/10/09/benchmark-results-14-lts)
+3. **SQL Queries**:
+   - [`masu/database/trino_sql/`](https://github.com/insights-onprem/koku/tree/7612acfd/koku/masu/database/trino_sql) - 50+ SQL files for Trino queries
+   - Examples:
+     - [`reporting_ocpusagelineitem_daily_summary.sql`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/database/trino_sql/reporting_ocpusagelineitem_daily_summary.sql) (667 lines)
+     - [`reporting_ocpstoragelineitem_daily_summary.sql`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/database/trino_sql/reporting_ocpstoragelineitem_daily_summary.sql)
+     - [`reporting_awscostentrylineitem_daily_summary.sql`](https://github.com/insights-onprem/koku/blob/7612acfd/koku/masu/database/trino_sql/reporting_awscostentrylineitem_daily_summary.sql)
+
+4. **Configuration Files**:
+   - [`docker-compose.yml`](https://github.com/insights-onprem/koku/blob/7612acfd/docker-compose.yml#L1-L200) - Development environment with Trino
+     - Search for `TRINO_HOST` and `TRINO_PORT` environment variables
+   - [`deploy/clowdapp.yaml`](https://github.com/insights-onprem/koku/blob/7612acfd/deploy/clowdapp.yaml#L1-L500) - Production deployment manifest
+     - Koku deployments reference Trino via environment variables
+   - [`deploy/kustomize/patches/`](https://github.com/insights-onprem/koku/tree/7612acfd/deploy/kustomize/patches) - Kustomize patches for workers
+     - Worker patches set Trino environment variables
+
+### DuckDB Official Documentation
+- See complete documentation reference section above for 50+ links covering all features
+- All claims in this document are backed by official DuckDB documentation
+
+### Production Case Studies
+- [15 Companies Using DuckDB in Production](https://motherduck.com/blog/15-companies-duckdb-in-prod/)
+- [Watershed Case Study](https://motherduck.com/blog/15-companies-duckdb-in-prod/) - 75,000 queries/day
+
+### Benchmarks
+- Search [DuckDB Blog](https://duckdb.org/news) for latest TPC-H and performance benchmarks
 
 ---
 
