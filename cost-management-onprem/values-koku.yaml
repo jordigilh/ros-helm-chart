@@ -22,7 +22,7 @@ costManagement:
   api:
     # Image configuration
     image:
-      repository: quay.io/project-koku/koku
+      repository: quay.io/cloudservices/koku
       tag: "latest"
       pullPolicy: IfNotPresent
 
