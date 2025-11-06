@@ -1,9 +1,9 @@
 # Koku Integration Implementation Plan
 **Aligned with PR #27: cost-management-onprem Chart**
 
-**Status**: 📋 **READY FOR REVIEW**  
-**Date**: November 6, 2025  
-**Estimated Duration**: 4 weeks  
+**Status**: 📋 **READY FOR REVIEW**
+**Date**: November 6, 2025
+**Estimated Duration**: 4 weeks
 **Complexity**: High (16 Koku templates + 7 Trino templates)
 
 ---
@@ -130,7 +130,7 @@ Integrate Koku cost management into the `cost-management-onprem` Helm chart (aft
 
 #### 1. **API Server** (`/Users/jgil/go/src/github.com/insights-onprem/koku`)
 
-**Port**: 8000 (HTTP)  
+**Port**: 8000 (HTTP)
 **Source**: `run_server.sh`, `gunicorn_conf.py`
 
 ```bash
@@ -145,8 +145,8 @@ gunicorn koku.wsgi --bind=0.0.0.0:8000
 
 #### 2. **Database Configuration** (`koku/koku/configurator.py`)
 
-**Connection via**: `CONFIGURATOR.get_database_host()` / `.get_database_port()`  
-**Default Port**: 5432 (PostgreSQL)  
+**Connection via**: `CONFIGURATOR.get_database_host()` / `.get_database_port()`
+**Default Port**: 5432 (PostgreSQL)
 **Database Name**: `koku` (separate from ROS database)
 
 ```python
@@ -156,7 +156,7 @@ DATABASES = {"default": database.config()}
 
 #### 3. **Redis Configuration** (`koku/koku/settings.py:224-227`)
 
-**Purpose**: Cache + Celery Broker + Result Backend  
+**Purpose**: Cache + Celery Broker + Result Backend
 **Connection**:
 
 ```python
@@ -173,7 +173,7 @@ REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
 
 #### 4. **Kafka Configuration** (`koku/koku/configurator.py:206-211`)
 
-**Purpose**: Message queue for source events  
+**Purpose**: Message queue for source events
 **Connection**:
 
 ```python
@@ -188,7 +188,7 @@ def get_kafka_broker_list():
 
 #### 5. **S3/MinIO Configuration** (`koku/koku/settings.py:590-618`)
 
-**Purpose**: Object storage for cost reports (Parquet files)  
+**Purpose**: Object storage for cost reports (Parquet files)
 **Connection**:
 
 ```python
@@ -205,7 +205,7 @@ S3_SECRET = CONFIGURATOR.get_object_store_secret_key(REQUESTED_BUCKET)
 
 #### 6. **Trino Configuration** (`koku/koku/settings.py:624-627`)
 
-**Purpose**: Query Parquet files in S3/MinIO  
+**Purpose**: Query Parquet files in S3/MinIO
 **Connection**:
 
 ```python
@@ -222,7 +222,7 @@ TRINO_PORT = ENVIRONMENT.get_value("TRINO_PORT", default=None)  # Default: 8080
 
 #### 7. **Celery Configuration** (`koku/koku/celery.py`)
 
-**Broker**: Redis (same as cache)  
+**Broker**: Redis (same as cache)
 **Workers**: 13 types (from ClowdApp manifest)
 - Essential: default, priority, refresh, summary, hcs
 - XL: priority-xl, refresh-xl, summary-xl
@@ -237,7 +237,7 @@ TRINO_PORT = ENVIRONMENT.get_value("TRINO_PORT", default=None)  # Default: 8080
 
 ### Phase 1: Setup and Values File (Days 1-2)
 
-**Duration**: 2 days  
+**Duration**: 2 days
 **Confidence**: 🟢 **99% (Very High)**
 
 #### Tasks
@@ -269,7 +269,7 @@ TRINO_PORT = ENVIRONMENT.get_value("TRINO_PORT", default=None)  # Default: 8080
 
 ### Phase 2: Koku Core Services (Days 3-7)
 
-**Duration**: 5 days  
+**Duration**: 5 days
 **Confidence**: 🟢 **95% (High)**
 
 #### Tasks
@@ -323,7 +323,7 @@ TRINO_PORT = ENVIRONMENT.get_value("TRINO_PORT", default=None)  # Default: 8080
 
 ### Phase 3: Celery Workers (Days 8-12)
 
-**Duration**: 5 days  
+**Duration**: 5 days
 **Confidence**: 🟢 **92% (High)**
 
 #### Tasks
@@ -376,7 +376,7 @@ TRINO_PORT = ENVIRONMENT.get_value("TRINO_PORT", default=None)  # Default: 8080
 
 ### Phase 4: Trino Integration (Days 13-17)
 
-**Duration**: 5 days  
+**Duration**: 5 days
 **Confidence**: 🟢 **90% (High)** - Using existing `trino-chart/` work
 
 #### Tasks
@@ -432,7 +432,7 @@ TRINO_PORT = ENVIRONMENT.get_value("TRINO_PORT", default=None)  # Default: 8080
 
 ### Phase 5: NetworkPolicies (Days 18-20)
 
-**Duration**: 3 days  
+**Duration**: 3 days
 **Confidence**: 🟢 **93% (High)**
 
 #### Tasks
@@ -470,7 +470,7 @@ TRINO_PORT = ENVIRONMENT.get_value("TRINO_PORT", default=None)  # Default: 8080
 
 ### Phase 6: Final Integration & Testing (Days 21-28)
 
-**Duration**: 8 days  
+**Duration**: 8 days
 **Confidence**: 🟢 **85% (High)** - Some unknowns in full integration
 
 #### Tasks
@@ -588,29 +588,29 @@ egress:
 # Extend PR #27's costManagement placeholder
 costManagement:
   enabled: true
-  
+
   api:
     image:
       repository: quay.io/project-koku/koku
       tag: "latest"
-    
+
     reads:
       enabled: true
       replicas: 2
       resources: { ... }
-    
+
     writes:
       enabled: true
       replicas: 1
       resources: { ... }
-  
+
   celery:
     beat: { ... }
     workers:
       default: { ... }
       priority: { ... }
       # ... 13 workers total
-  
+
   database:
     name: koku
     storage:
@@ -620,7 +620,7 @@ costManagement:
 trino:
   enabled: true
   profile: minimal  # minimal, dev, or production
-  
+
   coordinator: { ... }
   worker: { ... }
   metastore: { ... }
@@ -973,7 +973,7 @@ kubectl exec -n cost-mgmt deployment/cost-mgmt-koku-api-reads -- \
 
 ## Summary
 
-**Status**: 📋 **READY FOR REVIEW**  
+**Status**: 📋 **READY FOR REVIEW**
 **Confidence**: 🟢 **95% HIGH CONFIDENCE**
 
 ### What We Have
@@ -1010,8 +1010,8 @@ Week 4 (Days 22-28): Testing + Documentation + PR
 
 ---
 
-**Document Version**: 1.0  
-**Date**: November 6, 2025  
-**Author**: AI Assistant (Claude)  
+**Document Version**: 1.0
+**Date**: November 6, 2025
+**Author**: AI Assistant (Claude)
 **Status**: 📋 **READY FOR REVIEW**
 
