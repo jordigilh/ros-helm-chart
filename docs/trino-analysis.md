@@ -1,6 +1,6 @@
 # Trino Dependency Analysis for Koku Migration
 
-**Date**: November 6, 2025 (UPDATED with Koku codebase analysis)  
+**Date**: November 6, 2025 (UPDATED with Koku codebase analysis)
 **Purpose**: Detailed analysis of Trino requirements for Koku Helm migration
 
 ## Executive Summary
@@ -55,10 +55,10 @@ From `deploy/kustomize/patches/worker-*.yaml`:
 From `koku/masu/processor/report_parquet_processor_base.py`:
 ```python
 with trino.dbapi.connect(
-    host=settings.TRINO_HOST, 
-    port=settings.TRINO_PORT, 
-    user="admin", 
-    catalog="hive", 
+    host=settings.TRINO_HOST,
+    port=settings.TRINO_PORT,
+    user="admin",
+    catalog="hive",
     schema=schema_name
 ) as conn:
     cur = conn.cursor()
@@ -146,8 +146,8 @@ environment:
 ## Availability Options
 
 ### 1. Open Source (Self-Hosted) ✅
-**Repository**: https://github.com/trinodb/trino  
-**License**: Apache 2.0  
+**Repository**: https://github.com/trinodb/trino
+**License**: Apache 2.0
 **Cost**: Free (infrastructure costs only)
 
 **Deployment Options**:
@@ -562,7 +562,7 @@ Another open-source SQL engine for data lakes.
 3. Do we have resources for +18-24 GB RAM?
 4. Are we on AWS (can use Athena instead)?
 
-**If YES to most** → Proceed to Phase 4  
+**If YES to most** → Proceed to Phase 4
 **If NO** → Stay with PostgreSQL only
 
 ---
@@ -785,19 +785,19 @@ Based on Koku codebase analysis, Trino **MUST** be deployed from the start.
 1. **Hive Metastore** (dependency for Trino)
    - 1 pod, 2GB RAM
    - PostgreSQL for metadata (can reuse Koku DB)
-   
+
 2. **Trino Cluster** (minimal viable)
    - 1 coordinator: 6-8GB RAM
    - 2 workers: 6-8GB RAM each
    - Total: 3 pods, 18-24GB RAM
-   
+
 3. **Koku Database**
    - 1 pod, PostgreSQL
-   
+
 4. **Koku API** (reads + writes)
    - 5 pods (3 reads, 2 writes)
    - Requires TRINO_HOST/TRINO_PORT configured
-   
+
 5. **Celery Workers** (essential)
    - 5-9 workers
    - ALL require TRINO_HOST/TRINO_PORT
@@ -957,8 +957,8 @@ Step 7: Celery Beat
 
 ---
 
-**Document Status**: ✅ Complete - UPDATED with Koku codebase analysis  
-**Recommendation**: ✅ **DEPLOY TRINO in Phase 1** - REQUIRED component  
-**Resource Requirement**: 18-24 GB RAM minimum (3 Trino pods)  
+**Document Status**: ✅ Complete - UPDATED with Koku codebase analysis
+**Recommendation**: ✅ **DEPLOY TRINO in Phase 1** - REQUIRED component
+**Resource Requirement**: 18-24 GB RAM minimum (3 Trino pods)
 **Next Action**: Update MIGRATION_CHECKLIST.md to move Trino to Phase 1 (Priority 1)
 
