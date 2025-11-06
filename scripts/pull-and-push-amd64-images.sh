@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Script to pull amd64 images from Docker Hub and push to OpenShift internal registry
 # This avoids Docker Hub rate limits by caching images in the cluster
 #
@@ -27,9 +27,15 @@ log_warning() { echo -e "${YELLOW}⚠${NC} $1"; }
 log_error() { echo -e "${RED}✗${NC} $1"; }
 
 # Images to pull (Docker Hub -> OpenShift internal registry)
-declare -A IMAGES
-IMAGES["docker.io/trinodb/trino:latest"]="trino:latest"
-IMAGES["docker.io/apache/hive:3.1.3"]="hive:3.1.3"
+# Using parallel arrays for compatibility
+SOURCE_IMAGES=(
+    "docker.io/trinodb/trino:latest"
+    "docker.io/apache/hive:3.1.3"
+)
+TARGET_NAMES=(
+    "trino:latest"
+    "hive:3.1.3"
+)
 
 echo ""
 log_info "=== AMD64 Image Pull and Push Plan ==="
@@ -127,8 +133,9 @@ echo ""
 FAILED_IMAGES=()
 SUCCEEDED_IMAGES=()
 
-for source in "${!IMAGES[@]}"; do
-    target_name="${IMAGES[$source]}"
+for i in "${!SOURCE_IMAGES[@]}"; do
+    source="${SOURCE_IMAGES[$i]}"
+    target_name="${TARGET_NAMES[$i]}"
     internal_image="${REGISTRY_ROUTE}/${NAMESPACE}/${target_name}"
 
     log_info "Processing: $(basename "$source")"
@@ -199,7 +206,7 @@ done
 echo ""
 log_info "=== Summary ==="
 echo ""
-echo "Total images:     ${#IMAGES[@]}"
+echo "Total images:     ${#SOURCE_IMAGES[@]}"
 echo "Succeeded:        ${GREEN}${#SUCCEEDED_IMAGES[@]}${NC}"
 echo "Failed:           ${RED}${#FAILED_IMAGES[@]}${NC}"
 echo ""

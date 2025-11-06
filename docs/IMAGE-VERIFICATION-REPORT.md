@@ -68,7 +68,7 @@
 ### Current Risk
 - **3 images** from Docker Hub (Trino x2, Hive x1)
 - **Max deployments per 6 hours**: ~33 (100 pulls / 3 images)
-- **Risk Level**: 
+- **Risk Level**:
   - Development/Testing: LOW (infrequent deployments)
   - CI/CD Pipeline: MEDIUM (frequent deployments)
   - Multi-tenant/Multi-cluster: HIGH (parallel deployments)
@@ -84,7 +84,7 @@
    ```bash
    # Update trino images
    trinodb/trino:latest  # Not ghcr.io or quay.io
-   
+
    # Update hive image
    apache/hive:3.1.3     # Not quay.io/apache/hive
    ```
