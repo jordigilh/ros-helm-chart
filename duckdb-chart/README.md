@@ -486,7 +486,7 @@ kubectl delete namespace duckdb
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: November 6, 2025  
+**Document Version**: 1.0
+**Last Updated**: November 6, 2025
 **Recommendation**: Use DuckDB for on-prem, Trino/Athena for cloud
 
