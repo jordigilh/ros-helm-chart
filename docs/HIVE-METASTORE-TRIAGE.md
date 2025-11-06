@@ -338,5 +338,7 @@ command:
 
 ---
 
-**Status**: **Triaged - P3 (Low Priority)** ✅
+**Status**: **RESOLVED** ✅
+
+**Update**: Issue resolved with persistent volume implementation. See `HIVE-METASTORE-ON-PREM-SOLUTION.md` for details.
 
