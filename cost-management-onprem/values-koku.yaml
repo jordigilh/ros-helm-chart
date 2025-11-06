@@ -161,24 +161,26 @@ costManagement:
           cpu: 200m
           memory: 400Mi
 
-      # Health check (probe Redis connection)
+      # Health check - Beat is a scheduler, not a worker
+      # No readiness probe needed (scheduler is ready when running)
       livenessProbe:
         exec:
           command:
             - /bin/sh
             - -c
-            - celery -A koku inspect ping -d celery@$HOSTNAME
-        initialDelaySeconds: 30
+            - ps aux | grep -v grep | grep 'celery.*beat' >/dev/null
+        initialDelaySeconds: 60
         periodSeconds: 30
         timeoutSeconds: 10
         failureThreshold: 3
 
+      # Beat readiness: just check if process is running
       readinessProbe:
         exec:
           command:
             - /bin/sh
             - -c
-            - celery -A koku inspect ping -d celery@$HOSTNAME
+            - ps aux | grep -v grep | grep 'celery.*beat' >/dev/null
         initialDelaySeconds: 30
         periodSeconds: 30
         timeoutSeconds: 10
