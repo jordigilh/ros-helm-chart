@@ -1,7 +1,7 @@
 # Koku Architecture Validation: OCP Processing Analysis
 
-**Date**: November 6, 2025  
-**Purpose**: Validate DuckDB analysis against Koku's OCP processing architecture  
+**Date**: November 6, 2025
+**Purpose**: Validate DuckDB analysis against Koku's OCP processing architecture
 **Source**: [csv-processing-ocp.md](https://github.com/project-koku/koku/blob/main/docs/architecture/csv-processing-ocp.md)
 
 ---
@@ -14,7 +14,7 @@ The OCP architecture document **validates and strengthens** our DuckDB migration
 
 **Key Validation**:
 - ✅ Trino usage patterns confirmed
-- ✅ Cross-catalog queries validated  
+- ✅ Cross-catalog queries validated
 - ✅ SQL file count accurate
 - ✅ Processing scope clarified (only Parquet layer needs migration)
 - ✅ No gaps found in compatibility assessment
@@ -138,7 +138,7 @@ Refined Scope: Replace Phase 4 Parquet processing only
 
 Components NOT requiring migration:
 ❌ Cost model SQL (already PostgreSQL)
-❌ Summary table population (already PostgreSQL)  
+❌ Summary table population (already PostgreSQL)
 ❌ Tag-based pricing logic (already PostgreSQL)
 ❌ Final reporting (already PostgreSQL)
 
@@ -408,7 +408,7 @@ Trino SQL Files:
 
 ✅ **All analysis claims validated**:
 1. Trino usage patterns - CONFIRMED
-2. 63 SQL files - CONFIRMED  
+2. 63 SQL files - CONFIRMED
 3. Cross-catalog queries - CONFIRMED
 4. Migration effort - CONFIRMED
 
