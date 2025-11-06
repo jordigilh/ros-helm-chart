@@ -118,6 +118,8 @@ capabilities:
 readOnlyRootFilesystem: false
 runAsNonRoot: true
 runAsUser: 1000
+seccompProfile:
+  type: RuntimeDefault
 {{- end -}}
 
 {{/*
