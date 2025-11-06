@@ -22,16 +22,16 @@ spec:
         worker-queue: hcs
     spec:
       serviceAccountName: {{ include "cost-mgmt.koku.serviceAccountName" . }}
-      
+
       securityContext:
         runAsNonRoot: true
         fsGroup: 1000
-      
+
       containers:
       - name: celery-worker
         image: "{{ .Values.costManagement.api.image.repository }}:{{ .Values.costManagement.api.image.tag }}"
         imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
-        
+
         command:
           - /bin/sh
           - -c
@@ -40,21 +40,21 @@ spec:
               --loglevel=INFO \
               --queues={{ .Values.costManagement.celery.workers.hcs.queue }} \
               --concurrency={{ .Values.costManagement.celery.workers.hcs.concurrency }}
-        
+
         env:
         {{- include "cost-mgmt.koku.commonEnv" . | nindent 8 }}
         {{- range $key, $value := .Values.costManagement.celery.workers.commonEnv }}
         - name: {{ $key }}
           value: {{ $value | quote }}
         {{- end }}
-        
+
         resources:
           {{- toYaml .Values.costManagement.celery.workers.hcs.resources | nindent 10 }}
-        
+
         volumeMounts:
         - name: tmp
           mountPath: /tmp
-        
+
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -63,7 +63,7 @@ spec:
           readOnlyRootFilesystem: false
           runAsNonRoot: true
           runAsUser: 1000
-      
+
       volumes:
       - name: tmp
         emptyDir: {}

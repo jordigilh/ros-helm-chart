@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cost-mgmt.trino.metastore.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.trino.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hive-metastore
+spec:
+  replicas: {{ .Values.trino.metastore.replicas }}
+  selector:
+    matchLabels:
+      {{- include "cost-mgmt.trino.metastore.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cost-mgmt.trino.labels" . | nindent 8 }}
+        app.kubernetes.io/component: hive-metastore
+    spec:
+      serviceAccountName: {{ include "cost-mgmt.trino.serviceAccountName" . }}
+      
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+      
+      initContainers:
+      - name: wait-for-database
+        image: postgres:15-alpine
+        command:
+          - /bin/sh
+          - -c
+          - |
+            until pg_isready -h {{ include "cost-mgmt.trino.metastore.database.host" . }} -p {{ .Values.trino.metastore.database.port }} -U {{ .Values.trino.metastore.database.user }}; do
+              echo "Waiting for metastore database..."
+              sleep 2
+            done
+            echo "Metastore database is ready!"
+      
+      containers:
+      - name: metastore
+        image: "{{ .Values.trino.metastore.image.repository }}:{{ .Values.trino.metastore.image.tag }}"
+        imagePullPolicy: {{ .Values.trino.metastore.image.pullPolicy }}
+        
+        command:
+          - /bin/sh
+          - -c
+          - |
+            # Replace password placeholder in config
+            sed "s/METASTORE_DB_PASSWORD/$METASTORE_DB_PASSWORD/g" /opt/hive-metastore/conf/metastore-site.xml > /tmp/metastore-site.xml
+            cp /tmp/metastore-site.xml /opt/hive-metastore/conf/metastore-site.xml
+            
+            # Initialize schema if needed
+            /opt/hive-metastore/bin/schematool -dbType postgres -initSchema || true
+            
+            # Start metastore
+            /opt/hive-metastore/bin/start-metastore
+        
+        ports:
+        - name: thrift
+          containerPort: 9083
+          protocol: TCP
+        
+        env:
+        - name: METASTORE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "cost-mgmt.trino.metastore.database.secretName" . }}
+              key: password
+        
+        resources:
+          {{- toYaml .Values.trino.metastore.resources | nindent 10 }}
+        
+        volumeMounts:
+        - name: config
+          mountPath: /opt/hive-metastore/conf/metastore-site.xml
+          subPath: metastore-site.xml
+        - name: tmp
+          mountPath: /tmp
+        
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 1000
+      
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "cost-mgmt.trino.metastore.name" . }}-config
+      - name: tmp
+        emptyDir: {}
+
