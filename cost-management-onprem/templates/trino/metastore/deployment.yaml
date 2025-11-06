@@ -20,8 +20,7 @@ spec:
       serviceAccountName: {{ include "cost-mgmt.trino.serviceAccountName" . }}
 
       securityContext:
-        runAsNonRoot: true
-        fsGroup: 1000
+        {{- include "cost-mgmt.securityContext.pod" . | nindent 8 }}
         seccompProfile:
           type: RuntimeDefault
 
@@ -38,13 +37,7 @@ spec:
             done
             echo "Metastore database is ready!"
         securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-              - ALL
-          readOnlyRootFilesystem: false
-          runAsNonRoot: true
-          runAsUser: 1000
+          {{- include "cost-mgmt.securityContext.container" . | nindent 10 }}
 
       containers:
       - name: metastore
@@ -88,13 +81,7 @@ spec:
           mountPath: /tmp
 
         securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-              - ALL
-          readOnlyRootFilesystem: false
-          runAsNonRoot: true
-          runAsUser: 1000
+          {{- include "cost-mgmt.securityContext.container" . | nindent 10 }}
 
       volumes:
       - name: config

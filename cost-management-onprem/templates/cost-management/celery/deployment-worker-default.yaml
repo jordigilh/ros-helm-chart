@@ -24,8 +24,7 @@ spec:
       serviceAccountName: {{ include "cost-mgmt.koku.serviceAccountName" . }}
 
       securityContext:
-        runAsNonRoot: true
-        fsGroup: 1000
+        {{- include "cost-mgmt.securityContext.pod" . | nindent 8 }}
 
       containers:
       - name: celery-worker
@@ -57,13 +56,7 @@ spec:
           mountPath: /tmp
 
         securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-              - ALL
-          readOnlyRootFilesystem: false
-          runAsNonRoot: true
-          runAsUser: 1000
+          {{- include "cost-mgmt.securityContext.container" . | nindent 10 }}
 
       volumes:
       - name: tmp
