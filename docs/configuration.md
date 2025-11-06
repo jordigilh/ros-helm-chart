@@ -1,4 +1,4 @@
-# ROS-OCP Configuration Guide
+# Cost Management On-Premise Configuration Guide
 
 Complete configuration reference for resource requirements, storage, and access configuration.
 
@@ -69,13 +69,13 @@ When using `scripts/install-helm-chart.sh`, this label is automatically applied 
 **Manual Application:**
 ```bash
 # Apply label to namespace
-kubectl label namespace ros-ocp cost_management_optimizations=true
+kubectl label namespace cost-mgmt cost_management_optimizations=true
 
 # Verify label
-kubectl get namespace ros-ocp --show-labels | grep cost_management
+kubectl get namespace cost-mgmt --show-labels | grep cost_management
 
 # Remove label (if needed)
-kubectl label namespace ros-ocp cost_management_optimizations-
+kubectl label namespace cost-mgmt cost_management_optimizations-
 ```
 
 **Why This Label is Required:**
@@ -102,7 +102,7 @@ insights_cost_management_optimizations: "true"
 - OpenShift Data Foundation (ODF) installed
 - 30GB+ block devices for ODF
 
-**Additional Resources for ROS-OCP:**
+**Additional Resources for Cost Management On-Premise:**
 - **Additional Memory**: 6GB+ RAM
 - **Additional CPU**: 2+ cores
 - **Total Node**: SNO minimum + ROS requirements
@@ -144,7 +144,7 @@ minio:
 ```
 
 **Access:**
-- **API Endpoint**: `ros-ocp-minio:9000` (internal)
+- **API Endpoint**: `cost-mgmt-minio:9000` (internal)
 - **Console**: `http://localhost:32061/minio` (external)
 - **Credentials**: `minioaccesskey` / `miniosecretkey`
 
@@ -175,7 +175,7 @@ odf:
   useSSL: true
   port: 443
   credentials:
-    secretName: "ros-ocp-odf-credentials"
+    secretName: "cost-mgmt-odf-credentials"
 ```
 
 **Access:**
@@ -239,18 +239,18 @@ Services accessible through OpenShift Routes:
 
 ```bash
 # List all routes
-oc get routes -n ros-ocp
+oc get routes -n cost-mgmt
 
 # Example routes
-oc get route ros-ocp-main -n ros-ocp       # Main API (ROS-OCP API)
-oc get route ros-ocp-ingress -n ros-ocp    # Ingress API (file upload)
+oc get route cost-mgmt-main -n cost-mgmt       # Main API (Cost Management On-Premise API)
+oc get route cost-mgmt-ingress -n cost-mgmt    # Ingress API (file upload)
 ```
 
 **Access Pattern:**
 ```bash
 # Get route URLs
-MAIN_ROUTE=$(oc get route ros-ocp-main -n ros-ocp -o jsonpath='{.spec.host}')
-INGRESS_ROUTE=$(oc get route ros-ocp-ingress -n ros-ocp -o jsonpath='{.spec.host}')
+MAIN_ROUTE=$(oc get route cost-mgmt-main -n cost-mgmt -o jsonpath='{.spec.host}')
+INGRESS_ROUTE=$(oc get route cost-mgmt-ingress -n cost-mgmt -o jsonpath='{.spec.host}')
 
 # Test endpoints
 curl https://$MAIN_ROUTE/status
@@ -262,20 +262,20 @@ curl https://$INGRESS_ROUTE/api/ingress/ready
 For direct service access without ingress/routes:
 
 ```bash
-# ROS-OCP API
-kubectl port-forward svc/ros-ocp-rosocp-api 8000:8000 -n ros-ocp
+# Cost Management On-Premise API
+kubectl port-forward svc/cost-mgmt-rosocp-api 8000:8000 -n cost-mgmt
 # Access: http://localhost:8000
 
 # Kruize API
-kubectl port-forward svc/ros-ocp-kruize 8080:8080 -n ros-ocp
+kubectl port-forward svc/cost-mgmt-kruize 8080:8080 -n cost-mgmt
 # Access: http://localhost:8080
 
 # MinIO Console (Kubernetes only)
-kubectl port-forward svc/ros-ocp-minio 9990:9990 -n ros-ocp
+kubectl port-forward svc/cost-mgmt-minio 9990:9990 -n cost-mgmt
 # Access: http://localhost:9990
 
 # PostgreSQL (for debugging)
-kubectl port-forward svc/ros-ocp-db-ros 5432:5432 -n ros-ocp
+kubectl port-forward svc/cost-mgmt-db-ros 5432:5432 -n cost-mgmt
 # Connection: postgresql://postgres:postgres@localhost:5432/postgres
 ```
 
@@ -393,7 +393,7 @@ kafka:
 ### Application Configuration
 
 ```yaml
-# ROS-OCP API
+# Cost Management On-Premise API
 rosocp:
   api:
     port: 8000
@@ -439,13 +439,13 @@ ingress:
 
 ```bash
 # Development
-helm install ros-ocp ./ros-ocp -f values-dev.yaml
+helm install cost-mgmt ./cost-mgmt -f values-dev.yaml
 
 # Staging
-helm install ros-ocp ./ros-ocp -f values-staging.yaml
+helm install cost-mgmt ./cost-mgmt -f values-staging.yaml
 
 # Production
-helm install ros-ocp ./ros-ocp -f values-production.yaml
+helm install cost-mgmt ./cost-mgmt -f values-production.yaml
 ```
 
 ---
@@ -479,7 +479,7 @@ odf:
   endpoint: "s3.openshift-storage.svc.cluster.local"
   bucket: "ros-data"
   credentials:
-    secretName: "ros-ocp-odf-credentials"
+    secretName: "cost-mgmt-odf-credentials"
 
 # OpenShift Routes
 serviceRoute:
@@ -511,7 +511,7 @@ global:
 ```yaml
 serviceAccount:
   create: true
-  name: ros-ocp-backend
+  name: cost-mgmt-backend
 ```
 
 ### Network Policies
@@ -522,13 +522,13 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 - ✅ Enforce authentication via Envoy sidecars (port 9080)
 - ✅ Restrict direct access to backend application containers
 - ✅ Allow Prometheus metrics scraping from `openshift-monitoring` namespace
-- ✅ Enable internal service-to-service communication within `ros-ocp` namespace
+- ✅ Enable internal service-to-service communication within `cost-mgmt` namespace
 
 **Key Policies:**
 1. **Ingress Network Policy**: Allows external file uploads from `openshift-ingress` namespace to Envoy sidecar on port 9080
 2. **Kruize Network Policy**: Allows internal service communication only (processor, poller, housekeeper) on port 8080
-3. **ROS-OCP Metrics Policies**: Allow Prometheus metrics scraping on port 9000 for API, Processor, and Recommendation Poller
-4. **ROS-OCP API Access Policy**: Allows external REST API access from `openshift-ingress` namespace to Envoy sidecar on port 9080
+3. **Cost Management On-Premise Metrics Policies**: Allow Prometheus metrics scraping on port 9000 for API, Processor, and Recommendation Poller
+4. **Cost Management On-Premise API Access Policy**: Allows external REST API access from `openshift-ingress` namespace to Envoy sidecar on port 9080
 5. **Sources API Policy**: Allows internal service communication only (housekeeper) on port 8000
 
 **Platform-Specific:**
@@ -635,27 +635,27 @@ kruize:
 
 ```bash
 # Test configuration rendering
-helm template ros-ocp ./ros-ocp --values my-values.yaml | kubectl apply --dry-run=client -f -
+helm template cost-mgmt ./cost-mgmt --values my-values.yaml | kubectl apply --dry-run=client -f -
 
 # Check computed values
-helm get values ros-ocp -n ros-ocp
+helm get values cost-mgmt -n cost-mgmt
 
 # Validate against schema
-helm lint ./ros-ocp --values my-values.yaml
+helm lint ./cost-mgmt --values my-values.yaml
 ```
 
 ### Post-Deployment Checks
 
 ```bash
 # Check all resources
-kubectl get all -n ros-ocp
+kubectl get all -n cost-mgmt
 
 # Check storage
-kubectl get pvc -n ros-ocp
+kubectl get pvc -n cost-mgmt
 
 # Check configuration
-kubectl get configmaps -n ros-ocp
-kubectl get secrets -n ros-ocp
+kubectl get configmaps -n cost-mgmt
+kubectl get secrets -n cost-mgmt
 ```
 
 ---

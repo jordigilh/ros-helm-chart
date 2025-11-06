@@ -2,16 +2,16 @@
 
 ## Overview
 
-The ROS OCP Backend (`ros-ocp-api`) uses OAuth2 token authentication via Kubernetes TokenReview API through Authorino. This allows service accounts and users within the same cluster to authenticate directly using their Kubernetes tokens.
+The ROS OCP Backend (`cost-mgmt-api`) uses OAuth2 token authentication via Kubernetes TokenReview API through Authorino. This allows service accounts and users within the same cluster to authenticate directly using their Kubernetes tokens.
 
 ### Quick Reference
 
 | Component | Purpose | Location | Port |
 |-----------|---------|----------|------|
-| **Envoy Proxy** | HTTP proxy with ext_authz filter | Sidecar in rosocp-api pod | 9080 |
+| **Envoy Proxy** | HTTP proxy with ext_authz filter | Sidecar in ros-api pod | 9080 |
 | **Authorino** | External authorization service | Separate deployment | 50051 (gRPC) |
 | **Kubernetes API** | Token validation via TokenReview | Cluster control plane | 6443 |
-| **rosocp-api** | Backend application | Main container in pod | 8000 |
+| **ros-api** | Backend application | Main container in pod | 8000 |
 | **Lua Filter** | Transform headers to rh-identity | Envoy filter chain | N/A |
 
 ### Authentication Chain
@@ -38,17 +38,17 @@ flowchart LR
     end
 
     subgraph Route["OpenShift Route/Service"]
-        R["<b>Service: rosocp-api</b><br/>Port: 9080"]
+        R["<b>Service: ros-api</b><br/>Port: 9080"]
     end
 
-    subgraph Pod["Pod: ros-ocp-rosocp-api"]
+    subgraph Pod["Pod: cost-mgmt-ros-api"]
         subgraph EnvoySidecar["Envoy Sidecar"]
             E["<b>Envoy Proxy</b><br/>Port: 9080<br/>ext_authz filter"]
             L["<b>Lua Filter</b><br/>rh-identity builder"]
         end
 
         subgraph Backend["Backend"]
-            B["<b>rosocp-api</b><br/>Port: 8000"]
+            B["<b>ros-api</b><br/>Port: 8000"]
         end
 
         E -.->|7. Transform| L
@@ -91,7 +91,7 @@ sequenceDiagram
     participant Envoy as Envoy Sidecar<br/>(ext_authz + Lua)
     participant Authorino as Authorino Service<br/>(gRPC)
     participant K8s as Kubernetes API<br/>(TokenReview)
-    participant Backend as rosocp-api
+    participant Backend as ros-api
 
     Note over Client,Backend: <b>Successful Authentication Flow</b>
 
@@ -142,7 +142,7 @@ sequenceDiagram
 
 ## Key Changes
 
-### 1. Envoy Configuration (`envoy-config-rosocp-api.yaml`)
+### 1. Envoy Configuration (`envoy-config-ros-api.yaml`)
 
 - **Removed**: Keycloak JWT authentication filter
 - **Removed**: Keycloak JWKS cluster configuration
@@ -164,7 +164,7 @@ sequenceDiagram
 - **ClusterRole**: Grants `create` verb on `tokenreviews` resource
 - **Binding**: Binds `authorino-authorino` service account to the role
 
-### 4. Deployment Configuration (`deployment-rosocp-api.yaml`)
+### 4. Deployment Configuration (`deployment-ros-api.yaml`)
 
 - **Modified**: Envoy uses ext_authz instead of direct TokenReview calls
 - **Removed**: Keycloak CA certificate volumes and init containers
@@ -173,14 +173,14 @@ sequenceDiagram
 
 ### 5. Network Policy (`networkpolicy-authorino.yaml`)
 
-- **New File**: Allows rosocp-api pods to connect to Authorino on port 50051 (gRPC)
-- **Ingress Rules**: Permits traffic from rosocp-api and monitoring namespaces
+- **New File**: Allows ros-api pods to connect to Authorino on port 50051 (gRPC)
+- **Ingress Rules**: Permits traffic from ros-api and monitoring namespaces
 
 ### 6. Authorino Deployment Templates
 
 - **Authorino is now automatically deployed by the Helm chart** (as of v0.1.9)
 - **No operator dependency**: Standalone Authorino deployment
-- **Namespace-scoped**: Deployed to same namespace as ros-ocp chart
+- **Namespace-scoped**: Deployed to same namespace as cost-mgmt chart
 - **Templates**:
   - `authorino-deployment.yaml` - Main Authorino deployment
   - `authorino-serviceaccount.yaml` - ServiceAccount for Authorino
@@ -225,7 +225,7 @@ SA_TOKEN=$(oc exec <pod-name> -n <namespace> -- cat /var/run/secrets/kubernetes.
 
 # Test the API endpoint
 curl -H "Authorization: Bearer $SA_TOKEN" \
-     https://<ros-ocp-api-route>/api/ros/v1/status
+     https://<cost-mgmt-api-route>/api/ros/v1/status
 
 # Check the response - should return 200 OK if authentication works
 ```
@@ -238,14 +238,14 @@ USER_TOKEN=$(oc whoami -t)
 
 # Test the API endpoint
 curl -H "Authorization: Bearer $USER_TOKEN" \
-     https://<ros-ocp-api-route>/api/ros/v1/status
+     https://<cost-mgmt-api-route>/api/ros/v1/status
 ```
 
 ### Verify Envoy Logs
 
 ```bash
 # Check Envoy logs for ext_authz calls
-oc logs <rosocp-api-pod> -c envoy-proxy -n <namespace>
+oc logs <ros-api-pod> -c envoy-proxy -n <namespace>
 
 # Look for messages like:
 # "[ext_authz] ext_authz filter calling authorization service"
@@ -260,15 +260,15 @@ oc logs <rosocp-api-pod> -c envoy-proxy -n <namespace>
 oc logs -n <namespace> -l app=authorino --tail=50
 
 # Look for messages like:
-# "level=info msg=\"authenticated\" username=\"system:serviceaccount:ros-ocp:sa-name\""
-# "level=info msg=\"authconfig evaluated\" host=\"*\" authconfig=\"ros-ocp-rosocp-api-auth\""
+# "level=info msg=\"authenticated\" username=\"system:serviceaccount:cost-mgmt:sa-name\""
+# "level=info msg=\"authconfig evaluated\" host=\"*\" authconfig=\"cost-mgmt-ros-api-auth\""
 ```
 
 ### Verify Backend Logs
 
 ```bash
 # Check backend logs to ensure rh-identity header is received
-oc logs <rosocp-api-pod> -c rosocp-api -n <namespace>
+oc logs <ros-api-pod> -c ros-api -n <namespace>
 
 # The backend should process requests with org_id=1 and account_number=1
 ```
@@ -296,16 +296,16 @@ oc exec -n <namespace> <authorino-pod> -- \
 
 ```bash
 # Check if Envoy can reach Authorino
-oc exec <rosocp-api-pod> -c envoy-proxy -- \
-  nc -zv authorino-authorino-authorization.ros-ocp.svc.cluster.local 50051
+oc exec <ros-api-pod> -c envoy-proxy -- \
+  nc -zv authorino-authorino-authorization.cost-mgmt.svc.cluster.local 50051
 
 # Verify service CA certificate exists
-oc exec <rosocp-api-pod> -c envoy-proxy -- \
+oc exec <ros-api-pod> -c envoy-proxy -- \
   cat /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
 
 # Check NetworkPolicy allows traffic
 oc get networkpolicy -n <namespace>
-oc describe networkpolicy ros-ocp-authorino -n <namespace>
+oc describe networkpolicy cost-mgmt-authorino -n <namespace>
 ```
 
 #### AuthConfig Issues
@@ -315,21 +315,21 @@ oc describe networkpolicy ros-ocp-authorino -n <namespace>
 oc get authconfig -n <namespace>
 
 # Verify AuthConfig status
-oc describe authconfig ros-ocp-rosocp-api-auth -n <namespace>
+oc describe authconfig cost-mgmt-ros-api-auth -n <namespace>
 
 # Check AuthConfig logs in Authorino
-oc logs -n <namespace> -l app=authorino | grep "ros-ocp-rosocp-api-auth"
+oc logs -n <namespace> -l app=authorino | grep "cost-mgmt-ros-api-auth"
 ```
 
 #### Envoy Configuration Issues
 
 ```bash
 # Validate Envoy configuration
-oc exec <rosocp-api-pod> -c envoy-proxy -- \
+oc exec <ros-api-pod> -c envoy-proxy -- \
   /usr/local/bin/envoy --mode validate -c /etc/envoy/envoy.yaml
 
 # Check Envoy admin interface
-oc port-forward <rosocp-api-pod> 9901:9901 -n <namespace>
+oc port-forward <ros-api-pod> 9901:9901 -n <namespace>
 curl http://localhost:9901/config_dump
 
 # View ext_authz cluster status
@@ -344,7 +344,7 @@ TOKEN=$(oc whoami -t)
 
 # Test with verbose output
 curl -v -H "Authorization: Bearer $TOKEN" \
-  https://<ros-ocp-api-route>/api/ros/v1/status
+  https://<cost-mgmt-api-route>/api/ros/v1/status
 
 # Expected flow:
 # 1. Envoy receives request
@@ -400,7 +400,7 @@ curl -v -H "Authorization: Bearer $TOKEN" \
    - Service account tokens: Can be time-bound or legacy (no expiry)
 
 7. **Network Isolation**: NetworkPolicy restricts Authorino access
-   - Only rosocp-api pods can connect to Authorino
+   - Only ros-api pods can connect to Authorino
    - Monitoring allowed for metrics scraping
 
 ## Future Enhancements
@@ -447,9 +447,9 @@ curl -v -H "Authorization: Bearer $TOKEN" \
 
 ## Installation Steps
 
-1. **Deploy ros-ocp chart** with JWT authentication (automatically enabled on OpenShift):
+1. **Deploy cost-mgmt chart** with JWT authentication (automatically enabled on OpenShift):
    ```bash
-   helm install ros-ocp ./ros-ocp -f openshift-values.yaml
+   helm install cost-mgmt ./cost-mgmt -f openshift-values.yaml
    ```
 
    This will automatically deploy:
@@ -461,9 +461,9 @@ curl -v -H "Authorization: Bearer $TOKEN" \
 
 2. **Verify Authorino is running**:
    ```bash
-   oc get pods -n ros-ocp -l app.kubernetes.io/component=authorino
-   oc get authconfig -n ros-ocp
-   oc get secret -n ros-ocp | grep authorino-server-cert
+   oc get pods -n cost-mgmt -l app.kubernetes.io/component=authorino
+   oc get authconfig -n cost-mgmt
+   oc get secret -n cost-mgmt | grep authorino-server-cert
    ```
 
 3. **Test authentication**:

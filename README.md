@@ -1,6 +1,6 @@
-# ROS-OCP Helm Chart
+# Cost Management On-Premise Helm Chart
 
-Kubernetes Helm chart for deploying the complete Resource Optimization Service (ROS-OCP) backend stack.
+Kubernetes Helm chart for deploying the complete Cost Management On-Premise solution, including Resource Optimization Service (ROS) and future cost management capabilities.
 
 ## 🚀 Quick Start
 
@@ -10,7 +10,7 @@ Kubernetes Helm chart for deploying the complete Resource Optimization Service (
 # Step 1: Create KIND cluster (development/testing)
 ./scripts/deploy-kind.sh
 
-# Step 2: Deploy ROS-OCP services
+# Step 2: Deploy Cost Management On-Premise services
 ./scripts/install-helm-chart.sh
 
 # Access services at http://localhost:32061
@@ -23,14 +23,14 @@ Kubernetes Helm chart for deploying the complete Resource Optimization Service (
 ./scripts/install-helm-chart.sh
 
 # Or use local chart for development
-USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp ./scripts/install-helm-chart.sh
+USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-management-onprem ./scripts/install-helm-chart.sh
 
 # Or specify custom namespace and release name
 NAMESPACE=my-namespace HELM_RELEASE_NAME=my-release ./scripts/install-helm-chart.sh
 
 # Or use Helm directly
-helm repo add ros-ocp https://insights-onprem.github.io/ros-helm-chart
-helm install ros-ocp ros-ocp/ros-ocp --namespace ros-ocp --create-namespace
+helm repo add cost-mgmt https://insights-onprem.github.io/ros-helm-chart
+helm install cost-mgmt cost-mgmt/cost-management-onprem --namespace cost-mgmt --create-namespace
 ```
 
 **Note for OpenShift:** See [Authentication Setup](#-authentication-setup) section for required prerequisites (Authorino and Keycloak)
@@ -57,10 +57,19 @@ helm install ros-ocp ros-ocp/ros-ocp --namespace ros-ocp --create-namespace
 
 ```
 ros-helm-chart/
-├── ros-ocp/                    # Helm chart directory
-│   ├── Chart.yaml             # Chart metadata
+├── cost-management-onprem/    # Helm chart directory
+│   ├── Chart.yaml             # Chart metadata (v0.2.0)
 │   ├── values.yaml            # Default configuration
-│   └── templates/             # Kubernetes resource templates (46 files)
+│   └── templates/             # Kubernetes resource templates (organized by service)
+│       ├── ros/               # Resource Optimization Service
+│       ├── kruize/            # Kruize optimization engine
+│       ├── sources-api/       # Source management
+│       ├── ingress/           # API gateway
+│       ├── infrastructure/    # Database, Kafka, storage, cache
+│       ├── auth/              # Authentication (Authorino)
+│       ├── monitoring/        # Prometheus ServiceMonitor
+│       ├── shared/            # Shared resources
+│       └── cost-management/   # Future cost management components
 ├── docs/                      # Documentation
 ├── scripts/                   # Installation and automation scripts
 └── .github/workflows/         # CI/CD automation
@@ -78,13 +87,13 @@ ros-helm-chart/
 
 ### Application Services
 - **Ingress**: File upload API and routing gateway (with Envoy sidecar for JWT authentication on OpenShift)
-- **ROS-OCP API**: Main REST API for recommendations and status (with Envoy sidecar for authentication on OpenShift)
-- **ROS-OCP Processor**: Data processing service for cost optimization
-- **ROS-OCP Recommendation Poller**: Kruize integration for recommendations
-- **ROS-OCP Housekeeper**: Maintenance tasks and data cleanup
+- **ROS API**: Main REST API for recommendations and status (with Envoy sidecar for authentication on OpenShift)
+- **ROS Processor**: Data processing service for cost optimization
+- **ROS Recommendation Poller**: Kruize integration for recommendations
+- **ROS Housekeeper**: Maintenance tasks and data cleanup
 - **Kruize Autotune**: Optimization recommendation engine (direct authentication, protected by network policies)
 - **Sources API**: Source management and integration (middleware-based authentication for protected endpoints, unauthenticated metadata endpoints for internal use)
-- **Redis**: Caching layer for performance
+- **Redis/Valkey**: Caching layer for performance
 
 **Security Architecture (OpenShift)**:
 - **Ingress Authentication**: Envoy sidecar with JWT validation (Keycloak) for external uploads
@@ -120,7 +129,7 @@ All services accessible at **http://localhost:32061**:
 ### OpenShift
 Services accessible via OpenShift Routes:
 ```bash
-oc get routes -n ros-ocp
+oc get routes -n cost-mgmt
 ```
 
 **See [Platform Guide](docs/platform-guide.md) for platform-specific details**
@@ -138,7 +147,7 @@ For OpenShift deployments, JWT authentication is **automatically enabled** and r
 # Step 2: Configure Cost Management Operator with JWT credentials
 ./scripts/setup-cost-mgmt-tls.sh
 
-# Step 3: Deploy ROS-OCP (Authorino is automatically deployed)
+# Step 3: Deploy Cost Management On-Premise (Authorino is automatically deployed)
 ./scripts/install-helm-chart.sh
 ```
 
@@ -192,13 +201,13 @@ The chart includes comprehensive CI/CD automation:
 **Quick diagnostics:**
 ```bash
 # Check pods
-kubectl get pods -n ros-ocp
+kubectl get pods -n cost-mgmt
 
 # View logs
-kubectl logs -n ros-ocp -l app.kubernetes.io/name=rosocp-api
+kubectl logs -n cost-mgmt -l app.kubernetes.io/component=api
 
 # Check storage
-kubectl get pvc -n ros-ocp
+kubectl get pvc -n cost-mgmt
 ```
 
 **See [Troubleshooting Guide](docs/troubleshooting.md) for comprehensive solutions**

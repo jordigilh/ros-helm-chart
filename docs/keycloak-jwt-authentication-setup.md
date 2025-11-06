@@ -35,7 +35,7 @@ graph TB
 - **Operator** → Envoy: `Authorization: Bearer <JWT>` (Standard OAuth 2.0)
 - **Envoy** → Ingress: `X-ROS-Authenticated: true` + `X-Bearer-Token: <JWT>` (JWT-based auth)
 - **Ingress** → Kafka: Message with `org_id` extracted from JWT claims
-- **Backend Processor** → ROS-OCP API: `X-Rh-Identity: <base64-XRHID>` (XRHID-based auth)
+- **Backend Processor** → Cost Management On-Premise API: `X-Rh-Identity: <base64-XRHID>` (XRHID-based auth)
 
 **Key Points**:
 - **Envoy** validates JWT signature and injects authentication headers
@@ -61,7 +61,7 @@ graph TB
    - `account_id` (fallback)
    - `account` (second fallback)
 
-   **Implementation Reference**: See `ros-ocp/templates/envoy-config-ingress.yaml` Lua filter section
+   **Implementation Reference**: See `cost-mgmt/templates/envoy-config-ingress.yaml` Lua filter section
 
 4. **Keycloak Configuration**:
    - Service account client (client_credentials grant type)
@@ -79,9 +79,9 @@ The authentication flow involves **two Envoy sidecars** with different responsib
 
 #### Stage 1: Ingress Envoy - JWT Validation and Header Injection
 
-**Service**: `ros-ocp-ingress` (Port 8080 - Envoy, Port 8081 - Application)
+**Service**: `cost-mgmt-ingress` (Port 8080 - Envoy, Port 8081 - Application)
 
-**Location**: `ros-ocp/templates/envoy-config-ingress.yaml`
+**Location**: `cost-mgmt/templates/envoy-config-ingress.yaml`
 
 **Purpose**: Accept JWT tokens from Cost Management Operator, validate them, and inject authentication headers.
 
@@ -183,7 +183,7 @@ sequenceDiagram
    ```
 
    **Header Requirements**:
-   - **`X-Rh-Identity`** (REQUIRED): Base64-encoded XRHID JSON used by ros-ocp-backend for:
+   - **`X-Rh-Identity`** (REQUIRED): Base64-encoded XRHID JSON used by cost-mgmt-backend for:
      - Authentication and authorization
      - Multi-tenancy (org_id and account_number extraction)
      - Database query filtering
@@ -206,15 +206,15 @@ Ingress Application (port 8081)
   ↓ Processes upload, publishes to Kafka
 ```
 
-#### Stage 2: ROS-OCP API Envoy - JWT Validation (Same as Ingress)
+#### Stage 2: Cost Management On-Premise API Envoy - JWT Validation (Same as Ingress)
 
-**Service**: `ros-ocp-rosocp-api` (Port 8080 - Envoy, Port 8001 - Application)
+**Service**: `cost-mgmt-ros-api` (Port 8080 - Envoy, Port 8001 - Application)
 
-**Location**: `ros-ocp/templates/envoy-config-rosocp-api.yaml`
+**Location**: `cost-mgmt/templates/envoy-config-ros-api.yaml`
 
 **Purpose**: Provide the same JWT authentication capability as Ingress for direct API access.
 
-**Important**: This Envoy sidecar uses **the exact same configuration** as the Ingress Envoy (same jwt_authn filter, same Lua script). It provides JWT authentication for the ROS-OCP API.
+**Important**: This Envoy sidecar uses **the exact same configuration** as the Ingress Envoy (same jwt_authn filter, same Lua script). It provides JWT authentication for the Cost Management On-Premise API.
 
 **How It Works**:
 
@@ -233,14 +233,14 @@ Ingress Application (port 8081)
    - Envoy simply forwards them to the application unchanged
    - **The application validates the XRHID**, not Envoy
 
-4. **Forwards to ROS-OCP API application** on port 8001:
+4. **Forwards to Cost Management On-Premise API application** on port 8001:
    ```
    Internal Service (Processor, Poller, Housekeeper)
      ↓ X-Rh-Identity: <base64-XRHID>
    Envoy Sidecar (port 8080)
      ↓ Pass-through (no JWT, no transformation)
      ↓ X-Rh-Identity: <base64-XRHID>
-   ROS-OCP API Application (port 8001)
+   Cost Management On-Premise API Application (port 8001)
      ↓ Validates XRHID, extracts org_id
      ↓ Uses org_id for database queries
 
@@ -251,27 +251,27 @@ Ingress Application (port 8081)
    Envoy Sidecar (port 8080)
      ↓ Validates JWT, transforms to XRHID (same as Ingress)
      ↓ X-Rh-Identity: <base64-XRHID>
-   ROS-OCP API Application (port 8001)
+   Cost Management On-Premise API Application (port 8001)
      ↓ Validates XRHID, extracts org_id
      ↓ Uses org_id for database queries
    ```
 
-**Key Differences Between Ingress and ROS-OCP API Envoy**:
+**Key Differences Between Ingress and Cost Management On-Premise API Envoy**:
 
-| Aspect | Ingress Envoy | ROS-OCP API Envoy |
+| Aspect | Ingress Envoy | Cost Management On-Premise API Envoy |
 |--------|---------------|-------------------|
 | **Configuration** | JWT validation + Lua transformation | **IDENTICAL** JWT validation + Lua transformation |
 | **Primary Use** | External JWT from Cost Management Operator | Internal XRHID pass-through + optional JWT |
 | **JWT Support** | ✅ Always used (operator sends JWT) | ✅ Optional (used for direct API access) |
 | **XRHID Pass-Through** | ❌ Not used (always receives JWT) | ✅ Primary use (internal services send XRHID) |
 | **XRHID Validation** | ❌ Not applicable | ❌ Envoy doesn't validate XRHID (app does) |
-| **Backend Port** | 8081 (Ingress app) | 8001 (ROS-OCP API app) |
+| **Backend Port** | 8081 (Ingress app) | 8001 (Cost Management On-Premise API app) |
 | **Use Case** | Entry point for operator uploads | Internal API + optional direct access |
 
 #### Stage 3: Backend Services Parse Identity
 
 **Ingress Service** (`insights-ros-ingress`):
-- **Authentication Pattern**: JWT-based (different from ros-ocp-backend)
+- **Authentication Pattern**: JWT-based (different from cost-mgmt-backend)
 - **Location**: `internal/upload/handler.go`
 - **REQUIRES** (application validates, Envoy injects):
   - `X-ROS-Authenticated: "true"` - Confirms Envoy JWT validation succeeded
@@ -300,7 +300,7 @@ Ingress Application (port 8081)
 
 ---
 
-**ROS Backend API** (`ros-ocp-backend`):
+**ROS Backend API** (`cost-mgmt-backend`):
 - **Authentication Pattern**: XRHID-based (Red Hat standard)
 - **Location**: `internal/api/middleware/identity.go`
 - **ONLY requires**: `X-Rh-Identity` header from Envoy sidecar
@@ -327,7 +327,7 @@ Ingress Application (port 8081)
 | Service | Pattern | Reason |
 |---------|---------|--------|
 | **Ingress** | JWT-based | Shared upload service, predates XRHID, needs flexible claim extraction |
-| **ROS-OCP Backend** | XRHID-based | Red Hat standard, optimized for multi-tenancy, simpler validation |
+| **Cost Management On-Premise Backend** | XRHID-based | Red Hat standard, optimized for multi-tenancy, simpler validation |
 
 **Why Two Envoy Sidecars?**
 
@@ -337,7 +337,7 @@ Ingress Application (port 8081)
    - Application parses JWT for claims (org_id, account_number)
    - Entry point for external traffic
 
-2. **ROS-OCP API Envoy** (Port 8080):
+2. **Cost Management On-Premise API Envoy** (Port 8080):
    - **Primary use**: Pass-through for internal XRHID headers (from Processor, Poller, Housekeeper)
    - **Secondary use**: JWT validation for direct external API access
    - Application uses XRHID for multi-tenant database queries
@@ -371,15 +371,15 @@ Ingress Application (port 8081)
    Message: Contains org_id and account_number metadata (from JWT claims)
    Processor: Reads message, processes data, creates XRHID header
 
-5. Processor → ROS-OCP API Envoy (port 8080)
+5. Processor → Cost Management On-Premise API Envoy (port 8080)
    Request: X-Rh-Identity: <base64-XRHID> (built from Kafka message)
    Envoy: Pass-through (no JWT validation for internal traffic)
 
-6. ROS-OCP API Envoy → ROS-OCP API App (port 8001)
+6. Cost Management On-Premise API Envoy → Cost Management On-Premise API App (port 8001)
    Request: X-Rh-Identity: <base64-XRHID>
    App: Decodes XRHID, extracts org_id, queries database with org_id filter
 
-7. ROS-OCP API → Kruize (internal service)
+7. Cost Management On-Premise API → Kruize (internal service)
    Request: HTTP call with org_id in query parameters
    Kruize: Generates recommendations
 ```
@@ -388,8 +388,8 @@ Ingress Application (port 8081)
 - **Envoy does NOT generate JWT tokens** - those come from Keycloak
 - **Ingress Envoy validates JWT** and injects `X-ROS-Authenticated` + `X-Bearer-Token` headers
 - **Ingress Service parses JWT claims directly** (does NOT use X-Rh-Identity)
-- **ROS-OCP API Envoy forwards XRHID** from internal services (Processor, Poller, Housekeeper)
-- **ROS-OCP API Service uses XRHID** for multi-tenant database queries
+- **Cost Management On-Premise API Envoy forwards XRHID** from internal services (Processor, Poller, Housekeeper)
+- **Cost Management On-Premise API Service uses XRHID** for multi-tenant database queries
 - **Two authentication patterns coexist**: JWT-based (Ingress) and XRHID-based (ROS Backend)
 
 ---
@@ -536,7 +536,7 @@ oc wait --for=condition=ready keycloakrealm/kubernetes-realm -n keycloak --timeo
 
 #### Why org_id is Required
 
-The ROS backend (`ros-ocp-backend`) requires the `org_id` claim to:
+The ROS backend (`cost-mgmt-backend`) requires the `org_id` claim to:
 - Identify which organization the data belongs to
 - Enforce multi-tenancy boundaries
 - Route data to correct storage partitions
@@ -730,7 +730,7 @@ If you prefer to use the Keycloak web UI:
 
 ### Overview
 
-The ROS-OCP Helm chart needs to know how to reach Keycloak and validate its TLS certificate. The chart provides **intelligent defaults with automatic fallback** to minimize manual configuration.
+The Cost Management On-Premise Helm chart needs to know how to reach Keycloak and validate its TLS certificate. The chart provides **intelligent defaults with automatic fallback** to minimize manual configuration.
 
 ### Configuration Behavior
 
@@ -751,7 +751,7 @@ jwt_auth:
 ```
 
 **Logic:**
-- ✅ **IF** `jwt_auth.keycloak.url` **is specified** → Use that URL
+- ✅ **IF** `jwtAuth.keycloak.url` **is specified** → Use that URL
   - ✅ **IF NOT specified** → Auto-discover from cluster:
   1. Search for Keycloak Custom Resources
   2. Find Routes in `keycloak` or `keycloak-system` namespaces
@@ -780,7 +780,7 @@ jwt_auth:
 ```
 
 **Logic:**
-- ✅ **IF** `jwt_auth.keycloak.tls.caCert` **is provided** → Use that CA (skip dynamic fetch)
+- ✅ **IF** `jwtAuth.keycloak.tls.caCert` **is provided** → Use that CA (skip dynamic fetch)
 - ✅ **IF NOT provided** → Dynamically fetch from Keycloak endpoint during pod initialization
   - Fetches entire certificate chain
   - Combines with system CA bundle and OpenShift CAs
@@ -922,17 +922,17 @@ jwt_auth:
 
 **Check what URL is being used:**
 ```bash
-kubectl get configmap -n ros-ocp ros-ocp-envoy-ingress-config -o yaml | grep issuer
+kubectl get configmap -n cost-mgmt cost-mgmt-envoy-ingress-config -o yaml | grep issuer
 ```
 
 **Check CA bundle contents:**
 ```bash
 # Number of certificates in bundle
-kubectl exec -n ros-ocp deploy/ros-ocp-ingress -c envoy-proxy -- \
+kubectl exec -n cost-mgmt deploy/cost-mgmt-ingress -c envoy-proxy -- \
   cat /etc/ca-certificates/ca-bundle.crt | grep -c "BEGIN CERTIFICATE"
 
 # Check init container logs
-kubectl logs -n ros-ocp deploy/ros-ocp-ingress -c prepare-ca-bundle | grep -E "(Adding|Fetched)"
+kubectl logs -n cost-mgmt deploy/cost-mgmt-ingress -c prepare-ca-bundle | grep -E "(Adding|Fetched)"
 ```
 
 **Expected output:**
@@ -1079,7 +1079,7 @@ oc get costmanagementmetricsconfig -n costmanagement-metrics-operator \
 # Should show: "202 Accepted" (not 401 Unauthorized)
 
 # Check ingress logs for org_id extraction
-oc logs -n ros-ocp deployment/ros-ocp-ingress -c ingress --tail=50 | \
+oc logs -n cost-mgmt deployment/cost-mgmt-ingress -c ingress --tail=50 | \
   grep -E "org_id|account"
 
 # Expected: account="1", org_id="1"
@@ -1203,7 +1203,7 @@ ORG_ID="2" CLIENT_ID="cost-management-operator-2"
 1. Verify `org_id` in JWT (see Part 3, Step 1)
 2. Check Envoy sidecar is running:
    ```bash
-   oc get pod -n ros-ocp -l app.kubernetes.io/component=ingress \
+   oc get pod -n cost-mgmt -l app.kubernetes.io/component=ingress \
      -o jsonpath='{.items[0].spec.containers[*].name}'
    # Should show: envoy-proxy ingress
    ```
@@ -1222,7 +1222,7 @@ ORG_ID="2" CLIENT_ID="cost-management-operator-2"
 **Fix:**
 1. Check Envoy configuration:
    ```bash
-   oc get configmap ros-ocp-envoy-config -n ros-ocp -o yaml
+   oc get configmap cost-mgmt-envoy-config -n cost-mgmt -o yaml
    ```
 2. Verify `issuer` matches Keycloak:
    ```yaml
@@ -1426,7 +1426,7 @@ echo ""
 echo "Next steps:"
 echo "  1. Wait for next operator upload cycle"
 echo "  2. Verify upload status: oc get costmanagementmetricsconfig -o jsonpath='{.status.upload}'"
-echo "  3. Check ingress logs: oc logs -n ros-ocp deployment/ros-ocp-ingress -c ingress"
+echo "  3. Check ingress logs: oc logs -n cost-mgmt deployment/cost-mgmt-ingress -c ingress"
 ```
 
 ---

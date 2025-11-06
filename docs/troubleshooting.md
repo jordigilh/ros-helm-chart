@@ -11,13 +11,13 @@
 **Solution**:
 ```bash
 # Check if the label exists
-kubectl get namespace ros-ocp --show-labels | grep cost_management
+kubectl get namespace cost-mgmt --show-labels | grep cost_management
 
 # Apply the required label
-kubectl label namespace ros-ocp cost_management_optimizations=true --overwrite
+kubectl label namespace cost-mgmt cost_management_optimizations=true --overwrite
 
 # Verify the label was applied
-kubectl get namespace ros-ocp -o jsonpath='{.metadata.labels.cost_management_optimizations}'
+kubectl get namespace cost-mgmt -o jsonpath='{.metadata.labels.cost_management_optimizations}'
 # Should output: true
 ```
 
@@ -25,7 +25,7 @@ kubectl get namespace ros-ocp -o jsonpath='{.metadata.labels.cost_management_opt
 
 **To remove the label (if testing):**
 ```bash
-kubectl label namespace ros-ocp cost_management_optimizations-
+kubectl label namespace cost-mgmt cost_management_optimizations-
 ```
 
 **Legacy Label**: For backward compatibility, you can also use `insights_cost_management_optimizations=true` (the old label from koku-metrics-operator v4.0.x), but `cost_management_optimizations` is recommended for new deployments.
@@ -76,19 +76,19 @@ kubectl get costmanagementmetricsconfig -n costmanagement-metrics-operator \
 
 1. **Check Ingress Logs**:
    ```bash
-   kubectl logs -n ros-ocp -l app.kubernetes.io/component=ingress -c ingress --tail=50
+   kubectl logs -n cost-mgmt -l app.kubernetes.io/component=ingress -c ingress --tail=50
    # Look for: "Successfully identified ROS files", "Successfully sent ROS event message"
    ```
 
 2. **Check Processor Logs**:
    ```bash
-   kubectl logs -n ros-ocp -l app.kubernetes.io/component=processor --tail=50
+   kubectl logs -n cost-mgmt -l app.kubernetes.io/component=processor --tail=50
    # Look for: "Message received from kafka hccm.ros.events"
    ```
 
 3. **Check Kruize Logs**:
    ```bash
-   kubectl logs -n ros-ocp -l app.kubernetes.io/name=kruize --tail=100 | grep experiment
+   kubectl logs -n cost-mgmt -l app.kubernetes.io/name=kruize --tail=100 | grep experiment
    # Look for: experiment_name with your cluster UUID
    ```
 
@@ -105,7 +105,7 @@ kubectl get costmanagementmetricsconfig -n costmanagement-metrics-operator \
 **Problem**: Pods crashing with OOMKilled status.
 ```bash
 # Check pod status for OOMKilled
-kubectl get pods -n ros-ocp
+kubectl get pods -n cost-mgmt
 
 # If you see OOMKilled status, increase memory limits
 # Create custom values file
@@ -146,7 +146,7 @@ The Kruize `/listExperiments` endpoint may show errors related to missing `Kruiz
 
 ```bash
 # Workaround: Check experiments directly in database
-kubectl exec -n ros-ocp ros-ocp-db-kruize-0 -- \
+kubectl exec -n cost-mgmt cost-mgmt-db-kruize-0 -- \
   psql -U postgres -d postgres -c "SELECT experiment_name, status FROM kruize_experiments;"
 ```
 
@@ -156,25 +156,25 @@ This is a common issue affecting multiple services (processor, recommendation-po
 
 ```bash
 # Step 1: Check current Kafka status
-kubectl get pods -n ros-ocp -l app.kubernetes.io/name=kafka
-kubectl logs -n ros-ocp -l app.kubernetes.io/name=kafka --tail=20
+kubectl get pods -n cost-mgmt -l app.kubernetes.io/name=kafka
+kubectl logs -n cost-mgmt -l app.kubernetes.io/name=kafka --tail=20
 
 # Step 2: Apply Kafka networking fix and restart
 ./install-helm-chart.sh
-kubectl rollout restart statefulset/ros-ocp-kafka -n ros-ocp
+kubectl rollout restart statefulset/cost-mgmt-kafka -n cost-mgmt
 
 # Step 3: Wait for Kafka to be ready
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=kafka -n ros-ocp --timeout=300s
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=kafka -n cost-mgmt --timeout=300s
 
 # Step 4: Restart all dependent services
-kubectl rollout restart deployment/ros-ocp-rosocp-processor -n ros-ocp
-kubectl rollout restart deployment/ros-ocp-rosocp-recommendation-poller -n ros-ocp
-kubectl rollout restart deployment/ros-ocp-rosocp-housekeeper -n ros-ocp
-kubectl rollout restart deployment/ros-ocp-ingress -n ros-ocp
+kubectl rollout restart deployment/cost-mgmt-rosocp-processor -n cost-mgmt
+kubectl rollout restart deployment/cost-mgmt-rosocp-recommendation-poller -n cost-mgmt
+kubectl rollout restart deployment/cost-mgmt-rosocp-housekeeper -n cost-mgmt
+kubectl rollout restart deployment/cost-mgmt-ingress -n cost-mgmt
 
 # Step 5: Verify connectivity
-kubectl logs -n ros-ocp -l app.kubernetes.io/name=rosocp-processor --tail=10
-kubectl exec -n ros-ocp deployment/ros-ocp-rosocp-processor -- nc -zv ros-ocp-kafka 29092
+kubectl logs -n cost-mgmt -l app.kubernetes.io/name=rosocp-processor --tail=10
+kubectl exec -n cost-mgmt deployment/cost-mgmt-rosocp-processor -- nc -zv cost-mgmt-kafka 29092
 ```
 
 **Alternative: Complete redeployment if issues persist:**
@@ -188,27 +188,27 @@ kubectl exec -n ros-ocp deployment/ros-ocp-rosocp-processor -- nc -zv ros-ocp-ka
 **Pods not starting:**
 ```bash
 # Check pod status and events
-kubectl get pods -n ros-ocp
-kubectl describe pod -n ros-ocp <pod-name>
+kubectl get pods -n cost-mgmt
+kubectl describe pod -n cost-mgmt <pod-name>
 
 # Check logs
-kubectl logs -n ros-ocp <pod-name>
+kubectl logs -n cost-mgmt <pod-name>
 ```
 
 **Services not accessible:**
 ```bash
 # Check if services are created
-kubectl get svc -n ros-ocp
+kubectl get svc -n cost-mgmt
 
 # Test port forwarding as alternative
-kubectl port-forward -n ros-ocp svc/ros-ocp-ingress 3000:3000
-kubectl port-forward -n ros-ocp svc/ros-ocp-rosocp-api 8001:8000
+kubectl port-forward -n cost-mgmt svc/cost-mgmt-ingress 3000:3000
+kubectl port-forward -n cost-mgmt svc/cost-mgmt-rosocp-api 8001:8000
 ```
 
 **Storage issues:**
 ```bash
 # Check persistent volume claims
-kubectl get pvc -n ros-ocp
+kubectl get pvc -n cost-mgmt
 
 # Check storage class
 kubectl get storageclass
@@ -226,20 +226,20 @@ kubectl get storageclass
 **Diagnosis**:
 ```bash
 # Check if network policies are deployed
-oc get networkpolicies -n ros-ocp
+oc get networkpolicies -n cost-mgmt
 
 # Describe specific policy
-oc describe networkpolicy kruize-allow-ingress -n ros-ocp
-oc describe networkpolicy rosocp-metrics-allow-ingress -n ros-ocp
-oc describe networkpolicy sources-api-allow-ingress -n ros-ocp
+oc describe networkpolicy kruize-allow-ingress -n cost-mgmt
+oc describe networkpolicy rosocp-metrics-allow-ingress -n cost-mgmt
+oc describe networkpolicy sources-api-allow-ingress -n cost-mgmt
 
 # Test connectivity from within namespace (should work)
-oc exec -n ros-ocp deployment/ros-ocp-rosocp-processor -- \
-  curl -s http://ros-ocp-kruize:8080/listApplications
+oc exec -n cost-mgmt deployment/cost-mgmt-rosocp-processor -- \
+  curl -s http://cost-mgmt-kruize:8080/listApplications
 
 # Test connectivity from monitoring namespace (Prometheus - should work for metrics)
 oc exec -n openshift-monitoring prometheus-k8s-0 -- \
-  curl -s http://ros-ocp-kruize.ros-ocp.svc:8080/metrics
+  curl -s http://cost-mgmt-kruize.cost-mgmt.svc:8080/metrics
 ```
 
 **Common Causes and Fixes**:
@@ -249,7 +249,7 @@ oc exec -n openshift-monitoring prometheus-k8s-0 -- \
    - **Fix**: Ensure routes and ingresses point to port 8080, not backend ports
    ```bash
    # Check route configuration
-   oc get route ros-ocp-main -n ros-ocp -o yaml | grep targetPort
+   oc get route cost-mgmt-main -n cost-mgmt -o yaml | grep targetPort
    # Should show: targetPort: 8080
    ```
 
@@ -258,7 +258,7 @@ oc exec -n openshift-monitoring prometheus-k8s-0 -- \
    - **Fix**: Verify network policies allow `openshift-monitoring` namespace
    ```bash
    # Check if monitoring namespace selector is present
-   oc get networkpolicy kruize-allow-ingress -n ros-ocp -o yaml | \
+   oc get networkpolicy kruize-allow-ingress -n cost-mgmt -o yaml | \
      grep -A3 "namespaceSelector"
    # Should include: name: openshift-monitoring
    ```
@@ -284,18 +284,18 @@ oc exec -n openshift-monitoring prometheus-k8s-0 -- \
 **Diagnosis**:
 ```bash
 # Check if Envoy sidecars are running
-oc get pods -n ros-ocp -o json | \
+oc get pods -n cost-mgmt -o json | \
   jq -r '.items[] | select(.spec.containers | length > 1) | .metadata.name'
 # Should show pods with multiple containers (app + envoy-proxy)
 
 # Check Envoy logs
-oc logs -n ros-ocp deployment/ros-ocp-ingress -c envoy-proxy --tail=50
+oc logs -n cost-mgmt deployment/cost-mgmt-ingress -c envoy-proxy --tail=50
 
 # Check Envoy configuration
-oc get configmap ros-ocp-envoy-config-ingress -n ros-ocp -o yaml
+oc get configmap cost-mgmt-envoy-config-ingress -n cost-mgmt -o yaml
 
 # Verify Keycloak connectivity
-oc exec -n ros-ocp deployment/ros-ocp-ingress -c envoy-proxy -- \
+oc exec -n cost-mgmt deployment/cost-mgmt-ingress -c envoy-proxy -- \
   curl -k -I https://keycloak-keycloak.apps.example.com
 ```
 
@@ -343,20 +343,20 @@ kubectl get pods -n kafka -l name=strimzi-cluster-operator
 
 ```bash
 # Get all resources in namespace
-kubectl get all -n ros-ocp
+kubectl get all -n cost-mgmt
 
 # Check Helm release status
-helm status ros-ocp -n ros-ocp
+helm status cost-mgmt -n cost-mgmt
 
 # View Helm values
-helm get values ros-ocp -n ros-ocp
+helm get values cost-mgmt -n cost-mgmt
 
 # Check cluster info
 kubectl cluster-info
 
 # Check network policies (OpenShift)
-oc get networkpolicies -n ros-ocp
+oc get networkpolicies -n cost-mgmt
 
 # Check Envoy sidecars (OpenShift)
-oc get pods -n ros-ocp -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.name}{" "}{end}{"\n"}{end}'
+oc get pods -n cost-mgmt -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.name}{" "}{end}{"\n"}{end}'
 ```
