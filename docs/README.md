@@ -42,6 +42,14 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 | **[Upload Verification Checklist](cost-management-operator-upload-verification-checklist.md)** | Step-by-step checklist to verify operator metrics upload | Validating that the operator successfully uploaded metrics to Kruize |
 | **[Troubleshooting Guide](troubleshooting.md)** | Common issues and their solutions | Diagnosing and resolving problems with your deployment |
 
+### Architecture & Integration Analysis
+
+| Document | Purpose | When to Use |
+|----------|---------|-------------|
+| **[Koku Integration Summary](koku-integration-summary.md)** | Executive summary of Koku ClowdApp integration opportunities | Understanding high-level integration roadmap and decision points |
+| **[Koku ClowdApp Gap Analysis](koku-clowdapp-gap-analysis.md)** | Detailed technical analysis of gaps between Koku and ROS Helm chart | Planning integration phases and understanding technical requirements |
+| **[Koku Architecture Comparison](koku-architecture-comparison.md)** | Visual architecture comparison with diagrams and data flow | Understanding architectural differences and performance projections |
+
 ---
 
 ## 🚀 Quick Navigation by Use Case
@@ -77,6 +85,12 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 1. Read **[Helm Templates Reference](helm-templates-reference.md)** for resource definitions
 2. Review **[Platform Guide](platform-guide.md)** for architecture overview
 3. Check **[Configuration Reference](configuration.md)** for available options
+
+### "I'm evaluating Koku integration"
+1. Start with **[Koku Integration Summary](koku-integration-summary.md)** for executive overview
+2. Review **[Koku Architecture Comparison](koku-architecture-comparison.md)** for visual diagrams
+3. Read **[Koku ClowdApp Gap Analysis](koku-clowdapp-gap-analysis.md)** for detailed technical analysis
+4. Make decisions based on priorities, timeline, and resources
 
 ---
 
@@ -324,6 +338,75 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 - Database issues
 - Authentication problems
 - Testing and validation
+
+---
+
+### Architecture & Integration Analysis
+
+#### [Koku Integration Summary](koku-integration-summary.md)
+**Purpose:** Executive summary for stakeholders evaluating integration of Koku ClowdApp components into the ROS Helm chart.
+
+**Use when:**
+- Making strategic decisions about architectural changes
+- Evaluating cost-benefit tradeoffs
+- Planning roadmap and timeline
+- Understanding high-level integration approach
+
+**Key topics:**
+- Current state vs target state comparison
+- Key gaps and missing components
+- Phased integration roadmap
+- Cost-benefit analysis
+- Risk assessment
+- Decision points and prerequisites
+- Success criteria
+
+---
+
+#### [Koku ClowdApp Gap Analysis](koku-clowdapp-gap-analysis.md)
+**Purpose:** Comprehensive technical analysis of all differences between the upstream Koku ClowdApp deployment and the current ROS Helm chart.
+
+**Use when:**
+- Planning detailed implementation
+- Understanding technical requirements
+- Assessing engineering effort
+- Evaluating specific components
+- Creating work breakdown structure
+
+**Key topics:**
+- Detailed component comparison
+- API read/write separation architecture
+- Celery worker pool design (13 types)
+- Environment configuration (180+ variables)
+- Secret management patterns
+- Resource allocation strategies
+- Integration priority matrix
+- Implementation phases with effort estimates
+- Technical dependencies
+- Open questions and considerations
+
+---
+
+#### [Koku Architecture Comparison](koku-architecture-comparison.md)
+**Purpose:** Visual architecture comparison with diagrams illustrating current vs target state, data flows, and deployment topologies.
+
+**Use when:**
+- Presenting to stakeholders
+- Understanding system architecture visually
+- Comparing data flow patterns
+- Planning infrastructure changes
+- Evaluating performance projections
+
+**Key topics:**
+- High-level architecture diagrams
+- API layer comparison (single vs separated)
+- Background processing comparison (single vs worker pools)
+- Data flow comparison (current vs target)
+- Deployment topology (8-10 pods vs 36-44 pods)
+- Integration vision (phased approach)
+- Architectural decision rationale
+- Performance projections with metrics
+- Resource scaling analysis
 
 ---
 
