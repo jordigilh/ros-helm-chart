@@ -2,7 +2,7 @@
 
 ## Critical Update: Use Platform-Wide Ingress
 
-**Component**: [`insights-ingress-go`](https://github.com/insights-onprem/insights-ingress-go)  
+**Component**: [`insights-ingress-go`](https://github.com/insights-onprem/insights-ingress-go)
 **NOT**: `insights-ros-ingress` (ROS-specific, deprecated for shared infrastructure)
 
 ---
@@ -145,14 +145,14 @@ Body: {
 
 ingress:
   enabled: true
-  
+
   # Use insights-ingress-go, not insights-ros-ingress
   image:
     repository: quay.io/cloudservices/insights-ingress-go
     tag: "latest"  # Replace with specific version
-  
+
   replicas: 2
-  
+
   resources:
     requests:
       cpu: 500m
@@ -160,37 +160,37 @@ ingress:
     limits:
       cpu: 1000m
       memory: 1Gi
-  
+
   # Environment configuration
   env:
     # Storage backend (MinIO in our case)
     INGRESS_STAGEBUCKET: "platform-uploads-stage"
     INGRESS_REJECTBUCKET: "platform-uploads-rejected"
     INGRESS_BUCKET: "platform-uploads"
-    
+
     # Kafka configuration
     INGRESS_KAFKA_BROKERS: "ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
     INGRESS_KAFKA_TOPIC: "platform.upload.announce"
-    
+
     # Valid upload types (content-type service names)
     INGRESS_VALID_UPLOAD_TYPES: "advisor,cost-management,ros,openshift"
-    
+
     # Storage endpoint
     INGRESS_STORAGE_ENDPOINT: "http://minio.platform-infra.svc.cluster.local:9000"
     INGRESS_STORAGE_ACCESS_KEY: "minioadmin"
     INGRESS_STORAGE_SECRET_KEY: "minioadmin"
-    
+
     # Logging
     INGRESS_LOG_LEVEL: "INFO"
-    
+
     # Maximum upload size (in bytes)
     INGRESS_MAX_SIZE: "10737418240"  # 10GB
-  
+
   service:
     type: ClusterIP
     port: 8080
     targetPort: 8080
-  
+
   # Health checks
   livenessProbe:
     httpGet:
@@ -198,7 +198,7 @@ ingress:
       port: 8080
     initialDelaySeconds: 10
     periodSeconds: 30
-  
+
   readinessProbe:
     httpGet:
       path: /api/ingress/v1/version
@@ -297,7 +297,7 @@ ingress:
 
 externalServices:
   # ... postgresql, redis, minio ...
-  
+
   ingress:
     host: insights-ingress.platform-infra.svc.cluster.local
     port: 8080
@@ -315,7 +315,7 @@ externalServices:
 
 externalServices:
   # ... postgresql, redis, minio ...
-  
+
   ingress:
     host: insights-ingress.platform-infra.svc.cluster.local
     port: 8080
@@ -476,7 +476,7 @@ kubectl delete deployment insights-ros-ingress -n ros-ocp
 - [Platform Upload Topic Documentation](https://github.com/insights-onprem/insights-ingress-go#announcement-topic)
 - [Content Type Format](https://github.com/insights-onprem/insights-ingress-go#content-type)
 
-**Document Version**: 1.0  
-**Date**: November 6, 2025  
+**Document Version**: 1.0
+**Date**: November 6, 2025
 **Status**: ✅ **CRITICAL UPDATE - Must Use insights-ingress-go**
 
