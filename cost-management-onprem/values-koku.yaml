@@ -347,8 +347,8 @@ costManagement:
 
     # PostgreSQL image
     image:
-      repository: registry.access.redhat.com/rhscl/postgresql-15-rhel7  # Avoid Docker Hub rate limit
-      tag: "latest"
+      repository: quay.io/fedora/postgresql  # Avoid Docker Hub rate limit
+      tag: "15"
       pullPolicy: IfNotPresent
 
     # Resources for Koku database
