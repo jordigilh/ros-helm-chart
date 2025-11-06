@@ -1,7 +1,7 @@
 # Koku Integration Deployment Guide
 
-**Version**: Post-PR27  
-**Date**: 2025-11-06  
+**Version**: Post-PR27
+**Date**: 2025-11-06
 **Status**: Infrastructure Configuration Complete ✅
 
 ---
@@ -38,7 +38,7 @@ This will:
 
 **Infrastructure (4 pods)**:
 - Koku PostgreSQL Database
-- Hive Metastore PostgreSQL Database  
+- Hive Metastore PostgreSQL Database
 - Trino Coordinator
 - Trino Worker
 
@@ -119,7 +119,7 @@ discovery.uri=http://localhost:8080
 ## 📝 Fixes Applied in This Session
 
 ### 1. Image Management
-**Problem**: Docker Hub rate limits  
+**Problem**: Docker Hub rate limits
 **Solution**: Mirrored images to `quay.io/insights-onprem/`
 
 ```bash
@@ -132,7 +132,7 @@ podman push quay.io/insights-onprem/...
 ```
 
 ### 2. Storage Integration
-**Problem**: MinIO credentials referenced, but using ODF  
+**Problem**: MinIO credentials referenced, but using ODF
 **Solution**: Use ODF's noobaa-admin secret
 
 ```bash
@@ -144,7 +144,7 @@ oc get secret noobaa-admin -n openshift-storage -o json | \
 ```
 
 ### 3. Database Configuration
-**Problem**: PostgreSQL pods failing with "must specify POSTGRESQL_USER..."  
+**Problem**: PostgreSQL pods failing with "must specify POSTGRESQL_USER..."
 **Solution**: Use sclorg-specific env var names
 
 ```diff
@@ -154,7 +154,7 @@ oc get secret noobaa-admin -n openshift-storage -o json | \
 ```
 
 ### 4. Trino JVM Configuration
-**Problem**: `Unrecognized VM option 'UseUseG1GC'`  
+**Problem**: `Unrecognized VM option 'UseUseG1GC'`
 **Solution**: Template already had `-XX:+Use` prefix
 
 ```diff
@@ -163,7 +163,7 @@ oc get secret noobaa-admin -n openshift-storage -o json | \
 ```
 
 ### 5. Trino Config Properties
-**Problem**: `Configuration property 'discovery-server.enabled' was not used`  
+**Problem**: `Configuration property 'discovery-server.enabled' was not used`
 **Solution**: Remove deprecated property
 
 ```diff
@@ -208,7 +208,7 @@ watch 'oc get pods -n cost-mgmt | grep -E "koku-db|metastore|trino"'
 Expected result after ~2 minutes:
 ```
 cost-mgmt-cost-management-onprem-koku-db-0              1/1   Running
-cost-mgmt-cost-management-onprem-hive-metastore-db-0    1/1   Running  
+cost-mgmt-cost-management-onprem-hive-metastore-db-0    1/1   Running
 cost-mgmt-cost-management-onprem-trino-coordinator-0    1/1   Running
 cost-mgmt-cost-management-onprem-trino-worker-xxx       1/1   Running
 ```
@@ -280,7 +280,7 @@ oc logs -n cost-mgmt <celery-worker-pod> | tail -50
 ## 📚 Documentation
 
 - **`docs/DEPLOYMENT-PROGRESS-SUMMARY.md`** - Complete session summary
-- **`docs/IMAGE-VERIFICATION-REPORT.md`** - Image verification details  
+- **`docs/IMAGE-VERIFICATION-REPORT.md`** - Image verification details
 - **`docs/DEPLOYMENT-CURRENT-STATUS.md`** - Original status document
 - **`scripts/finalize-koku-deployment.sh`** - Automated deployment script
 - **`scripts/mirror-images-to-quay.sh`** - Future image mirroring
@@ -327,7 +327,7 @@ watch 'oc get pods -n cost-mgmt'
 # 4. Check infrastructure
 oc get pods -n cost-mgmt | grep -E "koku-db|trino|metastore"
 
-# 5. Verify application recovery  
+# 5. Verify application recovery
 oc get pods -n cost-mgmt | grep -E "koku-api|celery"
 ```
 
@@ -335,9 +335,9 @@ oc get pods -n cost-mgmt | grep -E "koku-api|celery"
 
 ## 🏆 Session Summary
 
-**Duration**: ~3 hours  
-**Commits**: 12 configuration fixes  
-**Progress**: ~75% complete  
+**Duration**: ~3 hours
+**Commits**: 12 configuration fixes
+**Progress**: ~75% complete
 
 **Key Achievements**:
 - ✅ Solved Docker Hub rate limits via image mirroring

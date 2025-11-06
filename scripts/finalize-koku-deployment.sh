@@ -124,10 +124,10 @@ check_pod_status() {
     local label=$1
     local component=$2
     local expected=$3
-    
+
     log_info "Checking ${component}..."
     local count=$(oc get pods -n "${NAMESPACE}" -l "${label}" --no-headers 2>/dev/null | grep -c "Running" || echo "0")
-    
+
     if [[ "${count}" -ge "${expected}" ]]; then
         log_success "${component}: ${count}/${expected} Running"
         return 0
