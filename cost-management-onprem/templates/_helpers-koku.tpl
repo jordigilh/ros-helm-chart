@@ -131,7 +131,7 @@ Koku database user
 Koku database connection URL (for Django)
 */}}
 {{- define "cost-mgmt.koku.database.url" -}}
-{{- printf "postgresql://%s:%s@%s:%v/%s" 
+{{- printf "postgresql://%s:%s@%s:%v/%s"
     (include "cost-mgmt.koku.database.user" .)
     "$(DATABASE_PASSWORD)"
     (include "cost-mgmt.koku.database.host" .)
@@ -155,7 +155,7 @@ Trino metastore database host
 Trino metastore database connection URL (JDBC)
 */}}
 {{- define "cost-mgmt.trino.metastore.database.url" -}}
-{{- printf "jdbc:postgresql://%s:%v/%s" 
+{{- printf "jdbc:postgresql://%s:%v/%s"
     (include "cost-mgmt.trino.metastore.database.host" .)
     (.Values.trino.metastore.database.port | default 5432)
     (.Values.trino.metastore.database.name | default "metastore")
@@ -186,7 +186,7 @@ Redis port
 Redis URL for Koku (uses DB 1)
 */}}
 {{- define "cost-mgmt.koku.redis.url" -}}
-{{- printf "redis://%s:%v/1" 
+{{- printf "redis://%s:%v/1"
     (include "cost-mgmt.koku.redis.host" .)
     (include "cost-mgmt.koku.redis.port" .)
 -}}
@@ -263,7 +263,7 @@ Trino coordinator port
 Hive metastore URI
 */}}
 {{- define "cost-mgmt.trino.metastore.uri" -}}
-{{- printf "thrift://%s:%v" 
+{{- printf "thrift://%s:%v"
     (include "cost-mgmt.trino.metastore.name" .)
     (.Values.trino.metastore.service.port | default 9083)
 -}}
