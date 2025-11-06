@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# ROS-OCP Helm Chart Installation Script
-# This script deploys the ROS-OCP Helm chart to a Kubernetes cluster
+# Cost Management On Premise Helm Chart Installation Script
+# This script deploys the Cost Management On Premise Helm chart to a Kubernetes cluster
 # By default, it downloads and uses the latest release from GitHub
 # Set USE_LOCAL_CHART=true to use local chart source instead
 # Requires: kubectl configured with target cluster context, helm installed, curl, jq
@@ -20,13 +20,13 @@ NC='\033[0m' # No Color
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-ros-ocp}
-NAMESPACE=${NAMESPACE:-ros-ocp}
+HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-cost-management-onprem}
+NAMESPACE=${NAMESPACE:-cost-management-onprem}
 VALUES_FILE=${VALUES_FILE:-}
 REPO_OWNER="insights-onprem"
-REPO_NAME="ros-helm-chart"
+REPO_NAME="cost-management-onprem-helm-chart"
 USE_LOCAL_CHART=${USE_LOCAL_CHART:-false}  # Set to true to use local chart instead of GitHub release
-LOCAL_CHART_PATH=${LOCAL_CHART_PATH:-../ros-ocp}  # Path to local chart directory
+LOCAL_CHART_PATH=${LOCAL_CHART_PATH:-../cost-management-onprem}  # Path to local chart directory
 STRIMZI_NAMESPACE=${STRIMZI_NAMESPACE:-}  # If set, use existing Strimzi operator in this namespace
 KAFKA_NAMESPACE=${KAFKA_NAMESPACE:-}  # If set, use existing Kafka cluster in this namespace
 
@@ -278,7 +278,6 @@ verify_strimzi_and_kafka() {
     local check_namespace="${KAFKA_NAMESPACE:-kafka}"
 
     # Check if Strimzi operator exists
-    local strimzi_found=false
     local strimzi_ns=""
 
     # Look for Strimzi operator in any namespace
@@ -286,13 +285,12 @@ verify_strimzi_and_kafka() {
 
     if [ -n "$strimzi_ns" ]; then
         echo_success "Found Strimzi operator in namespace: $strimzi_ns"
-        strimzi_found=true
         check_namespace="$strimzi_ns"
     else
         echo_error "Strimzi operator not found in cluster"
         echo_info ""
         echo_info "Strimzi operator is required to manage Kafka clusters."
-        echo_info "Please deploy Strimzi before installing ROS-OCP:"
+        echo_info "Please deploy Strimzi before installing Cost Management On Premise:"
         echo_info ""
         echo_info "  cd $SCRIPT_DIR"
         echo_info "  ./deploy-strimzi.sh"
@@ -308,8 +306,8 @@ verify_strimzi_and_kafka() {
     if ! kubectl get kafka -n "$check_namespace" >/dev/null 2>&1; then
         echo_error "No Kafka cluster found in namespace: $check_namespace"
         echo_info ""
-        echo_info "A Kafka cluster is required for ROS-OCP."
-        echo_info "Please deploy a Kafka cluster before installing ROS-OCP:"
+        echo_info "A Kafka cluster is required for Cost Management On Premise."
+        echo_info "Please deploy a Kafka cluster before installing Cost Management On Premise:"
         echo_info ""
         echo_info "  cd $SCRIPT_DIR"
         echo_info "  ./deploy-strimzi.sh"
@@ -354,9 +352,9 @@ create_storage_credentials_secret() {
     # Use the same naming convention as the Helm chart fullname template
     # The fullname template logic: if release name contains chart name, use release name as-is
     # Otherwise use: ${HELM_RELEASE_NAME}-${CHART_NAME}
-    # For ros-ocp-test release: fullname = ros-ocp-test (contains "ros-ocp")
-    # For other releases: fullname = ${HELM_RELEASE_NAME}-ros-ocp
-    local chart_name="ros-ocp"
+    # For cost-management-onprem-test release: fullname = cost-management-onprem-test (contains "cost-management-onprem")
+    # For other releases: fullname = ${HELM_RELEASE_NAME}-cost-management-onprem
+    local chart_name="cost-management-onprem"
     local fullname
     if [[ "$HELM_RELEASE_NAME" == *"$chart_name"* ]]; then
         fullname="$HELM_RELEASE_NAME"
@@ -373,7 +371,7 @@ create_storage_credentials_secret() {
 
     if [ "$PLATFORM" = "openshift" ]; then
         # For OpenShift, check if ODF credentials secret exists
-        local odf_secret_name="ros-ocp-odf-credentials"
+        local odf_secret_name="cost-management-onprem-odf-credentials"
         if kubectl get secret "$odf_secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
             echo_info "Found existing ODF credentials secret: $odf_secret_name"
             echo_info "Creating storage credentials secret from ODF credentials..."
@@ -505,7 +503,7 @@ cleanup_downloaded_chart() {
 
 # Function to deploy Helm chart
 deploy_helm_chart() {
-    echo_info "Deploying ROS-OCP Helm chart..."
+    echo_info "Deploying Cost Management On Premise Helm chart..."
 
     local chart_source=""
 
@@ -517,7 +515,7 @@ deploy_helm_chart() {
         # Check if Helm chart directory exists
         if [ ! -d "$LOCAL_CHART_PATH" ]; then
             echo_error "Local Helm chart directory not found: $LOCAL_CHART_PATH"
-            echo_info "Set USE_LOCAL_CHART=false to use GitHub releases, or set LOCAL_CHART_PATH to the correct chart location (default: ./helm/ros-ocp)"
+            echo_info "Set USE_LOCAL_CHART=false to use GitHub releases, or set LOCAL_CHART_PATH to the correct chart location (default: ./helm/cost-management-onprem)"
             return 1
         fi
 
@@ -659,7 +657,7 @@ show_status() {
         local hostname="localhost:$http_port"
         echo_info "Access Points (via Ingress - for KIND):"
         echo_info "  - Ingress API: http://$hostname/ready"
-        echo_info "  - ROS-OCP API: http://$hostname/status"
+        echo_info "  - ROS API: http://$hostname/status"
         echo_info "  - Kruize API: http://$hostname/api/kruize/listPerformanceProfiles"
         echo_info "  - MinIO Console: http://$hostname/minio (minioaccesskey/miniosecretkey)"
     fi
@@ -876,7 +874,7 @@ run_health_checks() {
         # Test Kruize API via port-forward
         echo_info "Testing Kruize API via port-forward..."
         local kruize_pf_pid=""
-        kubectl port-forward -n "$NAMESPACE" svc/ros-ocp-kruize 18081:8080 --request-timeout=90s >/dev/null 2>&1 &
+        kubectl port-forward -n "$NAMESPACE" svc/cost-management-onprem-kruize 18081:8080 --request-timeout=90s >/dev/null 2>&1 &
         kruize_pf_pid=$!
         sleep 3
         if kill -0 "$kruize_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18081/listPerformanceProfiles >/dev/null 2>&1; then
@@ -917,7 +915,7 @@ run_health_checks() {
 
         if [ $external_accessible -eq 0 ]; then
             echo_info "  → External routes not accessible (common in internal/corporate clusters)"
-            echo_info "  → Use port-forwarding: kubectl port-forward svc/ros-ocp-rosocp-api -n $NAMESPACE 8001:8000"
+            echo_info "  → Use port-forwarding: kubectl port-forward svc/cost-management-onprem-rosocp-api -n $NAMESPACE 8001:8000"
         else
             echo_success "  → $external_accessible route(s) externally accessible"
         fi
@@ -996,7 +994,7 @@ cleanup() {
         shift
     done
 
-    echo_info "Cleaning up ROS-OCP Helm deployment..."
+    echo_info "Cleaning up Cost Management On Premise Helm deployment..."
     echo_info "Note: This will NOT remove Strimzi/Kafka. To clean them up separately:"
     echo_info "  ./deploy-strimzi.sh cleanup"
     echo ""
@@ -1306,8 +1304,8 @@ main() {
         esac
     done
 
-    echo_info "ROS-OCP Helm Chart Installation"
-    echo_info "==============================="
+    echo_info "Cost Management On Premise Helm Chart Installation"
+    echo_info "=================================================="
 
     # Check prerequisites
     if ! check_prerequisites; then
@@ -1387,7 +1385,7 @@ main() {
     fi
 
     echo ""
-    echo_success "ROS-OCP Helm chart installation completed!"
+    echo_success "Cost Management On Prem Helm chart installation completed!"
     echo_info "The services are now running in namespace '$NAMESPACE'"
 
     if [ "$PLATFORM" = "kubernetes" ]; then
@@ -1434,7 +1432,7 @@ case "${1:-}" in
         echo "  2. For OpenShift with JWT auth: RHBK (optional, run ./deploy-rhbk.sh)"
         echo ""
         echo "Commands:"
-        echo "  (none)              - Install ROS-OCP Helm chart"
+        echo "  (none)              - Install Cost Management On Premise Helm chart"
         echo "  cleanup             - Delete Helm release and namespace (preserves PVs)"
         echo "  cleanup --complete  - Complete removal including Persistent Volumes"
         echo "                        Note: Strimzi/Kafka are NOT removed. Use ./deploy-strimzi.sh cleanup"
@@ -1460,11 +1458,11 @@ case "${1:-}" in
         echo "  $0                       # Reinstall (reuses existing volumes and Kafka)"
         echo ""
         echo "Environment Variables:"
-        echo "  HELM_RELEASE_NAME       - Name of Helm release (default: ros-ocp)"
-        echo "  NAMESPACE               - Kubernetes namespace (default: ros-ocp)"
+        echo "  HELM_RELEASE_NAME       - Name of Helm release (default: cost-management-onprem)"
+        echo "  NAMESPACE               - Kubernetes namespace (default: cost-management-onprem)"
         echo "  VALUES_FILE             - Path to custom values file (optional)"
         echo "  USE_LOCAL_CHART         - Use local chart instead of GitHub release (default: false)"
-        echo "  LOCAL_CHART_PATH        - Path to local chart directory (default: ../helm/ros-ocp)"
+        echo "  LOCAL_CHART_PATH        - Path to local chart directory (default: ../helm/cost-management-onprem)"
         echo "  KAFKA_BOOTSTRAP_SERVERS - Bootstrap servers for existing Kafka (skips verification)"
         echo "                            Example: my-kafka-bootstrap.kafka:9092"
         echo ""
@@ -1473,34 +1471,34 @@ case "${1:-}" in
         echo "  - Local: Set USE_LOCAL_CHART=true to use local chart directory"
         echo "  - Chart Path: Set LOCAL_CHART_PATH to specify custom chart location"
         echo "  - Examples:"
-        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../helm/ros-ocp $0"
-        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-helm-chart/ros-ocp $0"
+        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../helm/cost-management-onprem $0"
+        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-management-onprem-helm-chart/cost-management-onprem $0"
         echo ""
         echo "Examples:"
         echo "  # Complete fresh installation"
         echo "  ./deploy-strimzi.sh                           # Install Strimzi and Kafka first"
-        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp $0  # Then install ROS-OCP"
+        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-management-onprem $0  # Then install Cost Management On Premise"
         echo ""
         echo "  # Install from GitHub release (with Strimzi already deployed)"
         echo "  ./deploy-strimzi.sh                           # Install prerequisites"
-        echo "  $0                                            # Install ROS-OCP from latest release"
+        echo "  $0                                            # Install Cost Management On Premise from latest release"
         echo ""
         echo "  # Custom namespace and release name"
         echo "  NAMESPACE=my-namespace HELM_RELEASE_NAME=my-release \\"
-        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp $0"
+        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-management-onprem $0"
         echo ""
         echo "  # Use existing Kafka on cluster (deployed by other means)"
         echo "  KAFKA_BOOTSTRAP_SERVERS=my-kafka-bootstrap.my-namespace:9092 $0"
         echo ""
         echo "  # With custom overrides"
-        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp $0 \\"
+        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-management-onprem $0 \\"
         echo "    --set database.ros.storage.size=200Gi"
         echo ""
         echo "  # Install latest release from GitHub"
         echo "  $0"
         echo ""
         echo "  # Cleanup and reinstall"
-        echo "  $0 cleanup --complete && USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp $0"
+        echo "  $0 cleanup --complete && USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-management-onprem $0"
         echo ""
         echo "Platform Detection:"
         echo "  - Automatically detects Kubernetes vs OpenShift"
@@ -1511,10 +1509,10 @@ case "${1:-}" in
         echo "Deployment Scenarios:"
         echo "  1. Fresh deployment (recommended):"
         echo "     ./deploy-strimzi.sh    # Deploy Strimzi and Kafka first"
-        echo "     $0                     # Deploy ROS-OCP"
+        echo "     $0                     # Deploy Cost Management On Premise"
         echo "     - Auto-detects platform (OpenShift or Kubernetes)"
         echo "     - Verifies Strimzi/Kafka prerequisites"
-        echo "     - Deploys ROS-OCP with platform-specific configuration"
+        echo "     - Deploys Cost Management On Premise with platform-specific configuration"
         echo ""
         echo "  2. With existing Kafka (external):"
         echo "     KAFKA_BOOTSTRAP_SERVERS=kafka.example.com:9092 $0"
