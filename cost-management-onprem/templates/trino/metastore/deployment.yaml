@@ -53,15 +53,15 @@ spec:
             
             # Process config template (read from ConfigMap, write to writable location)
             sed "s/METASTORE_DB_PASSWORD/$METASTORE_DB_PASSWORD/g" \
-              /config-template/metastore-site.xml > /tmp/hive-conf/metastore-site.xml
+              /config-template/metastore-site.xml > /tmp/hive-conf/hive-site.xml
             
-            # Copy to expected location
-            cp /tmp/hive-conf/metastore-site.xml /opt/hive/conf/hive-site.xml
+            # Set Hive to use our config directory
+            export HIVE_CONF_DIR=/tmp/hive-conf
             
-            # Initialize schema if needed (correct path)
+            # Initialize schema if needed (correct path, will now use our config)
             /opt/hive/bin/schematool -dbType postgres -initSchema || true
             
-            # Start metastore service (correct path)
+            # Start metastore service (correct path, will use our config)
             /opt/hive/bin/hive --service metastore
 
         ports:
@@ -75,6 +75,8 @@ spec:
             secretKeyRef:
               name: {{ include "cost-mgmt.trino.metastore.database.secretName" . }}
               key: password
+        - name: HIVE_CONF_DIR
+          value: "/tmp/hive-conf"
 
         resources:
           {{- toYaml .Values.trino.metastore.resources | nindent 10 }}
