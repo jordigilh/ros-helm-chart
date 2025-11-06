@@ -1,7 +1,7 @@
 apiVersion: build.openshift.io/v1
 kind: BuildConfig
 metadata:
-  name: {{ include "cost-mgmt.koku.fullname" . }}
+  name: {{ include "cost-mgmt.koku.api.name" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt.koku.labels" . | nindent 4 }}
@@ -10,7 +10,7 @@ spec:
   output:
     to:
       kind: ImageStreamTag
-      name: {{ include "cost-mgmt.koku.fullname" . }}:{{ .Values.costManagement.api.image.tag }}
+      name: {{ include "cost-mgmt.koku.api.name" . }}:{{ .Values.costManagement.api.image.tag }}
   source:
     type: Binary
     binary: {}
