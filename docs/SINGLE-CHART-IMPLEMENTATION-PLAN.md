@@ -1,7 +1,7 @@
 # Single Chart Implementation Plan
 
-**Date**: November 6, 2025  
-**Status**: ✅ **READY FOR IMPLEMENTATION**  
+**Date**: November 6, 2025
+**Status**: ✅ **READY FOR IMPLEMENTATION**
 **Confidence**: 🟢 **95% HIGH CONFIDENCE**
 
 ---
@@ -14,7 +14,7 @@
 - ✅ Koku components (API + 13 workers)
 - ✅ Trino (minimal profile for validation)
 
-**Rationale**: 
+**Rationale**:
 - Faster iteration
 - Simpler for initial deployment
 - Wait for customer feedback before splitting
@@ -107,7 +107,7 @@ Based on minimal profile for integration testing:
 | **Trino** | 4 | 0.65 cores | 2.5 GB | 1.35 cores | 5 GB | 12 GB |
 | **TOTAL** | **~36** | **~8 cores** | **~19 GB** | **~14 cores** | **~34 GB** | **~72 GB** |
 
-**Cluster Minimum**: 
+**Cluster Minimum**:
 - CPU: 10-12 cores (with overhead)
 - Memory: 24-30 GB (with overhead)
 - Storage: 100 GB
@@ -136,12 +136,12 @@ Add Koku and Trino configuration sections to existing `values.yaml`:
 # NEW: Koku Configuration
 koku:
   enabled: true
-  
+
   image:
     repository: quay.io/project-koku/koku
     tag: "latest"  # TODO: Specify version
     pullPolicy: IfNotPresent
-  
+
   api:
     reads:
       enabled: true
@@ -153,7 +153,7 @@ koku:
         limits:
           cpu: 600m
           memory: 1Gi
-    
+
     writes:
       enabled: true
       replicas: 1  # Minimal for dev
@@ -164,7 +164,7 @@ koku:
         limits:
           cpu: 600m
           memory: 1Gi
-  
+
   celery:
     beat:
       enabled: true
@@ -176,7 +176,7 @@ koku:
         limits:
           cpu: 200m
           memory: 400Mi
-    
+
     workers:
       default:
         enabled: true
@@ -189,7 +189,7 @@ koku:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       priority:
         enabled: true
         replicas: 1
@@ -201,7 +201,7 @@ koku:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       refresh:
         enabled: true
         replicas: 1
@@ -213,7 +213,7 @@ koku:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       summary:
         enabled: true
         replicas: 1
@@ -225,7 +225,7 @@ koku:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       hcs:
         enabled: true
         replicas: 1
@@ -237,7 +237,7 @@ koku:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       # XL workers (minimal for dev)
       priorityXl:
         enabled: true
@@ -250,7 +250,7 @@ koku:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       priorityPenalty:
         enabled: true
         replicas: 1
@@ -262,7 +262,7 @@ koku:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       refreshXl:
         enabled: true
         replicas: 1
@@ -274,7 +274,7 @@ koku:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       refreshPenalty:
         enabled: true
         replicas: 1
@@ -286,7 +286,7 @@ koku:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       summaryXl:
         enabled: true
         replicas: 1
@@ -298,7 +298,7 @@ koku:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       summaryPenalty:
         enabled: true
         replicas: 1
@@ -310,17 +310,17 @@ koku:
           limits:
             cpu: 200m
             memory: 400Mi
-      
+
       subsExtraction:
         enabled: false  # Disabled per ClowdApp
         replicas: 0
         queue: subs_extraction
-      
+
       subsTransmission:
         enabled: false  # Disabled per ClowdApp
         replicas: 0
         queue: subs_transmission
-  
+
   database:
     # Use existing PostgreSQL but separate database
     host: db-ros.{{ .Release.Namespace }}.svc.cluster.local
@@ -329,11 +329,11 @@ koku:
     user: koku
     # Password generated automatically
     sslMode: disable
-  
+
   django:
     # Secret key generated automatically
     secretKeyLength: 50
-  
+
   service:
     type: ClusterIP
     port: 8000
@@ -342,7 +342,7 @@ koku:
 trino:
   enabled: true
   profile: minimal  # minimal, dev, or production
-  
+
   coordinator:
     enabled: true
     replicas: 1
@@ -355,7 +355,7 @@ trino:
         memory: 2Gi
     storage:
       size: 5Gi
-  
+
   worker:
     enabled: true
     replicas: 1  # Minimal for dev
@@ -368,7 +368,7 @@ trino:
         memory: 2Gi
     storage:
       size: 5Gi
-  
+
   metastore:
     enabled: true
     replicas: 1
@@ -379,7 +379,7 @@ trino:
       limits:
         cpu: 250m
         memory: 512Mi
-    
+
     database:
       # Use existing PostgreSQL
       host: db-ros.{{ .Release.Namespace }}.svc.cluster.local
@@ -442,7 +442,7 @@ metadata:
 type: Opaque
 data:
   password: {{ randAlphaNum 16 | b64enc | quote }}
-  
+
 # secret-db-metastore.yaml
 apiVersion: v1
 kind: Secret
@@ -620,9 +620,9 @@ For NetworkPolicy creation, should I analyze:
 
 ---
 
-**Status**: ✅ **READY TO IMPLEMENT**  
-**Confidence**: 🟢 **95% HIGH CONFIDENCE**  
-**Timeline**: 4 weeks to production-ready single chart  
+**Status**: ✅ **READY TO IMPLEMENT**
+**Confidence**: 🟢 **95% HIGH CONFIDENCE**
+**Timeline**: 4 weeks to production-ready single chart
 **Immediate Next Step**: Update values.yaml with Koku configuration
 
 Should I proceed with implementation?
