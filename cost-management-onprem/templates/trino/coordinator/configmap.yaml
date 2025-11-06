@@ -36,11 +36,7 @@ data:
   hive.properties: |
     connector.name=hive
     hive.metastore.uri={{ include "cost-mgmt.trino.metastore.uri" . }}
-    hive.s3.endpoint={{ include "cost-mgmt.koku.s3.endpoint" . }}
-    hive.s3.path-style-access=true
-    hive.s3.ssl.enabled=false
     hive.non-managed-table-writes-enabled=true
-    fs.native-s3.enabled=true
 
   postgresql.properties: |
     connector.name=postgresql
