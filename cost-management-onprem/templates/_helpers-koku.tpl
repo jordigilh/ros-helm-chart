@@ -199,6 +199,14 @@ Kafka Connection Helpers (uses shared Kafka from infrastructure)
 */}}
 
 {{/*
+Kafka hostname (without port)
+INSIGHTS_KAFKA_HOST - Koku's EnvConfigurator concatenates this with port
+*/}}
+{{- define "cost-mgmt.koku.kafka.host" -}}
+{{- printf "kafka" -}}
+{{- end -}}
+
+{{/*
 Kafka bootstrap servers (uses shared Kafka from PR #27)
 */}}
 {{- define "cost-mgmt.koku.kafka.bootstrapServers" -}}
@@ -494,7 +502,7 @@ Common environment variables for Koku API and Celery
 - name: REDIS_PORT
   value: {{ include "cost-mgmt.koku.redis.port" . | quote }}
 - name: INSIGHTS_KAFKA_HOST
-  value: {{ include "cost-mgmt.koku.kafka.bootstrapServers" . | quote }}
+  value: {{ include "cost-mgmt.koku.kafka.host" . | quote }}
 - name: INSIGHTS_KAFKA_PORT
   value: {{ include "cost-mgmt.koku.kafka.port" . | quote }}
 - name: S3_ENDPOINT
