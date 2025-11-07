@@ -1,0 +1,79 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cost-mgmt.koku.api.name" . }}-db-migrate-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: db-migration
+  annotations:
+    # Helm hooks for automatic database migration
+    helm.sh/hook: pre-upgrade,pre-install
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: db-migration
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        {{- include "cost-mgmt.securityContext.pod" . | nindent 8 }}
+      containers:
+      - name: db-migrate
+        image: {{ include "cost-mgmt.koku.image" . }}
+        imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
+        securityContext:
+          {{- include "cost-mgmt.securityContext.container" . | nindent 10 }}
+        command:
+          - /bin/bash
+          - -c
+          - |
+            # Run Django database migrations
+            echo "Starting database migration..."
+            cd $APP_HOME
+            python koku/manage.py migrate --noinput
+            echo "Migration completed successfully"
+        env:
+        # Database connection (required for migrations)
+        - name: DATABASE_SERVICE_NAME
+          value: "database"
+        - name: DATABASE_ENGINE
+          value: "postgresql"
+        - name: DATABASE_SERVICE_HOST
+          value: {{ include "cost-mgmt.koku.database.host" . | quote }}
+        - name: DATABASE_SERVICE_PORT
+          value: {{ include "cost-mgmt.koku.database.port" . | quote }}
+        - name: DATABASE_NAME
+          value: {{ include "cost-mgmt.koku.database.dbname" . | quote }}
+        - name: DATABASE_USER
+          value: {{ include "cost-mgmt.koku.database.user" . | quote }}
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "cost-mgmt.koku.database.secretName" . }}
+              key: password
+        # Django secret key (required by Django management commands)
+        - name: DJANGO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "cost-mgmt.koku.django.secretName" . }}
+              key: secret-key
+        # Migration-specific settings
+        - name: CLOWDER_ENABLED
+          value: "False"
+        - name: DEVELOPMENT
+          value: "False"
+        - name: KOKU_LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+

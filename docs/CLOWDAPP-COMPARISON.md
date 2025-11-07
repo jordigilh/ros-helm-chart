@@ -1,8 +1,8 @@
 # ClowdApp vs Helm Chart Comparison
 
-**Date**: November 7, 2025  
-**Source**: `../koku/deploy/clowdapp.yaml` (207 KB, 6514 lines)  
-**Target**: `cost-management-onprem` Helm chart  
+**Date**: November 7, 2025
+**Source**: `../koku/deploy/clowdapp.yaml` (207 KB, 6514 lines)
+**Target**: `cost-management-onprem` Helm chart
 **Scope**: Koku-specific components only (excluding infrastructure: Redis, PostgreSQL, Kafka)
 
 ---
@@ -45,19 +45,19 @@
         value: ${ROS_OCP_API}
 ```
 
-**Purpose**: 
+**Purpose**:
 - Proxies requests to api-reads and api-writes
 - May handle load balancing between read/write APIs
 - References ROS_OCP_API (integration with ROS)
 
 **Current State in Our Chart**: ❌ Not deployed
 
-**Impact**: 
+**Impact**:
 - **Low** if we expose api-reads/api-writes services directly
 - **High** if SaaS clients expect specific routing behavior
 - **Unknown** what the nginx config does (need to check Koku repo)
 
-**Recommendation**: 
+**Recommendation**:
 - **For on-prem**: Likely NOT needed - we can expose Koku API service directly
 - **For SaaS compatibility**: Investigate nginx config in Koku repo
 
@@ -262,7 +262,7 @@ spec:
 - Handles authentication/authorization
 - Required for ROS integration
 
-**Recommendation**: 
+**Recommendation**:
 1. Check if nginx config exists in Koku repo
 2. If simple (just proxy), skip it
 3. If complex (auth, special routing), add it
@@ -412,7 +412,7 @@ spec:
 ### P2 - Nice to Have (Optimization)
 
 #### 3. Investigate Nginx Proxy
-**Action**: 
+**Action**:
 1. Search for nginx config in `../koku/` repo
 2. Evaluate if needed for on-prem
 3. Add if required
@@ -464,7 +464,7 @@ spec:
 - refresh (+ penalty, xl variants)
 - summary (+ penalty, xl variants)
 
-**Why Better**: 
+**Why Better**:
 - More granular queue management
 - Better resource allocation
 - Optimized for different workload types
@@ -473,7 +473,7 @@ spec:
 
 ### 2. Self-Hosted Trino Stack
 
-**SaaS (ClowdApp)**: Uses AWS managed services (Athena/EMR)  
+**SaaS (ClowdApp)**: Uses AWS managed services (Athena/EMR)
 **Ours**: Full Trino deployment (coordinator, worker, metastore)
 
 **Why Better**:
@@ -485,7 +485,7 @@ spec:
 
 ### 3. Celery Beat Scheduler
 
-**SaaS (ClowdApp)**: Not present (likely external scheduling)  
+**SaaS (ClowdApp)**: Not present (likely external scheduling)
 **Ours**: Dedicated Celery Beat deployment
 
 **Why Better**:
@@ -531,7 +531,7 @@ spec:
 
 ---
 
-**Status**: Ready to implement P0 fix (Kafka Listener)  
-**Blocker**: Listener is CRITICAL for integration testing  
+**Status**: Ready to implement P0 fix (Kafka Listener)
+**Blocker**: Listener is CRITICAL for integration testing
 **Timeline**: ~30 minutes to add, then full stack will be functional
 
