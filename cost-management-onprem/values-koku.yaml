@@ -58,9 +58,9 @@ infrastructure:
         cpu: 500m
         memory: 512Mi
 
-  # Kafka configuration (shared with ROS)
+  # Kafka configuration (shared with ROS)  
   kafka:
-    bootstrapServers: "kafka:29092"
+    bootstrapServers: "kafka:9092"
     externalBootstrapServers: "ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
 
 # =============================================================================

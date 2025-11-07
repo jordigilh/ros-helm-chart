@@ -1,7 +1,7 @@
 # Deployment Status After Redis Addition
 
-**Date**: November 7, 2025, 10:30 AM  
-**Milestone**: Redis deployed, 15 of 16 Koku components running  
+**Date**: November 7, 2025, 10:30 AM
+**Milestone**: Redis deployed, 15 of 16 Koku components running
 **Remaining Issue**: Kafka Listener crash loop
 
 ---
@@ -28,10 +28,10 @@
 
 **Details**:
 - **Image**: `image-registry.openshift-image-registry.svc:5000/cost-mgmt/...:latest` (in-cluster build)
-- **Replicas**: 
+- **Replicas**:
   - Reads: 2 (for load balancing read-only queries)
   - Writes: 1 (single writer for data consistency)
-- **Redis Usage**: 
+- **Redis Usage**:
   - API response caching
   - Session storage
   - Query result caching
@@ -120,7 +120,7 @@ Pod:      redis-58c58bbf84-x8b4r
 Status:   1/1 Running
 Image:    registry.redhat.io/rhel10/valkey-8:latest
 Age:      5 minutes
-Resources: 
+Resources:
   Requests: 100m CPU, 256Mi RAM
   Limits:   500m CPU, 512Mi RAM
 Config:
@@ -244,7 +244,7 @@ env:
   - name: KAFKA_CONNECT
     value: {{ include "cost-mgmt.kafka.bootstrapServers" . | quote }}
 
-# _helpers.tpl  
+# _helpers.tpl
 {{- define "cost-mgmt.kafka.bootstrapServers" -}}
 {{- printf "kafka:29092" -}}  # ❌ Wrong port?
 {{- end -}}
