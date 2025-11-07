@@ -1,7 +1,7 @@
 # Management Command Job - Troubleshooting Guide
 
-**Purpose**: Run arbitrary Django management commands for operational tasks  
-**Source**: Koku ClowdApp `management-command-cji` job  
+**Purpose**: Run arbitrary Django management commands for operational tasks
+**Source**: Koku ClowdApp `management-command-cji` job
 **Status**: Not implemented in Helm chart (manual execution available)
 
 ---
@@ -320,7 +320,7 @@ jobs:
 - ✅ **Safe approach**: Prevents accidental execution
 - ✅ **Documented**: This guide provides all necessary information
 
-**For most cases**: Use `kubectl exec` on a running API pod  
-**For long-running tasks**: Create a one-off Job manifest  
+**For most cases**: Use `kubectl exec` on a running API pod
+**For long-running tasks**: Create a one-off Job manifest
 **For debugging**: Use `oc debug` to get a shell
 
