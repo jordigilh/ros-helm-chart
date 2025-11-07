@@ -118,7 +118,7 @@
 
 ## 📚 Documentation
 
-**Read First** 📖  
+**Read First** 📖
 1. `docs/CHART-MERGER-DECISION.md` - Comprehensive chart merger analysis
 2. `docs/CLOWDAPP-COMPARISON.md` - **NEW!** ClowdApp vs Helm Chart comparison
 

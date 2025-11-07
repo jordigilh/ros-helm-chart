@@ -1,7 +1,7 @@
 # Chart Merger Decision: Cost Management + ROS
 
-**Date**: November 7, 2025  
-**Status**: 🤔 **DECISION REQUIRED**  
+**Date**: November 7, 2025
+**Status**: 🤔 **DECISION REQUIRED**
 **Context**: Two charts need to be merged into one unified deployment
 
 ---
@@ -394,6 +394,6 @@ New files:
 
 ---
 
-**Good night! 🌙**  
+**Good night! 🌙**
 **Everything is documented and ready for your decision tomorrow.**
 
