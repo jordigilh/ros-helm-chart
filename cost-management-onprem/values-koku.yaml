@@ -12,6 +12,36 @@
 # Profile: Minimal (for development and integration testing)
 
 # =============================================================================
+# Infrastructure Dependencies Configuration
+# =============================================================================
+
+infrastructure:
+  # S3-compatible object storage configuration
+  storage:
+    # Endpoint for S3-compatible storage
+    # ODF (OpenShift Data Foundation): http://s3.openshift-storage.svc:80
+    # MinIO (self-hosted): http://minio:9000
+    # AWS S3: https://s3.amazonaws.com (or regional endpoint)
+    endpoint: "http://s3.openshift-storage.svc:80"
+    
+    # Credentials secret for S3 access
+    # ODF uses 'noobaa-admin' secret from openshift-storage namespace
+    credentialsSecret:
+      name: "noobaa-admin"
+      namespace: "openshift-storage"
+      accessKeyKey: "AWS_ACCESS_KEY_ID"
+      secretKeyKey: "AWS_SECRET_ACCESS_KEY"
+
+  # Redis configuration (shared with ROS)
+  redis:
+    host: "redis"
+    port: 6379
+
+  # Kafka configuration (shared with ROS)  
+  kafka:
+    bootstrapServers: "kafka:29092"
+
+# =============================================================================
 # Koku Cost Management Configuration
 # =============================================================================
 

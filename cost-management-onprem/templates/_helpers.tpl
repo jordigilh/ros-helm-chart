@@ -84,10 +84,11 @@ Kafka bootstrap servers - placeholder
 {{- end -}}
 
 {{/*
-Storage endpoint (MinIO) - placeholder
+Storage endpoint (S3-compatible object storage)
+Defaults to ODF NooBaa, can be overridden for external S3 or MinIO
 */}}
 {{- define "cost-mgmt.storage.endpoint" -}}
-{{- printf "http://minio:9000" -}}
+{{- .Values.infrastructure.storage.endpoint | default "http://s3.openshift-storage.svc:80" -}}
 {{- end -}}
 
 {{/*
