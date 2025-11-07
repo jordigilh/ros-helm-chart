@@ -38,7 +38,7 @@ spec:
         - name: KOKU_LOG_LEVEL
           value: {{ .Values.costManagement.listener.logLevel | default "INFO" | quote }}
         - name: KAFKA_CONNECT
-          value: {{ include "cost-mgmt.kafka.bootstrapServers" . | quote }}
+          value: "true"
         resources:
           {{- toYaml .Values.costManagement.listener.resources | nindent 10 }}
         # No liveness/readiness probes - listener will restart on crash

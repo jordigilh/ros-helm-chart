@@ -204,7 +204,7 @@ costManagement:
   # for processing cost data payloads uploaded to the platform
   listener:
     replicas: 1
-    logLevel: "INFO"
+    logLevel: "DEBUG"
     resources:
       requests:
         cpu: 100m
