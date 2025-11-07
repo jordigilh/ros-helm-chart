@@ -37,18 +37,18 @@ infrastructure:
     # Connection settings (referenced by helpers)
     host: "redis"
     port: 6379
-    
+
     # Deployment settings
     image:
-      repository: "quay.io/valkey/valkey"
-      tag: "8.0"
+      repository: "registry.redhat.io/rhel10/valkey-8"
+      tag: "latest"
       pullPolicy: IfNotPresent
-    
+
     # Valkey configuration
     bindAddress: "0.0.0.0"
     maxMemory: "512mb"
     maxMemoryPolicy: "allkeys-lru"
-    
+
     # Resource allocation
     resources:
       requests:
@@ -58,7 +58,7 @@ infrastructure:
         cpu: 500m
         memory: 512Mi
 
-  # Kafka configuration (shared with ROS)  
+  # Kafka configuration (shared with ROS)
   kafka:
     bootstrapServers: "kafka:29092"
     externalBootstrapServers: "ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
