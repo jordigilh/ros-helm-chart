@@ -77,10 +77,11 @@ Redis port
 {{- end -}}
 
 {{/*
-Kafka bootstrap servers - placeholder
+Kafka bootstrap servers
+Uses local alias 'kafka' which points to external Strimzi Kafka cluster
 */}}
 {{- define "cost-mgmt.kafka.bootstrapServers" -}}
-{{- printf "kafka:29092" -}}
+{{- printf "kafka:9092" -}}
 {{- end -}}
 
 {{/*

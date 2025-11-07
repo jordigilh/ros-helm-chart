@@ -209,7 +209,7 @@ Kafka bootstrap servers (uses shared Kafka from PR #27)
 Kafka port
 */}}
 {{- define "cost-mgmt.koku.kafka.port" -}}
-{{- 29092 -}}
+{{- 9092 -}}
 {{- end -}}
 
 {{/*
