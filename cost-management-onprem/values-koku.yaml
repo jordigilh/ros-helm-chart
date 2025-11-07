@@ -475,7 +475,7 @@ costManagement:
                   app.kubernetes.io/component: kafka
           ports:
             - protocol: TCP
-              port: 29092
+              port: 9092
         - to:
             - podSelector:
                 matchLabels:
@@ -514,7 +514,7 @@ costManagement:
                   app.kubernetes.io/component: kafka
           ports:
             - protocol: TCP
-              port: 29092
+              port: 9092
         - to:
             - podSelector:
                 matchLabels:
