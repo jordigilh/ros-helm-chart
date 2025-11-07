@@ -8,7 +8,8 @@ metadata:
     app.kubernetes.io/component: db-migration
   annotations:
     # Helm hooks for automatic database migration
-    helm.sh/hook: pre-upgrade,pre-install
+    # Note: Only pre-upgrade, not pre-install (first install uses entrypoint.sh migrations)
+    helm.sh/hook: pre-upgrade
     helm.sh/hook-weight: "-5"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
