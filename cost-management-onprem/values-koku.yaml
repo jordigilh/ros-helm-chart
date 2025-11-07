@@ -161,30 +161,11 @@ costManagement:
           cpu: 200m
           memory: 400Mi
 
-      # Health check - Beat is a scheduler, not a worker
-      # Check if Beat's schedule file exists (created when Beat starts)
-      livenessProbe:
-        exec:
-          command:
-            - /bin/sh
-            - -c
-            - test -f celerybeat-schedule
-        initialDelaySeconds: 60
-        periodSeconds: 30
-        timeoutSeconds: 5
-        failureThreshold: 3
-
-      # Beat readiness: check schedule file exists
-      readinessProbe:
-        exec:
-          command:
-            - /bin/sh
-            - -c
-            - test -f celerybeat-schedule
-        initialDelaySeconds: 30
-        periodSeconds: 30
-        timeoutSeconds: 5
-        failureThreshold: 3
+      # Beat is a scheduler - no health probes needed
+      # It runs continuously once started; no requests to handle
+      # Kubernetes will restart if container crashes
+      # No readiness probe: Beat is "ready" as soon as it starts
+      # No liveness probe: If Beat crashes, container exits
 
       env:
         KOKU_LOG_LEVEL: INFO

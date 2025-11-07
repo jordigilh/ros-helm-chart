@@ -50,11 +50,15 @@ spec:
         resources:
           {{- toYaml .Values.costManagement.celery.beat.resources | nindent 10 }}
 
+        {{- if .Values.costManagement.celery.beat.livenessProbe }}
         livenessProbe:
           {{- toYaml .Values.costManagement.celery.beat.livenessProbe | nindent 10 }}
+        {{- end }}
 
+        {{- if .Values.costManagement.celery.beat.readinessProbe }}
         readinessProbe:
           {{- toYaml .Values.costManagement.celery.beat.readinessProbe | nindent 10 }}
+        {{- end }}
 
         volumeMounts:
         - name: tmp
