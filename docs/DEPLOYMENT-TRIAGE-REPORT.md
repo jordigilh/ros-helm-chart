@@ -1,7 +1,7 @@
 # Comprehensive Deployment Triage Report
 
-**Date**: November 7, 2025  
-**Chart**: `cost-management-onprem`  
+**Date**: November 7, 2025
+**Chart**: `cost-management-onprem`
 **Status**: 🚨 **CRITICAL INFRASTRUCTURE GAPS FOUND**
 
 ---
@@ -12,7 +12,7 @@
 - ❌ Redis (cache) - Referenced but NO deployment exists
 - ❌ Kafka (messaging) - Referenced but NO ExternalName alias exists
 
-**Impact**: 
+**Impact**:
 - All Koku pods will fail when they attempt Redis/Kafka connections
 - Celery workers cannot function without Redis
 - Integration testing blocked
@@ -31,7 +31,7 @@ Deployed:  http://s3.openshift-storage.svc:80  ✅
 Provider:  ODF NooBaa
 ```
 
-**Previous Issue**: Was pointing to non-existent `minio:9000`  
+**Previous Issue**: Was pointing to non-existent `minio:9000`
 **Fix**: Updated `_helpers.tpl` and `values-koku.yaml` to use ODF endpoint
 
 ---
@@ -59,7 +59,7 @@ Error from server (NotFound): services "redis" not found
 - API caching unavailable
 - Task queue unavailable
 
-**Root Cause**: 
+**Root Cause**:
 - `ros-ocp` chart DOES deploy Redis
 - `cost-management-onprem` chart does NOT deploy Redis
 - When user said "single chart for everything", Redis was missed
@@ -236,7 +236,7 @@ kafka.errors.NoBrokersAvailable: NoBrokersAvailable: kafka:29092
 
 User request history:
 1. **Initial**: "Can we have 3 charts? (infra + cost-mgmt + ros)"
-2. **Then**: "Actually, 2 charts (infra + services)"  
+2. **Then**: "Actually, 2 charts (infra + services)"
 3. **Finally**: "For now, single chart for everything"
 
 ### What Happened
@@ -337,7 +337,7 @@ infrastructure:
   kafka:
     # External Strimzi Kafka cluster
     externalBootstrapServers: "ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
-    
+
     # Local alias (internal to namespace)
     localAlias:
       enabled: true
@@ -461,7 +461,7 @@ oc exec -it <koku-api-pod> -- curl -s http://localhost:8000/api/cost-management/
 
 ### Issue 1: Kafka Port Mismatch
 
-**Current Configuration**: `kafka:29092`  
+**Current Configuration**: `kafka:29092`
 **Actual Strimzi Kafka**: Port `9092` (not `29092`)
 
 **Fix**: Update `cost-mgmt.kafka.port` helper to return `"9092"`
@@ -470,7 +470,7 @@ oc exec -it <koku-api-pod> -- curl -s http://localhost:8000/api/cost-management/
 
 ### Issue 2: Service Name Mismatch
 
-**Helpers expect**: Short service names (`redis`, `kafka`)  
+**Helpers expect**: Short service names (`redis`, `kafka`)
 **Reality**: Need to create these as aliases/services
 
 **Fix**: Deploy Redis and Kafka alias services with these exact names
@@ -511,8 +511,8 @@ oc exec -it <koku-api-pod> -- curl -s http://localhost:8000/api/cost-management/
 
 ---
 
-**Priority**: 🚨 **P0 - CRITICAL**  
-**Impact**: **Deployment completely blocked**  
+**Priority**: 🚨 **P0 - CRITICAL**
+**Impact**: **Deployment completely blocked**
 **Next Steps**: Implement fixes immediately
 
 ---

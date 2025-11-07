@@ -144,7 +144,7 @@ main() {
         "platform.upload.validation:3:$REPLICATION_FACTOR"         # Payload validation results
         "platform.sources.event-stream:3:$REPLICATION_FACTOR"      # Sources API events
         "platform.notifications.ingress:3:$REPLICATION_FACTOR"     # Notifications ingress
-        
+
         # Cost Management specific topics
         "hccm.ros.events:3:$REPLICATION_FACTOR"                    # ROS integration events
         "platform.rhsm-subscriptions.service-instance-ingress:3:$REPLICATION_FACTOR"  # RHSM subscriptions
@@ -156,7 +156,7 @@ main() {
 
     for topic_config in "${topics[@]}"; do
         IFS=':' read -r topic_name partitions replication <<< "$topic_config"
-        
+
         if create_topic "$topic_name" "$partitions" "$replication"; then
             if kubectl get kafkatopic "$topic_name" -n "$KAFKA_NAMESPACE" >/dev/null 2>&1; then
                 created=$((created + 1))

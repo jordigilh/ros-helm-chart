@@ -32,7 +32,7 @@ spec:
           - |
             # Kafka Listener - Consumes messages from Kafka topics and triggers Celery tasks
             cd $APP_HOME
-            python koku/manage.py listener
+            python manage.py listener
         env:
         {{- include "cost-mgmt.koku.commonEnv" . | nindent 8 }}
         - name: KOKU_LOG_LEVEL
