@@ -132,8 +132,11 @@ costManagement:
         RETAIN_NUM_MONTHS: "3"
         NOTIFICATION_CHECK_TIME: "24"  # Hours (integer), not time string
         ENHANCED_ORG_ADMIN: "False"
-        DEVELOPMENT: "True"
-        DEVELOPMENT_IDENTITY: '{"identity": {"account_number": "10001", "org_id": "1234567", "type": "User", "user": {"username": "phase3_test_user", "email": "phase3@example.com", "is_org_admin": true, "access": {"aws.account": {"read": ["*"]}, "azure.subscription_guid": {"read": ["*"]}, "gcp.account": {"read": ["*"]}, "openshift.cluster": {"read": ["*"]}}}}, "entitlements": {"cost_management": {"is_entitled": "True"}}}'
+        # Production-safe RBAC configuration for onprem environments
+        # Point to our lightweight mock RBAC service instead of external RBAC
+        RBAC_SERVICE_HOST: "{{ include \"cost-management-onprem.fullname\" . }}-mock-rbac"
+        RBAC_SERVICE_PORT: "8111"
+        RBAC_SERVICE_PATH: "/r/insights/platform/rbac/v1/access/"
         RBAC_CACHE_TIMEOUT: "300"
         CACHE_TIMEOUT: "3600"
         TAG_ENABLED_LIMIT: "200"
@@ -845,4 +848,74 @@ trino:
           ports:
             - protocol: TCP
               port: 5432
+
+# ==============================================================================
+# Mock RBAC Service Configuration (Production-Safe RBAC Alternative)
+# ==============================================================================
+# This provides a lightweight RBAC service for onprem environments where
+# the full Red Hat RBAC service is not available.
+# This is a production-safe alternative to DEVELOPMENT mode.
+
+mockRbac:
+  # Enable the mock RBAC service for onprem deployments
+  enabled: true
+  
+  # Replica configuration
+  replicaCount: 1
+  
+  # Image configuration
+  image:
+    repository: python
+    tag: "3.11-slim"
+    pullPolicy: IfNotPresent
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8111
+    # annotations: {}
+  
+  # Debug mode (for development only)
+  debug: false
+  
+  # Resource limits and requests
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  
+  # Security and deployment options
+  # nodeSelector: {}
+  # tolerations: []
+  # affinity: {}
+  # serviceAccount: ""
+  
+  # Network policy (if networkPolicies.enabled)
+  networkPolicy:
+    # Allow ingress from Koku API pods
+    ingress:
+      - from:
+          - podSelector:
+              matchLabels:
+                app.kubernetes.io/component: koku-api-reads
+        ports:
+          - protocol: TCP
+            port: 8111
+      - from:
+          - podSelector:
+              matchLabels:
+                app.kubernetes.io/component: koku-api-writes
+        ports:
+          - protocol: TCP
+            port: 8111
+      - from:
+          - podSelector:
+              matchLabels:
+                app.kubernetes.io/component: koku-api-listener
+        ports:
+          - protocol: TCP
+            port: 8111
 
