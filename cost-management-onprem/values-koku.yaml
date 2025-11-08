@@ -232,7 +232,7 @@ costManagement:
         memory: 1Gi
       limits:
         cpu: 1000m
-        memory: 4Gi
+        memory: 8Gi
     
     # Environment variables specific to MASU
     env:
@@ -715,11 +715,11 @@ trino:
     # Resources
     resources:
       requests:
-        cpu: 100m
-        memory: 256Mi
+        cpu: 500m
+        memory: 2Gi
       limits:
-        cpu: 250m
-        memory: 512Mi
+        cpu: 1000m
+        memory: 6Gi
 
     # Storage for warehouse directory (persistent across restarts)
     storage:

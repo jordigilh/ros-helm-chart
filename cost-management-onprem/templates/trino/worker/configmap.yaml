@@ -32,3 +32,14 @@ data:
   log.properties: |
     io.trino=INFO
 
+  hive.properties: |
+    connector.name=hive
+    hive.metastore.uri={{ include "cost-mgmt.trino.metastore.uri" . }}
+    hive.non-managed-table-writes-enabled=true
+
+  postgresql.properties: |
+    connector.name=postgresql
+    connection-url={{ include "cost-mgmt.trino.metastore.database.url" . }}
+    connection-user={{ .Values.costManagement.database.env.POSTGRES_USER }}
+    connection-password=${ENV:POSTGRES_PASSWORD}
+

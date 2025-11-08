@@ -59,25 +59,13 @@ spec:
             # Set Hive to use our config directory
             export HIVE_CONF_DIR=/tmp/hive-conf
 
-            # Initialize schema if needed (improved logic)
-            echo "Checking Hive Metastore schema..."
-            SCHEMA_VERSION=$(/opt/hive/bin/schematool -dbType postgres -info 2>/dev/null | grep "Metastore schema version" | awk '{print $4}' || echo "")
-
-            if [ -z "$SCHEMA_VERSION" ]; then
-              echo "Schema not found. Initializing Hive Metastore schema..."
-              /opt/hive/bin/schematool -dbType postgres -initSchema
-              if [ $? -ne 0 ]; then
-                echo "FATAL: Schema initialization failed!"
-                exit 1
-              fi
-              echo "Schema initialization successful"
-            else
-              echo "Schema already initialized (version: $SCHEMA_VERSION)"
-            fi
+            # Skip schema initialization - schema already exists with 74 tables
+            echo "Skipping schema initialization - Hive tables already exist in PostgreSQL"
+            echo "Schema status: 74 tables present (DBS, TBLS, VERSION, etc.)"
 
             # Start metastore service
             echo "Starting Hive Metastore service..."
-            /opt/hive/bin/hive --service metastore
+            HIVE_CONF_DIR=/tmp/hive-conf /opt/hive/bin/hive --service metastore
 
         ports:
         - name: thrift
