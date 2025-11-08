@@ -44,5 +44,20 @@ data:
         <value>file:///warehouse</value>
         <description>Default warehouse location (not used for external tables). Using persistent volume to avoid S3A dependencies for on-prem deployment.</description>
       </property>
+      <property>
+        <name>datanucleus.autoCreateSchema</name>
+        <value>true</value>
+        <description>Auto-create the schema if it doesn't exist</description>
+      </property>
+      <property>
+        <name>datanucleus.fixedDatastore</name>
+        <value>true</value>
+        <description>Don't try to auto-detect schema changes</description>
+      </property>
+      <property>
+        <name>datanucleus.autoCreateTables</name>
+        <value>true</value>
+        <description>Auto-create tables if they don't exist</description>
+      </property>
     </configuration>
 

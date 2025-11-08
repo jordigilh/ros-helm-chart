@@ -40,6 +40,7 @@ data:
 
   postgresql.properties: |
     connector.name=postgresql
-    connection-url={{ include "cost-mgmt.trino.metastore.database.url" . | replace "jdbc:postgresql" "jdbc:postgresql" }}
-    connection-user={{ .Values.costManagement.database.user }}
+    connection-url={{ include "cost-mgmt.trino.metastore.database.url" . }}
+    connection-user={{ .Values.costManagement.database.env.POSTGRES_USER }}
+    connection-password=${ENV:POSTGRES_PASSWORD}
 
