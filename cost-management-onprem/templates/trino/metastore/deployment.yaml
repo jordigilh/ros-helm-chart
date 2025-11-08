@@ -62,7 +62,7 @@ spec:
             # Initialize schema if needed (improved logic)
             echo "Checking Hive Metastore schema..."
             SCHEMA_VERSION=$(/opt/hive/bin/schematool -dbType postgres -info 2>/dev/null | grep "Metastore schema version" | awk '{print $4}' || echo "")
-            
+
             if [ -z "$SCHEMA_VERSION" ]; then
               echo "Schema not found. Initializing Hive Metastore schema..."
               /opt/hive/bin/schematool -dbType postgres -initSchema

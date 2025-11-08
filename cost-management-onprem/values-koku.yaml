@@ -118,7 +118,7 @@ costManagement:
       # Environment variables
       env:
         API_PATH_PREFIX: /api/cost-management
-        DEVELOPMENT: "False"
+        DEVELOPMENT: "False" 
         GUNICORN_LOG_LEVEL: INFO
         KOKU_LOG_LEVEL: INFO
         DJANGO_LOG_LEVEL: INFO
@@ -131,12 +131,7 @@ costManagement:
         CACHED_VIEWS_DISABLED: "False"
         RETAIN_NUM_MONTHS: "3"
         NOTIFICATION_CHECK_TIME: "24"  # Hours (integer), not time string
-        ENHANCED_ORG_ADMIN: "False"
-        # Production-safe RBAC configuration for onprem environments
-        # Point to our lightweight mock RBAC service instead of external RBAC
-        RBAC_SERVICE_HOST: "{{ include \"cost-management-onprem.fullname\" . }}-mock-rbac"
-        RBAC_SERVICE_PORT: "8111"
-        RBAC_SERVICE_PATH: "/r/insights/platform/rbac/v1/access/"
+        ENHANCED_ORG_ADMIN: "True"
         RBAC_CACHE_TIMEOUT: "300"
         CACHE_TIMEOUT: "3600"
         TAG_ENABLED_LIMIT: "200"
@@ -217,6 +212,36 @@ costManagement:
       limits:
         cpu: 500m
         memory: 1Gi
+    
+    # Environment variables for listener (MASU endpoints)
+    env:
+      MASU: "true"
+      KOKU_LOG_LEVEL: DEBUG
+
+  # ---------------------------------------------------------------------------
+  # MASU (Data Processing Service)
+  # ---------------------------------------------------------------------------
+  # MASU handles data ingestion, processing, and download triggers
+  masu:
+    enabled: true
+    replicas: 1
+    
+    resources:
+      requests:
+        cpu: 300m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 4Gi
+    
+    # Environment variables specific to MASU
+    env:
+      KOKU_LOG_LEVEL: DEBUG
+      DJANGO_LOG_LEVEL: INFO
+      GUNICORN_LOG_LEVEL: INFO
+      PROMETHEUS_MULTIPROC_DIR: /tmp
+      REQUESTED_BUCKET: koku-report
+      REQUESTED_ROS_BUCKET: ros-report
 
   # ---------------------------------------------------------------------------
   # Celery Configuration
@@ -859,25 +884,25 @@ trino:
 mockRbac:
   # Enable the mock RBAC service for onprem deployments
   enabled: true
-  
+
   # Replica configuration
   replicaCount: 1
-  
+
   # Image configuration
   image:
     repository: python
     tag: "3.11-slim"
     pullPolicy: IfNotPresent
-  
+
   # Service configuration
   service:
     type: ClusterIP
     port: 8111
     # annotations: {}
-  
+
   # Debug mode (for development only)
   debug: false
-  
+
   # Resource limits and requests
   resources:
     requests:
@@ -886,13 +911,13 @@ mockRbac:
     limits:
       cpu: 200m
       memory: 128Mi
-  
+
   # Security and deployment options
   # nodeSelector: {}
   # tolerations: []
   # affinity: {}
   # serviceAccount: ""
-  
+
   # Network policy (if networkPolicies.enabled)
   networkPolicy:
     # Allow ingress from Koku API pods
