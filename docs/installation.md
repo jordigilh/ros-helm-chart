@@ -85,7 +85,7 @@ export USE_LOCAL_CHART=true
 - `NAMESPACE`: Target namespace (default: `cost-mgmt`)
 - `VALUES_FILE`: Path to custom values file
 - `USE_LOCAL_CHART`: Use local chart instead of GitHub release (default: `false`)
-- `LOCAL_CHART_PATH`: Path to local chart directory (default: `../cost-management-onprem`)
+- `LOCAL_CHART_PATH`: Path to local chart directory (default: `../cost-onprem`)
 
 **Note**: JWT authentication is automatically enabled on OpenShift and disabled on KIND/K8s via platform detection.
 

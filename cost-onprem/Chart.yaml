@@ -1,5 +1,5 @@
 apiVersion: v2
-name: cost-management-onprem
+name: cost-onprem
 description: Cost Management On-Premise solution for Kubernetes/OpenShift
 type: application
 version: 0.2.0

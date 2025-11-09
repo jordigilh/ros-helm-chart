@@ -23,14 +23,14 @@ Kubernetes Helm chart for deploying the complete Cost Management On-Premise solu
 ./scripts/install-helm-chart.sh
 
 # Or use local chart for development
-USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-management-onprem ./scripts/install-helm-chart.sh
+USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem ./scripts/install-helm-chart.sh
 
 # Or specify custom namespace and release name
 NAMESPACE=my-namespace HELM_RELEASE_NAME=my-release ./scripts/install-helm-chart.sh
 
 # Or use Helm directly
 helm repo add cost-mgmt https://insights-onprem.github.io/ros-helm-chart
-helm install cost-mgmt cost-mgmt/cost-management-onprem --namespace cost-mgmt --create-namespace
+helm install cost-mgmt cost-mgmt/cost-onprem --namespace cost-mgmt --create-namespace
 ```
 
 **Note for OpenShift:** See [Authentication Setup](#-authentication-setup) section for required prerequisites (Authorino and Keycloak)
@@ -57,7 +57,7 @@ helm install cost-mgmt cost-mgmt/cost-management-onprem --namespace cost-mgmt --
 
 ```
 ros-helm-chart/
-├── cost-management-onprem/    # Helm chart directory
+├── cost-onprem/    # Helm chart directory
 │   ├── Chart.yaml             # Chart metadata (v0.2.0)
 │   ├── values.yaml            # Default configuration
 │   └── templates/             # Kubernetes resource templates (organized by service)

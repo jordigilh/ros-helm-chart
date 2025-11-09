@@ -14,7 +14,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME:-ros-ocp-cluster}
+KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME:-cost-onprem-cluster}
 CONTAINER_RUNTIME=${CONTAINER_RUNTIME:-podman}
 
 echo_info() {
@@ -89,7 +89,7 @@ cleanup_kind_artifacts() {
     echo_info "Cleaning up lingering KIND containers..."
     if command_exists "$DETECTED_RUNTIME"; then
         # Stop and remove KIND control plane containers
-        "$DETECTED_RUNTIME" ps -a --format "{{.Names}}" | grep -E "kind|ros-ocp" | while read -r container; do
+        "$DETECTED_RUNTIME" ps -a --format "{{.Names}}" | grep -E "kind|cost-onprem" | while read -r container; do
             if [ -n "$container" ]; then
                 echo_info "Stopping and removing container: $container"
                 "$DETECTED_RUNTIME" stop "$container" 2>/dev/null || true
@@ -121,12 +121,12 @@ show_help() {
     echo "Clean up KIND clusters, containers, and related images"
     echo ""
     echo "Options:"
-    echo "  --cluster-name NAME    KIND cluster name to clean up (default: ros-ocp-cluster)"
+    echo "  --cluster-name NAME    KIND cluster name to clean up (default: cost-onprem-cluster)"
     echo "  --container-runtime     Container runtime to use (default: podman, supports: podman, docker, auto)"
     echo "  --help, -h             Show this help message"
     echo ""
     echo "Environment Variables:"
-    echo "  KIND_CLUSTER_NAME      Name of KIND cluster (default: ros-ocp-cluster)"
+    echo "  KIND_CLUSTER_NAME      Name of KIND cluster (default: cost-onprem-cluster)"
     echo "  CONTAINER_RUNTIME      Container runtime to use (default: podman)"
     echo ""
     echo "Examples:"

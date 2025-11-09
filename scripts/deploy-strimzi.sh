@@ -2,13 +2,13 @@
 
 # Strimzi Operator and Kafka Cluster Deployment Script
 # This script automates the deployment of Strimzi operator and Kafka cluster
-# for the ROS-OCP platform with support for both Kubernetes/KIND and OpenShift
+# for the cost management on-premise platform with support for both Kubernetes/KIND and OpenShift
 #
 # PREREQUISITE: This script should be run BEFORE install-helm-chart.sh
 #
 # Typical workflow:
 #   1. ./deploy-strimzi.sh         # Deploy Kafka infrastructure (this script)
-#   2. ./install-helm-chart.sh     # Deploy ROS-OCP application
+#   2. ./install-helm-chart.sh     # Deploy cost management on-premise application
 
 set -e  # Exit on any error
 
@@ -21,7 +21,7 @@ NC='\033[0m' # No Color
 
 # Configuration - Strimzi/Kafka settings
 KAFKA_NAMESPACE=${KAFKA_NAMESPACE:-kafka}
-KAFKA_CLUSTER_NAME=${KAFKA_CLUSTER_NAME:-ros-ocp-kafka}
+KAFKA_CLUSTER_NAME=${KAFKA_CLUSTER_NAME:-cost-mgmt-kafka}
 KAFKA_VERSION=${KAFKA_VERSION:-3.8.0}
 STRIMZI_VERSION=${STRIMZI_VERSION:-0.45.1}
 KAFKA_ENVIRONMENT=${KAFKA_ENVIRONMENT:-dev}  # "dev" or "ocp"
@@ -644,7 +644,7 @@ display_summary() {
     echo ""
     echo_info "Next Steps:"
     echo_info "  1. (Optional) Verify Kafka cluster: kubectl get kafka $KAFKA_CLUSTER_NAME -n $KAFKA_NAMESPACE"
-    echo_info "  2. Deploy ROS-OCP application: ./install-helm-chart.sh"
+    echo_info "  2. Deploy Cost Management On-Premise application: ./install-helm-chart.sh"
     echo ""
 }
 
@@ -812,7 +812,7 @@ case "${1:-}" in
         echo "Environment Variables:"
         echo "  KAFKA_BOOTSTRAP_SERVERS Bootstrap servers for existing Kafka on cluster (skips deployment)"
         echo "  KAFKA_NAMESPACE         Target namespace (default: kafka)"
-        echo "  KAFKA_CLUSTER_NAME      Kafka cluster name (default: ros-ocp-kafka)"
+        echo "  KAFKA_CLUSTER_NAME      Kafka cluster name (default: cost-onprem-kafka)"
         echo "  KAFKA_VERSION           Kafka version (default: 3.8.0)"
         echo "  STRIMZI_VERSION         Strimzi operator version (default: 0.45.1)"
         echo "  KAFKA_ENVIRONMENT       Environment type: dev or ocp (default: dev)"

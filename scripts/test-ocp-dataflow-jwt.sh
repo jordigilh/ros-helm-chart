@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ROS-OCP OpenShift Data Flow Test Script with OAuth2 TokenReview Authentication
+# ROS OpenShift Data Flow Test Script with OAuth2 TokenReview Authentication
 # This script tests the complete data flow using the user's session token
 # Ingress: Uses Keycloak JWT (external uploads from Cost Management Operator)
 # Backend API: Uses OAuth2 TokenReview (user access from OpenShift Console UI)
@@ -27,8 +27,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-NAMESPACE=${NAMESPACE:-ros-ocp}
-HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-ros-ocp}
+NAMESPACE=${NAMESPACE:-cost-onprem}
+HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-cost-onprem}
 KEYCLOAK_NAMESPACE=${KEYCLOAK_NAMESPACE:-keycloak}
 
 # Authentication variables
@@ -41,7 +41,6 @@ CLIENT_SECRET=""
 
 # OAuth2 for backend API (cluster-internal access via user's session token)
 OAUTH2_TOKEN=""
-OAUTH2_TOKEN_EXPIRY=""
 PORT_FORWARD_PID=""
 
 # Check prerequisites
@@ -538,7 +537,7 @@ create_test_data() {
     echo_info "  Interval 3: $interval_start_3 to $interval_end_3" >&2
     echo_info "  Interval 4: $interval_start_4 to $interval_end_4" >&2
 
-    # Create a temporary CSV file with proper ROS-OCP format and current timestamps
+    # Create a temporary CSV file with proper ROS format and current timestamps
     local test_csv=$(mktemp)
     cat > "$test_csv" << EOF
 report_period_start,report_period_end,interval_start,interval_end,container_name,pod,owner_name,owner_kind,workload,workload_type,namespace,image_name,node,resource_id,cpu_request_container_avg,cpu_request_container_sum,cpu_limit_container_avg,cpu_limit_container_sum,cpu_usage_container_avg,cpu_usage_container_min,cpu_usage_container_max,cpu_usage_container_sum,cpu_throttle_container_avg,cpu_throttle_container_max,cpu_throttle_container_sum,memory_request_container_avg,memory_request_container_sum,memory_limit_container_avg,memory_limit_container_sum,memory_usage_container_avg,memory_usage_container_min,memory_usage_container_max,memory_usage_container_sum,memory_rss_usage_container_avg,memory_rss_usage_container_min,memory_rss_usage_container_max,memory_rss_usage_container_sum
@@ -754,7 +753,7 @@ check_for_recommendations() {
         echo_error "❌ No Kruize experiments found for cluster: $cluster_id"
         echo_info "This indicates the data was not processed by the backend or sent to Kruize"
         echo_info "Troubleshooting:"
-        echo_info "  - Check processor logs: oc logs -n $NAMESPACE deployment/ros-ocp-rosocp-processor --tail=50"
+        echo_info "  - Check processor logs: oc logs -n $NAMESPACE deployment/cost-onprem-ros-processor --tail=50"
         echo_info "  - Verify upload was successful in ingress logs"
         echo_info "  - Check Kafka messages were processed"
         return 1
@@ -840,7 +839,7 @@ check_recommendations_with_retry() {
 
 # Main execution
 main() {
-    echo_info "ROS-OCP Hybrid Authentication Data Flow Test"
+    echo_info "ROS Hybrid Authentication Data Flow Test"
     echo_info "============================================"
     echo_info "Ingress: Keycloak JWT (external uploads from Cost Management Operator)"
     echo_info "Backend API: OAuth2 TokenReview (user access from OpenShift Console UI)"
@@ -979,9 +978,9 @@ main() {
         echo_info "  1. Check if data reached Kruize for this cluster:"
         echo_info "     ./query-kruize.sh --cluster $UPLOAD_CLUSTER_ID"
         echo_info "  2. Check processor logs for errors:"
-        echo_info "     oc logs -n $NAMESPACE deployment/ros-ocp-rosocp-processor --tail=100"
+        echo_info "     oc logs -n $NAMESPACE deployment/cost-onprem-ros-processor --tail=100"
         echo_info "  3. Check Kruize logs:"
-        echo_info "     oc logs -n $NAMESPACE deployment/ros-ocp-kruize --tail=100"
+        echo_info "     oc logs -n $NAMESPACE deployment/cost-onprem-kruize --tail=100"
         echo_info "  4. Query all recommendations:"
         echo_info "     ./query-kruize.sh --recommendations"
         exit 1
@@ -1020,8 +1019,8 @@ case "${1:-}" in
         echo "  help            Show this help message"
         echo ""
         echo "Environment Variables:"
-        echo "  NAMESPACE              Target namespace (default: ros-ocp)"
-        echo "  HELM_RELEASE_NAME      Helm release name (default: ros-ocp)"
+        echo "  NAMESPACE              Target namespace (default: cost-onprem)"
+        echo "  HELM_RELEASE_NAME      Helm release name (default: cost-onprem)"
         echo "  KEYCLOAK_NAMESPACE     Keycloak namespace (default: keycloak)"
         echo ""
         echo "This script tests both authentication mechanisms:"
@@ -1048,7 +1047,7 @@ case "${1:-}" in
         echo "  - Keycloak deployed with cost-management-operator client"
         echo "  - ROS ingress with JWT authentication enabled"
         echo "  - ROS backend API with OAuth2 TokenReview (Envoy+Authorino)"
-        echo "  - User must have access to the ros-ocp namespace"
+        echo "  - User must have access to the cost-onprem namespace"
         exit 0
         ;;
     "")

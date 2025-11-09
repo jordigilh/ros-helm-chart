@@ -11,7 +11,7 @@ metadata:
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
-    app.kubernetes.io/part-of: cost-management-onprem
+    app.kubernetes.io/part-of: cost-onprem
   annotations:
     # Request certificate from OpenShift service-ca operator
     service.beta.openshift.io/serving-cert-secret-name: {{ include "cost-mgmt.fullname" . }}-authorino-server-cert
@@ -39,7 +39,7 @@ metadata:
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
-    app.kubernetes.io/part-of: cost-management-onprem
+    app.kubernetes.io/part-of: cost-onprem
 spec:
   selector:
     {{- include "cost-mgmt.selectorLabels" . | nindent 4 }}
@@ -60,7 +60,7 @@ metadata:
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
-    app.kubernetes.io/part-of: cost-management-onprem
+    app.kubernetes.io/part-of: cost-onprem
 spec:
   selector:
     {{- include "cost-mgmt.selectorLabels" . | nindent 4 }}

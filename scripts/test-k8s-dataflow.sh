@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ROS-OCP Kubernetes Data Flow Test Script
+# Cost Management On-Premise Kubernetes Data Flow Test Script
 # This script tests the complete data flow in a Kubernetes deployment
 #
 # AUTHENTICATION ARCHITECTURE:
@@ -9,7 +9,7 @@
 # - Both platforms require authentication for API endpoints (/api/cost-management/v1/*)
 # - Public endpoints (/status, /ready) do not require authentication on any platform
 #
-# This test uses X-Rh-Identity headers to authenticate with ros-ocp-backend API endpoints.
+# This test uses X-Rh-Identity headers to authenticate with ROS API endpoints.
 # The backend validates X-Rh-Identity headers using platform-go-middlewares/v2/identity.
 
 set -e  # Exit on any error
@@ -22,8 +22,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-NAMESPACE=${NAMESPACE:-ros-ocp}
-HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-ros-ocp}
+NAMESPACE=${NAMESPACE:-cost-onprem}
+HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-cost-onprem}
 
 # Function to get ingress hostname for Kubernetes
 get_ingress_hostname() {
@@ -48,7 +48,7 @@ echo_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Function to create X-Rh-Identity header for ros-ocp-backend authentication
+# Function to create X-Rh-Identity header for ROS authentication
 create_rh_identity_header() {
     local org_id="${1:-12345}"
 
@@ -533,7 +533,7 @@ $now_date,$now_date,$interval_start_3,$interval_end_3,test-container,test-pod-12
 
     # Kafka is deployed by Strimzi in 'kafka' namespace
     local kafka_namespace="kafka"
-    local kafka_cluster="ros-ocp-kafka"
+    local kafka_cluster="cost-onprem-kafka"
     local kafka_pod=$(kubectl get pods -n "$kafka_namespace" -l "strimzi.io/cluster=$kafka_cluster,strimzi.io/name=${kafka_cluster}-kafka" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -z "$minio_pod" ]; then
@@ -756,9 +756,9 @@ verify_processing() {
     fi
 }
 
-# Function to verify recommendations are available via ros-ocp-api
+# Function to verify recommendations are available via ros api
 verify_recommendations() {
-    echo_info "=== STEP 5: Verify Recommendations via ROS-OCP API ===="
+    echo_info "=== STEP 5: Verify Recommendations via ROS API ===="
 
     # Ensure rosocp-api pods are ready
     echo_info "Verifying rosocp-api pods are ready..."
@@ -771,7 +771,7 @@ verify_recommendations() {
     echo_info "Fresh data should trigger Kruize to generate valid recommendations..."
     sleep 45
 
-    # Create X-Rh-Identity header for ros-ocp-backend authentication
+    # Create X-Rh-Identity header for ROS authentication
     echo_info "Creating X-Rh-Identity header for API authentication..."
     local rh_identity_header=$(create_rh_identity_header "12345")
     echo_info "Successfully created X-Rh-Identity header"
@@ -1201,11 +1201,11 @@ run_health_checks() {
         fi
     fi
 
-    # Check ROS-OCP API /status endpoint (public endpoint - no auth required)
+    # Check ROS API /status endpoint (public endpoint - no auth required)
     if curl -f -s --connect-timeout 5 --max-time 15 -H "Host: localhost" "$api_url" >/dev/null; then
-        echo_success "ROS-OCP API status endpoint is accessible at: $api_url"
+        echo_success "ROS API status endpoint is accessible at: $api_url"
     else
-        echo_error "ROS-OCP API status endpoint is not accessible at: $api_url"
+        echo_error "ROS API status endpoint is not accessible at: $api_url"
         failed_checks=$((failed_checks + 1))
     fi
 
@@ -1260,7 +1260,7 @@ show_logs() {
 
 # Main execution
 main() {
-    echo_info "ROS-OCP Kubernetes Data Flow Test"
+    echo_info "ROS Kubernetes Data Flow Test"
     echo_info "=================================="
 
     # Check prerequisites
@@ -1344,7 +1344,7 @@ main() {
     echo_info "Use '$0 logs <service>' to view specific service logs"
     echo_info "Use '$0 recommendations' to verify recommendations via API"
     echo_info "Use '$0 workloads' to verify workloads in database"
-    echo_info "Available services: ingress, rosocp-processor, ros-ocp-rosocp-api, kruize, db-ros"
+    echo_info "Available services: ingress, ros-processor, ros-api, kruize, db-ros"
 }
 
 # Handle script arguments
@@ -1377,8 +1377,8 @@ case "${1:-}" in
         echo "  help             - Show this help message"
         echo ""
         echo "Environment Variables:"
-        echo "  NAMESPACE         - Kubernetes namespace (default: ros-ocp)"
-        echo "  HELM_RELEASE_NAME - Helm release name (default: ros-ocp)"
+        echo "  NAMESPACE         - Kubernetes namespace (default: cost-onprem)"
+        echo "  HELM_RELEASE_NAME - Helm release name (default: cost-onprem)"
         echo ""
         echo "Authentication Requirements:"
         echo "  This test REQUIRES authentication tokens to function properly."
@@ -1389,7 +1389,7 @@ case "${1:-}" in
         echo "    - insights-ros-ingress pod with service account token"
         echo ""
         echo "  Prerequisites:"
-        echo "    - ROS-OCP must be deployed (./install-helm-chart.sh)"
+        echo "    - Cost Management On-Premise must be deployed (./install-helm-chart.sh)"
         echo "    - Service accounts must exist (created by Helm chart)"
         echo "    - Pods must be running and ready"
         echo ""

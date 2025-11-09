@@ -6,7 +6,7 @@
 set -eo pipefail
 
 # Default values
-NAMESPACE="${NAMESPACE:-ros-ocp}"
+NAMESPACE="${NAMESPACE:-cost-onprem}"
 
 # Color codes for output
 RED='\033[0;31m'
@@ -286,7 +286,7 @@ DATABASE ACCESS:
   SQL Query Examples:
     - Count experiments: SELECT COUNT(*) FROM kruize_experiments;
     - Recent recommendations: SELECT * FROM kruize_recommendations ORDER BY id DESC LIMIT 10;
-    - Experiments by namespace: SELECT * FROM kruize_experiments WHERE namespace='ros-ocp';
+    - Experiments by namespace: SELECT * FROM kruize_experiments WHERE namespace='cost-onprem';
 
 EOF
 }

@@ -53,7 +53,7 @@ spec:
               name: {{ include "cost-mgmt.fullname" $ }}-ingress
               port:
                 number: {{ $.Values.ingress.port }}
-        # ROS-OCP API (main API endpoints) - with Host header fix via server-snippet
+        # ROS API (main API endpoints) - with Host header fix via server-snippet
         - path: /api/ros
           pathType: Prefix
           backend:

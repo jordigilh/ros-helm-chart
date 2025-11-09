@@ -30,7 +30,7 @@ This document provides detailed information about the Helm templates used in the
 - Network policies provide defense-in-depth for services without sidecars
 - Metrics endpoints remain accessible to Prometheus
 
-### `cost-management-onprem/templates/ingress/deployment.yaml`
+### `cost-onprem/templates/ingress/deployment.yaml`
 
 **Purpose**: Enhanced ingress deployment with Envoy sidecar for native JWT authentication from Cost Management Operator.
 
@@ -77,7 +77,7 @@ When JWT authentication is enabled (automatic on OpenShift):
 
 ---
 
-### `cost-management-onprem/templates/ros/api/envoy-config.yaml`
+### `cost-onprem/templates/ros/api/envoy-config.yaml`
 
 **Purpose**: Envoy proxy configuration with native JWT authentication filter.
 
@@ -186,7 +186,7 @@ transport_socket:
 
 ---
 
-### `cost-management-onprem/templates/service-ingress.yaml`
+### `cost-onprem/templates/service-ingress.yaml`
 
 **Purpose**: Kubernetes Service for ingress with Envoy proxy endpoints.
 
@@ -217,19 +217,19 @@ ports:
 
 ---
 
-### `cost-management-onprem/templates/_helpers.tpl`
+### `cost-onprem/templates/_helpers.tpl`
 
 **Purpose**: Helm template helper functions for configuration logic.
 
 **Key Functions**:
 
-#### `ros-ocp.jwt.shouldEnable`
+#### `cost-onprem.jwt.shouldEnable`
 Determines if JWT authentication should be enabled based on platform detection.
 
 **Logic**:
 ```go
-{{- define "ros-ocp.jwt.shouldEnable" -}}
-{{- include "ros-ocp.isOpenShift" . -}}
+{{- define "cost-onprem.jwt.shouldEnable" -}}
+{{- include "cost-onprem.isOpenShift" . -}}
 {{- end -}}
 ```
 
@@ -239,7 +239,7 @@ Determines if JWT authentication should be enabled based on platform detection.
 - Returns `false` on KIND/Vanilla K8s (Keycloak not deployed)
 - Uses Helm's `Capabilities.APIVersions` to detect `route.openshift.io/v1` API
 
-#### `ros-ocp.isOpenShift`
+#### `cost-onprem.isOpenShift`
 Detects if running on OpenShift.
 
 **Detection Method**:
@@ -249,7 +249,7 @@ Detects if running on OpenShift.
 
 ## Security & Certificate Templates
 
-### `cost-management-onprem/templates/ca-configmap.yaml`
+### `cost-onprem/templates/ca-configmap.yaml`
 
 **Purpose**: ConfigMap for CA certificate bundle injection.
 
@@ -277,7 +277,7 @@ data:
 
 ## Configuration Files & Examples
 
-### `ros-ocp/values-jwt-auth-complete.yaml`
+### `cost-onprem/values-jwt-auth-complete.yaml`
 
 **Purpose**: Complete JWT authentication configuration for production deployments.
 
@@ -306,9 +306,9 @@ jwt_auth:
 
 **Usage**:
 ```bash
-helm upgrade ros-ocp ./ros-ocp \
-  -f ros-ocp/values-jwt-auth-complete.yaml \
-  --namespace ros-ocp \
+helm upgrade cost-onprem ./cost-onprem \
+  -f cost-onprem/values-jwt-auth-complete.yaml \
+  --namespace cost-onprem \
   --create-namespace
 ```
 
@@ -321,7 +321,7 @@ helm upgrade ros-ocp ./ros-ocp \
 1. **Pre-Install**: Helm validates values schema
 2. **Template Rendering**:
    - Conditionals evaluate (`jwt_auth.enabled`)
-   - Helpers execute (`ros-ocp.jwt.shouldEnable`)
+   - Helpers execute (`cost-onprem.jwt.shouldEnable`)
    - Templates generate manifests
 3. **Manifest Application**:
    - ConfigMaps (Envoy config)
@@ -343,13 +343,13 @@ helm upgrade ros-ocp ./ros-ocp \
 
 ```bash
 # Render templates without installing
-helm template ros-ocp ./ros-ocp \
+helm template cost-onprem ./cost-onprem \
   -f values-jwt-auth-complete.yaml \
-  --namespace ros-ocp \
+  --namespace cost-onprem \
   --debug
 
 # Filter specific template
-helm template ros-ocp ./ros-ocp \
+helm template cost-onprem ./cost-onprem \
   -f values-jwt-auth-complete.yaml \
   -s templates/ingress/deployment.yaml
 ```
@@ -358,10 +358,10 @@ helm template ros-ocp ./ros-ocp \
 
 ```bash
 # Lint chart
-helm lint ./ros-ocp -f values-jwt-auth-complete.yaml
+helm lint ./cost-onprem -f values-jwt-auth-complete.yaml
 
 # Dry-run installation
-helm upgrade ros-ocp ./ros-ocp \
+helm upgrade cost-onprem ./cost-onprem \
   -f values-jwt-auth-complete.yaml \
   --dry-run --debug
 ```
@@ -370,13 +370,13 @@ helm upgrade ros-ocp ./ros-ocp \
 
 ```bash
 # Get live manifest
-helm get manifest ros-ocp -n ros-ocp
+helm get manifest cost-onprem -n cost-onprem
 
 # Get specific resource
-kubectl get deployment ros-ocp-ingress -n ros-ocp -o yaml
+kubectl get deployment cost-onprem-ingress -n cost-onprem -o yaml
 
 # Get values used
-helm get values ros-ocp -n ros-ocp
+helm get values cost-onprem -n cost-onprem
 ```
 
 ---

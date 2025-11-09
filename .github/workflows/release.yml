@@ -29,11 +29,11 @@ jobs:
 
       - name: Update Chart.yaml version
         run: |
-          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" cost-management-onprem/Chart.yaml
+          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" cost-onprem/Chart.yaml
 
       - name: Package Helm chart
         run: |
-          helm package cost-management-onprem
+          helm package cost-onprem
 
       - name: Create latest symlink
         run: |

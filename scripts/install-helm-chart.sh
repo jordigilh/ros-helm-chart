@@ -20,13 +20,13 @@ NC='\033[0m' # No Color
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-cost-management-onprem}
-NAMESPACE=${NAMESPACE:-cost-management-onprem}
+HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-cost-onprem}
+NAMESPACE=${NAMESPACE:-cost-onprem}
 VALUES_FILE=${VALUES_FILE:-}
 REPO_OWNER="insights-onprem"
-REPO_NAME="cost-management-onprem-helm-chart"
+REPO_NAME="cost-onprem-helm-chart"
 USE_LOCAL_CHART=${USE_LOCAL_CHART:-false}  # Set to true to use local chart instead of GitHub release
-LOCAL_CHART_PATH=${LOCAL_CHART_PATH:-../cost-management-onprem}  # Path to local chart directory
+LOCAL_CHART_PATH=${LOCAL_CHART_PATH:-../cost-onprem}  # Path to local chart directory
 STRIMZI_NAMESPACE=${STRIMZI_NAMESPACE:-}  # If set, use existing Strimzi operator in this namespace
 KAFKA_NAMESPACE=${KAFKA_NAMESPACE:-}  # If set, use existing Kafka cluster in this namespace
 
@@ -104,7 +104,7 @@ check_prerequisites() {
     local current_context=$(kubectl config current-context 2>/dev/null || echo "none")
     if [ "$current_context" = "none" ]; then
         echo_error "No kubectl context is set. Please configure kubectl to connect to your cluster."
-        echo_info "For KIND cluster: kubectl config use-context kind-ros-ocp-cluster"
+        echo_info "For KIND cluster: kubectl config use-context kind-cost-onprem-cluster"
         echo_info "For OpenShift: oc login <cluster-url>"
         return 1
     fi
@@ -352,9 +352,9 @@ create_storage_credentials_secret() {
     # Use the same naming convention as the Helm chart fullname template
     # The fullname template logic: if release name contains chart name, use release name as-is
     # Otherwise use: ${HELM_RELEASE_NAME}-${CHART_NAME}
-    # For cost-management-onprem-test release: fullname = cost-management-onprem-test (contains "cost-management-onprem")
-    # For other releases: fullname = ${HELM_RELEASE_NAME}-cost-management-onprem
-    local chart_name="cost-management-onprem"
+    # For cost-onprem-test release: fullname = cost-onprem-test (contains "cost-onprem")
+    # For other releases: fullname = ${HELM_RELEASE_NAME}-cost-onprem
+    local chart_name="cost-onprem"
     local fullname
     if [[ "$HELM_RELEASE_NAME" == *"$chart_name"* ]]; then
         fullname="$HELM_RELEASE_NAME"
@@ -371,7 +371,7 @@ create_storage_credentials_secret() {
 
     if [ "$PLATFORM" = "openshift" ]; then
         # For OpenShift, check if ODF credentials secret exists
-        local odf_secret_name="cost-management-onprem-odf-credentials"
+        local odf_secret_name="cost-onprem-odf-credentials"
         if kubectl get secret "$odf_secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
             echo_info "Found existing ODF credentials secret: $odf_secret_name"
             echo_info "Creating storage credentials secret from ODF credentials..."
@@ -515,7 +515,7 @@ deploy_helm_chart() {
         # Check if Helm chart directory exists
         if [ ! -d "$LOCAL_CHART_PATH" ]; then
             echo_error "Local Helm chart directory not found: $LOCAL_CHART_PATH"
-            echo_info "Set USE_LOCAL_CHART=false to use GitHub releases, or set LOCAL_CHART_PATH to the correct chart location (default: ./helm/cost-management-onprem)"
+            echo_info "Set USE_LOCAL_CHART=false to use GitHub releases, or set LOCAL_CHART_PATH to the correct chart location (default: ./cost-onprem)"
             return 1
         fi
 
@@ -837,17 +837,17 @@ run_health_checks() {
         # For OpenShift, test internal connectivity first (this should always work)
         echo_info "Testing internal service connectivity..."
 
-        # Test ROS-OCP API internally
+        # Test ROS API internally
         local api_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=rosocp-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
         if [ -n "$api_pod" ]; then
             if kubectl exec -n "$NAMESPACE" "$api_pod" -- curl -f -s http://localhost:8000/status >/dev/null 2>&1; then
-                echo_success "✓ ROS-OCP API service is healthy (internal)"
+                echo_success "✓ ROS API service is healthy (internal)"
             else
-                echo_error "✗ ROS-OCP API service is not responding (internal)"
+                echo_error "✗ ROS API service is not responding (internal)"
                 failed_checks=$((failed_checks + 1))
             fi
         else
-            echo_error "✗ ROS-OCP API pod not found"
+            echo_error "✗ ROS API pod not found"
             failed_checks=$((failed_checks + 1))
         fi
 
@@ -856,7 +856,7 @@ run_health_checks() {
         # Test Ingress API via port-forward
         echo_info "Testing Ingress API via port-forward..."
         local ingress_pf_pid=""
-        kubectl port-forward -n "$NAMESPACE" svc/ros-ocp-ingress 18080:8080 --request-timeout=90s >/dev/null 2>&1 &
+        kubectl port-forward -n "$NAMESPACE" svc/cost-onprem-ingress 18080:8080 --request-timeout=90s >/dev/null 2>&1 &
         ingress_pf_pid=$!
         sleep 3
         if kill -0 "$ingress_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18080/ready >/dev/null 2>&1; then
@@ -874,7 +874,7 @@ run_health_checks() {
         # Test Kruize API via port-forward
         echo_info "Testing Kruize API via port-forward..."
         local kruize_pf_pid=""
-        kubectl port-forward -n "$NAMESPACE" svc/cost-management-onprem-kruize 18081:8080 --request-timeout=90s >/dev/null 2>&1 &
+        kubectl port-forward -n "$NAMESPACE" svc/cost-onprem-kruize 18081:8080 --request-timeout=90s >/dev/null 2>&1 &
         kruize_pf_pid=$!
         sleep 3
         if kill -0 "$kruize_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18081/listPerformanceProfiles >/dev/null 2>&1; then
@@ -899,7 +899,7 @@ run_health_checks() {
         local external_accessible=0
 
         if [ -n "$main_route" ] && curl -f -s "http://$main_route/status" >/dev/null 2>&1; then
-            echo_success "  → ROS-OCP API externally accessible: http://$main_route/status"
+            echo_success "  → ROS API externally accessible: http://$main_route/status"
             external_accessible=$((external_accessible + 1))
         fi
 
@@ -915,7 +915,7 @@ run_health_checks() {
 
         if [ $external_accessible -eq 0 ]; then
             echo_info "  → External routes not accessible (common in internal/corporate clusters)"
-            echo_info "  → Use port-forwarding: kubectl port-forward svc/cost-management-onprem-rosocp-api -n $NAMESPACE 8001:8000"
+            echo_info "  → Use port-forwarding: kubectl port-forward svc/cost-onprem-ros-api -n $NAMESPACE 8001:8000"
         else
             echo_success "  → $external_accessible route(s) externally accessible"
         fi
@@ -939,12 +939,12 @@ run_health_checks() {
             failed_checks=$((failed_checks + 1))
         fi
 
-        # Check if ROS-OCP API is accessible via Ingress
-        echo_info "Testing ROS-OCP API: http://$hostname/status"
+        # Check if ROS API is accessible via Ingress
+        echo_info "Testing ROS API: http://$hostname/status"
         if curl -f -s "http://$hostname/status" >/dev/null; then
-            echo_success "✓ ROS-OCP API is accessible via http://$hostname/status"
+            echo_success "✓ ROS API is accessible via http://$hostname/status"
         else
-            echo_error "✗ ROS-OCP API is not accessible via http://$hostname/status"
+            echo_error "✗ ROS API is not accessible via http://$hostname/status"
             failed_checks=$((failed_checks + 1))
         fi
 
@@ -1458,11 +1458,11 @@ case "${1:-}" in
         echo "  $0                       # Reinstall (reuses existing volumes and Kafka)"
         echo ""
         echo "Environment Variables:"
-        echo "  HELM_RELEASE_NAME       - Name of Helm release (default: cost-management-onprem)"
-        echo "  NAMESPACE               - Kubernetes namespace (default: cost-management-onprem)"
+        echo "  HELM_RELEASE_NAME       - Name of Helm release (default: cost-onprem)"
+        echo "  NAMESPACE               - Kubernetes namespace (default: cost-onprem)"
         echo "  VALUES_FILE             - Path to custom values file (optional)"
         echo "  USE_LOCAL_CHART         - Use local chart instead of GitHub release (default: false)"
-        echo "  LOCAL_CHART_PATH        - Path to local chart directory (default: ../helm/cost-management-onprem)"
+        echo "  LOCAL_CHART_PATH        - Path to local chart directory (default: ../cost-onprem)"
         echo "  KAFKA_BOOTSTRAP_SERVERS - Bootstrap servers for existing Kafka (skips verification)"
         echo "                            Example: my-kafka-bootstrap.kafka:9092"
         echo ""
@@ -1471,13 +1471,13 @@ case "${1:-}" in
         echo "  - Local: Set USE_LOCAL_CHART=true to use local chart directory"
         echo "  - Chart Path: Set LOCAL_CHART_PATH to specify custom chart location"
         echo "  - Examples:"
-        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../helm/cost-management-onprem $0"
-        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-management-onprem-helm-chart/cost-management-onprem $0"
+        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem $0"
+        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem-helm-chart/cost-onprem $0"
         echo ""
         echo "Examples:"
         echo "  # Complete fresh installation"
         echo "  ./deploy-strimzi.sh                           # Install Strimzi and Kafka first"
-        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-management-onprem $0  # Then install Cost Management On Premise"
+        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem $0  # Then install Cost Management On Premise"
         echo ""
         echo "  # Install from GitHub release (with Strimzi already deployed)"
         echo "  ./deploy-strimzi.sh                           # Install prerequisites"
@@ -1485,20 +1485,20 @@ case "${1:-}" in
         echo ""
         echo "  # Custom namespace and release name"
         echo "  NAMESPACE=my-namespace HELM_RELEASE_NAME=my-release \\"
-        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-management-onprem $0"
+        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem $0"
         echo ""
         echo "  # Use existing Kafka on cluster (deployed by other means)"
         echo "  KAFKA_BOOTSTRAP_SERVERS=my-kafka-bootstrap.my-namespace:9092 $0"
         echo ""
         echo "  # With custom overrides"
-        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-management-onprem $0 \\"
+        echo "  USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem $0 \\"
         echo "    --set database.ros.storage.size=200Gi"
         echo ""
         echo "  # Install latest release from GitHub"
         echo "  $0"
         echo ""
         echo "  # Cleanup and reinstall"
-        echo "  $0 cleanup --complete && USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-management-onprem $0"
+        echo "  $0 cleanup --complete && USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem $0"
         echo ""
         echo "Platform Detection:"
         echo "  - Automatically detects Kubernetes vs OpenShift"

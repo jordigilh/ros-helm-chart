@@ -29,7 +29,7 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/instance: {{ .Release.Name }}
-              app.kubernetes.io/component: poller
+              app.kubernetes.io/component: ros-recommendation-poller
       ports:
         - protocol: TCP
           port: 8080

@@ -4,7 +4,7 @@ ROUTES CONFIGURATION
 
 This file contains only the essential routes required for external access:
 
-1. Main route (/) - ROS-OCP API status and recommendations endpoints
+1. Main route (/) - ROS API status and recommendations endpoints
 2. Ingress route (/api/ingress) - File upload and version check
 
 INTERNAL-ONLY SERVICES (no routes, accessed via network policies):
@@ -18,7 +18,7 @@ REMOVED ROUTES (previously defined, not needed):
 - MinIO Console route (/minio) - Not needed for ODF
 */ -}}
 ---
-# Main route for ROS-OCP API (serves as main entry point in OCP)
+# Main route for ROS API (serves as main entry point in OCP)
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
