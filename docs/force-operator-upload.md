@@ -163,7 +163,7 @@ INFO  adding file to tar.gz  {"file": "...ros-openshift-namespace-202510.csv"}
 INFO  file packaging was successful
 INFO  executing upload
 INFO  uploading file: 20251022T140230_123456-cost-mgmt.tar.gz
-INFO  request response  {"status": 202, "URL": "http://ros-ocp-ingress..."}
+INFO  request response  {"status": 202, "URL": "http://cost-onprem-ingress..."}
 ```
 
 ## Verification Steps

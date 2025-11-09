@@ -34,7 +34,7 @@ jobs:
 
         # Template validation without cluster connection
         echo "Running template validation..."
-        helm template cost-mgmt-test . --debug --dry-run
+        helm template cost-onprem-test . --debug --dry-run
         echo "✓ Helm template validation completed successfully"
 
 

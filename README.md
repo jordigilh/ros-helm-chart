@@ -29,8 +29,8 @@ USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem ./scripts/install-helm-char
 NAMESPACE=my-namespace HELM_RELEASE_NAME=my-release ./scripts/install-helm-chart.sh
 
 # Or use Helm directly
-helm repo add cost-mgmt https://insights-onprem.github.io/ros-helm-chart
-helm install cost-mgmt cost-mgmt/cost-onprem --namespace cost-mgmt --create-namespace
+helm repo add cost-onprem https://insights-onprem.github.io/ros-helm-chart
+helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --create-namespace
 ```
 
 **Note for OpenShift:** See [Authentication Setup](#-authentication-setup) section for required prerequisites (Authorino and Keycloak)
@@ -129,7 +129,7 @@ All services accessible at **http://localhost:32061**:
 ### OpenShift
 Services accessible via OpenShift Routes:
 ```bash
-oc get routes -n cost-mgmt
+oc get routes -n cost-onprem
 ```
 
 **See [Platform Guide](docs/platform-guide.md) for platform-specific details**
@@ -201,13 +201,13 @@ The chart includes comprehensive CI/CD automation:
 **Quick diagnostics:**
 ```bash
 # Check pods
-kubectl get pods -n cost-mgmt
+kubectl get pods -n cost-onprem
 
 # View logs
-kubectl logs -n cost-mgmt -l app.kubernetes.io/component=api
+kubectl logs -n cost-onprem -l app.kubernetes.io/component=api
 
 # Check storage
-kubectl get pvc -n cost-mgmt
+kubectl get pvc -n cost-onprem
 ```
 
 **See [Troubleshooting Guide](docs/troubleshooting.md) for comprehensive solutions**

@@ -61,7 +61,7 @@ graph TB
    - `account_id` (fallback)
    - `account` (second fallback)
 
-   **Implementation Reference**: See `cost-mgmt/templates/envoy-config-ingress.yaml` Lua filter section
+   **Implementation Reference**: See `cost-onprem/templates/envoy-config-ingress.yaml` Lua filter section
 
 4. **Keycloak Configuration**:
    - Service account client (client_credentials grant type)
@@ -79,9 +79,9 @@ The authentication flow involves **two Envoy sidecars** with different responsib
 
 #### Stage 1: Ingress Envoy - JWT Validation and Header Injection
 
-**Service**: `cost-mgmt-ingress` (Port 8080 - Envoy, Port 8081 - Application)
+**Service**: `cost-onprem-ingress` (Port 8080 - Envoy, Port 8081 - Application)
 
-**Location**: `cost-mgmt/templates/envoy-config-ingress.yaml`
+**Location**: `cost-onprem/templates/envoy-config-ingress.yaml`
 
 **Purpose**: Accept JWT tokens from Cost Management Operator, validate them, and inject authentication headers.
 
@@ -183,7 +183,7 @@ sequenceDiagram
    ```
 
    **Header Requirements**:
-   - **`X-Rh-Identity`** (REQUIRED): Base64-encoded XRHID JSON used by cost-mgmt-backend for:
+   - **`X-Rh-Identity`** (REQUIRED): Base64-encoded XRHID JSON used by cost-onprem-backend for:
      - Authentication and authorization
      - Multi-tenancy (org_id and account_number extraction)
      - Database query filtering
@@ -208,9 +208,9 @@ Ingress Application (port 8081)
 
 #### Stage 2: Cost Management On-Premise API Envoy - JWT Validation (Same as Ingress)
 
-**Service**: `cost-mgmt-ros-api` (Port 8080 - Envoy, Port 8001 - Application)
+**Service**: `cost-onprem-ros-api` (Port 8080 - Envoy, Port 8001 - Application)
 
-**Location**: `cost-mgmt/templates/envoy-config-ros-api.yaml`
+**Location**: `cost-onprem/templates/envoy-config-ros-api.yaml`
 
 **Purpose**: Provide the same JWT authentication capability as Ingress for direct API access.
 
@@ -271,7 +271,7 @@ Ingress Application (port 8081)
 #### Stage 3: Backend Services Parse Identity
 
 **Ingress Service** (`insights-ros-ingress`):
-- **Authentication Pattern**: JWT-based (different from cost-mgmt-backend)
+- **Authentication Pattern**: JWT-based (different from cost-onprem-backend)
 - **Location**: `internal/upload/handler.go`
 - **REQUIRES** (application validates, Envoy injects):
   - `X-ROS-Authenticated: "true"` - Confirms Envoy JWT validation succeeded
@@ -300,7 +300,7 @@ Ingress Application (port 8081)
 
 ---
 
-**ROS Backend API** (`cost-mgmt-backend`):
+**ROS Backend API** (`cost-onprem-backend`):
 - **Authentication Pattern**: XRHID-based (Red Hat standard)
 - **Location**: `internal/api/middleware/identity.go`
 - **ONLY requires**: `X-Rh-Identity` header from Envoy sidecar
@@ -536,7 +536,7 @@ oc wait --for=condition=ready keycloakrealm/kubernetes-realm -n keycloak --timeo
 
 #### Why org_id is Required
 
-The ROS backend (`cost-mgmt-backend`) requires the `org_id` claim to:
+The ROS backend (`cost-onprem-backend`) requires the `org_id` claim to:
 - Identify which organization the data belongs to
 - Enforce multi-tenancy boundaries
 - Route data to correct storage partitions
@@ -922,17 +922,17 @@ jwt_auth:
 
 **Check what URL is being used:**
 ```bash
-kubectl get configmap -n cost-mgmt cost-mgmt-envoy-ingress-config -o yaml | grep issuer
+kubectl get configmap -n cost-onprem cost-onprem-envoy-ingress-config -o yaml | grep issuer
 ```
 
 **Check CA bundle contents:**
 ```bash
 # Number of certificates in bundle
-kubectl exec -n cost-mgmt deploy/cost-mgmt-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
   cat /etc/ca-certificates/ca-bundle.crt | grep -c "BEGIN CERTIFICATE"
 
 # Check init container logs
-kubectl logs -n cost-mgmt deploy/cost-mgmt-ingress -c prepare-ca-bundle | grep -E "(Adding|Fetched)"
+kubectl logs -n cost-onprem deploy/cost-onprem-ingress -c prepare-ca-bundle | grep -E "(Adding|Fetched)"
 ```
 
 **Expected output:**
@@ -1079,7 +1079,7 @@ oc get costmanagementmetricsconfig -n costmanagement-metrics-operator \
 # Should show: "202 Accepted" (not 401 Unauthorized)
 
 # Check ingress logs for org_id extraction
-oc logs -n cost-mgmt deployment/cost-mgmt-ingress -c ingress --tail=50 | \
+oc logs -n cost-onprem deployment/cost-onprem-ingress -c ingress --tail=50 | \
   grep -E "org_id|account"
 
 # Expected: account="1", org_id="1"
@@ -1203,7 +1203,7 @@ ORG_ID="2" CLIENT_ID="cost-management-operator-2"
 1. Verify `org_id` in JWT (see Part 3, Step 1)
 2. Check Envoy sidecar is running:
    ```bash
-   oc get pod -n cost-mgmt -l app.kubernetes.io/component=ingress \
+   oc get pod -n cost-onprem -l app.kubernetes.io/component=ingress \
      -o jsonpath='{.items[0].spec.containers[*].name}'
    # Should show: envoy-proxy ingress
    ```
@@ -1222,7 +1222,7 @@ ORG_ID="2" CLIENT_ID="cost-management-operator-2"
 **Fix:**
 1. Check Envoy configuration:
    ```bash
-   oc get configmap cost-mgmt-envoy-config -n cost-mgmt -o yaml
+   oc get configmap cost-onprem-envoy-config -n cost-onprem -o yaml
    ```
 2. Verify `issuer` matches Keycloak:
    ```yaml
@@ -1426,7 +1426,7 @@ echo ""
 echo "Next steps:"
 echo "  1. Wait for next operator upload cycle"
 echo "  2. Verify upload status: oc get costmanagementmetricsconfig -o jsonpath='{.status.upload}'"
-echo "  3. Check ingress logs: oc logs -n cost-mgmt deployment/cost-mgmt-ingress -c ingress"
+echo "  3. Check ingress logs: oc logs -n cost-onprem deployment/cost-onprem-ingress -c ingress"
 ```
 
 ---

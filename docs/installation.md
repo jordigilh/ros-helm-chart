@@ -81,8 +81,8 @@ export USE_LOCAL_CHART=true
 - ✅ Automatic fallback to local chart if GitHub unavailable
 
 **Environment Variables:**
-- `HELM_RELEASE_NAME`: Helm release name (default: `cost-mgmt`)
-- `NAMESPACE`: Target namespace (default: `cost-mgmt`)
+- `HELM_RELEASE_NAME`: Helm release name (default: `cost-onprem`)
+- `NAMESPACE`: Target namespace (default: `cost-onprem`)
 - `VALUES_FILE`: Path to custom values file
 - `USE_LOCAL_CHART`: Use local chart instead of GitHub release (default: `false`)
 - `LOCAL_CHART_PATH`: Path to local chart directory (default: `../cost-onprem`)
@@ -101,19 +101,19 @@ LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart
   jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
 
 # Download and install
-curl -L -o cost-mgmt-latest.tgz "$LATEST_URL"
-helm install cost-mgmt cost-mgmt-latest.tgz \
-  --namespace cost-mgmt \
+curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
+helm install cost-onprem cost-onprem-latest.tgz \
+  --namespace cost-onprem \
   --create-namespace
 
 # Verify installation
-helm status cost-mgmt -n cost-mgmt
+helm status cost-onprem -n cost-onprem
 ```
 
 **With custom values:**
 ```bash
-helm install cost-mgmt cost-mgmt-latest.tgz \
-  --namespace cost-mgmt \
+helm install cost-onprem cost-onprem-latest.tgz \
+  --namespace cost-onprem \
   --create-namespace \
   --values my-values.yaml
 ```
@@ -124,12 +124,12 @@ helm install cost-mgmt cost-mgmt-latest.tgz \
 
 ```bash
 # Add Helm repository (once published)
-helm repo add cost-mgmt https://insights-onprem.github.io/ros-helm-chart
+helm repo add cost-onprem https://insights-onprem.github.io/ros-helm-chart
 helm repo update
 
 # Install from repository
-helm install cost-mgmt cost-mgmt/cost-mgmt \
-  --namespace cost-mgmt \
+helm install cost-onprem cost-onprem/cost-onprem \
+  --namespace cost-onprem \
   --create-namespace
 ```
 
@@ -149,13 +149,13 @@ export USE_LOCAL_CHART=true
 ./scripts/install-helm-chart.sh
 
 # Method B: Direct Helm installation
-helm install cost-mgmt ./cost-mgmt \
-  --namespace cost-mgmt \
+helm install cost-onprem ./cost-onprem \
+  --namespace cost-onprem \
   --create-namespace
 
 # With custom values
-helm install cost-mgmt ./cost-mgmt \
-  --namespace cost-mgmt \
+helm install cost-onprem ./cost-onprem \
+  --namespace cost-onprem \
   --create-namespace \
   --values custom-values.yaml
 ```
@@ -211,13 +211,13 @@ Create credentials secret in deployment namespace:
 
 ```bash
 # Create secret with ODF S3 credentials
-kubectl create secret generic cost-mgmt-odf-credentials \
-  --namespace=cost-mgmt \
+kubectl create secret generic cost-onprem-odf-credentials \
+  --namespace=cost-onprem \
   --from-literal=access-key=<your-access-key> \
   --from-literal=secret-key=<your-secret-key>
 
 # Verify secret
-kubectl get secret cost-mgmt-odf-credentials -n cost-mgmt
+kubectl get secret cost-onprem-odf-credentials -n cost-onprem
 ```
 
 ### Getting ODF Credentials
@@ -268,7 +268,7 @@ vault kv get -field=access_key secret/odf/ros-credentials
 vault kv get -field=secret_key secret/odf/ros-credentials
 
 # Example with Sealed Secrets
-kubectl create secret generic cost-mgmt-odf-credentials \
+kubectl create secret generic cost-onprem-odf-credentials \
   --from-literal=access-key=<key> \
   --from-literal=secret-key=<secret> \
   --dry-run=client -o yaml | \
@@ -292,9 +292,9 @@ Ensure you have permissions to:
 
 ```bash
 # Verify permissions
-oc auth can-i create secrets -n cost-mgmt
-oc auth can-i create deployments -n cost-mgmt
-oc auth can-i create routes -n cost-mgmt
+oc auth can-i create secrets -n cost-onprem
+oc auth can-i create deployments -n cost-onprem
+oc auth can-i create routes -n cost-onprem
 ```
 
 ### 4. Authorino Setup for OAuth2 Authentication
@@ -322,16 +322,16 @@ After Helm installation, verify Authorino deployment:
 
 ```bash
 # Check Authorino pod
-oc get pods -n cost-mgmt -l app.kubernetes.io/component=authorino
+oc get pods -n cost-onprem -l app.kubernetes.io/component=authorino
 
 # Check Authorino services
-oc get svc -n cost-mgmt -l app.kubernetes.io/component=authorino
+oc get svc -n cost-onprem -l app.kubernetes.io/component=authorino
 
 # Check AuthConfig
-oc get authconfig -n cost-mgmt
+oc get authconfig -n cost-onprem
 
 # Check TLS certificate
-oc get secret -n cost-mgmt | grep authorino-server-cert
+oc get secret -n cost-onprem | grep authorino-server-cert
 ```
 
 **What Authorino Does:**
@@ -384,11 +384,11 @@ LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart
   jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
 
 # Download and upgrade
-curl -L -o cost-mgmt-latest.tgz "$LATEST_URL"
-helm upgrade cost-mgmt cost-mgmt-latest.tgz -n cost-mgmt
+curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
+helm upgrade cost-onprem cost-onprem-latest.tgz -n cost-onprem
 
 # With custom values
-helm upgrade cost-mgmt cost-mgmt-latest.tgz -n cost-mgmt --values my-values.yaml
+helm upgrade cost-onprem cost-onprem-latest.tgz -n cost-onprem --values my-values.yaml
 ```
 
 #### From Local Source
@@ -399,7 +399,7 @@ export USE_LOCAL_CHART=true
 ./scripts/install-helm-chart.sh
 
 # Direct Helm command
-helm upgrade cost-mgmt ./cost-mgmt -n cost-mgmt
+helm upgrade cost-onprem ./cost-onprem -n cost-onprem
 ```
 
 ### Upgrade Considerations
@@ -413,7 +413,7 @@ helm upgrade cost-mgmt ./cost-mgmt -n cost-mgmt
 **During upgrade:**
 - Helm performs rolling updates by default
 - Some downtime may occur during database upgrades
-- Monitor pod status: `kubectl get pods -n cost-mgmt -w`
+- Monitor pod status: `kubectl get pods -n cost-onprem -w`
 
 **After upgrade:**
 ```bash
@@ -424,7 +424,7 @@ helm upgrade cost-mgmt ./cost-mgmt -n cost-mgmt
 ./scripts/install-helm-chart.sh health
 
 # Check version
-helm list -n cost-mgmt
+helm list -n cost-onprem
 ```
 
 ---
@@ -435,13 +435,13 @@ helm list -n cost-mgmt
 
 ```bash
 # Check Helm release
-helm status cost-mgmt -n cost-mgmt
+helm status cost-onprem -n cost-onprem
 
 # Check all pods
-kubectl get pods -n cost-mgmt
+kubectl get pods -n cost-onprem
 
 # Wait for all pods to be ready
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cost-mgmt -n cost-mgmt --timeout=300s
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cost-onprem -n cost-onprem --timeout=300s
 ```
 
 ### Service Health
@@ -462,28 +462,28 @@ curl http://localhost:32061/api/ros/status
 
 ```bash
 # Check persistent volume claims
-kubectl get pvc -n cost-mgmt
+kubectl get pvc -n cost-onprem
 
 # Verify all PVCs are bound
-kubectl get pvc -n cost-mgmt | grep -v Bound && echo "ISSUE: Unbound PVCs found" || echo "OK: All PVCs bound"
+kubectl get pvc -n cost-onprem | grep -v Bound && echo "ISSUE: Unbound PVCs found" || echo "OK: All PVCs bound"
 
 # Check storage class
-kubectl get pvc -n cost-mgmt -o jsonpath='{.items[*].spec.storageClassName}' | tr ' ' '\n' | sort -u
+kubectl get pvc -n cost-onprem -o jsonpath='{.items[*].spec.storageClassName}' | tr ' ' '\n' | sort -u
 ```
 
 ### Service Connectivity
 
 ```bash
 # Test database connections
-kubectl exec -it deployment/cost-mgmt-rosocp-api -n cost-mgmt -- \
+kubectl exec -it deployment/cost-onprem-ros-api -n cost-onprem -- \
   env | grep DATABASE_URL
 
 # Test Kafka connectivity
-kubectl exec -it statefulset/cost-mgmt-kafka -n cost-mgmt -- \
+kubectl exec -it statefulset/cost-onprem-kafka -n cost-onprem -- \
   kafka-topics.sh --list --bootstrap-server localhost:29092
 
 # Test MinIO/ODF access (Kubernetes)
-kubectl exec -it statefulset/cost-mgmt-minio -n cost-mgmt -- \
+kubectl exec -it statefulset/cost-onprem-minio -n cost-onprem -- \
   mc admin info local
 ```
 
@@ -534,7 +534,7 @@ curl -v https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/lat
 # Manual download
 LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | \
   jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
-curl -L -o cost-mgmt-latest.tgz "$LATEST_URL"
+curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
 ```
 
 ### Resource Issues

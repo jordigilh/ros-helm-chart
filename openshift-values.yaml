@@ -9,7 +9,7 @@
 global:
   # OpenShift Data Foundation (ODF) storage class
   # Common values: odf-storagecluster-ceph-rbd, ocs-storagecluster-ceph-rbd
-  # When left empty, the cost-mgmt.storage.class helper will auto-discover the default storage class from the cluster
+  # When left empty, the cost-onprem.storage.class helper will auto-discover the default storage class from the cluster
   # Recommended: Leave empty for automatic detection
   storageClass: ""
   # Storage type for platform detection (odf for OpenShift, minio for Kubernetes)
@@ -57,7 +57,7 @@ database:
 # This section only contains connection settings for the deployed application
 kafka:
   # Bootstrap servers for Kafka cluster (auto-configured by script)
-  bootstrapServers: "cost-mgmt-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
+  bootstrapServers: "cost-onprem-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
   securityProtocol: "PLAINTEXT"
 
 # Valkey (Production Cache - for OpenShift deployments)
@@ -80,7 +80,7 @@ odf:
   bucket: "ros-data"
   pathStyle: true
   credentials:
-    secretName: "cost-mgmt-odf-credentials"
+    secretName: "cost-onprem-odf-credentials"
 
 # Kruize OpenShift-specific configuration
 kruize:

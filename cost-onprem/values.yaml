@@ -383,7 +383,7 @@ database:
 kafka:
   # Bootstrap servers for Kafka cluster
   # This is auto-configured by the install script based on the Kafka cluster it creates
-  bootstrapServers: "cost-mgmt-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
+  bootstrapServers: "cost-onprem-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
 
   # Security protocol (PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL)
   securityProtocol: "PLAINTEXT"

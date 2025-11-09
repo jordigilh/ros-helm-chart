@@ -55,7 +55,7 @@ oc logs -n costmanagement-metrics-operator $OPERATOR_POD --tail=200 | grep -A 10
 ```
 
 **Expected Results:**
-- ✅ Log line: `Uploading payload to http://ros-ocp-ingress...`
+- ✅ Log line: `Uploading payload to http://cost-onprem-ingress...`
 - ✅ Log line: `Upload successful` with HTTP 200 or 202
 - ✅ ROS metrics files mentioned in packaging
 
@@ -126,7 +126,7 @@ Check that the processor consumed the Kafka message and sent data to Kruize:
 
 ```bash
 # Get processor pod name
-PROCESSOR_POD=$(oc get pods -n cost-onprem -l app.kubernetes.io/name=rosocp-processor -o jsonpath='{.items[0].metadata.name}')
+PROCESSOR_POD=$(oc get pods -n cost-onprem -l app.kubernetes.io/name=ros-processor -o jsonpath='{.items[0].metadata.name}')
 
 # Check processor logs
 oc logs -n cost-onprem $PROCESSOR_POD --tail=200 | grep -E "Processing|Kruize|experiment|recommendation"
@@ -243,7 +243,7 @@ oc exec -n cost-onprem $KAFKA_POD -- kafka-console-consumer.sh \
   --timeout-ms 5000 2>/dev/null || echo "No messages (may be consumed already)"
 
 echo -e "\n=== Step 5: Processor Logs ==="
-PROCESSOR_POD=$(oc get pods -n cost-onprem -l app.kubernetes.io/name=rosocp-processor -o jsonpath='{.items[0].metadata.name}')
+PROCESSOR_POD=$(oc get pods -n cost-onprem -l app.kubernetes.io/name=ros-processor -o jsonpath='{.items[0].metadata.name}')
 oc logs -n cost-onprem $PROCESSOR_POD --tail=50 | grep -E "Kruize|experiment"
 
 echo -e "\n=== Step 6: Kruize Experiments ==="

@@ -184,7 +184,7 @@ upstream connect error or disconnect/reset before headers. TLS error:
 
 4. **Debug CA bundle**: Check what CAs are included:
    ```bash
-   kubectl exec -n cost-mgmt deployment/cost-mgmt-ros-api -c envoy-proxy -- \
+   kubectl exec -n cost-onprem deployment/cost-onprem-ros-api -c envoy-proxy -- \
      cat /etc/ssl/certs/ca-bundle.crt | grep -c "BEGIN CERTIFICATE"
    ```
 
@@ -255,7 +255,7 @@ TOKEN=$(curl -s -k -X POST \
 # Upload file with JWT
 curl -F "file=@payload.tar.gz;type=application/vnd.redhat.hccm.filename+tgz" \
   -H "Authorization: Bearer $TOKEN" \
-  "http://cost-mgmt-ingress-cost-mgmt.apps.example.com/api/ingress/v1/upload"
+  "http://cost-onprem-ingress-cost-onprem.apps.example.com/api/ingress/v1/upload"
 ```
 
 ### Automated Test Script
@@ -321,17 +321,17 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 
 #### 1. Kruize Network Policy
 
-**File**: `cost-mgmt/templates/networkpolicy-kruize.yaml`
+**File**: `cost-onprem/templates/kruize/networkpolicy.yaml`
 
 - **Allows**:
-  - Ingress from `cost-mgmt` namespace (for internal service communication)
+  - Ingress from `cost-onprem` namespace (for internal service communication)
   - Ingress from `openshift-monitoring` namespace (for Prometheus metrics scraping on port 8080)
 - **Blocks**:
   - All other external ingress traffic
 
 #### 2. Ingress Service Network Policy
 
-**File**: `cost-mgmt/templates/networkpolicy-ingress.yaml`
+**File**: `cost-onprem/templates/ingress/networkpolicy.yaml`
 
 - **Allows**:
   - Ingress from `openshift-ingress` namespace (for external file uploads via Envoy sidecar on port 9080)
@@ -339,7 +339,7 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 
 #### 3. Cost Management On-Premise Metrics Network Policies
 
-**File**: `cost-mgmt/templates/networkpolicy-ros-metrics.yaml`
+**File**: `cost-onprem/templates/ros/networkpolicies.yaml`
 
 - **Allows**:
   - Ingress from `openshift-monitoring` namespace (for Prometheus metrics scraping on port 9000)
@@ -347,7 +347,7 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 
 #### 4. Cost Management On-Premise API Access Network Policy
 
-**File**: `cost-mgmt/templates/networkpolicy-ros-metrics.yaml`
+**File**: `cost-onprem/templates/ros/networkpolicies.yaml`
 
 - **Allows**:
   - Ingress from OpenShift router/ingress (for external REST API access via Envoy sidecar on port 9080)
@@ -355,11 +355,11 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 
 #### 5. Sources API Network Policy
 
-**File**: `cost-mgmt/templates/networkpolicy-sources-api.yaml`
+**File**: `cost-onprem/templates/sources-api/networkpolicy.yaml`
 
 - **Allows**:
-  - Ingress from `cost-mgmt` namespace (for internal service communication on port 8000)
-- **Applies to**: Sources API (accessed by cost-mgmt-housekeeper)
+  - Ingress from `cost-onprem` namespace (for internal service communication on port 8000)
+- **Applies to**: Sources API (accessed by cost-onprem-housekeeper)
 
 ### Prometheus Metrics Access
 
@@ -407,15 +407,15 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
    - Uses `permissionMiddleware` and `tenancyMiddleware`
 
 2. **Unauthenticated Endpoints** (no header required):
-   - Application types: `GET /application_types` - Used by cost-mgmt-housekeeper for internal lookups
+   - Application types: `GET /application_types` - Used by cost-onprem-housekeeper for internal lookups
    - Source types: `GET /source_types`
    - Metadata: `GET /app_meta_data`
    - Health check: `GET /health`
 
 **Internal Service Communication**:
-- **cost-mgmt-housekeeper** → Sources API: Calls unauthenticated `/application_types` endpoint to look up cost-management application type ID
+- **cost-onprem-housekeeper** → Sources API: Calls unauthenticated `/application_types` endpoint to look up cost-management application type ID
 - No `X-Rh-Identity` header needed for this specific endpoint
-- Network policies restrict access to internal `cost-mgmt` namespace
+- Network policies restrict access to internal `cost-onprem` namespace
 
 ### Troubleshooting Network Policies
 
@@ -423,25 +423,25 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 
 ```bash
 # List all network policies
-oc get networkpolicies -n cost-mgmt
+oc get networkpolicies -n cost-onprem
 
 # Describe specific policy
-oc describe networkpolicy kruize-allow-ingress -n cost-mgmt
+oc describe networkpolicy kruize-allow-ingress -n cost-onprem
 ```
 
 #### Test Connectivity
 
 ```bash
 # From within the namespace (should work)
-oc exec -n cost-mgmt deployment/cost-mgmt-ros-processor -- \
-  curl -s http://cost-mgmt-kruize:8080/listApplications
+oc exec -n cost-onprem deployment/cost-onprem-ros-processor -- \
+  curl -s http://cost-onprem-kruize:8080/listApplications
 
 # From outside the namespace (should be blocked to main port, allowed to Envoy)
 oc exec -n default deployment/test-pod -- \
-  curl -s http://cost-mgmt-kruize.cost-mgmt.svc:8081/listApplications  # Blocked
+  curl -s http://cost-onprem-kruize.cost-onprem.svc:8081/listApplications  # Blocked
 
 oc exec -n default deployment/test-pod -- \
-  curl -s -H "X-Rh-Identity: ..." http://cost-mgmt-kruize.cost-mgmt.svc:8080/listApplications  # Allowed via Envoy
+  curl -s -H "X-Rh-Identity: ..." http://cost-onprem-kruize.cost-onprem.svc:8080/listApplications  # Allowed via Envoy
 ```
 
 #### Verify Prometheus Metrics Access
@@ -449,7 +449,7 @@ oc exec -n default deployment/test-pod -- \
 ```bash
 # Check if Prometheus can scrape metrics
 oc exec -n openshift-monitoring prometheus-k8s-0 -- \
-  curl -s http://cost-mgmt-kruize.cost-mgmt.svc:8080/metrics
+  curl -s http://cost-onprem-kruize.cost-onprem.svc:8080/metrics
 
 # Expected: Prometheus metrics output
 ```
@@ -458,7 +458,7 @@ oc exec -n openshift-monitoring prometheus-k8s-0 -- \
 
 **Issue**: Service-to-service communication failing
 - **Cause**: Network policy blocking legitimate traffic
-- **Fix**: Verify both services are in the `cost-mgmt` namespace and network policy allows same-namespace traffic
+- **Fix**: Verify both services are in the `cost-onprem` namespace and network policy allows same-namespace traffic
 
 **Issue**: Prometheus not scraping metrics
 - **Cause**: Network policy missing `openshift-monitoring` namespace selector
@@ -473,7 +473,7 @@ oc exec -n openshift-monitoring prometheus-k8s-0 -- \
 ### Check Envoy logs
 
 ```bash
-oc logs -n cost-mgmt -l app.kubernetes.io/name=ingress -c envoy-proxy
+oc logs -n cost-onprem -l app.kubernetes.io/name=ingress -c envoy-proxy
 ```
 
 Look for:
@@ -484,7 +484,7 @@ Look for:
 ### Check ingress logs
 
 ```bash
-oc logs -n cost-mgmt -l app.kubernetes.io/name=ingress -c ingress
+oc logs -n cost-onprem -l app.kubernetes.io/name=ingress -c ingress
 ```
 
 Look for:
@@ -496,7 +496,7 @@ Look for:
 
 ```bash
 # Port-forward to Envoy admin
-oc port-forward -n cost-mgmt deployment/cost-mgmt-ingress 9901:9901
+oc port-forward -n cost-onprem deployment/cost-onprem-ingress 9901:9901
 
 # Check cluster status
 curl http://localhost:9901/clusters | grep keycloak_jwks

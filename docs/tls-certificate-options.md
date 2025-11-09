@@ -188,7 +188,7 @@ jwt_auth:
 Check the init container logs:
 
 ```bash
-kubectl logs -n cost-mgmt <pod-name> -c prepare-ca-bundle
+kubectl logs -n cost-onprem <pod-name> -c prepare-ca-bundle
 ```
 
 You'll see one of:
@@ -216,7 +216,7 @@ You'll see one of:
 
 ```bash
 # Test from inside a pod
-kubectl exec -n cost-mgmt <pod-name> -c envoy-proxy -- \
+kubectl exec -n cost-onprem <pod-name> -c envoy-proxy -- \
   curl -s http://localhost:9901/clusters | grep keycloak_jwks
 
 # Check for:

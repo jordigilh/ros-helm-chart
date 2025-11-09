@@ -51,7 +51,7 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-rosocp-recommendation-poller
+  name: {{ include "cost-mgmt.fullname" . }}-ros-recommendation-poller
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}

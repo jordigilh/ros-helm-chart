@@ -838,7 +838,7 @@ run_health_checks() {
         echo_info "Testing internal service connectivity..."
 
         # Test ROS API internally
-        local api_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=rosocp-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        local api_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=ross-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
         if [ -n "$api_pod" ]; then
             if kubectl exec -n "$NAMESPACE" "$api_pod" -- curl -f -s http://localhost:8000/status >/dev/null 2>&1; then
                 echo_success "✓ ROS API service is healthy (internal)"

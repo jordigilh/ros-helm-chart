@@ -153,25 +153,25 @@ If you prefer to manually install the Helm chart or need a specific version:
 ```bash
 # Download and install latest chart release
 LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
-curl -L -o cost-mgmt-latest.tgz "$LATEST_URL"
-helm install cost-mgmt cost-mgmt-latest.tgz -n cost-mgmt --create-namespace
+curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
+helm install cost-onprem cost-onprem-latest.tgz -n cost-onprem --create-namespace
 ```
 
 #### 3. Install Specific Chart Version
 ```bash
 # Install a specific version (e.g., v0.1.0)
 VERSION="v0.1.0"
-curl -L -o cost-mgmt-${VERSION}.tgz "https://github.com/insights-onprem/ros-helm-chart/releases/download/${VERSION}/cost-mgmt-${VERSION}.tgz"
-helm install cost-mgmt cost-mgmt-${VERSION}.tgz -n cost-mgmt --create-namespace
+curl -L -o cost-onprem-${VERSION}.tgz "https://github.com/insights-onprem/ros-helm-chart/releases/download/${VERSION}/cost-onprem-${VERSION}.tgz"
+helm install cost-onprem cost-onprem-${VERSION}.tgz -n cost-onprem --create-namespace
 ```
 
 #### 4. Development Mode (Local Chart)
 ```bash
 # Use local chart source (auto-detects platform)
-USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-mgmt ./install-helm-chart.sh
+USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem ./install-helm-chart.sh
 
 # Or direct Helm installation
-helm install cost-mgmt ./cost-mgmt -n cost-mgmt --create-namespace
+helm install cost-onprem ./cost-onprem -n cost-onprem --create-namespace
 ```
 
 ## Access Points
@@ -205,9 +205,9 @@ curl http://localhost:32061/api/kruize/listPerformanceProfiles
 ### 1. Run Complete Test
 ```bash
 # This tests the full data pipeline
-# Note: Run from cost-mgmt-backend repository
-git clone https://github.com/gciavarrini/cost-mgmt-backend.git
-cd cost-mgmt-backend/deployment/kubernetes/scripts/
+# Note: Run from ros-ocp-backend repository
+git clone https://github.com/gciavarrini/ros-ocp-backend.git
+cd ros-ocp-backend/deployment/kubernetes/scripts/
 ./test-k8s-dataflow.sh
 ```
 
@@ -233,9 +233,9 @@ The test will:
 ### 2. View Service Logs
 ```bash
 # List available services
-# Note: Run from cost-mgmt-backend repository
-git clone https://github.com/gciavarrini/cost-mgmt-backend.git
-cd cost-mgmt-backend/deployment/kubernetes/scripts/
+# Note: Run from cost-onprem-backend repository
+git clone https://github.com/gciavarrini/ros-ocp-backend.git
+cd ros-ocp-backend/deployment/kubernetes/scripts/
 
 # For Kubernetes/KIND deployments
 ./test-k8s-dataflow.sh logs
@@ -251,13 +251,13 @@ cd cost-mgmt-backend/deployment/kubernetes/scripts/
 ### 3. Monitor Processing
 ```bash
 # Watch pods in real-time
-kubectl get pods -n cost-mgmt -w
+kubectl get pods -n cost-onprem -w
 
 # Check persistent volumes
-kubectl get pvc -n cost-mgmt
+kubectl get pvc -n cost-onprem
 
 # View all services
-kubectl get svc -n cost-mgmt
+kubectl get svc -n cost-onprem
 ```
 
 ## Manual Testing
@@ -286,18 +286,18 @@ curl -X POST \
 ### Check Database
 ```bash
 # Connect to ROS database
-kubectl exec -it -n cost-mgmt deployment/cost-mgmt-db-ros -- \
+kubectl exec -it -n cost-onprem deployment/cost-onprem-db-ros -- \
   psql -U postgres -d postgres -c "SELECT COUNT(*) FROM workloads;"
 ```
 
 ### Monitor Kafka Topics
 ```bash
 # List topics
-kubectl exec -n cost-mgmt deployment/cost-mgmt-kafka -- \
+kubectl exec -n cost-onprem deployment/cost-onprem-kafka -- \
   kafka-topics --list --bootstrap-server localhost:29092
 
 # Monitor events
-kubectl exec -n cost-mgmt deployment/cost-mgmt-kafka -- \
+kubectl exec -n cost-onprem deployment/cost-onprem-kafka -- \
   kafka-console-consumer --bootstrap-server localhost:29092 \
   --topic hccm.ros.events --from-beginning
 ```
@@ -308,7 +308,7 @@ kubectl exec -n cost-mgmt deployment/cost-mgmt-kafka -- \
 ```bash
 # Customize deployment
 export KIND_CLUSTER_NAME=my-ros-cluster
-export HELM_RELEASE_NAME=my-cost-mgmt
+export HELM_RELEASE_NAME=my-cost-onprem
 export NAMESPACE=my-namespace
 
 # Deploy with custom settings
@@ -334,9 +334,9 @@ EOF
 
 # Deploy with custom values (using latest release from ros-helm-chart repository)
 LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
-curl -L -o cost-mgmt-latest.tgz "$LATEST_URL"
-helm upgrade --install cost-mgmt cost-mgmt-latest.tgz \
-  --namespace cost-mgmt \
+curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
+helm upgrade --install cost-onprem cost-onprem-latest.tgz \
+  --namespace cost-onprem \
   --create-namespace \
   -f my-values.yaml
 ```
@@ -358,13 +358,13 @@ helm upgrade --install cost-mgmt cost-mgmt-latest.tgz \
 ### Manual Cleanup
 ```bash
 # Delete Helm release
-helm uninstall cost-mgmt -n cost-mgmt
+helm uninstall cost-onprem -n cost-onprem
 
 # Delete namespace
-kubectl delete namespace cost-mgmt
+kubectl delete namespace cost-onprem
 
 # Delete KIND cluster
-kind delete cluster --name cost-mgmt-cluster
+kind delete cluster --name cost-onprem-cluster
 ```
 
 ## Quick Status Check
@@ -377,15 +377,15 @@ echo "=== Cost Management On-Premise Status Check ==="
 
 # Check pod status
 echo "Pod Status:"
-kubectl get pods -n cost-mgmt
+kubectl get pods -n cost-onprem
 
 # Check services with issues
 echo -e "\nPods with issues:"
-kubectl get pods -n cost-mgmt --field-selector=status.phase!=Running
+kubectl get pods -n cost-onprem --field-selector=status.phase!=Running
 
 # Check Kafka connectivity
 echo -e "\nKafka connectivity test:"
-kubectl exec -n cost-mgmt deployment/cost-mgmt-ros-processor -- nc -zv cost-mgmt-kafka 29092 2>/dev/null && echo "✓ Kafka accessible" || echo "✗ Kafka connection failed"
+kubectl exec -n cost-onprem deployment/cost-onprem-ros-processor -- nc -zv cost-onprem-kafka 29092 2>/dev/null && echo "✓ Kafka accessible" || echo "✗ Kafka connection failed"
 
 # Check API endpoints
 echo -e "\nAPI Health Checks:"
@@ -410,8 +410,8 @@ After successful deployment:
 
 For issues or questions:
 - Check [Troubleshooting Guide](troubleshooting.md)
-- Review test output: Clone [cost-mgmt-backend](https://github.com/gciavarrini/cost-mgmt-backend) and run:
+- Review test output: Clone [cost-onprem-backend](https://github.com/insights-onprem/ros-ocp-backend) and run:
   - Kubernetes: `./deployment/kubernetes/scripts/test-k8s-dataflow.sh`
   - OpenShift: `./deployment/kubernetes/scripts/test-ocp-dataflow.sh`
-- Check pod logs: `kubectl logs -n cost-mgmt <pod-name>`
-- Verify configuration: `helm get values cost-mgmt -n cost-mgmt`
+- Check pod logs: `kubectl logs -n cost-onprem <pod-name>`
+- Verify configuration: `helm get values cost-onprem -n cost-onprem`

@@ -268,7 +268,7 @@ EXAMPLES:
   $0 --cluster "757b6bf6-9e91-486a-8a99-6d3e6d0f485c"
 
   # Get detailed recommendations for an experiment
-  $0 --detail "1|757b6bf6-9e91-486a-8a99-6d3e6d0f485c|757b6bf6-9e91-486a-8a99-6d3e6d0f485c|ros-ocp|deployment|ros-ocp-kruize"
+  $0 --detail "1|757b6bf6-9e91-486a-8a99-6d3e6d0f485c|757b6bf6-9e91-486a-8a99-6d3e6d0f485c|cost-onprem|deployment|ros-kruize"
 
   # Run custom query
   $0 --query "SELECT COUNT(*) FROM kruize_experiments WHERE status='IN_PROGRESS';"

@@ -351,7 +351,7 @@ test_oauth2_backend_auth() {
     fi
 
     # Get backend API URL
-    local backend_url=$(get_service_url "rosocp-api" "")
+    local backend_url=$(get_service_url "ros-api" "")
     echo_info "Testing backend API at: $backend_url"
 
     local test_passed=0
@@ -423,7 +423,7 @@ query_backend_api() {
         return 1
     fi
 
-    local backend_url=$(get_service_url "rosocp-api" "")
+    local backend_url=$(get_service_url "ros-api" "")
     local full_url="$backend_url$endpoint"
 
     echo_info "Querying: $description"
@@ -460,17 +460,17 @@ get_service_url() {
     # Try to get OpenShift route first
     local route_name="$HELM_RELEASE_NAME-$service_name"
 
-    # Special handling for rosocp-api which has route named "main"
-    if [ "$service_name" = "rosocp-api" ]; then
+    # Special handling for ros-api which has route named "main"
+    if [ "$service_name" = "ros-api" ]; then
         # Try the "main" route first (common alias for the backend API)
         route_name="$HELM_RELEASE_NAME-main"
     fi
 
     local route_host=$(oc get route "$route_name" -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null)
 
-    # If not found and this is rosocp-api, try the full service name
-    if [ -z "$route_host" ] && [ "$service_name" = "rosocp-api" ]; then
-        route_name="$HELM_RELEASE_NAME-rosocp-api"
+    # If not found and this is ros-api, try the full service name
+    if [ -z "$route_host" ] && [ "$service_name" = "ros-api" ]; then
+        route_name="$HELM_RELEASE_NAME-ros-api"
         route_host=$(oc get route "$route_name" -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null)
     fi
 
@@ -693,7 +693,7 @@ verify_upload_processing() {
     fi
 
     # If we have the full ROS stack, check for further processing
-    local processor_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=rosocp-processor" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local processor_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=ros-processor" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -n "$processor_pod" ]; then
         echo_info "Checking processor logs for data processing..."

@@ -80,9 +80,9 @@ jobs:
 
       - name: Set up environment and Podman configuration
         run: |
-          echo "KIND_CLUSTER_NAME=cost-mgmt-test-cluster" >> $GITHUB_ENV
-          echo "HELM_RELEASE_NAME=cost-mgmt-test" >> $GITHUB_ENV
-          echo "NAMESPACE=cost-mgmt-test" >> $GITHUB_ENV
+          echo "KIND_CLUSTER_NAME=cost-onprem-test-cluster" >> $GITHUB_ENV
+          echo "HELM_RELEASE_NAME=cost-onprem-test" >> $GITHUB_ENV
+          echo "NAMESPACE=cost-onprem-test" >> $GITHUB_ENV
 
       - name: Setup KIND cluster
         timeout-minutes: 15
@@ -236,7 +236,7 @@ jobs:
           echo "Strimzi Operator Logs:"
           kubectl logs -n kafka -l name=strimzi-cluster-operator --tail=50 || true
           echo "Kafka Broker Logs:"
-          kubectl logs -n kafka -l strimzi.io/name=cost-mgmt-kafka-kafka --tail=30 || true
+          kubectl logs -n kafka -l strimzi.io/name=onprem-kafka-kafka --tail=30 || true
           
           echo "=== Ingress Service Logs ==="
           kubectl logs -n ${{ env.NAMESPACE }} -l app.kubernetes.io/name=ingress --tail=30 || true

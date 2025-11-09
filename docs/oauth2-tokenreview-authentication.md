@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ROS OCP Backend (`cost-mgmt-api`) uses OAuth2 token authentication via Kubernetes TokenReview API through Authorino. This allows service accounts and users within the same cluster to authenticate directly using their Kubernetes tokens.
+The ROS API Backend (`cost-onprem-api`) uses OAuth2 token authentication via Kubernetes TokenReview API through Authorino. This allows service accounts and users within the same cluster to authenticate directly using their Kubernetes tokens.
 
 ### Quick Reference
 
@@ -41,7 +41,7 @@ flowchart LR
         R["<b>Service: ros-api</b><br/>Port: 9080"]
     end
 
-    subgraph Pod["Pod: cost-mgmt-ros-api"]
+    subgraph Pod["Pod: cost-onprem-ros-api"]
         subgraph EnvoySidecar["Envoy Sidecar"]
             E["<b>Envoy Proxy</b><br/>Port: 9080<br/>ext_authz filter"]
             L["<b>Lua Filter</b><br/>rh-identity builder"]
@@ -180,7 +180,7 @@ sequenceDiagram
 
 - **Authorino is now automatically deployed by the Helm chart** (as of v0.1.9)
 - **No operator dependency**: Standalone Authorino deployment
-- **Namespace-scoped**: Deployed to same namespace as cost-mgmt chart
+- **Namespace-scoped**: Deployed to same namespace as cost-onprem chart
 - **Templates**:
   - `authorino-deployment.yaml` - Main Authorino deployment
   - `authorino-serviceaccount.yaml` - ServiceAccount for Authorino
@@ -225,7 +225,7 @@ SA_TOKEN=$(oc exec <pod-name> -n <namespace> -- cat /var/run/secrets/kubernetes.
 
 # Test the API endpoint
 curl -H "Authorization: Bearer $SA_TOKEN" \
-     https://<cost-mgmt-api-route>/api/ros/v1/status
+     https://<cost-onprem-api-route>/api/ros/v1/status
 
 # Check the response - should return 200 OK if authentication works
 ```
@@ -238,7 +238,7 @@ USER_TOKEN=$(oc whoami -t)
 
 # Test the API endpoint
 curl -H "Authorization: Bearer $USER_TOKEN" \
-     https://<cost-mgmt-api-route>/api/ros/v1/status
+     https://<cost-onprem-api-route>/api/ros/v1/status
 ```
 
 ### Verify Envoy Logs
@@ -260,8 +260,8 @@ oc logs <ros-api-pod> -c envoy-proxy -n <namespace>
 oc logs -n <namespace> -l app=authorino --tail=50
 
 # Look for messages like:
-# "level=info msg=\"authenticated\" username=\"system:serviceaccount:cost-mgmt:sa-name\""
-# "level=info msg=\"authconfig evaluated\" host=\"*\" authconfig=\"cost-mgmt-ros-api-auth\""
+# "level=info msg=\"authenticated\" username=\"system:serviceaccount:cost-onprem:sa-name\""
+# "level=info msg=\"authconfig evaluated\" host=\"*\" authconfig=\"cost-onprem-ros-api-auth\""
 ```
 
 ### Verify Backend Logs
@@ -297,7 +297,7 @@ oc exec -n <namespace> <authorino-pod> -- \
 ```bash
 # Check if Envoy can reach Authorino
 oc exec <ros-api-pod> -c envoy-proxy -- \
-  nc -zv authorino-authorino-authorization.cost-mgmt.svc.cluster.local 50051
+  nc -zv authorino-authorino-authorization.cost-onprem.svc.cluster.local 50051
 
 # Verify service CA certificate exists
 oc exec <ros-api-pod> -c envoy-proxy -- \
@@ -305,7 +305,7 @@ oc exec <ros-api-pod> -c envoy-proxy -- \
 
 # Check NetworkPolicy allows traffic
 oc get networkpolicy -n <namespace>
-oc describe networkpolicy cost-mgmt-authorino -n <namespace>
+oc describe networkpolicy cost-onprem-authorino -n <namespace>
 ```
 
 #### AuthConfig Issues
@@ -315,10 +315,10 @@ oc describe networkpolicy cost-mgmt-authorino -n <namespace>
 oc get authconfig -n <namespace>
 
 # Verify AuthConfig status
-oc describe authconfig cost-mgmt-ros-api-auth -n <namespace>
+oc describe authconfig cost-onprem-ros-api-auth -n <namespace>
 
 # Check AuthConfig logs in Authorino
-oc logs -n <namespace> -l app=authorino | grep "cost-mgmt-ros-api-auth"
+oc logs -n <namespace> -l app=authorino | grep "cost-onprem-ros-api-auth"
 ```
 
 #### Envoy Configuration Issues
@@ -344,7 +344,7 @@ TOKEN=$(oc whoami -t)
 
 # Test with verbose output
 curl -v -H "Authorization: Bearer $TOKEN" \
-  https://<cost-mgmt-api-route>/api/ros/v1/status
+  https://<cost-onprem-api-route>/api/ros/v1/status
 
 # Expected flow:
 # 1. Envoy receives request
@@ -447,9 +447,9 @@ curl -v -H "Authorization: Bearer $TOKEN" \
 
 ## Installation Steps
 
-1. **Deploy cost-mgmt chart** with JWT authentication (automatically enabled on OpenShift):
+1. **Deploy cost-onprem chart** with JWT authentication (automatically enabled on OpenShift):
    ```bash
-   helm install cost-mgmt ./cost-mgmt -f openshift-values.yaml
+   helm install cost-onprem ./cost-onprem -f openshift-values.yaml
    ```
 
    This will automatically deploy:
@@ -461,9 +461,9 @@ curl -v -H "Authorization: Bearer $TOKEN" \
 
 2. **Verify Authorino is running**:
    ```bash
-   oc get pods -n cost-mgmt -l app.kubernetes.io/component=authorino
-   oc get authconfig -n cost-mgmt
-   oc get secret -n cost-mgmt | grep authorino-server-cert
+   oc get pods -n cost-onprem -l app.kubernetes.io/component=authorino
+   oc get authconfig -n cost-onprem
+   oc get secret -n cost-onprem | grep authorino-server-cert
    ```
 
 3. **Test authentication**:

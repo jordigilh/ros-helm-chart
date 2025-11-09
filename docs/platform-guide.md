@@ -89,7 +89,7 @@ graph TB
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: cost-mgmt-ingress
+  name: cost-onprem-ingress
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
@@ -101,7 +101,7 @@ spec:
         pathType: ImplementationSpecific
         backend:
           service:
-            name: cost-mgmt-rosocp-api
+            name: cost-onprem-ros-api
             port:
               number: 8000
 ```
@@ -211,9 +211,9 @@ graph TB
         Routes["Routes (separate hostnames)"]
     end
 
-    Routes -->|"cost-mgmt-main-cost-mgmt.apps..."| Main["ROS Main Service"]
-    Routes -->|"cost-mgmt-ingress-cost-mgmt.apps..."| Ingress["Ingress Service"]
-    Routes -->|"cost-mgmt-kruize-cost-mgmt.apps..."| Kruize["Kruize Service"]
+    Routes -->|"cost-onprem-main-cost-onprem.apps..."| Main["ROS Main Service"]
+    Routes -->|"cost-onprem-ingress-cost-onprem.apps..."| Ingress["Ingress Service"]
+    Routes -->|"cost-onprem-kruize-cost-onprem.apps..."| Kruize["Kruize Service"]
 
     style Router fill:#e57373,stroke:#333,stroke-width:2px,color:#000
     style Main fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
@@ -228,14 +228,14 @@ graph TB
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: cost-mgmt-main
+  name: cost-onprem-main
   annotations:
     haproxy.router.openshift.io/timeout: "30s"
 spec:
-  host: ""  # Auto-generated: cost-mgmt-main-namespace.apps.cluster.com
+  host: ""  # Auto-generated: cost-onprem-main-namespace.apps.cluster.com
   to:
     kind: Service
-    name: cost-mgmt-rosocp-api
+    name: cost-onprem-ros-api
   port:
     targetPort: 8000
   tls:
@@ -246,12 +246,12 @@ spec:
 **Access URLs:**
 ```bash
 # Get route hostnames
-oc get routes -n cost-mgmt
+oc get routes -n cost-onprem
 
 # Example routes
-https://cost-mgmt-main-cost-mgmt.apps.cluster.com
-https://cost-mgmt-ingress-cost-mgmt.apps.cluster.com
-https://cost-mgmt-kruize-cost-mgmt.apps.cluster.com
+https://cost-onprem-main-cost-onprem.apps.cluster.com
+https://cost-onprem-ingress-cost-onprem.apps.cluster.com
+https://cost-onprem-kruize-cost-onprem.apps.cluster.com
 ```
 
 ### Storage
@@ -269,10 +269,10 @@ oc get noobaa -n openshift-storage
 oc get storagecluster -n openshift-storage
 
 # Create credentials secret
-oc create secret generic cost-mgmt-odf-credentials \
+oc create secret generic cost-onprem-odf-credentials \
   --from-literal=access-key=<key> \
   --from-literal=secret-key=<secret> \
-  -n cost-mgmt
+  -n cost-onprem
 ```
 
 **Configuration:**
@@ -285,7 +285,7 @@ odf:
   useSSL: true
   port: 443
   credentials:
-    secretName: "cost-mgmt-odf-credentials"
+    secretName: "cost-onprem-odf-credentials"
 ```
 
 ### Security
@@ -306,10 +306,10 @@ securityContext:
 **Service Accounts:**
 ```bash
 # View service accounts
-oc get sa -n cost-mgmt
+oc get sa -n cost-onprem
 
 # View assigned SCCs
-oc get pod <pod-name> -n cost-mgmt -o yaml | grep scc
+oc get pod <pod-name> -n cost-onprem -o yaml | grep scc
 ```
 
 ### TLS Configuration
@@ -343,7 +343,7 @@ odf:
   endpoint: "s3.openshift-storage.svc.cluster.local"
   bucket: "ros-data"
   credentials:
-    secretName: "cost-mgmt-odf-credentials"
+    secretName: "cost-onprem-odf-credentials"
 
 minio:
   enabled: false
@@ -370,22 +370,22 @@ kubectl get pods -n ingress-nginx
 kubectl logs -n ingress-nginx deployment/ingress-nginx-controller
 
 # Check ingress rules
-kubectl describe ingress cost-mgmt-ingress -n cost-mgmt
+kubectl describe ingress cost-onprem-ingress -n cost-onprem
 
 # Verify port mapping (KIND)
-docker port cost-mgmt-cluster-control-plane
+docker port cost-onprem-cluster-control-plane
 ```
 
 **MinIO issues:**
 ```bash
 # Check MinIO pods
-kubectl get pods -l app=minio -n cost-mgmt
+kubectl get pods -l app=minio -n cost-onprem
 
 # Access MinIO logs
-kubectl logs -n cost-mgmt statefulset/cost-mgmt-minio
+kubectl logs -n cost-onprem statefulset/cost-onprem-minio
 
 # Verify PVC
-kubectl get pvc -l app=minio -n cost-mgmt
+kubectl get pvc -l app=minio -n cost-onprem
 ```
 
 ### OpenShift Issues
@@ -393,15 +393,15 @@ kubectl get pvc -l app=minio -n cost-mgmt
 **Routes not accessible:**
 ```bash
 # Check routes
-oc get routes -n cost-mgmt
-oc describe route cost-mgmt-main -n cost-mgmt
+oc get routes -n cost-onprem
+oc describe route cost-onprem-main -n cost-onprem
 
 # Check router pods
 oc get pods -n openshift-ingress
 
 # Test internal connectivity
-oc rsh deployment/cost-mgmt-rosocp-api
-curl http://cost-mgmt-rosocp-api:8000/status
+oc rsh deployment/cost-onprem-ros-api
+curl http://cost-onprem-ros-api:8000/status
 ```
 
 **ODF issues:**
@@ -411,10 +411,10 @@ oc get noobaa -n openshift-storage
 oc get cephcluster -n openshift-storage
 
 # Check credentials secret
-oc get secret cost-mgmt-odf-credentials -n cost-mgmt
+oc get secret cost-onprem-odf-credentials -n cost-onprem
 
 # Test S3 connectivity
-oc rsh deployment/cost-mgmt-ingress
+oc rsh deployment/cost-onprem-ingress
 aws --endpoint-url https://s3.openshift-storage... s3 ls
 ```
 
