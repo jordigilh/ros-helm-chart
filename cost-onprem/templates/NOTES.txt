@@ -40,7 +40,8 @@ API Endpoints:
   - Upload API: /api/ingress/*
 
 Health Check:
-  curl https://$(oc get route {{ $fullName }}-ingress -n {{ $namespace }} -o jsonpath='{.spec.host}')/ready
+  curl http://$(oc get route {{ $fullName }}-ingress -n {{ $namespace }} -o jsonpath='{.spec.host}')/api/ingress/ready
+  curl http://$(oc get route {{ $fullName }}-main -n {{ $namespace }} -o jsonpath='{.spec.host}')/status
 
 {{- else }}
 
