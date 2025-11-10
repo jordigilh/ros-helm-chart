@@ -639,7 +639,7 @@ show_status() {
             echo_info "Access Points (via OpenShift Routes):"
             echo_info "  - Main API: http://$main_route/status"
             if [ -n "$ingress_route" ]; then
-                echo_info "  - Ingress API: http://$ingress_route/ready"
+                echo_info "  - Ingress API: http://$ingress_route/api/ingress/ready"
             fi
             if [ -n "$kruize_route" ]; then
                 echo_info "  - Kruize API: http://$kruize_route/api/kruize/listPerformanceProfiles"
