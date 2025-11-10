@@ -1,0 +1,60 @@
+{{- if .Values.unleash.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cost-mgmt.unleash.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: unleash-server
+spec:
+  replicas: {{ .Values.unleash.replicas }}
+  selector:
+    matchLabels:
+      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: unleash-server
+  template:
+    metadata:
+      labels:
+        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: unleash-server
+    spec:
+      containers:
+      - name: unleash-server
+        image: "{{ .Values.unleash.image.repository }}:{{ .Values.unleash.image.tag }}"
+        imagePullPolicy: {{ .Values.unleash.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 4242
+          protocol: TCP
+        env:
+        - name: DATABASE_URL
+          value: "postgres://{{ .Values.unleash.database.user }}:{{ .Values.unleash.database.password }}@{{ include "cost-mgmt.unleash.name" . }}-db:5432/{{ .Values.unleash.database.name }}"
+        - name: DATABASE_SSL
+          value: "false"
+        - name: LOG_LEVEL
+          value: {{ .Values.unleash.logLevel | quote }}
+        - name: INIT_CLIENT_API_TOKENS
+          value: {{ .Values.unleash.initClientToken | quote }}
+        - name: DISABLE_RATE_LIMIT
+          value: "true"
+        resources:
+          {{- toYaml .Values.unleash.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 4242
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 4242
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+{{- end }}
+
