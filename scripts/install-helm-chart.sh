@@ -853,23 +853,38 @@ run_health_checks() {
 
         # Test services via port-forwarding (OpenShift approach)
         echo_info "Testing services via port-forwarding (OpenShift approach)..."
+
         # Test Ingress API via port-forward
+        # Note: We port-forward to the pod's internal port (8081 with JWT, 8080 without)
+        # to bypass Envoy and avoid JWT authentication requirements on health endpoints
         echo_info "Testing Ingress API via port-forward..."
-        local ingress_pf_pid=""
-        kubectl port-forward -n "$NAMESPACE" svc/cost-onprem-ingress 18080:8080 --request-timeout=90s >/dev/null 2>&1 &
-        ingress_pf_pid=$!
-        sleep 3
-        if kill -0 "$ingress_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18080/ready >/dev/null 2>&1; then
-            echo_success "✓ Ingress API service is healthy (port-forward)"
+        local ingress_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        if [ -n "$ingress_pod" ]; then
+            # Determine the internal port (8081 with JWT auth, 8080 without)
+            local ingress_internal_port="8081"  # Default to JWT-enabled port
+            if [ "$JWT_AUTH_ENABLED" != "true" ]; then
+                ingress_internal_port="8080"
+            fi
+
+            local ingress_pf_pid=""
+            kubectl port-forward -n "$NAMESPACE" pod/"$ingress_pod" 18080:${ingress_internal_port} --request-timeout=90s >/dev/null 2>&1 &
+            ingress_pf_pid=$!
+            sleep 3
+            if kill -0 "$ingress_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18080/ready >/dev/null 2>&1; then
+                echo_success "✓ Ingress API service is healthy (port-forward, internal port ${ingress_internal_port})"
+            else
+                echo_error "✗ Ingress API service is not responding (port-forward)"
+                failed_checks=$((failed_checks + 1))
+            fi
+            # Cleanup ingress port-forward
+            if [ -n "$ingress_pf_pid" ] && kill -0 "$ingress_pf_pid" 2>/dev/null; then
+                kill "$ingress_pf_pid" 2>/dev/null || true
+                # Wait a moment for process to terminate
+                sleep 1
+            fi
         else
-            echo_error "✗ Ingress API service is not responding (port-forward)"
+            echo_error "✗ Ingress pod not found"
             failed_checks=$((failed_checks + 1))
-        fi
-        # Cleanup ingress port-forward
-        if [ -n "$ingress_pf_pid" ] && kill -0 "$ingress_pf_pid" 2>/dev/null; then
-            kill "$ingress_pf_pid" 2>/dev/null || true
-            # Wait a moment for process to terminate
-            sleep 1
         fi
         # Test Kruize API via port-forward
         echo_info "Testing Kruize API via port-forward..."

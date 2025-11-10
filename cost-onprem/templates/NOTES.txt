@@ -147,7 +147,7 @@ Storage Classes:
 
 View logs:
   # ROS API
-  kubectl logs -n {{ $namespace }} -l app.kubernetes.io/component=api --tail=100
+  kubectl logs -n {{ $namespace }} -l app.kubernetes.io/name=ros-api --tail=100
 
   # ROS Processor
   kubectl logs -n {{ $namespace }} -l app.kubernetes.io/component=processor --tail=100
