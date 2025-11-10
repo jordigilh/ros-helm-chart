@@ -658,6 +658,7 @@ cleanup_deployment() {
         kubectl patch kafka --all -A -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
     kubectl delete kafkatopic --all -A --timeout 30s 2>/dev/null || \
         kubectl patch kafkatopic --all -A -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
+        kubectl get kafkatopic -n kafka -o json | jq '.items[].metadata.finalizers = []' | oc apply -f -
     kubectl delete kafkauser --all -A --timeout 30s 2>/dev/null || \
         kubectl patch kafkauser --all -A -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
     kubectl delete kafkaconnect --all -A --timeout 30s 2>/dev/null || true
