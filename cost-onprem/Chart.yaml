@@ -2,7 +2,7 @@ apiVersion: v2
 name: cost-onprem
 description: Cost Management On-Premise solution for Kubernetes/OpenShift
 type: application
-version: 0.2.0
+version: 0.3.0
 appVersion: "latest"
 
 keywords:
@@ -12,6 +12,7 @@ keywords:
   - ros
   - openshift
   - kubernetes
+  - on-premise
 
 maintainers:
   - name: Insights On-Premise Team

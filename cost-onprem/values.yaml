@@ -358,7 +358,7 @@ database:
     user: postgres
     password: postgres
 
-  # Cost Management Database (future)
+  # Cost Management Database (future placeholder - DB server will be shared with ROS)
   costManagement:
     image:
       repository: quay.io/insights-onprem/postgresql
