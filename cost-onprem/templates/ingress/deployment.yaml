@@ -119,12 +119,7 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
           resources:
-            limits:
-              cpu: 500m
-              memory: 256Mi
-            requests:
-              cpu: 100m
-              memory: 128Mi
+            {{- toYaml .Values.jwtAuth.envoy.resources | nindent 12 }}
         {{- end }}
         - name: ingress
           image: "{{ .Values.ingress.image.repository }}:{{ .Values.ingress.image.tag }}"

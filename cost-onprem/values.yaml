@@ -68,7 +68,7 @@ ros:
     pathPrefix: /api
 
     # Service-specific configuration
-    rbacEnabled: false
+    rbacEnabled: false # RBAC is not supported yet
     dbPoolSize: 10
     dbMaxOverflow: 20
     serviceName: ros-api
@@ -274,7 +274,6 @@ ingress:
   # On vanilla Kubernetes/KIND, authentication is automatically disabled.
   auth:
     enabled: true      # Auto-disabled on Kubernetes
-    allowedOrgs: []
 
   # Logging
   logging:
@@ -287,19 +286,6 @@ ingress:
     enabled: true
     path: "/metrics"
     port: 8080
-
-  # HCCM validation service (production only)
-  validation:
-    hccm:
-      # Enable hccm validation service (disabled for KIND/development, enabled for OpenShift/production)
-      # This will be overridden by platform detection in deployment
-      enabled: false
-      # HCCM validation service URL (empty for development mode)
-      serviceUrl: ""
-      # Validation timeout in seconds
-      timeout: "30"
-      # Number of retries for validation calls
-      retries: "3"
 
 # -----------------------------------------------------------------------------
 # Shared Infrastructure - Database
@@ -359,20 +345,7 @@ database:
     password: postgres
 
   # Cost Management Database (future placeholder - DB server will be shared with ROS)
-  costManagement:
-    image:
-      repository: quay.io/insights-onprem/postgresql
-      tag: "16"
-
-    storage:
-      size: 100Gi
-
-    host: internal
-    port: 5432
-    name: cost_management
-    user: postgres
-    password: postgres
-    sslMode: disable
+  costManagement: {}
 
 # -----------------------------------------------------------------------------
 # Shared Infrastructure - Kafka
@@ -566,24 +539,6 @@ resources:
     limits:
       memory: "512Mi"
       cpu: "500m"
-
-  # Kafka resources (for reference - Kafka not managed by this chart)
-  strimzi:
-    requests:
-      memory: "512Mi"
-      cpu: "250m"
-    limits:
-      memory: "1Gi"
-      cpu: "500m"
-
-  # ZooKeeper resources (for reference - ZooKeeper not managed by this chart)
-  strimziZookeeper:
-    requests:
-      memory: "256Mi"
-      cpu: "100m"
-    limits:
-      memory: "512Mi"
-      cpu: "300m"
 
   # Standard application services
   application:

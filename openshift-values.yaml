@@ -75,12 +75,8 @@ valkey:
 odf:
   endpoint: ""  # Auto-detected from NooBaa CRD status
   port: 443
-  region: "us-east-1"
   useSSL: true
   bucket: "ros-data"
-  pathStyle: true
-  credentials:
-    secretName: "cost-onprem-odf-credentials"
 
 # Kruize OpenShift-specific configuration
 kruize:

@@ -124,12 +124,7 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
           resources:
-            limits:
-              cpu: 500m
-              memory: 256Mi
-            requests:
-              cpu: 100m
-              memory: 128Mi
+            {{- toYaml .Values.jwtAuth.envoy.resources | nindent 12 }}
         {{- end }}
         - name: ros-api
           image: "{{ .Values.ros.api.image.repository }}:{{ .Values.ros.api.image.tag }}"
@@ -163,7 +158,7 @@ spec:
             - name: CLOWDER_ENABLED
               value: "false"
             - name: RBAC_ENABLE
-              value: {{ .Values.ros.api.rbacEnable | quote }}
+              value: {{ .Values.ros.api.rbacEnabled | quote }}
             - name: DB_POOL_SIZE
               value: {{ .Values.ros.api.dbPoolSize | quote }}
             - name: DB_MAX_OVERFLOW
