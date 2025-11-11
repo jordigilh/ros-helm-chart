@@ -49,7 +49,6 @@ spec:
                 sleep 5
               done
               echo "ROS database is ready"
-              echo "ROS database is ready"
         {{- if .Values.kafka.bootstrapServers }}
         - name: wait-for-kafka
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
