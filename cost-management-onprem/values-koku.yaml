@@ -118,7 +118,7 @@ costManagement:
       # Environment variables
       env:
         API_PATH_PREFIX: /api/cost-management
-        DEVELOPMENT: "False"
+        DEVELOPMENT: "True"  # Enable on-prem mode (bypass RBAC service)
         GUNICORN_LOG_LEVEL: INFO
         KOKU_LOG_LEVEL: INFO
         DJANGO_LOG_LEVEL: INFO
@@ -177,7 +177,7 @@ costManagement:
       # Environment variables (same as reads)
       env:
         API_PATH_PREFIX: /api/cost-management
-        DEVELOPMENT: "False"
+        DEVELOPMENT: "True"  # Enable on-prem mode (bypass RBAC service)
         GUNICORN_LOG_LEVEL: INFO
         KOKU_LOG_LEVEL: INFO
         DJANGO_LOG_LEVEL: INFO
