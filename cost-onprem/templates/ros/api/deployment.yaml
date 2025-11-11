@@ -38,17 +38,8 @@ spec:
           image: "{{ .Values.jwtAuth.envoy.image.repository }}:{{ .Values.jwtAuth.envoy.image.tag }}"
           imagePullPolicy: {{ .Values.global.pullPolicy }}
           securityContext:
-            runAsNonRoot: true
-            {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
-            runAsUser: 1000
-            {{- end }}
-            allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
-            capabilities:
-              drop:
-                - ALL
-            seccompProfile:
-              type: RuntimeDefault
+            {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
           ports:
             - name: http-proxy
               containerPort: {{ .Values.jwtAuth.envoy.port }}
@@ -88,16 +79,7 @@ spec:
           image: "{{ .Values.ros.api.image.repository }}:{{ .Values.ros.api.image.tag }}"
           imagePullPolicy: {{ .Values.ros.api.image.pullPolicy | default .Values.global.pullPolicy }}
           securityContext:
-            runAsNonRoot: true
-            {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
-            runAsUser: 1000
-            {{- end }}
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-            seccompProfile:
-              type: RuntimeDefault
+            {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
           command: ["sh", "-c"]
           args:
             - |

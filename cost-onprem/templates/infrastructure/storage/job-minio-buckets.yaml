@@ -24,30 +24,13 @@ spec:
         {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
         runAsNonRoot: false
         {{- else }}
-        runAsNonRoot: true
-        {{- end }}
-        {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
-        runAsUser: 1001
-        {{- end }}
-        {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
-        seccompProfile:
-          type: RuntimeDefault
+        {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 8 }}
         {{- end }}
       initContainers:
         - name: wait-for-minio
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
           securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-            {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
-            runAsNonRoot: false
-            {{- end }}
-            {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
-            seccompProfile:
-              type: RuntimeDefault
-            {{- end }}
+            {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
           command: ['bash', '-c']
           args:
             - |
