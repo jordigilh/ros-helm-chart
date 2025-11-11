@@ -359,7 +359,8 @@ test_oauth2_backend_auth() {
 
     # Test 1: Request without OAuth2 token (should be rejected)
     echo_info "Test 1: Request without OAuth2 token"
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$backend_url/api/ros/test" 2>/dev/null || echo "000")
+    local recommendations_endpoint="$backend_url/api/cost-management/v1/recommendations/openshift"
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$recommendations_endpoint" 2>/dev/null || echo "000")
     if [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
         echo_success "  ✓ Correctly rejected request without token ($http_code)"
         test_passed=$((test_passed + 1))
@@ -376,7 +377,7 @@ test_oauth2_backend_auth() {
     echo_info "Test 2: Request with invalid OAuth2 token"
     http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
         -H "Authorization: Bearer invalid.oauth2.token" \
-        "$backend_url/api/ros/test" 2>/dev/null || echo "000")
+        "$recommendations_endpoint" 2>/dev/null || echo "000")
     if [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
         echo_success "  ✓ Correctly rejected invalid token ($http_code)"
         test_passed=$((test_passed + 1))
@@ -388,7 +389,7 @@ test_oauth2_backend_auth() {
     echo_info "Test 3: Request with valid OAuth2 user session token"
     local response=$(curl -s -w "\n%{http_code}" --max-time 10 \
         -H "Authorization: Bearer $OAUTH2_TOKEN" \
-        "$backend_url/api/ros/test" 2>/dev/null)
+        "$recommendations_endpoint" 2>/dev/null)
 
     http_code=$(echo "$response" | tail -n 1)
     local response_body=$(echo "$response" | sed '$d')
@@ -925,28 +926,16 @@ main() {
     fi
     echo ""
 
-    # Test 2: Clusters endpoint (list uploaded clusters)
-    echo_info "Query 2: List Clusters"
-    if query_backend_api "/api/ros/v1/clusters/" "Clusters List"; then
-        echo_success "  ✓ Clusters endpoint accessible"
+    # Test 2: Recommendations endpoint (list recommendations)
+    echo_info "Query 2: List Recommendations"
+    if query_backend_api "/api/cost-management/v1/recommendations/openshift" "Recommendations List"; then
+        echo_success "  ✓ Recommendations endpoint accessible"
         backend_queries_passed=$((backend_queries_passed + 1))
     else
-        echo_warning "  ⚠ Clusters endpoint failed (may be empty or not yet populated)"
+        echo_warning "  ⚠ Recommendations endpoint failed (may be empty or not yet populated)"
         # Not failing the test for this as data might not be ready yet
     fi
     echo ""
-
-    # Test 3: Recommendations endpoint (check for the uploaded cluster)
-    if [ -n "$UPLOAD_CLUSTER_ID" ]; then
-        echo_info "Query 3: Recommendations for uploaded cluster"
-        if query_backend_api "/api/ros/v1/clusters/$UPLOAD_CLUSTER_ID/recommendations/" "Cluster Recommendations"; then
-            echo_success "  ✓ Recommendations endpoint accessible"
-            backend_queries_passed=$((backend_queries_passed + 1))
-        else
-            echo_warning "  ⚠ Recommendations endpoint returned error (data may still be processing)"
-        fi
-        echo ""
-    fi
 
     echo_info "Backend API Access Summary:"
     echo_info "  Successful queries: $backend_queries_passed"
