@@ -27,17 +27,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        - name: wait-for-db-kruize
-          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
-          command: ['bash', '-c']
-          args:
-            - |
-              echo "Waiting for Kruize database at {{ include "cost-mgmt.fullname" . }}-db-kruize:{{ .Values.database.kruize.port }}..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-db-kruize/{{ .Values.database.kruize.port }}" 2>/dev/null; do
-                echo "Database not ready yet, retrying in 5 seconds..."
-                sleep 5
-              done
-              echo "Kruize database is ready"
+        {{- include "cost-mgmt.initContainer.waitForDb" (list . "kruize") | nindent 8 }}
         {{- if .Values.kruize.partitions.createEnabled }}
         - name: create-kruize-partitions
           image: "{{ .Values.kruize.image.repository }}:{{ .Values.kruize.image.tag }}"

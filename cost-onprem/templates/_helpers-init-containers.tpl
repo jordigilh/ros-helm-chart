@@ -133,3 +133,91 @@ Usage: {{ include "cost-mgmt.initContainer.prepareCABundle" . | nindent 8 }}
     - name: ca-bundle
       mountPath: /ca-output
 {{- end -}}
+
+{{/*
+Wait for Kruize init container
+Usage: {{ include "cost-mgmt.initContainer.waitForKruize" . | nindent 8 }}
+*/}}
+{{- define "cost-mgmt.initContainer.waitForKruize" -}}
+- name: wait-for-kruize
+  image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+  securityContext:
+    runAsNonRoot: true
+    {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
+    runAsUser: 1000
+    {{- end }}
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+  command: ['bash', '-c']
+  args:
+    - |
+      echo "Waiting for Kruize at {{ include "cost-mgmt.fullname" . }}-kruize:{{ .Values.kruize.port }}..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-kruize/{{ .Values.kruize.port }}" 2>/dev/null; do
+        echo "Kruize not ready yet, retrying in 5 seconds..."
+        sleep 5
+      done
+      echo "Kruize is ready"
+{{- end -}}
+
+{{/*
+Wait for Sources API init container
+Usage: {{ include "cost-mgmt.initContainer.waitForSourcesApi" . | nindent 8 }}
+*/}}
+{{- define "cost-mgmt.initContainer.waitForSourcesApi" -}}
+- name: wait-for-sources-api
+  image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+  securityContext:
+    runAsNonRoot: true
+    {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
+    runAsUser: 1000
+    {{- end }}
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+  command: ['bash', '-c']
+  args:
+    - |
+      echo "Waiting for Sources API at {{ include "cost-mgmt.fullname" . }}-sources-api:{{ .Values.sourcesApi.port }}..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-sources-api/{{ .Values.sourcesApi.port }}" 2>/dev/null; do
+        echo "Sources API not ready yet, retrying in 5 seconds..."
+        sleep 5
+      done
+      echo "Sources API is ready"
+{{- end -}}
+
+{{/*
+Wait for Cache (Redis/Valkey) init container
+Usage: {{ include "cost-mgmt.initContainer.waitForCache" . | nindent 8 }}
+*/}}
+{{- define "cost-mgmt.initContainer.waitForCache" -}}
+{{- $cacheName := include "cost-mgmt.cache.name" . -}}
+- name: wait-for-{{ $cacheName }}
+  image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
+  securityContext:
+    runAsNonRoot: true
+    {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
+    runAsUser: 1000
+    {{- end }}
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+  command: ['bash', '-c']
+  args:
+    - |
+      echo "Waiting for {{ $cacheName | title }} at {{ include "cost-mgmt.fullname" . }}-{{ $cacheName }}:6379..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-{{ $cacheName }}/6379" 2>/dev/null; do
+        echo "{{ $cacheName | title }} not ready yet, retrying in 5 seconds..."
+        sleep 5
+      done
+      echo "{{ $cacheName | title }} is ready"
+{{- end -}}

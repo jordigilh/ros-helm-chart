@@ -28,43 +28,11 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        - name: wait-for-db-sources
-          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
-          command: ['bash', '-c']
-          args:
-            - |
-              echo "Waiting for Sources database at {{ include "cost-mgmt.sources.databaseHost" . }}:{{ .Values.database.sources.port }}..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.sources.databaseHost" . }}/{{ .Values.database.sources.port }}" 2>/dev/null; do
-                echo "Database not ready yet, retrying in 5 seconds..."
-                sleep 5
-              done
-              echo "Sources database is ready"
-              echo "Sources database is ready"
+        {{- include "cost-mgmt.initContainer.waitForDb" (list . "sources") | nindent 8 }}
         {{- if .Values.kafka.bootstrapServers }}
-        - name: wait-for-kafka
-          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
-          command: ['bash', '-c']
-          args:
-            - |
-              echo "Waiting for Kafka at {{ include "cost-mgmt.kafka.host" . }}:{{ include "cost-mgmt.kafka.port" . }}..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.kafka.host" . }}/{{ include "cost-mgmt.kafka.port" . }}" 2>/dev/null; do
-                echo "Kafka not ready yet, retrying in 5 seconds..."
-                sleep 5
-              done
-              echo "Kafka is ready"
+        {{- include "cost-mgmt.initContainer.waitForKafka" . | nindent 8 }}
         {{- end }}
-        - name: wait-for-{{ $cacheName }}
-          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
-          command: ['bash', '-c']
-          args:
-            - |
-              echo "Waiting for {{ $cacheName | title }} at {{ include "cost-mgmt.fullname" . }}-{{ $cacheName }}:6379..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-{{ $cacheName }}/6379" 2>/dev/null; do
-                echo "{{ $cacheName | title }} not ready yet, retrying in 5 seconds..."
-                sleep 5
-              done
-              echo "{{ $cacheName | title }} is ready"
-              echo "{{ $cacheName | title }} is ready"
+        {{- include "cost-mgmt.initContainer.waitForCache" . | nindent 8 }}
       containers:
         - name: sources-api
           image: "{{ .Values.sourcesApi.image.repository }}:{{ .Values.sourcesApi.image.tag }}"

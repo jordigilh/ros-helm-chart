@@ -27,54 +27,12 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        - name: wait-for-storage
-          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
-          command: ['bash', '-c']
-          args:
-            {{- if (eq (include "cost-mgmt.platform.isOpenShift" .) "false") }}
-            - |
-              echo "Waiting for MinIO at {{ include "cost-mgmt.fullname" . }}-minio:{{ .Values.minio.ports.api }}..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-minio/{{ .Values.minio.ports.api }}" 2>/dev/null; do
-                echo "MinIO not ready yet, retrying in 5 seconds..."
-                sleep 5
-              done
-              echo "MinIO is ready"
-            {{- else }}
-            - |
-              echo "Waiting for ODF S3 endpoint at {{ include "cost-mgmt.storage.endpoint" . }}:{{ include "cost-mgmt.storage.port" . }}..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.storage.endpoint" . }}/{{ include "cost-mgmt.storage.port" . }}" 2>/dev/null; do
-                echo "ODF S3 endpoint not ready yet, retrying in 5 seconds..."
-                sleep 5
-              done
-              echo "ODF S3 endpoint is ready"
-            {{- end }}
+        {{- include "cost-mgmt.initContainer.waitForStorage" . | nindent 8 }}
         {{- if .Values.kafka.bootstrapServers }}
-        - name: wait-for-kafka
-          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
-          command: ['bash', '-c']
-          args:
-            - |
-              echo "Waiting for Kafka at {{ include "cost-mgmt.kafka.host" . }}:{{ include "cost-mgmt.kafka.port" . }}..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.kafka.host" . }}/{{ include "cost-mgmt.kafka.port" . }}" 2>/dev/null; do
-                echo "Kafka not ready yet, retrying in 5 seconds..."
-                sleep 5
-              done
-              echo "Kafka is ready"
+        {{- include "cost-mgmt.initContainer.waitForKafka" . | nindent 8 }}
         {{- end }}
         {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
-        # Init container to prepare CA bundle for Envoy TLS validation
-        - name: prepare-ca-bundle
-          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
-          command: ['bash', '/scripts/combine-ca.sh']
-          volumeMounts:
-            - name: ca-scripts
-              mountPath: /scripts
-              readOnly: true
-            - name: ca-source
-              mountPath: /ca-source
-              readOnly: true
-            - name: ca-bundle
-              mountPath: /ca-output
+        {{- include "cost-mgmt.initContainer.prepareCABundle" . | nindent 8 }}
         {{- end }}
       serviceAccountName: {{ .Values.ingress.serviceAccount.name }}
       containers:
