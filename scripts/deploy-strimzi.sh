@@ -288,9 +288,37 @@ install_strimzi_operator() {
 
     # Wait for CRDs to be established
     echo_info "Waiting for Strimzi CRDs to be ready..."
-    kubectl wait --for condition=established --timeout=60s crd/kafkas.kafka.strimzi.io 2>/dev/null || true
-    kubectl wait --for condition=established --timeout=60s crd/kafkatopics.kafka.strimzi.io 2>/dev/null || true
-    echo_success "✓ Strimzi CRDs are ready"
+
+    # Wait for kafkas CRD
+    local timeout=120
+    local elapsed=0
+    while ! kubectl get crd kafkas.kafka.strimzi.io >/dev/null 2>&1 && [ $elapsed -lt $timeout ]; do
+        sleep 5
+        elapsed=$((elapsed + 5))
+    done
+
+    if ! kubectl get crd kafkas.kafka.strimzi.io >/dev/null 2>&1; then
+        echo_error "Timeout waiting for kafkas.kafka.strimzi.io CRD to be created"
+        exit 1
+    fi
+
+    kubectl wait --for condition=established --timeout=60s crd/kafkas.kafka.strimzi.io
+    echo_success "✓ Kafka CRD is ready"
+
+    # Wait for kafkatopics CRD
+    elapsed=0
+    while ! kubectl get crd kafkatopics.kafka.strimzi.io >/dev/null 2>&1 && [ $elapsed -lt $timeout ]; do
+        sleep 5
+        elapsed=$((elapsed + 5))
+    done
+
+    if ! kubectl get crd kafkatopics.kafka.strimzi.io >/dev/null 2>&1; then
+        echo_error "Timeout waiting for kafkatopics.kafka.strimzi.io CRD to be created"
+        exit 1
+    fi
+
+    kubectl wait --for condition=established --timeout=60s crd/kafkatopics.kafka.strimzi.io
+    echo_success "✓ KafkaTopic CRD is ready"
 }
 
 # Function to deploy Kafka cluster
