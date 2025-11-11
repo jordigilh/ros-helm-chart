@@ -49,6 +49,7 @@ Selector labels
 {{- define "cost-mgmt.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "cost-mgmt.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/part-of: {{ include "cost-mgmt.name" . }}
 {{- end }}
 
 {{/*

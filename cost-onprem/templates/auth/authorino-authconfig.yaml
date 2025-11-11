@@ -7,7 +7,6 @@ metadata:
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino-authconfig
-    app.kubernetes.io/part-of: cost-onprem
 spec:
   # Define the hosts that this AuthConfig applies to
   # Use wildcard to match all hosts (Envoy is already doing host validation via routes)
