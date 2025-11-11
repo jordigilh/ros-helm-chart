@@ -30,7 +30,7 @@ spec:
         - name: wait-for-minio
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
           securityContext:
-            {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
+            {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 12 }}
           command: ['bash', '-c']
           args:
             - |

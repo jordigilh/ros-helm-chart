@@ -39,7 +39,7 @@ spec:
           imagePullPolicy: {{ .Values.global.pullPolicy }}
           securityContext:
             readOnlyRootFilesystem: true
-            {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
+            {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 12 }}
           ports:
             - name: http-proxy
               containerPort: {{ .Values.jwtAuth.envoy.port }}
@@ -79,7 +79,7 @@ spec:
           image: "{{ .Values.ros.api.image.repository }}:{{ .Values.ros.api.image.tag }}"
           imagePullPolicy: {{ .Values.ros.api.image.pullPolicy | default .Values.global.pullPolicy }}
           securityContext:
-            {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
+            {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 12 }}
           command: ["sh", "-c"]
           args:
             - |
