@@ -15,16 +15,7 @@ Parameters:
 - name: wait-for-db-{{ $dbType }}
   image: "{{ $root.Values.global.initContainers.waitFor.repository }}:{{ $root.Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    runAsNonRoot: true
-    {{- if eq (include "cost-mgmt.platform.isOpenShift" $root) "false" }}
-    runAsUser: 1000
-    {{- end }}
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-        - ALL
-    seccompProfile:
-      type: RuntimeDefault
+    {{- include "cost-mgmt.securityContext.nonRoot" $root | nindent 4 }}
   command: ['bash', '-c']
   args:
     - |
@@ -44,16 +35,7 @@ Usage: {{ include "cost-mgmt.initContainer.waitForKafka" . | nindent 8 }}
 - name: wait-for-kafka
   image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    runAsNonRoot: true
-    {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
-    runAsUser: 1000
-    {{- end }}
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-        - ALL
-    seccompProfile:
-      type: RuntimeDefault
+    {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
   command: ['bash', '-c']
   args:
     - |
@@ -73,16 +55,7 @@ Usage: {{ include "cost-mgmt.initContainer.waitForStorage" . | nindent 8 }}
 - name: wait-for-storage
   image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    runAsNonRoot: true
-    {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
-    runAsUser: 1000
-    {{- end }}
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-        - ALL
-    seccompProfile:
-      type: RuntimeDefault
+    {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
   command: ['bash', '-c']
   args:
     {{- if (eq (include "cost-mgmt.platform.isOpenShift" .) "false") }}
@@ -112,16 +85,7 @@ Usage: {{ include "cost-mgmt.initContainer.prepareCABundle" . | nindent 8 }}
 - name: prepare-ca-bundle
   image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    runAsNonRoot: true
-    {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
-    runAsUser: 1000
-    {{- end }}
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-        - ALL
-    seccompProfile:
-      type: RuntimeDefault
+    {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
   command: ['bash', '/scripts/combine-ca.sh']
   volumeMounts:
     - name: ca-scripts
@@ -142,16 +106,7 @@ Usage: {{ include "cost-mgmt.initContainer.waitForKruize" . | nindent 8 }}
 - name: wait-for-kruize
   image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    runAsNonRoot: true
-    {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
-    runAsUser: 1000
-    {{- end }}
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-        - ALL
-    seccompProfile:
-      type: RuntimeDefault
+    {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
   command: ['bash', '-c']
   args:
     - |
@@ -171,16 +126,7 @@ Usage: {{ include "cost-mgmt.initContainer.waitForSourcesApi" . | nindent 8 }}
 - name: wait-for-sources-api
   image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    runAsNonRoot: true
-    {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
-    runAsUser: 1000
-    {{- end }}
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-        - ALL
-    seccompProfile:
-      type: RuntimeDefault
+    {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
   command: ['bash', '-c']
   args:
     - |
@@ -201,16 +147,7 @@ Usage: {{ include "cost-mgmt.initContainer.waitForCache" . | nindent 8 }}
 - name: wait-for-{{ $cacheName }}
   image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    runAsNonRoot: true
-    {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
-    runAsUser: 1000
-    {{- end }}
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-        - ALL
-    seccompProfile:
-      type: RuntimeDefault
+    {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
   command: ['bash', '-c']
   args:
     - |
