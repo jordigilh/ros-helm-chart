@@ -123,8 +123,8 @@ OpenShift Data Foundation (ODF):
   kubectl get pvc -n {{ $namespace }}
 
 Storage Classes:
-  - PostgreSQL: {{ .Values.database.storageClass | default "ocs-storagecluster-ceph-rbd" }}
-  - Kafka: {{ .Values.kafka.storageClass | default "ocs-storagecluster-ceph-rbd" }}
+  - PostgreSQL: {{ default (include "cost-mgmt.storage.class" .) .Values.database.storageClass }}
+  - Kafka: {{ default (include "cost-mgmt.storage.class" .) .Values.kafka.storageClass }}
 {{- else }}
 
 MinIO Object Storage:
