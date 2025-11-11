@@ -56,16 +56,36 @@ spec:
             sed "s/METASTORE_DB_PASSWORD/$METASTORE_DB_PASSWORD/g" \
               /config-template/metastore-site.xml > /tmp/hive-conf/metastore-site.xml
 
+            # Copy to hive-site.xml as well (schematool looks for this)
+            cp /tmp/hive-conf/metastore-site.xml /tmp/hive-conf/hive-site.xml
+
             # Set Hive to use our config directory
             export HIVE_CONF_DIR=/tmp/hive-conf
+            export HIVE_HOME=/opt/hive
 
-            # Skip schema initialization - schema already exists with 74 tables
-            echo "Skipping schema initialization - Hive tables already exist in PostgreSQL"
-            echo "Schema status: 74 tables present (DBS, TBLS, VERSION, etc.)"
+            # Verify config was created
+            echo "Config file check:"
+            ls -la /tmp/hive-conf/metastore-site.xml
+            echo "PostgreSQL driver check:"
+            grep -A 2 "ConnectionDriverName" /tmp/hive-conf/metastore-site.xml
+
+            # Check if schema is already initialized
+            echo "Checking Hive Metastore schema status..."
+            if /opt/hive/bin/schematool -dbType postgres -info 2>&1 | grep -q "schemaTool completed"; then
+              echo "✅ Schema already initialized - skipping initialization"
+            else
+              echo "⚙️  Initializing Hive Metastore schema..."
+              if /opt/hive/bin/schematool -dbType postgres -initSchema; then
+                echo "✅ Schema initialization successful"
+              else
+                echo "❌ Schema initialization failed"
+                exit 1
+              fi
+            fi
 
             # Start metastore service
             echo "Starting Hive Metastore service..."
-            HIVE_CONF_DIR=/tmp/hive-conf /opt/hive/bin/hive --service metastore
+            /opt/hive/bin/hive --service metastore
 
         ports:
         - name: thrift

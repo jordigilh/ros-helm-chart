@@ -8,8 +8,9 @@ metadata:
     app.kubernetes.io/component: db-migration
   annotations:
     # Helm hooks for automatic database migration
-    # Note: Only pre-upgrade, not pre-install (first install uses entrypoint.sh migrations)
-    helm.sh/hook: pre-upgrade
+    # post-install: Runs after all resources are created (database must exist first)
+    # pre-upgrade: Runs before upgrade to ensure schema is updated before new code runs
+    helm.sh/hook: post-install,pre-upgrade
     helm.sh/hook-weight: "-5"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
@@ -35,10 +36,35 @@ spec:
           - |
             # Run Django database migrations
             echo "Starting database migration..."
-            cd $APP_HOME
+            mkdir -p /tmp/prometheus
+            cd /opt/koku
+
+            # Wait for database to be ready (DNS and connection)
+            echo "Waiting for database to be ready..."
+            max_attempts=30
+            attempt=0
+            while [ $attempt -lt $max_attempts ]; do
+              if python -c "import psycopg2; psycopg2.connect(host='${DATABASE_SERVICE_HOST}', port='${DATABASE_SERVICE_PORT}', dbname='${DATABASE_NAME}', user='${DATABASE_USER}', password='${DATABASE_PASSWORD}')" 2>/dev/null; then
+                echo "✅ Database is ready!"
+                break
+              fi
+              attempt=$((attempt + 1))
+              echo "Waiting for database... (attempt $attempt/$max_attempts)"
+              sleep 2
+            done
+
+            if [ $attempt -eq $max_attempts ]; then
+              echo "❌ Database did not become ready in time"
+              exit 1
+            fi
+
+            # Run migrations
             python koku/manage.py migrate --noinput
             echo "Migration completed successfully"
         env:
+        # Prometheus multiproc directory (required to avoid permission errors)
+        - name: PROMETHEUS_MULTIPROC_DIR
+          value: "/tmp/prometheus"
         # Database connection (required for migrations)
         - name: DATABASE_SERVICE_NAME
           value: "database"
