@@ -516,6 +516,8 @@ Common environment variables for Koku API and Celery
     secretKeyRef:
       name: {{ include "cost-mgmt.koku.django.secretName" . }}
       key: secret-key
+- name: UNLEASH_DISABLED
+  value: {{ .Values.unleashDisabled | quote }}
 {{- end -}}
 
 {{/*

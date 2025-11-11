@@ -75,9 +75,9 @@ costManagement:
     # Image configuration
     image:
       # Use ImageStream for in-cluster builds (set to false to use external registry)
-      useImageStream: true
-      repository: quay.io/cloudservices/koku  # Only used if useImageStream=false
-      tag: "latest"
+      useImageStream: false
+      repository: quay.io/jordigilh/koku  # Image with UNLEASH_DISABLED support
+      tag: "unleash-disabled"
       pullPolicy: IfNotPresent
 
     # API Reads Deployment (read-only queries)
@@ -118,7 +118,7 @@ costManagement:
       # Environment variables
       env:
         API_PATH_PREFIX: /api/cost-management
-        DEVELOPMENT: "False" 
+        DEVELOPMENT: "False"
         GUNICORN_LOG_LEVEL: INFO
         KOKU_LOG_LEVEL: INFO
         DJANGO_LOG_LEVEL: INFO
@@ -212,7 +212,7 @@ costManagement:
       limits:
         cpu: 500m
         memory: 1Gi
-    
+
     # Environment variables for listener (MASU endpoints)
     env:
       MASU: "true"
@@ -225,7 +225,7 @@ costManagement:
   masu:
     enabled: true
     replicas: 1
-    
+
     resources:
       requests:
         cpu: 300m
@@ -233,7 +233,7 @@ costManagement:
       limits:
         cpu: 1000m
         memory: 8Gi
-    
+
     # Environment variables specific to MASU
     env:
       KOKU_LOG_LEVEL: DEBUG
@@ -873,6 +873,15 @@ trino:
           ports:
             - protocol: TCP
               port: 5432
+
+# =============================================================================
+# Unleash Feature Flagging Configuration
+# =============================================================================
+# Unleash is DISABLED for on-prem deployments
+# Koku uses DisabledUnleashClient (zero network calls) when UNLEASH_DISABLED=true
+# This flag is injected into all Koku pods via commonEnv helper
+
+unleashDisabled: true
 
 # ==============================================================================
 # Mock RBAC Service Configuration (Production-Safe RBAC Alternative)
