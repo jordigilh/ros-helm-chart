@@ -107,7 +107,7 @@ ros:
     # Kafka consumer configuration
     kafkaConsumerGroupId: ros-recommendation-poller
     kafkaAutoCommit: false
-    recommendationTopic: ros.kruize.recommendations
+    recommendationTopic: rosocp.kruize.recommendations
 
     # Kruize integration
     kruizeWaitTime: 120
