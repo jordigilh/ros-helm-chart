@@ -1,4 +1,4 @@
-{{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
 {{/*
 Debug ConfigMap to show Keycloak auto-detection results
 This will be created when JWT auth is enabled to help troubleshoot Keycloak detection
@@ -6,10 +6,10 @@ This will be created when JWT auth is enabled to help troubleshoot Keycloak dete
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-keycloak-debug
+  name: {{ include "cost-onprem.fullname" . }}-keycloak-debug
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-install,pre-upgrade
     helm.sh/hook-weight: "-1"
@@ -19,25 +19,25 @@ data:
     # ====================================================
 
     # Detection Results:
-    keycloak_installed: {{ include "cost-mgmt.keycloak.isInstalled" . | quote }}
-    keycloak_namespace: {{ include "cost-mgmt.keycloak.namespace" . | quote }}
-    keycloak_service_name: {{ include "cost-mgmt.keycloak.serviceName" . | quote }}
-    keycloak_auto_url: {{ include "cost-mgmt.keycloak.url" . | quote }}
+    keycloak_installed: {{ include "cost-onprem.keycloak.isInstalled" . | quote }}
+    keycloak_namespace: {{ include "cost-onprem.keycloak.namespace" . | quote }}
+    keycloak_service_name: {{ include "cost-onprem.keycloak.serviceName" . | quote }}
+    keycloak_auto_url: {{ include "cost-onprem.keycloak.url" . | quote }}
 
     # Keycloak CR Information:
-{{ include "cost-mgmt.keycloak.crInfo" . | indent 4 }}
+{{ include "cost-onprem.keycloak.crInfo" . | indent 4 }}
 
     # Computed URLs:
-    issuer_url: {{ include "cost-mgmt.keycloak.issuerUrl" . | quote }}
-    jwks_url: {{ include "cost-mgmt.keycloak.jwksUrl" . | quote }}
+    issuer_url: {{ include "cost-onprem.keycloak.issuerUrl" . | quote }}
+    jwks_url: {{ include "cost-onprem.keycloak.jwksUrl" . | quote }}
 
     # Configuration Used:
-    jwt_auth_enabled: {{ include "cost-mgmt.jwt.shouldEnable" . | quote }}
+    jwt_auth_enabled: {{ include "cost-onprem.jwt.shouldEnable" . | quote }}
     manual_base_url: {{ .Values.jwtAuth.keycloak.url | quote }}
     realm: {{ .Values.jwtAuth.keycloak.realm | quote }}
 
     # Platform Detection:
-    is_openshift: {{ include "cost-mgmt.platform.isOpenShift" . | quote }}
+    is_openshift: {{ include "cost-onprem.platform.isOpenShift" . | quote }}
 
     # JWT Authentication Method:
     auth_method: "Envoy Native JWT Filter"

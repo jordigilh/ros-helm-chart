@@ -1,14 +1,14 @@
-{{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
-{{- $keycloakUrl := .Values.jwtAuth.keycloak.url | default (include "cost-mgmt.keycloak.url" .) }}
-{{- $issuerUrl := include "cost-mgmt.keycloak.issuerUrl" . }}
-{{- $jwksUrl := include "cost-mgmt.keycloak.jwksUrl" . }}
+{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+{{- $keycloakUrl := .Values.jwtAuth.keycloak.url | default (include "cost-onprem.keycloak.url" .) }}
+{{- $issuerUrl := include "cost-onprem.keycloak.issuerUrl" . }}
+{{- $jwksUrl := include "cost-onprem.keycloak.jwksUrl" . }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-envoy-config-ingress
+  name: {{ include "cost-onprem.fullname" . }}-envoy-config-ingress
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: ingress-envoy
 data:
   envoy.yaml: |

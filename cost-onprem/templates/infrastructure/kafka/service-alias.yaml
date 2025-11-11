@@ -5,14 +5,14 @@ metadata:
   name: kafka
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: kafka-alias
 spec:
   type: ExternalName
-  externalName: {{ include "cost-mgmt.kafka.host" . }}
+  externalName: {{ include "cost-onprem.kafka.host" . }}
   ports:
-    - port: {{ include "cost-mgmt.kafka.port" . }}
-      targetPort: {{ include "cost-mgmt.kafka.port" . }}
+    - port: {{ include "cost-onprem.kafka.port" . }}
+      targetPort: {{ include "cost-onprem.kafka.port" . }}
       protocol: TCP
       name: kafka
 {{- end }}

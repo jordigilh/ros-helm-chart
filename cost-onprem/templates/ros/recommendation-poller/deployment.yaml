@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-ros-rec-poller
+  name: {{ include "cost-onprem.fullname" . }}-ros-rec-poller
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: ros-recommendation-poller
     app.kubernetes.io/name: ros-rec-poller
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: ros-recommendation-poller
       app.kubernetes.io/name: ros-rec-poller
   template:
     metadata:
       labels:
-        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: ros-recommendation-poller
         app.kubernetes.io/name: ros-rec-poller
     spec:
@@ -26,11 +26,11 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        {{- include "cost-mgmt.initContainer.waitForDb" (list . "ros") | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForDb" (list . "ros") | nindent 8 }}
         {{- if .Values.kafka.bootstrapServers }}
-        {{- include "cost-mgmt.initContainer.waitForKafka" . | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
         {{- end }}
-        {{- include "cost-mgmt.initContainer.waitForKruize" . | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForKruize" . | nindent 8 }}
       containers:
         - name: ros-rec-poller
           image: "{{ .Values.ros.recommendationPoller.image.repository }}:{{ .Values.ros.recommendationPoller.image.tag }}"
@@ -55,7 +55,7 @@ spec:
             - name: CLOWDER_ENABLED
               value: "false"
             - name: KRUIZE_HOST
-              value: {{ include "cost-mgmt.fullname" . }}-kruize
+              value: {{ include "cost-onprem.fullname" . }}-kruize
             - name: KRUIZE_PORT
               value: {{ .Values.kruize.port | quote }}
             - name: KRUIZE_WAIT_TIME
@@ -65,7 +65,7 @@ spec:
             - name: LOG_LEVEL
               value: {{ .Values.ros.recommendationPoller.logLevel | quote }}
             - name: DB_HOST
-              value: {{ include "cost-mgmt.database.host" (list . "ros") }}
+              value: {{ include "cost-onprem.database.host" (list . "ros") }}
             - name: DB_PORT
               value: {{ .Values.database.ros.port | quote }}
             - name: DB_NAME
@@ -75,14 +75,14 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-mgmt.fullname" . }}-db-credentials
+                  name: {{ include "cost-onprem.fullname" . }}-db-credentials
                   key: ros-password
             - name: DATABASE_URL
-              value: {{ include "cost-mgmt.database.url" . }}
+              value: {{ include "cost-onprem.database.url" . }}
             - name: KAFKA_BOOTSTRAP_SERVERS
-              value: {{ include "cost-mgmt.kafka.bootstrapServers" . | quote }}
+              value: {{ include "cost-onprem.kafka.bootstrapServers" . | quote }}
             - name: KAFKA_SECURITY_PROTOCOL
-              value: {{ include "cost-mgmt.kafka.securityProtocol" . | quote }}
+              value: {{ include "cost-onprem.kafka.securityProtocol" . | quote }}
             - name: KAFKA_CONSUMER_GROUP_ID
               value: {{ .Values.ros.recommendationPoller.kafkaConsumerGroupId | quote }}
             - name: KAFKA_AUTO_COMMIT
@@ -113,4 +113,4 @@ spec:
       volumes:
         - name: cdapp-config
           configMap:
-            name: {{ include "cost-mgmt.fullname" . }}-cdapp-config
+            name: {{ include "cost-onprem.fullname" . }}-cdapp-config

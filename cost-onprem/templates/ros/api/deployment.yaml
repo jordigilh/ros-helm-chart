@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-ros-api
+  name: {{ include "cost-onprem.fullname" . }}-ros-api
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
     app.kubernetes.io/name: ros-api
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: api
       app.kubernetes.io/name: ros-api
   template:
     metadata:
       labels:
-        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: api
         app.kubernetes.io/name: ros-api
     spec:
@@ -27,19 +27,19 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        {{- include "cost-mgmt.initContainer.waitForDb" (list . "ros") | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForDb" (list . "ros") | nindent 8 }}
         {{- if .Values.kafka.bootstrapServers }}
-        {{- include "cost-mgmt.initContainer.waitForKafka" . | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
         {{- end }}
       containers:
-        {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+        {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
         # Envoy sidecar for OAuth2 TokenReview authentication
         - name: envoy-proxy
           image: "{{ .Values.jwtAuth.envoy.image.repository }}:{{ .Values.jwtAuth.envoy.image.tag }}"
           imagePullPolicy: {{ .Values.global.pullPolicy }}
           securityContext:
             readOnlyRootFilesystem: true
-            {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 12 }}
+            {{- include "cost-onprem.securityContext.nonRoot" . | nindent 12 }}
           ports:
             - name: http-proxy
               containerPort: {{ .Values.jwtAuth.envoy.port }}
@@ -79,7 +79,7 @@ spec:
           image: "{{ .Values.ros.api.image.repository }}:{{ .Values.ros.api.image.tag }}"
           imagePullPolicy: {{ .Values.ros.api.image.pullPolicy | default .Values.global.pullPolicy }}
           securityContext:
-            {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 12 }}
+            {{- include "cost-onprem.securityContext.nonRoot" . | nindent 12 }}
           command: ["sh", "-c"]
           args:
             - |
@@ -108,7 +108,7 @@ spec:
             - name: LOG_LEVEL
               value: {{ .Values.ros.api.logLevel | quote }}
             - name: DB_HOST
-              value: {{ include "cost-mgmt.database.host" (list . "ros") }}
+              value: {{ include "cost-onprem.database.host" (list . "ros") }}
             - name: DB_PORT
               value: {{ .Values.database.ros.port | quote }}
             - name: DB_NAME
@@ -118,14 +118,14 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-mgmt.fullname" . }}-db-credentials
+                  name: {{ include "cost-onprem.fullname" . }}-db-credentials
                   key: ros-password
             - name: DATABASE_URL
-              value: {{ include "cost-mgmt.database.url" . }}
+              value: {{ include "cost-onprem.database.url" . }}
             - name: KAFKA_BOOTSTRAP_SERVERS
-              value: {{ include "cost-mgmt.kafka.bootstrapServers" . | quote }}
+              value: {{ include "cost-onprem.kafka.bootstrapServers" . | quote }}
             - name: KAFKA_SECURITY_PROTOCOL
-              value: {{ include "cost-mgmt.kafka.securityProtocol" . | quote }}
+              value: {{ include "cost-onprem.kafka.securityProtocol" . | quote }}
             - name: ID_PROVIDER
               value: {{ .Values.auth.provider | quote }}
           livenessProbe:
@@ -147,11 +147,11 @@ spec:
           resources:
             {{- toYaml .Values.resources.application | nindent 12 }}
       volumes:
-        {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+        {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
         # Envoy configuration volume
         - name: envoy-config
           configMap:
-            name: {{ include "cost-mgmt.fullname" . }}-envoy-config-ros-api
+            name: {{ include "cost-onprem.fullname" . }}-envoy-config-ros-api
             items:
               - key: envoy.yaml
                 path: envoy.yaml

@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-kruize
+  name: {{ include "cost-onprem.fullname" . }}-kruize
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: optimization
     app.kubernetes.io/name: kruize
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: optimization
       app.kubernetes.io/name: kruize
   template:
     metadata:
       labels:
-        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: optimization
         app.kubernetes.io/name: kruize
     spec:
@@ -27,7 +27,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        {{- include "cost-mgmt.initContainer.waitForDb" (list . "kruize") | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForDb" (list . "kruize") | nindent 8 }}
         {{- if .Values.kruize.partitions.createEnabled }}
         - name: create-kruize-partitions
           image: "{{ .Values.kruize.image.repository }}:{{ .Values.kruize.image.tag }}"
@@ -172,4 +172,4 @@ spec:
       volumes:
         - name: kruize-config
           configMap:
-            name: {{ include "cost-mgmt.fullname" . }}-kruize-config
+            name: {{ include "cost-onprem.fullname" . }}-kruize-config

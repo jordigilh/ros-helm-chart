@@ -4,23 +4,23 @@ Reusable Init Container Templates
 
 {{/*
 Wait for Database init container
-Usage: {{ include "cost-mgmt.initContainer.waitForDb" (list . "ros") | nindent 8 }}
+Usage: {{ include "cost-onprem.initContainer.waitForDb" (list . "ros") | nindent 8 }}
 Parameters:
   - Root context (.)
   - Database type ("ros", "kruize", "sources")
 */}}
-{{- define "cost-mgmt.initContainer.waitForDb" -}}
+{{- define "cost-onprem.initContainer.waitForDb" -}}
 {{- $root := index . 0 -}}
 {{- $dbType := index . 1 -}}
 - name: wait-for-db-{{ $dbType }}
   image: "{{ $root.Values.global.initContainers.waitFor.repository }}:{{ $root.Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    {{- include "cost-mgmt.securityContext.nonRoot" $root | nindent 4 }}
+    {{- include "cost-onprem.securityContext.nonRoot" $root | nindent 4 }}
   command: ['bash', '-c']
   args:
     - |
-      echo "Waiting for {{ $dbType }} database at {{ include "cost-mgmt.fullname" $root }}-db-{{ $dbType }}:{{ index $root.Values.database $dbType "port" }}..."
-      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" $root }}-db-{{ $dbType }}/{{ index $root.Values.database $dbType "port" }}" 2>/dev/null; do
+      echo "Waiting for {{ $dbType }} database at {{ include "cost-onprem.fullname" $root }}-db-{{ $dbType }}:{{ index $root.Values.database $dbType "port" }}..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.fullname" $root }}-db-{{ $dbType }}/{{ index $root.Values.database $dbType "port" }}" 2>/dev/null; do
         echo "Database not ready yet, retrying in 5 seconds..."
         sleep 5
       done
@@ -29,18 +29,18 @@ Parameters:
 
 {{/*
 Wait for Kafka init container
-Usage: {{ include "cost-mgmt.initContainer.waitForKafka" . | nindent 8 }}
+Usage: {{ include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
 */}}
-{{- define "cost-mgmt.initContainer.waitForKafka" -}}
+{{- define "cost-onprem.initContainer.waitForKafka" -}}
 - name: wait-for-kafka
   image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
+    {{- include "cost-onprem.securityContext.nonRoot" . | nindent 4 }}
   command: ['bash', '-c']
   args:
     - |
-      echo "Waiting for Kafka at {{ include "cost-mgmt.kafka.host" . }}:{{ include "cost-mgmt.kafka.port" . }}..."
-      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.kafka.host" . }}/{{ include "cost-mgmt.kafka.port" . }}" 2>/dev/null; do
+      echo "Waiting for Kafka at {{ include "cost-onprem.kafka.host" . }}:{{ include "cost-onprem.kafka.port" . }}..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.kafka.host" . }}/{{ include "cost-onprem.kafka.port" . }}" 2>/dev/null; do
         echo "Kafka not ready yet, retrying in 5 seconds..."
         sleep 5
       done
@@ -49,27 +49,27 @@ Usage: {{ include "cost-mgmt.initContainer.waitForKafka" . | nindent 8 }}
 
 {{/*
 Wait for Storage (MinIO/ODF) init container
-Usage: {{ include "cost-mgmt.initContainer.waitForStorage" . | nindent 8 }}
+Usage: {{ include "cost-onprem.initContainer.waitForStorage" . | nindent 8 }}
 */}}
-{{- define "cost-mgmt.initContainer.waitForStorage" -}}
+{{- define "cost-onprem.initContainer.waitForStorage" -}}
 - name: wait-for-storage
   image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
+    {{- include "cost-onprem.securityContext.nonRoot" . | nindent 4 }}
   command: ['bash', '-c']
   args:
-    {{- if (eq (include "cost-mgmt.platform.isOpenShift" .) "false") }}
+    {{- if (eq (include "cost-onprem.platform.isOpenShift" .) "false") }}
     - |
-      echo "Waiting for MinIO at {{ include "cost-mgmt.fullname" . }}-minio:{{ .Values.minio.ports.api }}..."
-      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-minio/{{ .Values.minio.ports.api }}" 2>/dev/null; do
+      echo "Waiting for MinIO at {{ include "cost-onprem.fullname" . }}-minio:{{ .Values.minio.ports.api }}..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.fullname" . }}-minio/{{ .Values.minio.ports.api }}" 2>/dev/null; do
         echo "MinIO not ready yet, retrying in 5 seconds..."
         sleep 5
       done
       echo "MinIO is ready"
     {{- else }}
     - |
-      echo "Waiting for ODF S3 endpoint at {{ include "cost-mgmt.storage.endpoint" . }}:{{ include "cost-mgmt.storage.port" . }}..."
-      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.storage.endpoint" . }}/{{ include "cost-mgmt.storage.port" . }}" 2>/dev/null; do
+      echo "Waiting for ODF S3 endpoint at {{ include "cost-onprem.storage.endpoint" . }}:{{ include "cost-onprem.storage.port" . }}..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.storage.endpoint" . }}/{{ include "cost-onprem.storage.port" . }}" 2>/dev/null; do
         echo "ODF S3 endpoint not ready yet, retrying in 5 seconds..."
         sleep 5
       done
@@ -79,13 +79,13 @@ Usage: {{ include "cost-mgmt.initContainer.waitForStorage" . | nindent 8 }}
 
 {{/*
 Prepare CA bundle init container (for JWT/Keycloak TLS validation)
-Usage: {{ include "cost-mgmt.initContainer.prepareCABundle" . | nindent 8 }}
+Usage: {{ include "cost-onprem.initContainer.prepareCABundle" . | nindent 8 }}
 */}}
-{{- define "cost-mgmt.initContainer.prepareCABundle" -}}
+{{- define "cost-onprem.initContainer.prepareCABundle" -}}
 - name: prepare-ca-bundle
   image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
+    {{- include "cost-onprem.securityContext.nonRoot" . | nindent 4 }}
   command: ['bash', '/scripts/combine-ca.sh']
   volumeMounts:
     - name: ca-scripts
@@ -100,18 +100,18 @@ Usage: {{ include "cost-mgmt.initContainer.prepareCABundle" . | nindent 8 }}
 
 {{/*
 Wait for Kruize init container
-Usage: {{ include "cost-mgmt.initContainer.waitForKruize" . | nindent 8 }}
+Usage: {{ include "cost-onprem.initContainer.waitForKruize" . | nindent 8 }}
 */}}
-{{- define "cost-mgmt.initContainer.waitForKruize" -}}
+{{- define "cost-onprem.initContainer.waitForKruize" -}}
 - name: wait-for-kruize
   image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
+    {{- include "cost-onprem.securityContext.nonRoot" . | nindent 4 }}
   command: ['bash', '-c']
   args:
     - |
-      echo "Waiting for Kruize at {{ include "cost-mgmt.fullname" . }}-kruize:{{ .Values.kruize.port }}..."
-      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-kruize/{{ .Values.kruize.port }}" 2>/dev/null; do
+      echo "Waiting for Kruize at {{ include "cost-onprem.fullname" . }}-kruize:{{ .Values.kruize.port }}..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.fullname" . }}-kruize/{{ .Values.kruize.port }}" 2>/dev/null; do
         echo "Kruize not ready yet, retrying in 5 seconds..."
         sleep 5
       done
@@ -120,18 +120,18 @@ Usage: {{ include "cost-mgmt.initContainer.waitForKruize" . | nindent 8 }}
 
 {{/*
 Wait for Sources API init container
-Usage: {{ include "cost-mgmt.initContainer.waitForSourcesApi" . | nindent 8 }}
+Usage: {{ include "cost-onprem.initContainer.waitForSourcesApi" . | nindent 8 }}
 */}}
-{{- define "cost-mgmt.initContainer.waitForSourcesApi" -}}
+{{- define "cost-onprem.initContainer.waitForSourcesApi" -}}
 - name: wait-for-sources-api
   image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
+    {{- include "cost-onprem.securityContext.nonRoot" . | nindent 4 }}
   command: ['bash', '-c']
   args:
     - |
-      echo "Waiting for Sources API at {{ include "cost-mgmt.fullname" . }}-sources-api:{{ .Values.sourcesApi.port }}..."
-      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-sources-api/{{ .Values.sourcesApi.port }}" 2>/dev/null; do
+      echo "Waiting for Sources API at {{ include "cost-onprem.fullname" . }}-sources-api:{{ .Values.sourcesApi.port }}..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.fullname" . }}-sources-api/{{ .Values.sourcesApi.port }}" 2>/dev/null; do
         echo "Sources API not ready yet, retrying in 5 seconds..."
         sleep 5
       done
@@ -140,19 +140,19 @@ Usage: {{ include "cost-mgmt.initContainer.waitForSourcesApi" . | nindent 8 }}
 
 {{/*
 Wait for Cache (Redis/Valkey) init container
-Usage: {{ include "cost-mgmt.initContainer.waitForCache" . | nindent 8 }}
+Usage: {{ include "cost-onprem.initContainer.waitForCache" . | nindent 8 }}
 */}}
-{{- define "cost-mgmt.initContainer.waitForCache" -}}
-{{- $cacheName := include "cost-mgmt.cache.name" . -}}
+{{- define "cost-onprem.initContainer.waitForCache" -}}
+{{- $cacheName := include "cost-onprem.cache.name" . -}}
 - name: wait-for-{{ $cacheName }}
   image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
   securityContext:
-    {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 4 }}
+    {{- include "cost-onprem.securityContext.nonRoot" . | nindent 4 }}
   command: ['bash', '-c']
   args:
     - |
-      echo "Waiting for {{ $cacheName | title }} at {{ include "cost-mgmt.fullname" . }}-{{ $cacheName }}:6379..."
-      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-{{ $cacheName }}/6379" 2>/dev/null; do
+      echo "Waiting for {{ $cacheName | title }} at {{ include "cost-onprem.fullname" . }}-{{ $cacheName }}:6379..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.fullname" . }}-{{ $cacheName }}/6379" 2>/dev/null; do
         echo "{{ $cacheName | title }} not ready yet, retrying in 5 seconds..."
         sleep 5
       done

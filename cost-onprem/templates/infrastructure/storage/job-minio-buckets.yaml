@@ -1,12 +1,12 @@
-{{- $isOpenShift := eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
+{{- $isOpenShift := eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
 {{- if not $isOpenShift }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-minio-buckets
+  name: {{ include "cost-onprem.fullname" . }}-minio-buckets
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: setup
   annotations:
     "helm.sh/hook": post-install,post-upgrade
@@ -16,26 +16,26 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: setup
     spec:
       restartPolicy: OnFailure
       securityContext:
-        {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
+        {{- if eq (include "cost-onprem.platform.isOpenShift" .) "false" }}
         runAsNonRoot: false
         {{- else }}
-        {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 8 }}
+        {{- include "cost-onprem.securityContext.nonRoot" . | nindent 8 }}
         {{- end }}
       initContainers:
         - name: wait-for-minio
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
           securityContext:
-            {{- include "cost-mgmt.securityContext.nonRoot" . | nindent 12 }}
+            {{- include "cost-onprem.securityContext.nonRoot" . | nindent 12 }}
           command: ['bash', '-c']
           args:
             - |
-              echo "Waiting for MinIO at {{ include "cost-mgmt.fullname" . }}-minio:{{ .Values.minio.ports.api }}..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-mgmt.fullname" . }}-minio/{{ .Values.minio.ports.api }}" 2>/dev/null; do
+              echo "Waiting for MinIO at {{ include "cost-onprem.fullname" . }}-minio:{{ .Values.minio.ports.api }}..."
+              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.fullname" . }}-minio/{{ .Values.minio.ports.api }}" 2>/dev/null; do
                 echo "MinIO not ready yet, retrying in 5 seconds..."
                 sleep 5
               done
@@ -49,7 +49,7 @@ spec:
             capabilities:
               drop:
                 - ALL
-            {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
+            {{- if eq (include "cost-onprem.platform.isOpenShift" .) "false" }}
             runAsUser: 1001
             {{- end }}
             {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
@@ -63,19 +63,19 @@ spec:
             - name: MINIO_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-mgmt.fullname" . }}-storage-credentials
+                  name: {{ include "cost-onprem.fullname" . }}-storage-credentials
                   key: access-key
             - name: MINIO_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-mgmt.fullname" . }}-storage-credentials
+                  name: {{ include "cost-onprem.fullname" . }}-storage-credentials
                   key: secret-key
           command: ["/bin/sh", "-c"]
           args:
             - |
               echo 'Waiting for MinIO to be ready...'
               for i in {1..10}; do
-                if /usr/bin/mc alias set myminio http://{{ include "cost-mgmt.fullname" . }}-minio:{{ .Values.minio.ports.api }} ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY} >/dev/null 2>&1; then
+                if /usr/bin/mc alias set myminio http://{{ include "cost-onprem.fullname" . }}-minio:{{ .Values.minio.ports.api }} ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY} >/dev/null 2>&1; then
                   echo 'MinIO is ready!'
                   break
                 else
@@ -83,7 +83,7 @@ spec:
                   sleep 3
                 fi
               done
-              /usr/bin/mc alias set myminio http://{{ include "cost-mgmt.fullname" . }}-minio:{{ .Values.minio.ports.api }} ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY} || exit 1
+              /usr/bin/mc alias set myminio http://{{ include "cost-onprem.fullname" . }}-minio:{{ .Values.minio.ports.api }} ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY} || exit 1
               {{- range .Values.minio.buckets }}
               /usr/bin/mc mb --ignore-existing myminio/{{ . }}
               /usr/bin/mc anonymous set public myminio/{{ . }}

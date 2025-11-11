@@ -1,16 +1,16 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-ros-api
+  name: {{ include "cost-onprem.fullname" . }}-ros-api
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
     app.kubernetes.io/name: ros-api
 spec:
   type: {{ .Values.service.type }}
   ports:
-    {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+    {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
     # When JWT auth is enabled, expose Envoy proxy port for external traffic
     - port: {{ .Values.ros.api.port }}
       targetPort: http-proxy  # Route to Envoy sidecar
@@ -33,6 +33,6 @@ spec:
       protocol: TCP
       name: metrics
   selector:
-    {{- include "cost-mgmt.selectorLabels" . | nindent 4 }}
+    {{- include "cost-onprem.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: api
     app.kubernetes.io/name: ros-api

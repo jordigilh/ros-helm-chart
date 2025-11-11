@@ -1,13 +1,13 @@
-{{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
 ---
 # Role to allow Authorino to manage AuthConfigs and Secrets in its namespace
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-authorino
+  name: {{ include "cost-onprem.fullname" . }}-authorino
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino-rbac
 rules:
 - apiGroups: ["authorino.kuadrant.io"]
@@ -20,18 +20,18 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-authorino
+  name: {{ include "cost-onprem.fullname" . }}-authorino
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino-rbac
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: {{ include "cost-mgmt.fullname" . }}-authorino
+  name: {{ include "cost-onprem.fullname" . }}-authorino
 subjects:
 - kind: ServiceAccount
-  name: {{ include "cost-mgmt.fullname" . }}-authorino
+  name: {{ include "cost-onprem.fullname" . }}-authorino
   namespace: {{ .Release.Namespace }}
 {{- end }}
 

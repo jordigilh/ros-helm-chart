@@ -2,10 +2,10 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-ros-partition-cleaner
+  name: {{ include "cost-onprem.fullname" . }}-ros-partition-cleaner
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: partition-cleaner
     app.kubernetes.io/name: ros-partition-cleaner
 spec:
@@ -15,7 +15,7 @@ spec:
       template:
         metadata:
           labels:
-            {{- include "cost-mgmt.selectorLabels" . | nindent 12 }}
+            {{- include "cost-onprem.selectorLabels" . | nindent 12 }}
             app.kubernetes.io/component: partition-cleaner
             app.kubernetes.io/name: ros-partition-cleaner
         spec:
@@ -39,7 +39,7 @@ spec:
             - name: LOG_LEVEL
               value: {{ .Values.ros.housekeeper.partitionCleaner.logLevel | quote }}
             - name: DB_HOST
-              value: {{ include "cost-mgmt.database.host" (list . "ros") }}
+              value: {{ include "cost-onprem.database.host" (list . "ros") }}
             - name: DB_PORT
               value: {{ .Values.database.ros.port | quote }}
             - name: DB_NAME
@@ -49,10 +49,10 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-mgmt.fullname" . }}-db-credentials
+                  name: {{ include "cost-onprem.fullname" . }}-db-credentials
                   key: ros-password
             - name: DATABASE_URL
-              value: {{ include "cost-mgmt.database.url" . }}
+              value: {{ include "cost-onprem.database.url" . }}
             resources:
               {{- toYaml .Values.ros.housekeeper.partitionCleaner.resources | nindent 14 }}
 {{- end }}

@@ -4,11 +4,11 @@ Reusable Security Context Templates
 
 {{/*
 Standard non-root security context for containers
-Usage: {{ include "cost-mgmt.securityContext.nonRoot" . | nindent 6 }}
+Usage: {{ include "cost-onprem.securityContext.nonRoot" . | nindent 6 }}
 */}}
-{{- define "cost-mgmt.securityContext.nonRoot" -}}
+{{- define "cost-onprem.securityContext.nonRoot" -}}
 runAsNonRoot: true
-{{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
+{{- if eq (include "cost-onprem.platform.isOpenShift" .) "false" }}
 runAsUser: 1000
 {{- end }}
 allowPrivilegeEscalation: false
@@ -21,11 +21,11 @@ seccompProfile:
 
 {{/*
 Security context with read-only root filesystem
-Usage: {{ include "cost-mgmt.securityContext.readOnlyRoot" . | nindent 6 }}
+Usage: {{ include "cost-onprem.securityContext.readOnlyRoot" . | nindent 6 }}
 */}}
-{{- define "cost-mgmt.securityContext.readOnlyRoot" -}}
+{{- define "cost-onprem.securityContext.readOnlyRoot" -}}
 runAsNonRoot: true
-{{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
+{{- if eq (include "cost-onprem.platform.isOpenShift" .) "false" }}
 runAsUser: 1000
 {{- end }}
 allowPrivilegeEscalation: false
@@ -39,9 +39,9 @@ seccompProfile:
 
 {{/*
 Security context for privileged operations (use sparingly)
-Usage: {{ include "cost-mgmt.securityContext.privileged" . | nindent 6 }}
+Usage: {{ include "cost-onprem.securityContext.privileged" . | nindent 6 }}
 */}}
-{{- define "cost-mgmt.securityContext.privileged" -}}
+{{- define "cost-onprem.securityContext.privileged" -}}
 allowPrivilegeEscalation: true
 capabilities:
   add:

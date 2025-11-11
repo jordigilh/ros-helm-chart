@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-db-ros
+  name: {{ include "cost-onprem.fullname" . }}-db-ros
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: database
     app.kubernetes.io/name: db-ros
 spec:
-  serviceName: {{ include "cost-mgmt.fullname" . }}-db-ros
+  serviceName: {{ include "cost-onprem.fullname" . }}-db-ros
   replicas: 1
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: database
       app.kubernetes.io/name: db-ros
   template:
     metadata:
       labels:
-        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: database
         app.kubernetes.io/name: db-ros
     spec:
@@ -42,7 +42,7 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-mgmt.fullname" . }}-db-credentials
+                  name: {{ include "cost-onprem.fullname" . }}-db-credentials
                   key: ros-password
             - name: PGDATA
               value: "/var/lib/postgresql/data/pgdata"
@@ -76,8 +76,8 @@ spec:
         name: postgres-storage
       spec:
         accessModes: [ "ReadWriteOnce" ]
-        volumeMode: {{ include "cost-mgmt.storage.volumeMode" . }}
-        storageClassName: {{ include "cost-mgmt.storage.databaseClass" . }}
+        volumeMode: {{ include "cost-onprem.storage.volumeMode" . }}
+        storageClassName: {{ include "cost-onprem.storage.databaseClass" . }}
         resources:
           requests:
             storage: {{ .Values.database.ros.storage.size }}

@@ -1,12 +1,12 @@
-{{- $isOpenShift := eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
-{{- $cacheName := include "cost-mgmt.cache.name" . }}
+{{- $isOpenShift := eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
+{{- $cacheName := include "cost-onprem.cache.name" . }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-{{ $cacheName }}
+  name: {{ include "cost-onprem.fullname" . }}-{{ $cacheName }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: cache
     app.kubernetes.io/name: {{ $cacheName }}
 spec:
@@ -17,6 +17,6 @@ spec:
       protocol: TCP
       name: {{ $cacheName }}
   selector:
-    {{- include "cost-mgmt.selectorLabels" . | nindent 4 }}
+    {{- include "cost-onprem.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: cache
     app.kubernetes.io/name: {{ $cacheName }}

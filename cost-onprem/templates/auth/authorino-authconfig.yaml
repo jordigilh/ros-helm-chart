@@ -1,11 +1,11 @@
-{{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
 apiVersion: authorino.kuadrant.io/v1beta3
 kind: AuthConfig
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-ros-api-auth
+  name: {{ include "cost-onprem.fullname" . }}-ros-api-auth
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino-authconfig
 spec:
   # Define the hosts that this AuthConfig applies to

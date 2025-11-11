@@ -1,12 +1,12 @@
-{{- if and .Values.monitoring.enabled (eq (include "cost-mgmt.platform.isOpenShift" .) "true") }}
+{{- if and .Values.monitoring.enabled (eq (include "cost-onprem.platform.isOpenShift" .) "true") }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-ros-api
+  name: {{ include "cost-onprem.fullname" . }}-ros-api
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
     app.kubernetes.io/name: ros-api
 spec:
@@ -15,7 +15,7 @@ spec:
       - {{ .Release.Namespace }}
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: api
       app.kubernetes.io/name: ros-api
   endpoints:
@@ -27,10 +27,10 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-ros-processor
+  name: {{ include "cost-onprem.fullname" . }}-ros-processor
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: processor
     app.kubernetes.io/name: ros-processor
 spec:
@@ -39,7 +39,7 @@ spec:
       - {{ .Release.Namespace }}
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: processor
       app.kubernetes.io/name: ros-processor
   endpoints:
@@ -51,10 +51,10 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-ros-recommendation-poller
+  name: {{ include "cost-onprem.fullname" . }}-ros-recommendation-poller
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: ros-recommendation-poller
     app.kubernetes.io/name: ros-rec-poller
 spec:
@@ -63,7 +63,7 @@ spec:
       - {{ .Release.Namespace }}
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: ros-recommendation-poller
       app.kubernetes.io/name: ros-rec-poller
   endpoints:
@@ -75,10 +75,10 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-kruize
+  name: {{ include "cost-onprem.fullname" . }}-kruize
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: optimization
     app.kubernetes.io/name: kruize
 spec:
@@ -87,7 +87,7 @@ spec:
       - {{ .Release.Namespace }}
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: optimization
       app.kubernetes.io/name: kruize
   endpoints:

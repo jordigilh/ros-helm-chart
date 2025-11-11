@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-ros-processor
+  name: {{ include "cost-onprem.fullname" . }}-ros-processor
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: processor
     app.kubernetes.io/name: ros-processor
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: processor
       app.kubernetes.io/name: ros-processor
   template:
     metadata:
       labels:
-        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: processor
         app.kubernetes.io/name: ros-processor
     spec:
@@ -26,11 +26,11 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        {{- include "cost-mgmt.initContainer.waitForDb" (list . "ros") | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForDb" (list . "ros") | nindent 8 }}
         {{- if .Values.kafka.bootstrapServers }}
-        {{- include "cost-mgmt.initContainer.waitForKafka" . | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
         {{- end }}
-        {{- include "cost-mgmt.initContainer.waitForKruize" . | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForKruize" . | nindent 8 }}
       containers:
         - name: ros-processor
           image: "{{ .Values.ros.processor.image.repository }}:{{ .Values.ros.processor.image.tag }}"
@@ -51,7 +51,7 @@ spec:
             - name: cdapp-config
               mountPath: /cdapp
               readOnly: true
-            {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
+            {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
             - name: service-ca-cert
               mountPath: /etc/ssl/certs/service-ca.crt
               subPath: service-ca.crt
@@ -61,7 +61,7 @@ spec:
             - name: CLOWDER_ENABLED
               value: "false"
             - name: DB_HOST
-              value: {{ include "cost-mgmt.database.host" (list . "ros") }}
+              value: {{ include "cost-onprem.database.host" (list . "ros") }}
             - name: DB_PORT
               value: {{ .Values.database.ros.port | quote }}
             - name: DB_NAME
@@ -71,12 +71,12 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-mgmt.fullname" . }}-db-credentials
+                  name: {{ include "cost-onprem.fullname" . }}-db-credentials
                   key: ros-password
             - name: KAFKA_BOOTSTRAP_SERVERS
-              value: {{ include "cost-mgmt.kafka.bootstrapServers" . | quote }}
+              value: {{ include "cost-onprem.kafka.bootstrapServers" . | quote }}
             - name: KAFKA_SECURITY_PROTOCOL
-              value: {{ include "cost-mgmt.kafka.securityProtocol" . | quote }}
+              value: {{ include "cost-onprem.kafka.securityProtocol" . | quote }}
             - name: KAFKA_CONSUMER_GROUP_ID
               value: {{ .Values.ros.processor.kafkaConsumerGroupId | quote }}
             - name: KAFKA_AUTO_COMMIT
@@ -84,7 +84,7 @@ spec:
             - name: UPLOAD_TOPIC
               value: {{ .Values.ros.processor.uploadTopic | quote }}
             - name: KRUIZE_HOST
-              value: {{ include "cost-mgmt.fullname" . }}-kruize
+              value: {{ include "cost-onprem.fullname" . }}-kruize
             - name: KRUIZE_PORT
               value: {{ .Values.kruize.port | quote }}
             - name: KRUIZE_WAIT_TIME
@@ -94,10 +94,10 @@ spec:
             - name: LOG_LEVEL
               value: {{ .Values.ros.processor.logLevel | quote }}
             - name: SOURCES_API_BASE_URL
-              value: http://{{ include "cost-mgmt.fullname" . }}-sources-api:{{ .Values.sourcesApi.port }}
+              value: http://{{ include "cost-onprem.fullname" . }}-sources-api:{{ .Values.sourcesApi.port }}
             - name: PROMETHEUS_PORT
               value: {{ .Values.ros.processor.metricsPort | quote }}
-            {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
+            {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
             - name: STORAGE_SSL_CA_CERT_PATH
               value: "/etc/ssl/certs/service-ca.crt"
             {{- end }}
@@ -123,11 +123,11 @@ spec:
       volumes:
         - name: cdapp-config
           configMap:
-            name: {{ include "cost-mgmt.fullname" . }}-cdapp-config
-        {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
+            name: {{ include "cost-onprem.fullname" . }}-cdapp-config
+        {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
         - name: service-ca-cert
           configMap:
-            name: {{ include "cost-mgmt.fullname" . }}-service-ca
+            name: {{ include "cost-onprem.fullname" . }}-service-ca
             items:
               - key: service-ca.crt
                 path: service-ca.crt

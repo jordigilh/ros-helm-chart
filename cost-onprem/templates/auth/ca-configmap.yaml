@@ -1,13 +1,13 @@
-{{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
-{{- $keycloakUrl := .Values.jwtAuth.keycloak.url | default (include "cost-mgmt.keycloak.url" .) }}
+{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+{{- $keycloakUrl := .Values.jwtAuth.keycloak.url | default (include "cost-onprem.keycloak.url" .) }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-keycloak-ca
+  name: {{ include "cost-onprem.fullname" . }}-keycloak-ca
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: ca-trust
   annotations:
     # Auto-inject OpenShift service CA if available

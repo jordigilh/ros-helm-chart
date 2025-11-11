@@ -2,9 +2,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-insights-ros-ingress
+  name: {{ include "cost-onprem.fullname" . }}-insights-ros-ingress
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: rbac
 rules:
   # Token validation permissions - only what's needed for authentication

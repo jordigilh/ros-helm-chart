@@ -1,14 +1,14 @@
-{{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
 ---
 # NetworkPolicy to secure metrics endpoints for ROS backend components
 # Allows access only from OpenShift monitoring namespace (Prometheus)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-api-metrics
+  name: {{ include "cost-onprem.fullname" . }}-api-metrics
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: networkpolicy
 spec:
   podSelector:
@@ -38,10 +38,10 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-processor-metrics
+  name: {{ include "cost-onprem.fullname" . }}-processor-metrics
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: networkpolicy
 spec:
   podSelector:
@@ -71,10 +71,10 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-poller-metrics
+  name: {{ include "cost-onprem.fullname" . }}-poller-metrics
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: networkpolicy
 spec:
   podSelector:
@@ -104,10 +104,10 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-api-access
+  name: {{ include "cost-onprem.fullname" . }}-api-access
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: networkpolicy
 spec:
   podSelector:

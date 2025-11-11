@@ -1,11 +1,11 @@
-{{- if eq (include "cost-mgmt.platform.isOpenShift" .) "false" }}
+{{- if eq (include "cost-onprem.platform.isOpenShift" .) "false" }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-kruize
+  name: {{ include "cost-onprem.fullname" . }}-kruize
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: kruize-ingress
   annotations:
     # Kruize-specific rewrite configuration - strips /api/kruize prefix
@@ -38,7 +38,7 @@ spec:
           pathType: ImplementationSpecific
           backend:
             service:
-              name: {{ include "cost-mgmt.fullname" $ }}-kruize
+              name: {{ include "cost-onprem.fullname" $ }}-kruize
               port:
                 number: {{ $.Values.kruize.port }}
     {{- end }}

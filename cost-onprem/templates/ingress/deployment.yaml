@@ -2,23 +2,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-ingress
+  name: {{ include "cost-onprem.fullname" . }}-ingress
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: ingress
     app.kubernetes.io/name: ingress
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: ingress
       app.kubernetes.io/name: ingress
   template:
     metadata:
       labels:
-        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: ingress
         app.kubernetes.io/name: ingress
     spec:
@@ -27,16 +27,16 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        {{- include "cost-mgmt.initContainer.waitForStorage" . | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForStorage" . | nindent 8 }}
         {{- if .Values.kafka.bootstrapServers }}
-        {{- include "cost-mgmt.initContainer.waitForKafka" . | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
         {{- end }}
-        {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
-        {{- include "cost-mgmt.initContainer.prepareCABundle" . | nindent 8 }}
+        {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+        {{- include "cost-onprem.initContainer.prepareCABundle" . | nindent 8 }}
         {{- end }}
       serviceAccountName: {{ .Values.ingress.serviceAccount.name }}
       containers:
-        {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+        {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
         # Envoy sidecar for native JWT authentication
         - name: envoy-proxy
           image: "{{ .Values.jwtAuth.envoy.image.repository }}:{{ .Values.jwtAuth.envoy.image.tag }}"
@@ -84,12 +84,12 @@ spec:
           imagePullPolicy: {{ .Values.ingress.image.pullPolicy | default .Values.global.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }} 8081 {{- else }} {{ .Values.ingress.port }} {{- end }}
+              containerPort: {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }} 8081 {{- else }} {{ .Values.ingress.port }} {{- end }}
               protocol: TCP
           env:
             # Server configuration
             - name: SERVER_PORT
-              value: {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }} "8081" {{- else }} {{ .Values.ingress.server.port | quote }} {{- end }}
+              value: {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }} "8081" {{- else }} {{ .Values.ingress.server.port | quote }} {{- end }}
             - name: SERVER_READ_TIMEOUT
               value: {{ .Values.ingress.server.readTimeout | quote }}
             - name: SERVER_WRITE_TIMEOUT
@@ -109,41 +109,41 @@ spec:
             - name: UPLOAD_ALLOWED_TYPES
               value: {{ join "," .Values.ingress.upload.allowedTypes | quote }}
             - name: UPLOAD_REQUIRE_AUTH
-              value: {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }} "true" {{- else }} {{ .Values.ingress.upload.requireAuth | quote }} {{- end }}
+              value: {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }} "true" {{- else }} {{ .Values.ingress.upload.requireAuth | quote }} {{- end }}
 
             # Storage configuration
             - name: STORAGE_ENDPOINT
-              value: {{ include "cost-mgmt.storage.endpoint" . }}
+              value: {{ include "cost-onprem.storage.endpoint" . }}
             - name: STORAGE_BUCKET
-              value: {{ include "cost-mgmt.storage.bucket" . | quote }}
+              value: {{ include "cost-onprem.storage.bucket" . | quote }}
             - name: STORAGE_USE_SSL
-              value: {{ include "cost-mgmt.storage.useSSL" . | quote }}
+              value: {{ include "cost-onprem.storage.useSSL" . | quote }}
             - name: STORAGE_URL_EXPIRATION
               value: {{ .Values.ingress.storage.urlExpiration | quote }}
             - name: STORAGE_PATH_PREFIX
               value: {{ .Values.ingress.storage.pathPrefix | quote }}
-            {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
+            {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
             - name: STORAGE_SSL_CA_CERT_PATH
               value: "/etc/ssl/certs/service-ca.crt"
             {{- end }}
             - name: STORAGE_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-mgmt.fullname" . }}-storage-credentials
+                  name: {{ include "cost-onprem.fullname" . }}-storage-credentials
                   key: access-key
             - name: STORAGE_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-mgmt.fullname" . }}-storage-credentials
+                  name: {{ include "cost-onprem.fullname" . }}-storage-credentials
                   key: secret-key
 
             # Kafka configuration
             - name: KAFKA_BROKERS
-              value: {{ include "cost-mgmt.kafka.bootstrapServers" . | quote }}
+              value: {{ include "cost-onprem.kafka.bootstrapServers" . | quote }}
             - name: KAFKA_ROS_TOPIC
               value: {{ .Values.ingress.kafka.topic | quote }}
             - name: KAFKA_SECURITY_PROTOCOL
-              value: {{ include "cost-mgmt.kafka.securityProtocol" . | quote }}
+              value: {{ include "cost-onprem.kafka.securityProtocol" . | quote }}
             - name: KAFKA_CLIENT_ID
               value: {{ .Values.ingress.kafka.clientId | quote }}
             - name: KAFKA_BATCH_SIZE
@@ -153,9 +153,9 @@ spec:
 
             # Authentication configuration (only available on OpenShift with Keycloak)
             - name: AUTH_ENABLED
-              {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+              {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
               value: "true"  # Auth is enabled via Envoy native JWT, service trusts X-ROS headers
-              {{- else if eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
+              {{- else if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
               value: {{ .Values.ingress.auth.enabled | quote }}
               {{- else }}
               value: "false"
@@ -179,7 +179,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }} 8081 {{- else }} {{ .Values.ingress.port }} {{- end }}
+              port: {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }} 8081 {{- else }} {{ .Values.ingress.port }} {{- end }}
             initialDelaySeconds: {{ .Values.probes.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
@@ -187,14 +187,14 @@ spec:
           readinessProbe:
             httpGet:
               path: /ready
-              port: {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }} 8081 {{- else }} {{ .Values.ingress.port }} {{- end }}
+              port: {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }} 8081 {{- else }} {{ .Values.ingress.port }} {{- end }}
             initialDelaySeconds: 10
             periodSeconds: {{ .Values.probes.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
             failureThreshold: {{ .Values.probes.failureThreshold }}
           resources:
             {{- toYaml .Values.resources.application | nindent 12 }}
-          {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
+          {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
           volumeMounts:
             - name: service-ca-cert
               mountPath: /etc/ssl/certs/service-ca.crt
@@ -202,32 +202,32 @@ spec:
               readOnly: true
           {{- end }}
       volumes:
-        {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+        {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
         # Envoy configuration volume
         - name: envoy-config
           configMap:
-            name: {{ include "cost-mgmt.fullname" . }}-envoy-config-ingress
+            name: {{ include "cost-onprem.fullname" . }}-envoy-config-ingress
             items:
               - key: envoy.yaml
                 path: envoy.yaml
         # CA bundle preparation volumes
         - name: ca-scripts
           configMap:
-            name: {{ include "cost-mgmt.fullname" . }}-keycloak-ca
+            name: {{ include "cost-onprem.fullname" . }}-keycloak-ca
             items:
               - key: combine-ca.sh
                 path: combine-ca.sh
                 mode: 0755
         - name: ca-source
           configMap:
-            name: {{ include "cost-mgmt.fullname" . }}-keycloak-ca
+            name: {{ include "cost-onprem.fullname" . }}-keycloak-ca
         - name: ca-bundle
           emptyDir: {}
         {{- end }}
-        {{- if eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
+        {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
         - name: service-ca-cert
           configMap:
-            name: {{ include "cost-mgmt.fullname" . }}-service-ca
+            name: {{ include "cost-onprem.fullname" . }}-service-ca
             items:
               - key: service-ca.crt
                 path: service-ca.crt

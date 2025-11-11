@@ -9,10 +9,10 @@ When Cost Management service is implemented, uncomment this template.
 {{/* apiVersion: apps/v1 */}}
 {{/* kind: StatefulSet */}}
 {{/* metadata: */}}
-{{/*   name: {{ include "cost-mgmt.fullname" . }}-db-cost-mgmt */}}
+{{/*   name: {{ include "cost-onprem.fullname" . }}-db-cost-mgmt */}}
 {{/*   namespace: {{ .Release.Namespace }} */}}
 {{/*   labels: */}}
-{{/*     {{- include "cost-mgmt.labels" . | nindent 4 }} */}}
+{{/*     {{- include "cost-onprem.labels" . | nindent 4 }} */}}
 {{/*     app.kubernetes.io/component: database */}}
 {{/*     app.kubernetes.io/name: db-cost-mgmt */}}
 {{/* ... */}}

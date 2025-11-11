@@ -1,27 +1,27 @@
-{{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-authorino
+  name: {{ include "cost-onprem.fullname" . }}-authorino
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: authorino
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: authorino
   template:
     metadata:
       labels:
-        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: authorino
         authorino-resource: authorino
         control-plane: controller-manager
     spec:
-      serviceAccountName: {{ include "cost-mgmt.fullname" . }}-authorino
+      serviceAccountName: {{ include "cost-onprem.fullname" . }}-authorino
       containers:
       - name: authorino
         image: {{ .Values.jwtAuth.authorino.image.repository }}@{{ .Values.jwtAuth.authorino.image.digest }}
@@ -75,7 +75,7 @@ spec:
       volumes:
       - name: tls-cert
         secret:
-          secretName: {{ include "cost-mgmt.fullname" . }}-authorino-server-cert
+          secretName: {{ include "cost-onprem.fullname" . }}-authorino-server-cert
           defaultMode: 420
 {{- end }}
 

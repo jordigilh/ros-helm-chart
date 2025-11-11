@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-cdapp-config
+  name: {{ include "cost-onprem.fullname" . }}-cdapp-config
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
 data:
   cdappconfig.json: |
     {
       "database": {
         "adminPassword": "{{ .Values.database.ros.password }}",
         "adminUsername": "{{ .Values.database.ros.user }}",
-        "hostname": "{{ include "cost-mgmt.database.host" (list . "ros") }}",
+        "hostname": "{{ include "cost-onprem.database.host" (list . "ros") }}",
         "name": "{{ .Values.database.ros.name }}",
         "password": "{{ .Values.database.ros.password }}",
         "port": {{ .Values.database.ros.port }},
@@ -21,8 +21,8 @@ data:
       "kafka": {
         "brokers": [
           {
-            "hostname": "{{ include "cost-mgmt.kafka.host" . }}",
-            "port": {{ include "cost-mgmt.kafka.port" . }}
+            "hostname": "{{ include "cost-onprem.kafka.host" . }}",
+            "port": {{ include "cost-onprem.kafka.port" . }}
           }
         ],
         "topics": [

@@ -1,25 +1,25 @@
-{{- $isOpenShift := eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
-{{- $cacheName := include "cost-mgmt.cache.name" . }}
+{{- $isOpenShift := eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
+{{- $cacheName := include "cost-onprem.cache.name" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-sources-api
+  name: {{ include "cost-onprem.fullname" . }}-sources-api
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
     app.kubernetes.io/name: sources-api
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: api
       app.kubernetes.io/name: sources-api
   template:
     metadata:
       labels:
-        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: api
         app.kubernetes.io/name: sources-api
     spec:
@@ -28,11 +28,11 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        {{- include "cost-mgmt.initContainer.waitForDb" (list . "sources") | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForDb" (list . "sources") | nindent 8 }}
         {{- if .Values.kafka.bootstrapServers }}
-        {{- include "cost-mgmt.initContainer.waitForKafka" . | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
         {{- end }}
-        {{- include "cost-mgmt.initContainer.waitForCache" . | nindent 8 }}
+        {{- include "cost-onprem.initContainer.waitForCache" . | nindent 8 }}
       containers:
         - name: sources-api
           image: "{{ .Values.sourcesApi.image.repository }}:{{ .Values.sourcesApi.image.tag }}"
@@ -47,10 +47,10 @@ spec:
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-mgmt.fullname" . }}-db-credentials
+                  name: {{ include "cost-onprem.fullname" . }}-db-credentials
                   key: sources-password
             - name: DATABASE_HOST
-              value: {{ include "cost-mgmt.sources.databaseHost" . }}
+              value: {{ include "cost-onprem.sources.databaseHost" . }}
             - name: DATABASE_PORT
               value: {{ .Values.database.sources.port | quote }}
             - name: DATABASE_NAME
@@ -58,19 +58,19 @@ spec:
             - name: LOG_LEVEL
               value: {{ .Values.sourcesApi.logLevel | quote }}
             - name: REDIS_CACHE_HOST
-              value: {{ include "cost-mgmt.fullname" . }}-{{ $cacheName }}
+              value: {{ include "cost-onprem.fullname" . }}-{{ $cacheName }}
             - name: REDIS_CACHE_PORT
               value: "6379"
             - name: BYPASS_RBAC
               value: {{ .Values.sourcesApi.bypassRbac | quote }}
             - name: QUEUE_HOST
-              value: {{ include "cost-mgmt.kafka.host" . }}
+              value: {{ include "cost-onprem.kafka.host" . }}
             - name: QUEUE_PORT
-              value: {{ include "cost-mgmt.kafka.port" . | quote }}
+              value: {{ include "cost-onprem.kafka.port" . | quote }}
             - name: ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-mgmt.fullname" . }}-sources-credentials
+                  name: {{ include "cost-onprem.fullname" . }}-sources-credentials
                   key: encryption-key
             - name: SOURCES_ENV
               value: {{ .Values.sourcesApi.sourcesEnv | quote }}

@@ -1,26 +1,26 @@
-{{- $isOpenShift := eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
+{{- $isOpenShift := eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
 {{- if not $isOpenShift }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-minio
+  name: {{ include "cost-onprem.fullname" . }}-minio
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: storage
     app.kubernetes.io/name: minio
 spec:
-  serviceName: {{ include "cost-mgmt.fullname" . }}-minio
+  serviceName: {{ include "cost-onprem.fullname" . }}-minio
   replicas: 1
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: storage
       app.kubernetes.io/name: minio
   template:
     metadata:
       labels:
-        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: storage
         app.kubernetes.io/name: minio
     spec:
@@ -51,12 +51,12 @@ spec:
             - name: MINIO_ROOT_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-mgmt.fullname" . }}-storage-credentials
+                  name: {{ include "cost-onprem.fullname" . }}-storage-credentials
                   key: access-key
             - name: MINIO_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-mgmt.fullname" . }}-storage-credentials
+                  name: {{ include "cost-onprem.fullname" . }}-storage-credentials
                   key: secret-key
           volumeMounts:
             - name: minio-storage
@@ -84,8 +84,8 @@ spec:
         name: minio-storage
       spec:
         accessModes: [ "ReadWriteOnce" ]
-        volumeMode: {{ include "cost-mgmt.storage.volumeMode" . }}
-        storageClassName: {{ include "cost-mgmt.storage.class" . }}
+        volumeMode: {{ include "cost-onprem.storage.volumeMode" . }}
+        storageClassName: {{ include "cost-onprem.storage.class" . }}
         resources:
           requests:
             storage: {{ .Values.minio.storage.size }}

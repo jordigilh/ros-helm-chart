@@ -2,16 +2,16 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-ingress
+  name: {{ include "cost-onprem.fullname" . }}-ingress
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: ingress
     app.kubernetes.io/name: ingress
 spec:
   type: {{ .Values.service.type }}
   ports:
-    {{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+    {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
     # When JWT auth is enabled, expose Envoy proxy port for external traffic
     - port: {{ .Values.ingress.port }}
       targetPort: http-proxy  # Route to Envoy sidecar
@@ -30,6 +30,6 @@ spec:
       name: http
     {{- end }}
   selector:
-    {{- include "cost-mgmt.selectorLabels" . | nindent 4 }}
+    {{- include "cost-onprem.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: ingress
     app.kubernetes.io/name: ingress

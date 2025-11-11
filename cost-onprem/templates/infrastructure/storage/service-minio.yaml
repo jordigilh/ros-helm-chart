@@ -1,12 +1,12 @@
-{{- $isOpenShift := eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
+{{- $isOpenShift := eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
 {{- if not $isOpenShift }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-minio
+  name: {{ include "cost-onprem.fullname" . }}-minio
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: storage
     app.kubernetes.io/name: minio
 spec:
@@ -21,7 +21,7 @@ spec:
       protocol: TCP
       name: console
   selector:
-    {{- include "cost-mgmt.selectorLabels" . | nindent 4 }}
+    {{- include "cost-onprem.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: storage
     app.kubernetes.io/name: minio
 {{- end }}

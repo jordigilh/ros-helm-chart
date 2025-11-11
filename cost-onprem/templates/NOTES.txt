@@ -1,6 +1,6 @@
-{{- $fullName := include "cost-mgmt.fullname" . -}}
+{{- $fullName := include "cost-onprem.fullname" . -}}
 {{- $namespace := .Release.Namespace -}}
-{{- $isOpenShift := eq (include "cost-mgmt.platform.isOpenShift" .) "true" -}}
+{{- $isOpenShift := eq (include "cost-onprem.platform.isOpenShift" .) "true" -}}
 
 🎉 Cost Management On-Premise {{ .Chart.Version }} has been deployed successfully!
 
@@ -73,7 +73,7 @@ Access:
 🔐 AUTHENTICATION
 
 {{- if $isOpenShift }}
-{{- if eq (include "cost-mgmt.jwt.shouldEnable" .) "true" }}
+{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
 
 ✅ JWT Authentication: ENABLED
 
@@ -123,8 +123,8 @@ OpenShift Data Foundation (ODF):
   kubectl get pvc -n {{ $namespace }}
 
 Storage Classes:
-  - PostgreSQL: {{ default (include "cost-mgmt.storage.class" .) .Values.database.storageClass }}
-  - Kafka: {{ default (include "cost-mgmt.storage.class" .) .Values.kafka.storageClass }}
+  - PostgreSQL: {{ default (include "cost-onprem.storage.class" .) .Values.database.storageClass }}
+  - Kafka: {{ default (include "cost-onprem.storage.class" .) .Values.kafka.storageClass }}
 {{- else }}
 
 MinIO Object Storage:

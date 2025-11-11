@@ -2,10 +2,10 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-kruize-delete-partitions
+  name: {{ include "cost-onprem.fullname" . }}-kruize-delete-partitions
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: maintenance
     app.kubernetes.io/name: kruize-partitions
 spec:
@@ -18,7 +18,7 @@ spec:
       template:
         metadata:
           labels:
-            {{- include "cost-mgmt.selectorLabels" . | nindent 12 }}
+            {{- include "cost-onprem.selectorLabels" . | nindent 12 }}
             app.kubernetes.io/component: maintenance
             app.kubernetes.io/name: kruize-partitions
         spec:
@@ -92,5 +92,5 @@ spec:
           volumes:
             - name: kruize-config
               configMap:
-                name: {{ include "cost-mgmt.fullname" . }}-kruize-config
+                name: {{ include "cost-onprem.fullname" . }}-kruize-config
 {{- end }}

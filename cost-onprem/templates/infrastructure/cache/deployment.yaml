@@ -1,27 +1,27 @@
-{{- $isOpenShift := eq (include "cost-mgmt.platform.isOpenShift" .) "true" }}
-{{- $cacheName := include "cost-mgmt.cache.name" . }}
+{{- $isOpenShift := eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
+{{- $cacheName := include "cost-onprem.cache.name" . }}
 {{- $cacheConfig := ternary .Values.valkey .Values.redis $isOpenShift }}
-{{- $cacheCliCommand := include "cost-mgmt.cache.cli" . }}
+{{- $cacheCliCommand := include "cost-onprem.cache.cli" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-mgmt.fullname" . }}-{{ $cacheName }}
+  name: {{ include "cost-onprem.fullname" . }}-{{ $cacheName }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: cache
     app.kubernetes.io/name: {{ $cacheName }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "cost-mgmt.selectorLabels" . | nindent 6 }}
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: cache
       app.kubernetes.io/name: {{ $cacheName }}
   template:
     metadata:
       labels:
-        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: cache
         app.kubernetes.io/name: {{ $cacheName }}
     spec:
