@@ -365,7 +365,7 @@ curl -v -H "Authorization: Bearer $TOKEN" \
 | **Communication** | N/A (local validation) | Envoy ↔ Authorino via gRPC with mTLS |
 | **org_id Source** | JWT claims (`ros_organization`) | Hardcoded to "1" in Lua filter |
 | **account_number Source** | JWT claims (`ros_account`) | Hardcoded to "1" in Lua filter |
-| **External Dependency** | Requires Keycloak (RHBK) | Requires Authorino Operator |
+| **External Dependency** | Requires Keycloak (RHBK) | Requires Authorino (embedded in chart) |
 | **Token Format** | JWT (3-part token) | Opaque Kubernetes token |
 | **Validation Speed** | Fast (local JWKS cache) | Network call (Envoy→Authorino→K8s API) |
 | **RBAC Requirements** | None for Envoy | Authorino needs TokenReview permissions |

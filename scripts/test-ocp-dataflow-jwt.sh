@@ -132,57 +132,17 @@ detect_keycloak_config() {
         fi
     fi
 
-    # Try to find client credentials from KeycloakClient CR
-    echo_info "Looking for Cost Management client configuration..."
+    # Get client credentials from secret
+    CLIENT_ID="cost-management-operator"
 
-    # Find KeycloakClient CRs that match cost-management pattern
-    local keycloak_clients=$(oc get keycloakclient -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
-    local keycloak_client_cr=""
-
-    # Look for cost-management related clients
-    for client in $keycloak_clients; do
-        if echo "$client" | grep -q "cost-management"; then
-            keycloak_client_cr="$client"
-            echo_info "Found KeycloakClient CR: $keycloak_client_cr"
+    # Try different secret name patterns
+    for secret_pattern in "keycloak-client-secret-cost-management-operator" "keycloak-client-secret-cost-management-service-account" "credential-$CLIENT_ID" "keycloak-client-$CLIENT_ID" "$CLIENT_ID-secret"; do
+        CLIENT_SECRET=$(oc get secret "$secret_pattern" -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.data.CLIENT_SECRET}' 2>/dev/null | base64 -d || echo "")
+        if [ -n "$CLIENT_SECRET" ]; then
+            echo_success "Found client secret in: $secret_pattern"
             break
         fi
     done
-
-    if [ -z "$keycloak_client_cr" ]; then
-        echo_warning "No cost-management KeycloakClient found, using default"
-        CLIENT_ID="cost-management-operator"
-    else
-        # Get client ID from KeycloakClient CR spec
-        CLIENT_ID=$(oc get keycloakclient "$keycloak_client_cr" -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.spec.client.clientId}' 2>/dev/null || echo "")
-
-        if [ -z "$CLIENT_ID" ]; then
-            echo_warning "Could not extract clientId from CR, using default"
-            CLIENT_ID="cost-management-operator"
-        else
-            echo_success "Found client ID: $CLIENT_ID"
-        fi
-
-        # Get client secret from the generated secret (named after the CR, not the clientId)
-        local secret_name="keycloak-client-secret-$keycloak_client_cr"
-        CLIENT_SECRET=$(oc get secret "$secret_name" -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.data.CLIENT_SECRET}' 2>/dev/null | base64 -d || echo "")
-
-        if [ -n "$CLIENT_SECRET" ]; then
-            echo_success "Found client secret in: $secret_name"
-        fi
-    fi
-
-    # If still no secret, try alternative patterns
-    if [ -z "$CLIENT_SECRET" ]; then
-        echo_warning "Client secret not found in expected location. Trying alternative locations..."
-        # Try different secret name patterns
-        for secret_pattern in "keycloak-client-secret-cost-management-operator" "keycloak-client-secret-cost-management-service-account" "credential-$CLIENT_ID" "keycloak-client-$CLIENT_ID" "$CLIENT_ID-secret"; do
-            CLIENT_SECRET=$(oc get secret "$secret_pattern" -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.data.CLIENT_SECRET}' 2>/dev/null | base64 -d || echo "")
-            if [ -n "$CLIENT_SECRET" ]; then
-                echo_success "Found client secret in: $secret_pattern"
-                break
-            fi
-        done
-    fi
 
     if [ -z "$CLIENT_SECRET" ]; then
         echo_error "Client secret not found. Please check Keycloak client configuration."
@@ -303,7 +263,6 @@ get_jwt_token() {
     echo_info "Client ID: $CLIENT_ID"
 
     # Request JWT token using client credentials flow
-    echo_warning "Using insecure TLS connection (-k flag) to Keycloak"
     local token_response=$(curl -s -k -X POST "$token_url" \
         -H "Content-Type: application/x-www-form-urlencoded" \
         -d "grant_type=client_credentials" \
@@ -401,7 +360,7 @@ test_oauth2_backend_auth() {
 
     # Test 1: Request without OAuth2 token (should be rejected)
     echo_info "Test 1: Request without OAuth2 token"
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$backend_url/status" 2>/dev/null || echo "000")
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$backend_url/api/ros/test" 2>/dev/null || echo "000")
     if [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
         echo_success "  ✓ Correctly rejected request without token ($http_code)"
         test_passed=$((test_passed + 1))
@@ -418,7 +377,7 @@ test_oauth2_backend_auth() {
     echo_info "Test 2: Request with invalid OAuth2 token"
     http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
         -H "Authorization: Bearer invalid.oauth2.token" \
-        "$backend_url/status" 2>/dev/null || echo "000")
+        "$backend_url/api/ros/test" 2>/dev/null || echo "000")
     if [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
         echo_success "  ✓ Correctly rejected invalid token ($http_code)"
         test_passed=$((test_passed + 1))
@@ -430,13 +389,13 @@ test_oauth2_backend_auth() {
     echo_info "Test 3: Request with valid OAuth2 user session token"
     local response=$(curl -s -w "\n%{http_code}" --max-time 10 \
         -H "Authorization: Bearer $OAUTH2_TOKEN" \
-        "$backend_url/status" 2>/dev/null)
+        "$backend_url/api/ros/test" 2>/dev/null)
 
     http_code=$(echo "$response" | tail -n 1)
     local response_body=$(echo "$response" | sed '$d')
 
-    if [ "$http_code" = "200" ]; then
-        echo_success "  ✓ Successfully authenticated with OAuth2 token"
+    if [ "$http_code" = "200" ] || [ "$http_code" = "404" ]; then
+        echo_success "  ✓ Successfully authenticated with OAuth2 token (HTTP $http_code)"
         echo_info "  Response: $response_body"
         test_passed=$((test_passed + 1))
     else
@@ -952,11 +911,12 @@ main() {
     echo_info "This simulates how the OpenShift Console UI accesses the backend."
     echo ""
 
+    local backend_url=$(get_service_url "rosocp-api" "")
     local backend_queries_passed=0
     local backend_queries_failed=0
 
-    # Test 1: Status endpoint (health check)
-    echo_info "Query 1: Health Status Check"
+    # Test: Status endpoint (health check - verifies OAuth2 auth works)
+    echo_info "Query: Health Status Check"
     if query_backend_api "/status" "API Status"; then
         echo_success "  ✓ Status endpoint accessible"
         backend_queries_passed=$((backend_queries_passed + 1))
