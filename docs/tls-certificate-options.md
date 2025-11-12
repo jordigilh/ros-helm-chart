@@ -4,7 +4,7 @@ This document explains the different options for configuring TLS certificates fo
 
 ## Overview
 
-The ROS-OCP Helm chart needs to validate JWT tokens from Keycloak. This requires trusting Keycloak's TLS certificate. There are multiple ways to configure this.
+The Cost Management On-Premise Helm chart needs to validate JWT tokens from Keycloak. This requires trusting Keycloak's TLS certificate. There are multiple ways to configure this.
 
 ## Option 1: Automatic Certificate Fetching
 
@@ -188,7 +188,7 @@ jwt_auth:
 Check the init container logs:
 
 ```bash
-kubectl logs -n ros-ocp <pod-name> -c prepare-ca-bundle
+kubectl logs -n cost-onprem <pod-name> -c prepare-ca-bundle
 ```
 
 You'll see one of:
@@ -216,7 +216,7 @@ You'll see one of:
 
 ```bash
 # Test from inside a pod
-kubectl exec -n ros-ocp <pod-name> -c envoy-proxy -- \
+kubectl exec -n cost-onprem <pod-name> -c envoy-proxy -- \
   curl -s http://localhost:9901/clusters | grep keycloak_jwks
 
 # Check for:

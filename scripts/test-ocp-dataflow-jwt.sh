@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ROS-OCP OpenShift Data Flow Test Script with OAuth2 TokenReview Authentication
+# ROS OpenShift Data Flow Test Script with OAuth2 TokenReview Authentication
 # This script tests the complete data flow using the user's session token
 # Ingress: Uses Keycloak JWT (external uploads from Cost Management Operator)
 # Backend API: Uses OAuth2 TokenReview (user access from OpenShift Console UI)
@@ -27,8 +27,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-NAMESPACE=${NAMESPACE:-ros-ocp}
-HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-ros-ocp}
+NAMESPACE=${NAMESPACE:-cost-onprem}
+HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-cost-onprem}
 KEYCLOAK_NAMESPACE=${KEYCLOAK_NAMESPACE:-keycloak}
 
 # Authentication variables
@@ -41,7 +41,6 @@ CLIENT_SECRET=""
 
 # OAuth2 for backend API (cluster-internal access via user's session token)
 OAUTH2_TOKEN=""
-OAUTH2_TOKEN_EXPIRY=""
 PORT_FORWARD_PID=""
 
 # Check prerequisites
@@ -352,7 +351,7 @@ test_oauth2_backend_auth() {
     fi
 
     # Get backend API URL
-    local backend_url=$(get_service_url "rosocp-api" "")
+    local backend_url=$(get_service_url "ros-api" "")
     echo_info "Testing backend API at: $backend_url"
 
     local test_passed=0
@@ -360,7 +359,8 @@ test_oauth2_backend_auth() {
 
     # Test 1: Request without OAuth2 token (should be rejected)
     echo_info "Test 1: Request without OAuth2 token"
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$backend_url/api/ros/test" 2>/dev/null || echo "000")
+    local recommendations_endpoint="$backend_url/api/cost-management/v1/recommendations/openshift"
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$recommendations_endpoint" 2>/dev/null || echo "000")
     if [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
         echo_success "  ✓ Correctly rejected request without token ($http_code)"
         test_passed=$((test_passed + 1))
@@ -377,7 +377,7 @@ test_oauth2_backend_auth() {
     echo_info "Test 2: Request with invalid OAuth2 token"
     http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
         -H "Authorization: Bearer invalid.oauth2.token" \
-        "$backend_url/api/ros/test" 2>/dev/null || echo "000")
+        "$recommendations_endpoint" 2>/dev/null || echo "000")
     if [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
         echo_success "  ✓ Correctly rejected invalid token ($http_code)"
         test_passed=$((test_passed + 1))
@@ -389,7 +389,7 @@ test_oauth2_backend_auth() {
     echo_info "Test 3: Request with valid OAuth2 user session token"
     local response=$(curl -s -w "\n%{http_code}" --max-time 10 \
         -H "Authorization: Bearer $OAUTH2_TOKEN" \
-        "$backend_url/api/ros/test" 2>/dev/null)
+        "$recommendations_endpoint" 2>/dev/null)
 
     http_code=$(echo "$response" | tail -n 1)
     local response_body=$(echo "$response" | sed '$d')
@@ -424,7 +424,7 @@ query_backend_api() {
         return 1
     fi
 
-    local backend_url=$(get_service_url "rosocp-api" "")
+    local backend_url=$(get_service_url "ros-api" "")
     local full_url="$backend_url$endpoint"
 
     echo_info "Querying: $description"
@@ -461,17 +461,17 @@ get_service_url() {
     # Try to get OpenShift route first
     local route_name="$HELM_RELEASE_NAME-$service_name"
 
-    # Special handling for rosocp-api which has route named "main"
-    if [ "$service_name" = "rosocp-api" ]; then
+    # Special handling for ros-api which has route named "main"
+    if [ "$service_name" = "ros-api" ]; then
         # Try the "main" route first (common alias for the backend API)
         route_name="$HELM_RELEASE_NAME-main"
     fi
 
     local route_host=$(oc get route "$route_name" -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null)
 
-    # If not found and this is rosocp-api, try the full service name
-    if [ -z "$route_host" ] && [ "$service_name" = "rosocp-api" ]; then
-        route_name="$HELM_RELEASE_NAME-rosocp-api"
+    # If not found and this is ros-api, try the full service name
+    if [ -z "$route_host" ] && [ "$service_name" = "ros-api" ]; then
+        route_name="$HELM_RELEASE_NAME-ros-api"
         route_host=$(oc get route "$route_name" -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null)
     fi
 
@@ -538,7 +538,7 @@ create_test_data() {
     echo_info "  Interval 3: $interval_start_3 to $interval_end_3" >&2
     echo_info "  Interval 4: $interval_start_4 to $interval_end_4" >&2
 
-    # Create a temporary CSV file with proper ROS-OCP format and current timestamps
+    # Create a temporary CSV file with proper ROS format and current timestamps
     local test_csv=$(mktemp)
     cat > "$test_csv" << EOF
 report_period_start,report_period_end,interval_start,interval_end,container_name,pod,owner_name,owner_kind,workload,workload_type,namespace,image_name,node,resource_id,cpu_request_container_avg,cpu_request_container_sum,cpu_limit_container_avg,cpu_limit_container_sum,cpu_usage_container_avg,cpu_usage_container_min,cpu_usage_container_max,cpu_usage_container_sum,cpu_throttle_container_avg,cpu_throttle_container_max,cpu_throttle_container_sum,memory_request_container_avg,memory_request_container_sum,memory_limit_container_avg,memory_limit_container_sum,memory_usage_container_avg,memory_usage_container_min,memory_usage_container_max,memory_usage_container_sum,memory_rss_usage_container_avg,memory_rss_usage_container_min,memory_rss_usage_container_max,memory_rss_usage_container_sum
@@ -694,7 +694,7 @@ verify_upload_processing() {
     fi
 
     # If we have the full ROS stack, check for further processing
-    local processor_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=rosocp-processor" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local processor_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=ros-processor" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -n "$processor_pod" ]; then
         echo_info "Checking processor logs for data processing..."
@@ -754,7 +754,7 @@ check_for_recommendations() {
         echo_error "❌ No Kruize experiments found for cluster: $cluster_id"
         echo_info "This indicates the data was not processed by the backend or sent to Kruize"
         echo_info "Troubleshooting:"
-        echo_info "  - Check processor logs: oc logs -n $NAMESPACE deployment/ros-ocp-rosocp-processor --tail=50"
+        echo_info "  - Check processor logs: oc logs -n $NAMESPACE deployment/cost-onprem-ros-processor --tail=50"
         echo_info "  - Verify upload was successful in ingress logs"
         echo_info "  - Check Kafka messages were processed"
         return 1
@@ -840,7 +840,7 @@ check_recommendations_with_retry() {
 
 # Main execution
 main() {
-    echo_info "ROS-OCP Hybrid Authentication Data Flow Test"
+    echo_info "ROS Hybrid Authentication Data Flow Test"
     echo_info "============================================"
     echo_info "Ingress: Keycloak JWT (external uploads from Cost Management Operator)"
     echo_info "Backend API: OAuth2 TokenReview (user access from OpenShift Console UI)"
@@ -926,28 +926,16 @@ main() {
     fi
     echo ""
 
-    # Test 2: Clusters endpoint (list uploaded clusters)
-    echo_info "Query 2: List Clusters"
-    if query_backend_api "/api/ros/v1/clusters/" "Clusters List"; then
-        echo_success "  ✓ Clusters endpoint accessible"
+    # Test 2: Recommendations endpoint (list recommendations)
+    echo_info "Query 2: List Recommendations"
+    if query_backend_api "/api/cost-management/v1/recommendations/openshift" "Recommendations List"; then
+        echo_success "  ✓ Recommendations endpoint accessible"
         backend_queries_passed=$((backend_queries_passed + 1))
     else
-        echo_warning "  ⚠ Clusters endpoint failed (may be empty or not yet populated)"
+        echo_warning "  ⚠ Recommendations endpoint failed (may be empty or not yet populated)"
         # Not failing the test for this as data might not be ready yet
     fi
     echo ""
-
-    # Test 3: Recommendations endpoint (check for the uploaded cluster)
-    if [ -n "$UPLOAD_CLUSTER_ID" ]; then
-        echo_info "Query 3: Recommendations for uploaded cluster"
-        if query_backend_api "/api/ros/v1/clusters/$UPLOAD_CLUSTER_ID/recommendations/" "Cluster Recommendations"; then
-            echo_success "  ✓ Recommendations endpoint accessible"
-            backend_queries_passed=$((backend_queries_passed + 1))
-        else
-            echo_warning "  ⚠ Recommendations endpoint returned error (data may still be processing)"
-        fi
-        echo ""
-    fi
 
     echo_info "Backend API Access Summary:"
     echo_info "  Successful queries: $backend_queries_passed"
@@ -979,9 +967,9 @@ main() {
         echo_info "  1. Check if data reached Kruize for this cluster:"
         echo_info "     ./query-kruize.sh --cluster $UPLOAD_CLUSTER_ID"
         echo_info "  2. Check processor logs for errors:"
-        echo_info "     oc logs -n $NAMESPACE deployment/ros-ocp-rosocp-processor --tail=100"
+        echo_info "     oc logs -n $NAMESPACE deployment/cost-onprem-ros-processor --tail=100"
         echo_info "  3. Check Kruize logs:"
-        echo_info "     oc logs -n $NAMESPACE deployment/ros-ocp-kruize --tail=100"
+        echo_info "     oc logs -n $NAMESPACE deployment/cost-onprem-kruize --tail=100"
         echo_info "  4. Query all recommendations:"
         echo_info "     ./query-kruize.sh --recommendations"
         exit 1
@@ -1020,8 +1008,8 @@ case "${1:-}" in
         echo "  help            Show this help message"
         echo ""
         echo "Environment Variables:"
-        echo "  NAMESPACE              Target namespace (default: ros-ocp)"
-        echo "  HELM_RELEASE_NAME      Helm release name (default: ros-ocp)"
+        echo "  NAMESPACE              Target namespace (default: cost-onprem)"
+        echo "  HELM_RELEASE_NAME      Helm release name (default: cost-onprem)"
         echo "  KEYCLOAK_NAMESPACE     Keycloak namespace (default: keycloak)"
         echo ""
         echo "This script tests both authentication mechanisms:"
@@ -1048,7 +1036,7 @@ case "${1:-}" in
         echo "  - Keycloak deployed with cost-management-operator client"
         echo "  - ROS ingress with JWT authentication enabled"
         echo "  - ROS backend API with OAuth2 TokenReview (Envoy+Authorino)"
-        echo "  - User must have access to the ros-ocp namespace"
+        echo "  - User must have access to the cost-onprem namespace"
         exit 0
         ;;
     "")

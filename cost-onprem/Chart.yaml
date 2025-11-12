@@ -1,0 +1,24 @@
+apiVersion: v2
+name: cost-onprem
+description: Cost Management On-Premise solution for Kubernetes/OpenShift
+type: application
+version: 0.2.0
+appVersion: "latest"
+
+keywords:
+  - insights
+  - cost-management
+  - resource-optimization
+  - ros
+  - openshift
+  - kubernetes
+  - on-premise
+
+maintainers:
+  - name: Insights On-Premise Team
+
+dependencies: []
+
+annotations:
+  # Enable Helm hooks
+  "helm.sh/hook-weight": "1"

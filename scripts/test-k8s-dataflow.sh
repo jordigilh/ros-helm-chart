@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ROS-OCP Kubernetes Data Flow Test Script
+# Cost Management On-Premise Kubernetes Data Flow Test Script
 # This script tests the complete data flow in a Kubernetes deployment
 #
 # AUTHENTICATION ARCHITECTURE:
@@ -9,7 +9,7 @@
 # - Both platforms require authentication for API endpoints (/api/cost-management/v1/*)
 # - Public endpoints (/status, /ready) do not require authentication on any platform
 #
-# This test uses X-Rh-Identity headers to authenticate with ros-ocp-backend API endpoints.
+# This test uses X-Rh-Identity headers to authenticate with ROS API endpoints.
 # The backend validates X-Rh-Identity headers using platform-go-middlewares/v2/identity.
 
 set -e  # Exit on any error
@@ -22,8 +22,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-NAMESPACE=${NAMESPACE:-ros-ocp}
-HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-ros-ocp}
+NAMESPACE=${NAMESPACE:-cost-onprem}
+HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-cost-onprem}
 
 # Function to get ingress hostname for Kubernetes
 get_ingress_hostname() {
@@ -48,7 +48,7 @@ echo_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Function to create X-Rh-Identity header for ros-ocp-backend authentication
+# Function to create X-Rh-Identity header for ROS authentication
 create_rh_identity_header() {
     local org_id="${1:-12345}"
 
@@ -104,7 +104,7 @@ validate_authentication_tokens() {
         echo_error "Authentication is REQUIRED for testing. The test will FAIL."
         echo_info "Expected authentication sources:"
         echo_info "  - Dev kubeconfig file at /tmp/dev-kubeconfig"
-        echo_info "  - ros-ocp-api pod with service account token"
+        echo_info "  - ros-api pod with service account token"
         echo_info ""
         echo_info "Make sure deploy-kind.sh was run to set up authentication"
         echo_info "If deployment is in progress, wait for pods to be ready first"
@@ -141,18 +141,18 @@ get_ros_ingress_service_account_token() {
     echo "$token"
 }
 
-# Function to get service account token from ros-ocp-api pod (for OAuth authentication)
+# Function to get service account token from ros-api pod (for OAuth authentication)
 get_ros_api_service_account_token() {
-    echo_info >&2 "Extracting service account token from ros-ocp-api pod..."
+    echo_info >&2 "Extracting service account token from ros-api pod..."
 
-    # Find the ros-ocp-api pod
+    # Find the ros-api pod
     local api_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/component=api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [ -z "$api_pod" ]; then
-        echo_error "No ros-ocp-api pod found in namespace $NAMESPACE"
+        echo_error "No ros-api pod found in namespace $NAMESPACE"
         return 1
     fi
 
-    echo_info >&2 "Found ros-ocp-api pod: $api_pod"
+    echo_info >&2 "Found ros-api pod: $api_pod"
 
     # Extract the service account token from the pod
     local token=$(kubectl exec -n "$NAMESPACE" "$api_pod" -- cat /var/run/secrets/kubernetes.io/serviceaccount/token 2>/dev/null)
@@ -255,7 +255,7 @@ create_test_data() {
     echo_info "  Interval 3: $interval_start_3 to $interval_end_3" >&2
     echo_info "  Interval 4: $interval_start_4 to $interval_end_4" >&2
 
-    # Create a temporary CSV file with proper ROS-OCP format and current timestamps
+    # Create a temporary CSV file with proper ROS format and current timestamps
     local test_csv=$(mktemp)
     cat > "$test_csv" << EOF
 report_period_start,report_period_end,interval_start,interval_end,container_name,pod,owner_name,owner_kind,workload,workload_type,namespace,image_name,node,resource_id,cpu_request_container_avg,cpu_request_container_sum,cpu_limit_container_avg,cpu_limit_container_sum,cpu_usage_container_avg,cpu_usage_container_min,cpu_usage_container_max,cpu_usage_container_sum,cpu_throttle_container_avg,cpu_throttle_container_max,cpu_throttle_container_sum,memory_request_container_avg,memory_request_container_sum,memory_limit_container_avg,memory_limit_container_sum,memory_usage_container_avg,memory_usage_container_min,memory_usage_container_max,memory_usage_container_sum,memory_rss_usage_container_avg,memory_rss_usage_container_min,memory_rss_usage_container_max,memory_rss_usage_container_sum
@@ -420,7 +420,7 @@ EOF
             echo_success "✓ Created temporary service account token for upload"
         else
             echo_warning "Could not obtain authentication token for insights-ros-ingress upload"
-            echo_info "Will proceed with OAuth token from ros-ocp-api service account"
+            echo_info "Will proceed with OAuth token from ros-api service account"
         fi
     fi
 
@@ -431,7 +431,7 @@ EOF
     echo_info "Platform detected: $(detect_platform)"
     echo_info "Ingress hostname: $(get_ingress_hostname)"
 
-    # Get OAuth 2.0 token from ros-ocp-api service account for upload
+    # Get OAuth 2.0 token from ros-api service account for upload
     local upload_bearer_token=$(get_ros_api_service_account_token)
     if [ -z "$upload_bearer_token" ]; then
         echo_error "Failed to get API service account token for upload"
@@ -533,7 +533,7 @@ $now_date,$now_date,$interval_start_3,$interval_end_3,test-container,test-pod-12
 
     # Kafka is deployed by Strimzi in 'kafka' namespace
     local kafka_namespace="kafka"
-    local kafka_cluster="ros-ocp-kafka"
+    local kafka_cluster="cost-onprem-kafka"
     local kafka_pod=$(kubectl get pods -n "$kafka_namespace" -l "strimzi.io/cluster=$kafka_cluster,strimzi.io/name=${kafka_cluster}-kafka" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -z "$minio_pod" ]; then
@@ -704,7 +704,7 @@ verify_processing() {
 
     # Check processor logs
     echo_info "Checking processor logs..."
-    local processor_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=rosocp-processor" -o jsonpath='{.items[0].metadata.name}')
+    local processor_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=ross-processor" -o jsonpath='{.items[0].metadata.name}')
 
     if [ -n "$processor_pod" ]; then
         echo_info "Recent processor logs:"
@@ -756,29 +756,28 @@ verify_processing() {
     fi
 }
 
-# Function to verify recommendations are available via ros-ocp-api
+# Function to verify recommendations are available via ros api
 verify_recommendations() {
-    echo_info "=== STEP 5: Verify Recommendations via ROS-OCP API ===="
+    echo_info "=== STEP 5: Verify Recommendations via ROS API ===="
 
-    # Ensure rosocp-api pods are ready
-    echo_info "Verifying rosocp-api pods are ready..."
-    kubectl wait --for=condition=ready pod -l "app.kubernetes.io/name=rosocp-api,app.kubernetes.io/instance=$HELM_RELEASE_NAME" \
+    # Ensure ros-api pods are ready
+    echo_info "Verifying ros-api pods are ready..."
+    kubectl wait --for=condition=ready pod -l "app.kubernetes.io/name=ros-api,app.kubernetes.io/instance=$HELM_RELEASE_NAME" \
         --namespace "$NAMESPACE" \
-        --timeout=60s || echo_warning "rosocp-api pods may not be fully ready yet"
+        --timeout=60s || echo_warning "ros-api pods may not be fully ready yet"
 
     # Wait additional time for recommendations to be processed with fresh data
     echo_info "Waiting for recommendations to be processed with fresh timestamps (45 seconds)..."
     echo_info "Fresh data should trigger Kruize to generate valid recommendations..."
     sleep 45
 
-    # Create X-Rh-Identity header for ros-ocp-backend authentication
+    # Create X-Rh-Identity header for ROS authentication
     echo_info "Creating X-Rh-Identity header for API authentication..."
     local rh_identity_header=$(create_rh_identity_header "12345")
     echo_info "Successfully created X-Rh-Identity header"
 
     # Get platform-appropriate URLs
-    local status_url=$(get_service_url "ros-ocp-rosocp-api" "/status")
-    local api_base_url=$(get_service_url "ros-ocp-rosocp-api" "/api/cost-management/v1")
+    local api_base_url=$(get_service_url "ros-api" "/api/cost-management/v1")
 
     # First verify ingress controller is still responding (test /ready endpoint)
     echo_info "Verifying ingress controller is still responding..."
@@ -796,12 +795,12 @@ verify_recommendations() {
     local status_http_code="200"  # Assume success to continue with other tests
 
     if false; then  # Disabled section - for reference
-        echo_error "ROS-OCP API status endpoint not accessible after $max_retries attempts (HTTP $status_http_code)"
+        echo_error "ROSs API status endpoint not accessible after $max_retries attempts (HTTP $status_http_code)"
         echo_info "Debugging information:"
-        echo_info "Checking rosocp-api pods:"
-        kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=rosocp-api" || true
-        echo_info "Checking rosocp-api service:"
-        kubectl get service -n "$NAMESPACE" "${HELM_RELEASE_NAME}-rosocp-api" || true
+        echo_info "Checking ros-api pods:"
+        kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=ros-api" || true
+        echo_info "Checking ros-api service:"
+        kubectl get service -n "$NAMESPACE" "${HELM_RELEASE_NAME}-ros-api" || true
         echo_info "Checking ingress configuration:"
         kubectl get ingress -n "$NAMESPACE" || true
 
@@ -823,12 +822,12 @@ verify_recommendations() {
         echo_info ""
         echo_info "=== PORT CONNECTIVITY TEST ==="
         echo_info "Testing if port 32061 is accessible from within cluster:"
-        local test_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=rosocp-api" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        local test_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=ros-api" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
         if [ -n "$test_pod" ]; then
             echo_info "Testing direct pod access to /status:"
             kubectl exec -n "$NAMESPACE" "$test_pod" -- curl -s localhost:8000/status || true
             echo_info "Testing service access to /status:"
-            kubectl exec -n "$NAMESPACE" "$test_pod" -- curl -s "${HELM_RELEASE_NAME}-rosocp-api:8000/status" || true
+            kubectl exec -n "$NAMESPACE" "$test_pod" -- curl -s "${HELM_RELEASE_NAME}-ros-api:8000/status" || true
         fi
 
         return 1
@@ -941,7 +940,7 @@ except Exception as e:
                 echo_info "  - Kruize is still processing the recent data (may need more time)"
                 echo_info "  - Fresh timestamps generated valid data but recommendations aren't ready yet"
                 echo_info "  - Check Kruize logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=kruize --tail=50"
-                echo_info "  - Check processor logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=rosocp-processor --tail=20"
+                echo_info "  - Check processor logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=ross-processor --tail=20"
             fi
 
             rm -f /tmp/recommendations_list.json
@@ -950,7 +949,7 @@ except Exception as e:
         echo_error "Authentication failed (HTTP 401) - check identity header"
         return 1
     elif [ "$list_http_code" = "000" ]; then
-        echo_error "Could not connect to ROS-OCP API - check if service is running and port $API_PORT is accessible"
+        echo_error "Could not connect to ROS API - check if service is running and port $API_PORT is accessible"
         return 1
     else
         echo_warning "Recommendations endpoint returned HTTP $list_http_code"
@@ -1169,7 +1168,7 @@ run_health_checks() {
 
     # Get platform-appropriate URLs (only for essential routes)
     local ingress_url=$(get_service_url "ingress" "/ready")
-    local api_url=$(get_service_url "ros-ocp-rosocp-api" "/status")
+    local api_url=$(get_service_url "ros-api" "/status")
     local kruize_url=$(get_service_url "kruize" "/api/kruize/listPerformanceProfiles")
 
     # Check ingress service by testing upload endpoint with service account token
@@ -1201,11 +1200,11 @@ run_health_checks() {
         fi
     fi
 
-    # Check ROS-OCP API /status endpoint (public endpoint - no auth required)
+    # Check ROS API /status endpoint (public endpoint - no auth required)
     if curl -f -s --connect-timeout 5 --max-time 15 -H "Host: localhost" "$api_url" >/dev/null; then
-        echo_success "ROS-OCP API status endpoint is accessible at: $api_url"
+        echo_success "ROS API status endpoint is accessible at: $api_url"
     else
-        echo_error "ROS-OCP API status endpoint is not accessible at: $api_url"
+        echo_error "ROS API status endpoint is not accessible at: $api_url"
         failed_checks=$((failed_checks + 1))
     fi
 
@@ -1260,7 +1259,7 @@ show_logs() {
 
 # Main execution
 main() {
-    echo_info "ROS-OCP Kubernetes Data Flow Test"
+    echo_info "ROS Kubernetes Data Flow Test"
     echo_info "=================================="
 
     # Check prerequisites
@@ -1344,7 +1343,7 @@ main() {
     echo_info "Use '$0 logs <service>' to view specific service logs"
     echo_info "Use '$0 recommendations' to verify recommendations via API"
     echo_info "Use '$0 workloads' to verify workloads in database"
-    echo_info "Available services: ingress, rosocp-processor, ros-ocp-rosocp-api, kruize, db-ros"
+    echo_info "Available services: ingress, ros-processor, ros-api, kruize, db-ros"
 }
 
 # Handle script arguments
@@ -1377,8 +1376,8 @@ case "${1:-}" in
         echo "  help             - Show this help message"
         echo ""
         echo "Environment Variables:"
-        echo "  NAMESPACE         - Kubernetes namespace (default: ros-ocp)"
-        echo "  HELM_RELEASE_NAME - Helm release name (default: ros-ocp)"
+        echo "  NAMESPACE         - Kubernetes namespace (default: cost-onprem)"
+        echo "  HELM_RELEASE_NAME - Helm release name (default: cost-onprem)"
         echo ""
         echo "Authentication Requirements:"
         echo "  This test REQUIRES authentication tokens to function properly."
@@ -1389,7 +1388,7 @@ case "${1:-}" in
         echo "    - insights-ros-ingress pod with service account token"
         echo ""
         echo "  Prerequisites:"
-        echo "    - ROS-OCP must be deployed (./install-helm-chart.sh)"
+        echo "    - Cost Management On-Premise must be deployed (./install-helm-chart.sh)"
         echo "    - Service accounts must exist (created by Helm chart)"
         echo "    - Pods must be running and ready"
         echo ""

@@ -163,7 +163,7 @@ INFO  adding file to tar.gz  {"file": "...ros-openshift-namespace-202510.csv"}
 INFO  file packaging was successful
 INFO  executing upload
 INFO  uploading file: 20251022T140230_123456-cost-mgmt.tar.gz
-INFO  request response  {"status": 202, "URL": "http://ros-ocp-ingress..."}
+INFO  request response  {"status": 202, "URL": "http://cost-onprem-ingress..."}
 ```
 
 ## Verification Steps
@@ -209,7 +209,7 @@ Key indicators:
 Check ingress logs for successful processing:
 
 ```bash
-kubectl logs -n ros-ocp -l app.kubernetes.io/component=ingress -c ingress \
+kubectl logs -n cost-onprem -l app.kubernetes.io/component=ingress -c ingress \
   --tail=50 --since=5m | grep -E "(ROS|upload)"
 ```
 
@@ -227,14 +227,14 @@ kubectl logs -n ros-ocp -l app.kubernetes.io/component=ingress -c ingress \
 Check that the processor received Kafka messages:
 
 ```bash
-kubectl logs -n ros-ocp -l app.kubernetes.io/component=processor \
+kubectl logs -n cost-onprem -l app.kubernetes.io/component=processor \
   --tail=50 --since=5m | grep -E "(Message received|ros-openshift)"
 ```
 
 **Expected output:**
 ```
 Message received from kafka hccm.ros.events[0]@123: {...}
-Recommendation request sent for experiment - 12345|...|ros-ocp|statefulset|ros-ocp-kafka
+Recommendation request sent for experiment - 12345|...|cost-onprem|statefulset|cost-onprem-kafka
 ```
 
 ### 5. Verify Kruize Received Experiments
@@ -242,13 +242,13 @@ Recommendation request sent for experiment - 12345|...|ros-ocp|statefulset|ros-o
 Check Kruize logs for experiment creation:
 
 ```bash
-kubectl logs -n ros-ocp -l app.kubernetes.io/name=kruize \
+kubectl logs -n cost-onprem -l app.kubernetes.io/name=kruize \
   --tail=100 --since=5m | grep -E "(experiment_name|CreateExperiment|UpdateResults)"
 ```
 
 **Expected output:**
 ```
-DEBUG [CreateExperiment.java]-[{"experiment_name":"12345|...|ros-ocp|statefulset|..."}]
+DEBUG [CreateExperiment.java]-[{"experiment_name":"12345|...|cost-onprem|statefulset|..."}]
 DEBUG [UpdateResults.java]-updateResults API request payload for requestID 26 is [...]
 ```
 
@@ -270,12 +270,12 @@ status: 500 | error response: {"error":"Failed to process upload"}
 1. **No ROS files in manifest** (ingress rejects it):
    ```bash
    # Check ingress logs
-   kubectl logs -n ros-ocp -l app.kubernetes.io/component=ingress -c ingress --tail=20
+   kubectl logs -n cost-onprem -l app.kubernetes.io/component=ingress -c ingress --tail=20
    ```
 
    If you see: `"no ROS files specified in manifest"`, it means:
    - ServiceMonitors are not deployed
-   - Prometheus is not scraping ros-ocp pods
+   - Prometheus is not scraping ROS pods
    - Operator collected only Cost Management metrics, not ROS metrics
 
    **Fix**: Follow [installation.md](installation.md) to deploy ServiceMonitors and enable user-workload monitoring.

@@ -785,7 +785,7 @@ validate_deployment() {
     fi
 
     # Check routes/ingress
-    if oc get route keycloak-ingress -n "$NAMESPACE" >/dev/null 2>&1; then
+    if oc get route keycloak -n "$NAMESPACE" >/dev/null 2>&1; then
         echo_success "✓ Keycloak route exists"
     else
         echo_warning "⚠ Keycloak route not found (may be normal depending on ingress configuration)"

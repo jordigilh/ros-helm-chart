@@ -1,6 +1,6 @@
-# ROS-OCP Helm Chart Documentation
+# Cost Management On-Premise Helm Chart Documentation
 
-Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platform documentation. This directory contains comprehensive guides for installing, configuring, and operating the ROS-OCP Helm chart.
+Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platform documentation. This directory contains comprehensive guides for installing, configuring, and operating the Cost Management On-Premise Helm chart.
 
 ## 📚 Documentation Index
 
@@ -8,30 +8,30 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 
 | Document | Purpose | When to Use |
 |----------|---------|-------------|
-| **[Quickstart](quickstart.md)** | Fast-track guide to get ROS-OCP running quickly | First-time users who want to evaluate ROS-OCP with minimal configuration |
+| **[Quickstart](quickstart.md)** | Fast-track guide to get Cost Management On-Premise running quickly | First-time users who want to evaluate Cost Management On-Premise with minimal configuration |
 | **[Platform Guide](platform-guide.md)** | Overview of the ROS platform architecture and components | Understanding the overall system design and component interactions |
 
 ### Installation & Deployment
 
 | Document | Purpose | When to Use |
 |----------|---------|-------------|
-| **[Installation Guide](installation.md)** | Comprehensive installation instructions for ROS-OCP | Production deployments requiring detailed configuration |
+| **[Installation Guide](installation.md)** | Comprehensive installation instructions for Cost Management On-Premise | Production deployments requiring detailed configuration |
 
 ### Authentication & Security
 
 | Document | Purpose | When to Use |
 |----------|---------|-------------|
 | **[Keycloak JWT Authentication Setup](keycloak-jwt-authentication-setup.md)** | Complete guide for setting up JWT authentication with Keycloak | Configuring authentication for production environments |
-| **[Native JWT Authentication](native-jwt-authentication.md)** | Detailed explanation of JWT authentication architecture | Understanding how JWT authentication works in ROS-OCP |
+| **[Native JWT Authentication](native-jwt-authentication.md)** | Detailed explanation of JWT authentication architecture | Understanding how JWT authentication works in Cost Management On-Premise |
 | **[TLS Certificate Options](tls-certificate-options.md)** | Guide to different TLS certificate configuration scenarios | Configuring TLS for Keycloak JWKS endpoint validation |
-| **[External Keycloak Scenario](external-keycloak-scenario.md)** | Analysis and architecture for using external Keycloak | Connecting ROS-OCP to Keycloak outside the cluster |
+| **[External Keycloak Scenario](external-keycloak-scenario.md)** | Analysis and architecture for using external Keycloak | Connecting Cost Management On-Premise to Keycloak outside the cluster |
 | **[Cost Management Operator TLS Config Setup](cost-management-operator-tls-config-setup.md)** | TLS configuration for the Cost Management Metrics Operator | Setting up secure communication between operator and ROS ingress |
 
 ### Configuration
 
 | Document | Purpose | When to Use |
 |----------|---------|-------------|
-| **[Configuration Reference](configuration.md)** | Complete reference of all Helm values and configuration options | Customizing your ROS-OCP deployment |
+| **[Configuration Reference](configuration.md)** | Complete reference of all Helm values and configuration options | Customizing your Cost Management On-Premise deployment |
 | **[Helm Templates Reference](helm-templates-reference.md)** | Documentation of all Helm chart templates and resources | Understanding the Kubernetes resources created by the chart |
 
 ### Testing, Validation & Troubleshooting
@@ -46,7 +46,7 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 
 ## 🚀 Quick Navigation by Use Case
 
-### "I'm new to ROS-OCP"
+### "I'm new to Cost Management On-Premise"
 1. Start with **[Quickstart](quickstart.md)** for a rapid deployment
 2. Read **[Platform Guide](platform-guide.md)** to understand the architecture
 3. Review **[Configuration Reference](configuration.md)** for customization options
@@ -85,10 +85,10 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 ### Getting Started
 
 #### [Quickstart](quickstart.md)
-**Purpose:** Provides a fast-track guide to deploy ROS-OCP with minimal configuration, suitable for evaluation and development environments.
+**Purpose:** Provides a fast-track guide to deploy Cost Management On-Premise with minimal configuration, suitable for evaluation and development environments.
 
 **Use when:**
-- You want to quickly evaluate ROS-OCP
+- You want to quickly evaluate Cost Management On-Premise
 - Setting up a development or testing environment
 - You need a working deployment before diving into details
 
@@ -120,7 +120,7 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 ### Installation & Deployment
 
 #### [Installation Guide](installation.md)
-**Purpose:** Detailed, step-by-step installation instructions for deploying ROS-OCP to production environments.
+**Purpose:** Detailed, step-by-step installation instructions for deploying Cost Management On-Premise to production environments.
 
 **Use when:**
 - Deploying to production
@@ -142,7 +142,7 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 
 **Use when:**
 - Setting up JWT authentication for the first time
-- Configuring Keycloak for ROS-OCP
+- Configuring Keycloak for Cost Management On-Premise
 - Troubleshooting authentication issues
 
 **Key topics:**
@@ -157,7 +157,7 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 ---
 
 #### [Native JWT Authentication](native-jwt-authentication.md)
-**Purpose:** In-depth technical explanation of how JWT authentication works in ROS-OCP, including Envoy configuration and validation.
+**Purpose:** In-depth technical explanation of how JWT authentication works in Cost Management On-Premise, including Envoy configuration and validation.
 
 **Use when:**
 - You need to understand the authentication architecture
@@ -194,7 +194,7 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 ---
 
 #### [External Keycloak Scenario](external-keycloak-scenario.md)
-**Purpose:** Detailed analysis and architecture for connecting ROS-OCP to Keycloak running outside the cluster.
+**Purpose:** Detailed analysis and architecture for connecting Cost Management On-Premise to Keycloak running outside the cluster.
 
 **Use when:**
 - Using a shared/external Keycloak instance

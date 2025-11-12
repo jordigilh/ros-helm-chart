@@ -1,0 +1,41 @@
+{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-authorino
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino-networkpolicy
+spec:
+  podSelector:
+    matchLabels:
+      authorino-resource: authorino
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow connections from ros-api pods (Envoy sidecar)
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: ros-api
+    ports:
+    - protocol: TCP
+      port: 50051  # gRPC authorization service
+
+  # Allow connections from Prometheus for metrics scraping
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: openshift-monitoring
+    ports:
+    - protocol: TCP
+      port: 8080  # Metrics endpoint
+
+  # Allow connections from same namespace for health checks
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8083  # OIDC server (if enabled)
+{{- end }}

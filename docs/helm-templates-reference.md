@@ -1,10 +1,10 @@
 # Helm Templates & Manifests Reference
 
-Technical reference for ROS Helm chart templates, focusing on JWT authentication and TLS certificate handling.
+Technical reference for Cost Management On-Premise Helm chart templates, focusing on JWT authentication and TLS certificate handling.
 
 ## Overview
 
-This document provides detailed information about the Helm templates used in the ROS chart, particularly those related to JWT authentication with Envoy's native JWT filter.
+This document provides detailed information about the Helm templates used in the Cost Management On-Premise chart, particularly those related to JWT authentication with Envoy's native JWT filter.
 
 ## JWT Authentication Templates
 
@@ -14,23 +14,23 @@ This document provides detailed information about the Helm templates used in the
 
 | Template File | Service | Purpose |
 |---------------|---------|---------|
-| `deployment-ingress.yaml` | Ingress | JWT validation from Cost Management Operator |
-| `deployment-rosocp-api.yaml` | ROS-OCP API | X-Rh-Identity authentication for API requests |
+| `ingress/deployment.yaml` | Ingress | JWT validation from Cost Management Operator |
+| `ros/api/deployment.yaml` | ROS API | X-Rh-Identity authentication for API requests |
 
 **Services without Envoy sidecars** (protected by network policies):
 
 | Template File | Service | Authentication Method |
 |---------------|---------|----------------------|
-| `deployment-sources-api.yaml` | Sources API | Mixed: X-Rh-Identity middleware for protected endpoints, some endpoints unauthenticated for internal use |
-| `deployment-kruize.yaml` | Kruize | Internal service accessed via ROS-OCP API |
+| `sources-api/deployment.yaml` | Sources API | Mixed: X-Rh-Identity middleware for protected endpoints, some endpoints unauthenticated for internal use |
+| `kruize/deployment.yaml` | Kruize | Internal service accessed via ROS API |
 
 **Common Sidecar Configuration:**
 - Envoy listens on port **8080** (public-facing, authenticated)
-- Application container listens on internal port (**8001** for ROS-OCP API, **8081** for Ingress)
+- Application container listens on internal port (**8001** for ROS API, **8081** for Ingress)
 - Network policies provide defense-in-depth for services without sidecars
 - Metrics endpoints remain accessible to Prometheus
 
-### `ros-ocp/templates/deployment-ingress.yaml`
+### `cost-onprem/templates/ingress/deployment.yaml`
 
 **Purpose**: Enhanced ingress deployment with Envoy sidecar for native JWT authentication from Cost Management Operator.
 
@@ -60,14 +60,14 @@ When JWT authentication is enabled (automatic on OpenShift):
 
 **Example Template Snippet**:
 ```yaml
-{{- if .Values.jwt_auth.enabled }}
+{{- if .Values.jwtAuth.enabled }}
 - name: envoy-proxy
-  image: "{{ .Values.jwt_auth.envoy.image.repository }}:{{ .Values.jwt_auth.envoy.image.tag }}"
+  image: "{{ .Values.jwtAuth.envoy.image.repository }}:{{ .Values.jwtAuth.envoy.image.tag }}"
   ports:
     - name: http
-      containerPort: {{ .Values.jwt_auth.envoy.port }}
+      containerPort: {{ .Values.jwtAuth.envoy.port }}
     - name: admin
-      containerPort: {{ .Values.jwt_auth.envoy.adminPort }}
+      containerPort: {{ .Values.jwtAuth.envoy.adminPort }}
   volumeMounts:
     - name: envoy-config
       mountPath: /etc/envoy
@@ -77,7 +77,7 @@ When JWT authentication is enabled (automatic on OpenShift):
 
 ---
 
-### `ros-ocp/templates/envoy-config.yaml`
+### `cost-onprem/templates/ros/api/envoy-config.yaml`
 
 **Purpose**: Envoy proxy configuration with native JWT authentication filter.
 
@@ -112,7 +112,7 @@ graph TB
 
 #### 1. JWT Authentication Filter (`jwt_authn`)
 - **Provider**: `keycloak`
-- **Issuer**: `{{ .Values.jwt_auth.keycloak.url }}/auth/realms/{{ .Values.jwt_auth.keycloak.realm }}`
+- **Issuer**: `{{ .Values.jwtAuth.keycloak.url }}/auth/realms/{{ .Values.jwtAuth.keycloak.realm }}`
 - **JWKS URI**: `/protocol/openid-connect/certs` endpoint
 - **Cache Duration**: 300 seconds (5 minutes)
 - **Payload Storage**: Stores JWT payload in metadata as `jwt_payload`
@@ -181,12 +181,12 @@ transport_socket:
   name: envoy.transport_sockets.tls
   typed_config:
     "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-    sni: {{ .Values.jwt_auth.keycloak.url | replace "https://" "" }}
+    sni: {{ .Values.jwtAuth.keycloak.url | replace "https://" "" }}
 ```
 
 ---
 
-### `ros-ocp/templates/service-ingress.yaml`
+### `cost-onprem/templates/service-ingress.yaml`
 
 **Purpose**: Kubernetes Service for ingress with Envoy proxy endpoints.
 
@@ -197,7 +197,7 @@ When JWT is enabled:
 ports:
   - name: http
     port: 80
-    targetPort: {{ .Values.jwt_auth.envoy.port }}  # 8080 (Envoy)
+    targetPort: {{ .Values.jwtAuth.envoy.port }}  # 8080 (Envoy)
   - name: http-ingress
     port: 8081
     targetPort: 8081  # Direct ingress access (internal)
@@ -217,19 +217,19 @@ ports:
 
 ---
 
-### `ros-ocp/templates/_helpers.tpl`
+### `cost-onprem/templates/_helpers.tpl`
 
 **Purpose**: Helm template helper functions for configuration logic.
 
 **Key Functions**:
 
-#### `ros-ocp.jwt.shouldEnable`
+#### `cost-onprem.jwt.shouldEnable`
 Determines if JWT authentication should be enabled based on platform detection.
 
 **Logic**:
 ```go
-{{- define "ros-ocp.jwt.shouldEnable" -}}
-{{- include "ros-ocp.isOpenShift" . -}}
+{{- define "cost-onprem.jwt.shouldEnable" -}}
+{{- include "cost-onprem.isOpenShift" . -}}
 {{- end -}}
 ```
 
@@ -239,7 +239,7 @@ Determines if JWT authentication should be enabled based on platform detection.
 - Returns `false` on KIND/Vanilla K8s (Keycloak not deployed)
 - Uses Helm's `Capabilities.APIVersions` to detect `route.openshift.io/v1` API
 
-#### `ros-ocp.isOpenShift`
+#### `cost-onprem.isOpenShift`
 Detects if running on OpenShift.
 
 **Detection Method**:
@@ -249,7 +249,7 @@ Detects if running on OpenShift.
 
 ## Security & Certificate Templates
 
-### `ros-ocp/templates/ca-configmap.yaml`
+### `cost-onprem/templates/ca-configmap.yaml`
 
 **Purpose**: ConfigMap for CA certificate bundle injection.
 
@@ -277,7 +277,7 @@ data:
 
 ## Configuration Files & Examples
 
-### `ros-ocp/values-jwt-auth-complete.yaml`
+### `cost-onprem/values-jwt-auth-complete.yaml`
 
 **Purpose**: Complete JWT authentication configuration for production deployments.
 
@@ -306,9 +306,9 @@ jwt_auth:
 
 **Usage**:
 ```bash
-helm upgrade ros-ocp ./ros-ocp \
-  -f ros-ocp/values-jwt-auth-complete.yaml \
-  --namespace ros-ocp \
+helm upgrade cost-onprem ./cost-onprem \
+  -f cost-onprem/values-jwt-auth-complete.yaml \
+  --namespace cost-onprem \
   --create-namespace
 ```
 
@@ -321,7 +321,7 @@ helm upgrade ros-ocp ./ros-ocp \
 1. **Pre-Install**: Helm validates values schema
 2. **Template Rendering**:
    - Conditionals evaluate (`jwt_auth.enabled`)
-   - Helpers execute (`ros-ocp.jwt.shouldEnable`)
+   - Helpers execute (`cost-onprem.jwt.shouldEnable`)
    - Templates generate manifests
 3. **Manifest Application**:
    - ConfigMaps (Envoy config)
@@ -343,25 +343,25 @@ helm upgrade ros-ocp ./ros-ocp \
 
 ```bash
 # Render templates without installing
-helm template ros-ocp ./ros-ocp \
+helm template cost-onprem ./cost-onprem \
   -f values-jwt-auth-complete.yaml \
-  --namespace ros-ocp \
+  --namespace cost-onprem \
   --debug
 
 # Filter specific template
-helm template ros-ocp ./ros-ocp \
+helm template cost-onprem ./cost-onprem \
   -f values-jwt-auth-complete.yaml \
-  -s templates/deployment-ingress.yaml
+  -s templates/ingress/deployment.yaml
 ```
 
 ### Validate Template Syntax
 
 ```bash
 # Lint chart
-helm lint ./ros-ocp -f values-jwt-auth-complete.yaml
+helm lint ./cost-onprem -f values-jwt-auth-complete.yaml
 
 # Dry-run installation
-helm upgrade ros-ocp ./ros-ocp \
+helm upgrade cost-onprem ./cost-onprem \
   -f values-jwt-auth-complete.yaml \
   --dry-run --debug
 ```
@@ -370,13 +370,13 @@ helm upgrade ros-ocp ./ros-ocp \
 
 ```bash
 # Get live manifest
-helm get manifest ros-ocp -n ros-ocp
+helm get manifest cost-onprem -n cost-onprem
 
 # Get specific resource
-kubectl get deployment ros-ocp-ingress -n ros-ocp -o yaml
+kubectl get deployment cost-onprem-ingress -n cost-onprem -o yaml
 
 # Get values used
-helm get values ros-ocp -n ros-ocp
+helm get values cost-onprem -n cost-onprem
 ```
 
 ---

@@ -55,7 +55,7 @@ oc logs -n costmanagement-metrics-operator $OPERATOR_POD --tail=200 | grep -A 10
 ```
 
 **Expected Results:**
-- ✅ Log line: `Uploading payload to http://ros-ocp-ingress...`
+- ✅ Log line: `Uploading payload to http://cost-onprem-ingress...`
 - ✅ Log line: `Upload successful` with HTTP 200 or 202
 - ✅ ROS metrics files mentioned in packaging
 
@@ -69,10 +69,10 @@ Check that the ingress service received and acknowledged the upload:
 
 ```bash
 # Get ingress pod name
-INGRESS_POD=$(oc get pods -n ros-ocp -l app.kubernetes.io/name=ingress -o jsonpath='{.items[0].metadata.name}')
+INGRESS_POD=$(oc get pods -n cost-onprem -l app.kubernetes.io/name=ingress -o jsonpath='{.items[0].metadata.name}')
 
 # Check ingress logs
-oc logs -n ros-ocp $INGRESS_POD -c ingress --tail=200 | grep -E "upload|ros|202"
+oc logs -n cost-onprem $INGRESS_POD -c ingress --tail=200 | grep -E "upload|ros|202"
 
 # Look for:
 # - POST /api/ingress/v1/upload with 202 response
@@ -95,10 +95,10 @@ Verify the payload was published to Kafka:
 
 ```bash
 # Get Kafka pod name
-KAFKA_POD=$(oc get pods -n ros-ocp -l app.kubernetes.io/name=kafka -o jsonpath='{.items[0].metadata.name}')
+KAFKA_POD=$(oc get pods -n cost-onprem -l app.kubernetes.io/name=kafka -o jsonpath='{.items[0].metadata.name}')
 
 # Check topic for recent messages
-oc exec -n ros-ocp $KAFKA_POD -- kafka-console-consumer.sh \
+oc exec -n cost-onprem $KAFKA_POD -- kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic hccm.ros.events \
   --from-beginning \
@@ -126,10 +126,10 @@ Check that the processor consumed the Kafka message and sent data to Kruize:
 
 ```bash
 # Get processor pod name
-PROCESSOR_POD=$(oc get pods -n ros-ocp -l app.kubernetes.io/name=rosocp-processor -o jsonpath='{.items[0].metadata.name}')
+PROCESSOR_POD=$(oc get pods -n cost-onprem -l app.kubernetes.io/name=ros-processor -o jsonpath='{.items[0].metadata.name}')
 
 # Check processor logs
-oc logs -n ros-ocp $PROCESSOR_POD --tail=200 | grep -E "Processing|Kruize|experiment|recommendation"
+oc logs -n cost-onprem $PROCESSOR_POD --tail=200 | grep -E "Processing|Kruize|experiment|recommendation"
 
 # Look for:
 # - "Processing message from Kafka"
@@ -156,8 +156,8 @@ Verify Kruize has new or updated experiments:
 ./scripts/query-kruize.sh --list-experiments
 
 # Or query Kruize API directly
-KRUIZE_POD=$(oc get pods -n ros-ocp -l app.kubernetes.io/name=kruize -o jsonpath='{.items[0].metadata.name}')
-oc exec -n ros-ocp $KRUIZE_POD -- curl -s http://localhost:8080/listExperiments
+KRUIZE_POD=$(oc get pods -n cost-onprem -l app.kubernetes.io/name=kruize -o jsonpath='{.items[0].metadata.name}')
+oc exec -n cost-onprem $KRUIZE_POD -- curl -s http://localhost:8080/listExperiments
 
 # Look for experiments with recent interval_end_time
 ```
@@ -180,7 +180,7 @@ After sufficient data is collected (15+ minutes), check for recommendations:
 ./scripts/query-kruize.sh --list-recommendations
 
 # Or check via Kruize API
-oc exec -n ros-ocp $KRUIZE_POD -- curl -s http://localhost:8080/listRecommendations
+oc exec -n cost-onprem $KRUIZE_POD -- curl -s http://localhost:8080/listRecommendations
 ```
 
 **Expected Results:**
@@ -230,12 +230,12 @@ OPERATOR_POD=$(oc get pods -n costmanagement-metrics-operator -l app=costmanagem
 oc logs -n costmanagement-metrics-operator $OPERATOR_POD --tail=50 | grep "Upload successful"
 
 echo -e "\n=== Step 3: Ingress Logs ==="
-INGRESS_POD=$(oc get pods -n ros-ocp -l app.kubernetes.io/name=ingress -o jsonpath='{.items[0].metadata.name}')
-oc logs -n ros-ocp $INGRESS_POD -c ingress --tail=50 | grep "202"
+INGRESS_POD=$(oc get pods -n cost-onprem -l app.kubernetes.io/name=ingress -o jsonpath='{.items[0].metadata.name}')
+oc logs -n cost-onprem $INGRESS_POD -c ingress --tail=50 | grep "202"
 
 echo -e "\n=== Step 4: Kafka Messages ==="
-KAFKA_POD=$(oc get pods -n ros-ocp -l app.kubernetes.io/name=kafka -o jsonpath='{.items[0].metadata.name}')
-oc exec -n ros-ocp $KAFKA_POD -- kafka-console-consumer.sh \
+KAFKA_POD=$(oc get pods -n cost-onprem -l app.kubernetes.io/name=kafka -o jsonpath='{.items[0].metadata.name}')
+oc exec -n cost-onprem $KAFKA_POD -- kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic hccm.ros.events \
   --from-beginning \
@@ -243,8 +243,8 @@ oc exec -n ros-ocp $KAFKA_POD -- kafka-console-consumer.sh \
   --timeout-ms 5000 2>/dev/null || echo "No messages (may be consumed already)"
 
 echo -e "\n=== Step 5: Processor Logs ==="
-PROCESSOR_POD=$(oc get pods -n ros-ocp -l app.kubernetes.io/name=rosocp-processor -o jsonpath='{.items[0].metadata.name}')
-oc logs -n ros-ocp $PROCESSOR_POD --tail=50 | grep -E "Kruize|experiment"
+PROCESSOR_POD=$(oc get pods -n cost-onprem -l app.kubernetes.io/name=ros-processor -o jsonpath='{.items[0].metadata.name}')
+oc logs -n cost-onprem $PROCESSOR_POD --tail=50 | grep -E "Kruize|experiment"
 
 echo -e "\n=== Step 6: Kruize Experiments ==="
 ./scripts/query-kruize.sh --list-experiments | head -20
@@ -276,7 +276,7 @@ echo -e "\n=== Verification Complete ==="
 
 ### Issue: No Kruize experiments
 - Verify processor successfully sent data (check logs)
-- Check Kruize API health: `oc get pods -n ros-ocp -l app.kubernetes.io/name=kruize`
+- Check Kruize API health: `oc get pods -n cost-onprem -l app.kubernetes.io/name=kruize`
 - Ensure Kruize database is healthy
 - Check Kruize logs for errors
 

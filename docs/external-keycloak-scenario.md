@@ -40,11 +40,11 @@ jwt_auth:
 
 ```mermaid
 graph TB
-    subgraph ocp["OpenShift Cluster (ROS-OCP)"]
+    subgraph ocp["OpenShift Cluster (Cost Management On-Premise)"]
         User["👤 User Request<br/>(with JWT token)"]
-        Route["🌐 OpenShift Route<br/>ros-ocp-main-ros-ocp.apps..."]
+        Route["🌐 OpenShift Route<br/>cost-onprem-main-cost-onprem.apps..."]
         Envoy["🔒 Envoy Sidecar<br/>Port 9080<br/><br/>• Validates JWT signature<br/>• Fetches JWKS from Keycloak<br/>• Forwards authenticated requests"]
-        Backend["⚙️ ROS-OCP Backend<br/>Port 8000<br/><br/>• Processes authenticated requests<br/>• Extracts org_id from JWT"]
+        Backend["⚙️ Cost Management On-Premise Backend<br/>Port 8000<br/><br/>• Processes authenticated requests<br/>• Extracts org_id from JWT"]
 
         User -->|"Authorization: Bearer &lt;JWT&gt;"| Route
         Route -->|Forward request| Envoy
@@ -94,11 +94,11 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-external-keycloak-egress
-  namespace: ros-ocp
+  namespace: cost-onprem
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/instance: ros-ocp
+      app.kubernetes.io/instance: cost-onprem
   policyTypes:
   - Egress
   egress:
@@ -117,7 +117,7 @@ apiVersion: network.openshift.io/v1
 kind: EgressNetworkPolicy
 metadata:
   name: allow-external-keycloak
-  namespace: ros-ocp
+  namespace: cost-onprem
 spec:
   egress:
   - type: Allow
@@ -131,7 +131,7 @@ The external Keycloak hostname must be resolvable from within pods:
 
 ```bash
 # Test from a pod
-kubectl exec -n ros-ocp deploy/ros-ocp-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
   nslookup keycloak.external-company.com
 
 # Should return a valid IP address
@@ -188,7 +188,7 @@ jwt_auth:
 ERROR: Keycloak URL not found on OpenShift cluster. JWT authentication requires Keycloak (RHBK)...
 ```
 
-**Cause:** `jwt_auth.keycloak.url` not set, auto-discovery finds no local Keycloak
+**Cause:** `jwtAuth.keycloak.url` not set, auto-discovery finds no local Keycloak
 
 **Fix:** Set explicit URL:
 ```yaml
@@ -231,11 +231,11 @@ Failed to fetch JWKS from https://keycloak.external-company.com/...
 
 ```bash
 # Test connectivity from Envoy pod
-kubectl exec -n ros-ocp deploy/ros-ocp-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
   curl -v https://keycloak.external-company.com/auth/realms/production/protocol/openid-connect/certs
 
 # Test CA validation
-kubectl exec -n ros-ocp deploy/ros-ocp-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
   openssl s_client -connect keycloak.external-company.com:443 \
     -CAfile /etc/ca-certificates/ca-bundle.crt
 ```
@@ -311,28 +311,28 @@ cat external-keycloak-ca.crt
 ### 1. Test DNS Resolution
 
 ```bash
-kubectl exec -n ros-ocp deploy/ros-ocp-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
   nslookup keycloak.external-company.com
 ```
 
 ### 2. Test Network Connectivity
 
 ```bash
-kubectl exec -n ros-ocp deploy/ros-ocp-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
   curl -v https://keycloak.external-company.com/auth/realms/production
 ```
 
 ### 3. Test CA Bundle
 
 ```bash
-kubectl exec -n ros-ocp deploy/ros-ocp-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
   cat /etc/ca-certificates/ca-bundle.crt | grep -c "BEGIN CERTIFICATE"
 ```
 
 ### 4. Test JWKS Endpoint
 
 ```bash
-kubectl exec -n ros-ocp deploy/ros-ocp-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
   curl -v --cacert /etc/ca-certificates/ca-bundle.crt \
   https://keycloak.external-company.com/auth/realms/production/protocol/openid-connect/certs
 ```
@@ -342,13 +342,13 @@ kubectl exec -n ros-ocp deploy/ros-ocp-ingress -c envoy-proxy -- \
 ```bash
 # Get token from external Keycloak
 TOKEN=$(curl -X POST "https://keycloak.external-company.com/auth/realms/production/protocol/openid-connect/token" \
-  -d "client_id=ros-ocp" \
+  -d "client_id=cost-mgmt" \
   -d "username=testuser" \
   -d "password=testpass" \
   -d "grant_type=password" | jq -r '.access_token')
 
 # Test via OpenShift route
-ROUTE=$(kubectl get route -n ros-ocp ros-ocp-main -o jsonpath='{.spec.host}')
+ROUTE=$(kubectl get route -n cost-onprem cost-onprem-main -o jsonpath='{.spec.host}')
 curl -H "Authorization: Bearer $TOKEN" "http://$ROUTE/status"
 ```
 

@@ -1,0 +1,99 @@
+{{- if and .Values.monitoring.enabled (eq (include "cost-onprem.platform.isOpenShift" .) "true") }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-ros-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+    app.kubernetes.io/name: ros-api
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+      app.kubernetes.io/name: ros-api
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.monitoring.scrapeInterval }}
+      path: /metrics
+      scheme: http
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-ros-processor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: processor
+    app.kubernetes.io/name: ros-processor
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: processor
+      app.kubernetes.io/name: ros-processor
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.monitoring.scrapeInterval }}
+      path: /metrics
+      scheme: http
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-ros-recommendation-poller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ros-recommendation-poller
+    app.kubernetes.io/name: ros-rec-poller
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ros-recommendation-poller
+      app.kubernetes.io/name: ros-rec-poller
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.monitoring.scrapeInterval }}
+      path: /metrics
+      scheme: http
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-kruize
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: optimization
+    app.kubernetes.io/name: kruize
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: optimization
+      app.kubernetes.io/name: kruize
+  endpoints:
+    - port: http
+      interval: {{ .Values.monitoring.scrapeInterval }}
+      path: /q/metrics
+      scheme: http
+{{- end }}
+

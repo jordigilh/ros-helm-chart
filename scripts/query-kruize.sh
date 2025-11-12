@@ -6,7 +6,7 @@
 set -eo pipefail
 
 # Default values
-NAMESPACE="${NAMESPACE:-ros-ocp}"
+NAMESPACE="${NAMESPACE:-cost-onprem}"
 
 # Color codes for output
 RED='\033[0;31m'
@@ -268,7 +268,7 @@ EXAMPLES:
   $0 --cluster "757b6bf6-9e91-486a-8a99-6d3e6d0f485c"
 
   # Get detailed recommendations for an experiment
-  $0 --detail "1|757b6bf6-9e91-486a-8a99-6d3e6d0f485c|757b6bf6-9e91-486a-8a99-6d3e6d0f485c|ros-ocp|deployment|ros-ocp-kruize"
+  $0 --detail "1|757b6bf6-9e91-486a-8a99-6d3e6d0f485c|757b6bf6-9e91-486a-8a99-6d3e6d0f485c|cost-onprem|deployment|ros-kruize"
 
   # Run custom query
   $0 --query "SELECT COUNT(*) FROM kruize_experiments WHERE status='IN_PROGRESS';"
@@ -286,7 +286,7 @@ DATABASE ACCESS:
   SQL Query Examples:
     - Count experiments: SELECT COUNT(*) FROM kruize_experiments;
     - Recent recommendations: SELECT * FROM kruize_recommendations ORDER BY id DESC LIMIT 10;
-    - Experiments by namespace: SELECT * FROM kruize_experiments WHERE namespace='ros-ocp';
+    - Experiments by namespace: SELECT * FROM kruize_experiments WHERE namespace='cost-onprem';
 
 EOF
 }

@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-ros-processor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: processor
+    app.kubernetes.io/name: ros-processor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: processor
+      app.kubernetes.io/name: ros-processor
+  template:
+    metadata:
+      labels:
+        {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: processor
+        app.kubernetes.io/name: ros-processor
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        {{- include "cost-onprem.initContainer.waitForDb" (list . "ros") | nindent 8 }}
+        {{- if .Values.kafka.bootstrapServers }}
+        {{- include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
+        {{- end }}
+        {{- include "cost-onprem.initContainer.waitForKruize" . | nindent 8 }}
+      containers:
+        - name: ros-processor
+          image: "{{ .Values.ros.processor.image.repository }}:{{ .Values.ros.processor.image.tag }}"
+          imagePullPolicy: {{ .Values.ros.processor.image.pullPolicy | default .Values.global.pullPolicy }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo 'Waiting for dependencies (Kafka, Kruize) to be ready...'
+              sleep 60
+              echo 'Starting processor...'
+              ./rosocp db migrate up
+              ./rosocp start processor
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.ros.processor.metricsPort }}
+              protocol: TCP
+          volumeMounts:
+            - name: cdapp-config
+              mountPath: /cdapp
+              readOnly: true
+            {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
+            - name: service-ca-cert
+              mountPath: /etc/ssl/certs/service-ca.crt
+              subPath: service-ca.crt
+              readOnly: true
+            {{- end }}
+          env:
+            - name: CLOWDER_ENABLED
+              value: "false"
+            - name: DB_HOST
+              value: {{ include "cost-onprem.database.host" (list . "ros") }}
+            - name: DB_PORT
+              value: {{ .Values.database.ros.port | quote }}
+            - name: DB_NAME
+              value: {{ .Values.database.ros.name | quote }}
+            - name: DB_USER
+              value: {{ .Values.database.ros.user | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.fullname" . }}-db-credentials
+                  key: ros-password
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ include "cost-onprem.kafka.bootstrapServers" . | quote }}
+            - name: KAFKA_SECURITY_PROTOCOL
+              value: {{ include "cost-onprem.kafka.securityProtocol" . | quote }}
+            - name: KAFKA_CONSUMER_GROUP_ID
+              value: {{ .Values.ros.processor.kafkaConsumerGroupId | quote }}
+            - name: KAFKA_AUTO_COMMIT
+              value: {{ .Values.ros.processor.kafkaAutoCommit | quote }}
+            - name: UPLOAD_TOPIC
+              value: {{ .Values.ros.processor.uploadTopic | quote }}
+            - name: KRUIZE_HOST
+              value: {{ include "cost-onprem.fullname" . }}-kruize
+            - name: KRUIZE_PORT
+              value: {{ .Values.kruize.port | quote }}
+            - name: KRUIZE_WAIT_TIME
+              value: {{ .Values.ros.processor.kruizeWaitTime | quote }}
+            - name: SERVICE_NAME
+              value: {{ .Values.ros.processor.serviceName | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.ros.processor.logLevel | quote }}
+            - name: SOURCES_API_BASE_URL
+              value: http://{{ include "cost-onprem.fullname" . }}-sources-api:{{ .Values.sourcesApi.port }}
+            - name: PROMETHEUS_PORT
+              value: {{ .Values.ros.processor.metricsPort | quote }}
+            {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
+            - name: STORAGE_SSL_CA_CERT_PATH
+              value: "/etc/ssl/certs/service-ca.crt"
+            {{- end }}
+          # Re-enable probes now that PROMETHEUS_PORT environment variable is correctly set
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9000
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9000
+            initialDelaySeconds: 90
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.resources.application | nindent 12 }}
+      volumes:
+        - name: cdapp-config
+          configMap:
+            name: {{ include "cost-onprem.fullname" . }}-cdapp-config
+        {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
+        - name: service-ca-cert
+          configMap:
+            name: {{ include "cost-onprem.fullname" . }}-service-ca
+            items:
+              - key: service-ca.crt
+                path: service-ca.crt
+        {{- end }}

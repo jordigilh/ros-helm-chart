@@ -1,4 +1,4 @@
-# ROS-OCP Platform Guide
+# Cost Management On-Premise Platform Guide
 
 Platform-specific configuration and differences between Kubernetes and OpenShift deployments.
 
@@ -11,7 +11,7 @@ Platform-specific configuration and differences between Kubernetes and OpenShift
 
 ## Platform Overview
 
-The ROS-OCP Helm chart automatically adapts to different Kubernetes platforms, providing optimized configurations for both standard Kubernetes and OpenShift environments.
+The Cost Management On-Premise Helm chart automatically adapts to different Kubernetes platforms, providing optimized configurations for both standard Kubernetes and OpenShift environments.
 
 ### Supported Platforms
 
@@ -89,7 +89,7 @@ graph TB
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: ros-ocp-ingress
+  name: cost-onprem-ingress
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
@@ -101,7 +101,7 @@ spec:
         pathType: ImplementationSpecific
         backend:
           service:
-            name: ros-ocp-rosocp-api
+            name: cost-onprem-ros-api
             port:
               number: 8000
 ```
@@ -211,9 +211,9 @@ graph TB
         Routes["Routes (separate hostnames)"]
     end
 
-    Routes -->|"ros-ocp-main-ros-ocp.apps..."| Main["ROS Main Service"]
-    Routes -->|"ros-ocp-ingress-ros-ocp.apps..."| Ingress["Ingress Service"]
-    Routes -->|"ros-ocp-kruize-ros-ocp.apps..."| Kruize["Kruize Service"]
+    Routes -->|"cost-onprem-main-cost-onprem.apps..."| Main["ROS Main Service"]
+    Routes -->|"cost-onprem-ingress-cost-onprem.apps..."| Ingress["Ingress Service"]
+    Routes -->|"cost-onprem-kruize-cost-onprem.apps..."| Kruize["Kruize Service"]
 
     style Router fill:#e57373,stroke:#333,stroke-width:2px,color:#000
     style Main fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
@@ -228,14 +228,14 @@ graph TB
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: ros-ocp-main
+  name: cost-onprem-main
   annotations:
     haproxy.router.openshift.io/timeout: "30s"
 spec:
-  host: ""  # Auto-generated: ros-ocp-main-namespace.apps.cluster.com
+  host: ""  # Auto-generated: cost-onprem-main-namespace.apps.cluster.com
   to:
     kind: Service
-    name: ros-ocp-rosocp-api
+    name: cost-onprem-ros-api
   port:
     targetPort: 8000
   tls:
@@ -246,12 +246,12 @@ spec:
 **Access URLs:**
 ```bash
 # Get route hostnames
-oc get routes -n ros-ocp
+oc get routes -n cost-onprem
 
 # Example routes
-https://ros-ocp-main-ros-ocp.apps.cluster.com
-https://ros-ocp-ingress-ros-ocp.apps.cluster.com
-https://ros-ocp-kruize-ros-ocp.apps.cluster.com
+https://cost-onprem-main-cost-onprem.apps.cluster.com
+https://cost-onprem-ingress-cost-onprem.apps.cluster.com
+https://cost-onprem-kruize-cost-onprem.apps.cluster.com
 ```
 
 ### Storage
@@ -269,10 +269,10 @@ oc get noobaa -n openshift-storage
 oc get storagecluster -n openshift-storage
 
 # Create credentials secret
-oc create secret generic ros-ocp-odf-credentials \
+oc create secret generic cost-onprem-odf-credentials \
   --from-literal=access-key=<key> \
   --from-literal=secret-key=<secret> \
-  -n ros-ocp
+  -n cost-onprem
 ```
 
 **Configuration:**
@@ -285,7 +285,7 @@ odf:
   useSSL: true
   port: 443
   credentials:
-    secretName: "ros-ocp-odf-credentials"
+    secretName: "cost-onprem-odf-credentials"
 ```
 
 ### Security
@@ -306,10 +306,10 @@ securityContext:
 **Service Accounts:**
 ```bash
 # View service accounts
-oc get sa -n ros-ocp
+oc get sa -n cost-onprem
 
 # View assigned SCCs
-oc get pod <pod-name> -n ros-ocp -o yaml | grep scc
+oc get pod <pod-name> -n cost-onprem -o yaml | grep scc
 ```
 
 ### TLS Configuration
@@ -343,7 +343,7 @@ odf:
   endpoint: "s3.openshift-storage.svc.cluster.local"
   bucket: "ros-data"
   credentials:
-    secretName: "ros-ocp-odf-credentials"
+    secretName: "cost-onprem-odf-credentials"
 
 minio:
   enabled: false
@@ -370,22 +370,22 @@ kubectl get pods -n ingress-nginx
 kubectl logs -n ingress-nginx deployment/ingress-nginx-controller
 
 # Check ingress rules
-kubectl describe ingress ros-ocp-ingress -n ros-ocp
+kubectl describe ingress cost-onprem-ingress -n cost-onprem
 
 # Verify port mapping (KIND)
-docker port ros-ocp-cluster-control-plane
+docker port cost-onprem-cluster-control-plane
 ```
 
 **MinIO issues:**
 ```bash
 # Check MinIO pods
-kubectl get pods -l app=minio -n ros-ocp
+kubectl get pods -l app=minio -n cost-onprem
 
 # Access MinIO logs
-kubectl logs -n ros-ocp statefulset/ros-ocp-minio
+kubectl logs -n cost-onprem statefulset/cost-onprem-minio
 
 # Verify PVC
-kubectl get pvc -l app=minio -n ros-ocp
+kubectl get pvc -l app=minio -n cost-onprem
 ```
 
 ### OpenShift Issues
@@ -393,15 +393,15 @@ kubectl get pvc -l app=minio -n ros-ocp
 **Routes not accessible:**
 ```bash
 # Check routes
-oc get routes -n ros-ocp
-oc describe route ros-ocp-main -n ros-ocp
+oc get routes -n cost-onprem
+oc describe route cost-onprem-main -n cost-onprem
 
 # Check router pods
 oc get pods -n openshift-ingress
 
 # Test internal connectivity
-oc rsh deployment/ros-ocp-rosocp-api
-curl http://ros-ocp-rosocp-api:8000/status
+oc rsh deployment/cost-onprem-ros-api
+curl http://cost-onprem-ros-api:8000/status
 ```
 
 **ODF issues:**
@@ -411,10 +411,10 @@ oc get noobaa -n openshift-storage
 oc get cephcluster -n openshift-storage
 
 # Check credentials secret
-oc get secret ros-ocp-odf-credentials -n ros-ocp
+oc get secret cost-onprem-odf-credentials -n cost-onprem
 
 # Test S3 connectivity
-oc rsh deployment/ros-ocp-ingress
+oc rsh deployment/cost-onprem-ingress
 aws --endpoint-url https://s3.openshift-storage... s3 ls
 ```
 

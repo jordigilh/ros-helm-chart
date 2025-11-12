@@ -1,4 +1,4 @@
-# OpenShift-specific values for ROS-OCP deployment
+# OpenShift-specific values for Cost Management On-Premise deployment
 # This file provides OpenShift-specific overrides with testing/development settings
 # Uses OpenShift Routes, ODF storage, and smaller resource allocations for testing
 #
@@ -9,7 +9,7 @@
 global:
   # OpenShift Data Foundation (ODF) storage class
   # Common values: odf-storagecluster-ceph-rbd, ocs-storagecluster-ceph-rbd
-  # When left empty, the ros-ocp.storageClass helper will auto-discover the default storage class from the cluster
+  # When left empty, the cost-onprem.storage.class helper will auto-discover the default storage class from the cluster
   # Recommended: Leave empty for automatic detection
   storageClass: ""
   # Storage type for platform detection (odf for OpenShift, minio for Kubernetes)
@@ -57,7 +57,7 @@ database:
 # This section only contains connection settings for the deployed application
 kafka:
   # Bootstrap servers for Kafka cluster (auto-configured by script)
-  bootstrapServers: "ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
+  bootstrapServers: "cost-onprem-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
   securityProtocol: "PLAINTEXT"
 
 # Valkey (Production Cache - for OpenShift deployments)
@@ -75,12 +75,8 @@ valkey:
 odf:
   endpoint: ""  # Auto-detected from NooBaa CRD status
   port: 443
-  region: "us-east-1"
   useSSL: true
   bucket: "ros-data"
-  pathStyle: true
-  credentials:
-    secretName: "ros-ocp-odf-credentials"
 
 # Kruize OpenShift-specific configuration
 kruize:

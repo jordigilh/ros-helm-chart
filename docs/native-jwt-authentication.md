@@ -29,21 +29,21 @@ graph TB
 | Service | Main Port | Envoy Port | Authentication Method |
 |---------|-----------|------------|----------------------|
 | **Ingress** | 8081 | 8080 | ✅ JWT validation (from Cost Management Operator) |
-| **ROS-OCP API** | 8001 | 8080 | ✅ X-Rh-Identity header validation |
+| **Cost Management On-Premise API** | 8001 | 8080 | ✅ X-Rh-Identity header validation |
 
 **Services without Envoy sidecars** (direct authentication):
 
 | Service | Port | Authentication Method |
 |---------|------|----------------------|
 | **Sources API** | 8000 | Mixed: ROS endpoints are unauthenticated, but Cost Management require X-Rh-Identity|
-| **Kruize** | 8080 | Internal service (accessed via ROS-OCP API) |
-| **ROS-OCP Processor** | N/A | Kafka consumer (no HTTP API) |
-| **ROS-OCP Recommendation Poller** | N/A | Internal service (no external API) |
-| **ROS-OCP Housekeeper** | N/A | Internal service (no external API) |
+| **Kruize** | 8080 | Internal service (accessed via Cost Management On-Premise API) |
+| **Cost Management On-Premise Processor** | N/A | Kafka consumer (no HTTP API) |
+| **Cost Management On-Premise Recommendation Poller** | N/A | Internal service (no external API) |
+| **Cost Management On-Premise Housekeeper** | N/A | Internal service (no external API) |
 
 **How It Works:**
 1. **Ingress Service (Envoy sidecar)**: Validates JWT from Cost Management Operator and transforms it to `X-Rh-Identity` header
-2. **ROS-OCP API (Envoy sidecar)**: Accepts `X-Rh-Identity` header from authenticated clients and forwards to application container
+2. **Cost Management On-Premise API (Envoy sidecar)**: Accepts `X-Rh-Identity` header from authenticated clients and forwards to application container
 3. **Sources API (no sidecar)**: Has X-Rh-Identity validation middleware for protected endpoints; certain endpoints (e.g., `/application_types`) are unauthenticated for internal service access
 4. **Internal Services**: Communicate with each other using service accounts or inherit authentication context, accessing unauthenticated endpoints where appropriate
 
@@ -166,7 +166,7 @@ upstream connect error or disconnect/reset before headers. TLS error:
 
 **Solutions**:
 
-1. **For self-signed certificates**: Add the CA certificate to `jwt_auth.keycloak.tls.caCert`
+1. **For self-signed certificates**: Add the CA certificate to `jwtAuth.keycloak.tls.caCert`
 
 2. **For OpenShift service CA certificates**: Ensure the annotation is present:
    ```yaml
@@ -184,7 +184,7 @@ upstream connect error or disconnect/reset before headers. TLS error:
 
 4. **Debug CA bundle**: Check what CAs are included:
    ```bash
-   kubectl exec -n ros-ocp deployment/ros-ocp-rosocp-api -c envoy-proxy -- \
+   kubectl exec -n cost-onprem deployment/cost-onprem-ros-api -c envoy-proxy -- \
      cat /etc/ssl/certs/ca-bundle.crt | grep -c "BEGIN CERTIFICATE"
    ```
 
@@ -219,7 +219,7 @@ jwt_auth:
 **Automatic Configuration:**
 - **JWT Enabled/Disabled**: Auto-detected by platform (OpenShift vs K8s)
 - **Keycloak URL**: Auto-detected from Keycloak routes/ingresses
-- **Override**: Set `jwt_auth.keycloak.url` only for custom/external Keycloak
+- **Override**: Set `jwtAuth.keycloak.url` only for custom/external Keycloak
 
 **Platform Behavior:**
 - **OpenShift**: JWT auth enabled automatically (Keycloak required)
@@ -255,7 +255,7 @@ TOKEN=$(curl -s -k -X POST \
 # Upload file with JWT
 curl -F "file=@payload.tar.gz;type=application/vnd.redhat.hccm.filename+tgz" \
   -H "Authorization: Bearer $TOKEN" \
-  "http://ros-ocp-ingress-ros-ocp.apps.example.com/api/ingress/v1/upload"
+  "http://cost-onprem-ingress-cost-onprem.apps.example.com/api/ingress/v1/upload"
 ```
 
 ### Automated Test Script
@@ -321,45 +321,45 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 
 #### 1. Kruize Network Policy
 
-**File**: `ros-ocp/templates/networkpolicy-kruize.yaml`
+**File**: `cost-onprem/templates/kruize/networkpolicy.yaml`
 
 - **Allows**:
-  - Ingress from `ros-ocp` namespace (for internal service communication)
+  - Ingress from `cost-onprem` namespace (for internal service communication)
   - Ingress from `openshift-monitoring` namespace (for Prometheus metrics scraping on port 8080)
 - **Blocks**:
   - All other external ingress traffic
 
 #### 2. Ingress Service Network Policy
 
-**File**: `ros-ocp/templates/networkpolicy-ingress.yaml`
+**File**: `cost-onprem/templates/ingress/networkpolicy.yaml`
 
 - **Allows**:
   - Ingress from `openshift-ingress` namespace (for external file uploads via Envoy sidecar on port 9080)
 - **Applies to**: Ingress service (file uploads from Cost Management Operator)
 
-#### 3. ROS-OCP Metrics Network Policies
+#### 3. Cost Management On-Premise Metrics Network Policies
 
-**File**: `ros-ocp/templates/networkpolicy-rosocp-metrics.yaml`
+**File**: `cost-onprem/templates/ros/networkpolicies.yaml`
 
 - **Allows**:
   - Ingress from `openshift-monitoring` namespace (for Prometheus metrics scraping on port 9000)
-- **Applies to**: ROS-OCP API, Processor, Recommendation Poller (separate policies for each)
+- **Applies to**: Cost Management On-Premise API, Processor, Recommendation Poller (separate policies for each)
 
-#### 4. ROS-OCP API Access Network Policy
+#### 4. Cost Management On-Premise API Access Network Policy
 
-**File**: `ros-ocp/templates/networkpolicy-rosocp-metrics.yaml`
+**File**: `cost-onprem/templates/ros/networkpolicies.yaml`
 
 - **Allows**:
   - Ingress from OpenShift router/ingress (for external REST API access via Envoy sidecar on port 9080)
-- **Applies to**: ROS-OCP API
+- **Applies to**: Cost Management On-Premise API
 
 #### 5. Sources API Network Policy
 
-**File**: `ros-ocp/templates/networkpolicy-sources-api.yaml`
+**File**: `cost-onprem/templates/sources-api/networkpolicy.yaml`
 
 - **Allows**:
-  - Ingress from `ros-ocp` namespace (for internal service communication on port 8000)
-- **Applies to**: Sources API (accessed by ros-ocp-housekeeper)
+  - Ingress from `cost-onprem` namespace (for internal service communication on port 8000)
+- **Applies to**: Sources API (accessed by cost-onprem-housekeeper)
 
 ### Prometheus Metrics Access
 
@@ -376,9 +376,9 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 ```
 
 **Metrics Endpoints**:
-- **ROS-OCP API**: `http://rosocp-api:9000/metrics`
-- **ROS-OCP Processor**: `http://rosocp-processor:9000/metrics`
-- **ROS-OCP Recommendation Poller**: `http://rosocp-recommendation-poller:9000/metrics`
+- **Cost Management On-Premise API**: `http://ros-api:9000/metrics`
+- **Cost Management On-Premise Processor**: `http://ros-processor:9000/metrics`
+- **Cost Management On-Premise Recommendation Poller**: `http://ros-recommendation-poller:9000/metrics`
 
 ### Platform Differences
 
@@ -407,15 +407,15 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
    - Uses `permissionMiddleware` and `tenancyMiddleware`
 
 2. **Unauthenticated Endpoints** (no header required):
-   - Application types: `GET /application_types` - Used by ros-ocp-housekeeper for internal lookups
+   - Application types: `GET /application_types` - Used by cost-onprem-housekeeper for internal lookups
    - Source types: `GET /source_types`
    - Metadata: `GET /app_meta_data`
    - Health check: `GET /health`
 
 **Internal Service Communication**:
-- **ros-ocp-housekeeper** → Sources API: Calls unauthenticated `/application_types` endpoint to look up cost-management application type ID
+- **cost-onprem-housekeeper** → Sources API: Calls unauthenticated `/application_types` endpoint to look up cost-management application type ID
 - No `X-Rh-Identity` header needed for this specific endpoint
-- Network policies restrict access to internal `ros-ocp` namespace
+- Network policies restrict access to internal `cost-onprem` namespace
 
 ### Troubleshooting Network Policies
 
@@ -423,25 +423,25 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 
 ```bash
 # List all network policies
-oc get networkpolicies -n ros-ocp
+oc get networkpolicies -n cost-onprem
 
 # Describe specific policy
-oc describe networkpolicy kruize-allow-ingress -n ros-ocp
+oc describe networkpolicy kruize-allow-ingress -n cost-onprem
 ```
 
 #### Test Connectivity
 
 ```bash
 # From within the namespace (should work)
-oc exec -n ros-ocp deployment/ros-ocp-rosocp-processor -- \
-  curl -s http://ros-ocp-kruize:8080/listApplications
+oc exec -n cost-onprem deployment/cost-onprem-ros-processor -- \
+  curl -s http://cost-onprem-kruize:8080/listApplications
 
 # From outside the namespace (should be blocked to main port, allowed to Envoy)
 oc exec -n default deployment/test-pod -- \
-  curl -s http://ros-ocp-kruize.ros-ocp.svc:8081/listApplications  # Blocked
+  curl -s http://cost-onprem-kruize.cost-onprem.svc:8081/listApplications  # Blocked
 
 oc exec -n default deployment/test-pod -- \
-  curl -s -H "X-Rh-Identity: ..." http://ros-ocp-kruize.ros-ocp.svc:8080/listApplications  # Allowed via Envoy
+  curl -s -H "X-Rh-Identity: ..." http://cost-onprem-kruize.cost-onprem.svc:8080/listApplications  # Allowed via Envoy
 ```
 
 #### Verify Prometheus Metrics Access
@@ -449,7 +449,7 @@ oc exec -n default deployment/test-pod -- \
 ```bash
 # Check if Prometheus can scrape metrics
 oc exec -n openshift-monitoring prometheus-k8s-0 -- \
-  curl -s http://ros-ocp-kruize.ros-ocp.svc:8080/metrics
+  curl -s http://cost-onprem-kruize.cost-onprem.svc:8080/metrics
 
 # Expected: Prometheus metrics output
 ```
@@ -458,7 +458,7 @@ oc exec -n openshift-monitoring prometheus-k8s-0 -- \
 
 **Issue**: Service-to-service communication failing
 - **Cause**: Network policy blocking legitimate traffic
-- **Fix**: Verify both services are in the `ros-ocp` namespace and network policy allows same-namespace traffic
+- **Fix**: Verify both services are in the `cost-onprem` namespace and network policy allows same-namespace traffic
 
 **Issue**: Prometheus not scraping metrics
 - **Cause**: Network policy missing `openshift-monitoring` namespace selector
@@ -473,7 +473,7 @@ oc exec -n openshift-monitoring prometheus-k8s-0 -- \
 ### Check Envoy logs
 
 ```bash
-oc logs -n ros-ocp -l app.kubernetes.io/name=ingress -c envoy-proxy
+oc logs -n cost-onprem -l app.kubernetes.io/name=ingress -c envoy-proxy
 ```
 
 Look for:
@@ -484,7 +484,7 @@ Look for:
 ### Check ingress logs
 
 ```bash
-oc logs -n ros-ocp -l app.kubernetes.io/name=ingress -c ingress
+oc logs -n cost-onprem -l app.kubernetes.io/name=ingress -c ingress
 ```
 
 Look for:
@@ -496,7 +496,7 @@ Look for:
 
 ```bash
 # Port-forward to Envoy admin
-oc port-forward -n ros-ocp deployment/ros-ocp-ingress 9901:9901
+oc port-forward -n cost-onprem deployment/cost-onprem-ingress 9901:9901
 
 # Check cluster status
 curl http://localhost:9901/clusters | grep keycloak_jwks

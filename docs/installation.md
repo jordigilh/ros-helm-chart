@@ -1,6 +1,6 @@
-# ROS-OCP Installation Guide
+# Cost Management On-Premise Installation Guide
 
-Complete installation methods, prerequisites, and upgrade procedures for the ROS-OCP Helm chart.
+Complete installation methods, prerequisites, and upgrade procedures for the Cost Management On-Premise Helm chart.
 
 ## Table of Contents
 - [Prerequisites](#prerequisites)
@@ -81,11 +81,11 @@ export USE_LOCAL_CHART=true
 - ✅ Automatic fallback to local chart if GitHub unavailable
 
 **Environment Variables:**
-- `HELM_RELEASE_NAME`: Helm release name (default: `ros-ocp`)
-- `NAMESPACE`: Target namespace (default: `ros-ocp`)
+- `HELM_RELEASE_NAME`: Helm release name (default: `cost-onprem`)
+- `NAMESPACE`: Target namespace (default: `cost-onprem`)
 - `VALUES_FILE`: Path to custom values file
 - `USE_LOCAL_CHART`: Use local chart instead of GitHub release (default: `false`)
-- `LOCAL_CHART_PATH`: Path to local chart directory (default: `../ros-ocp`)
+- `LOCAL_CHART_PATH`: Path to local chart directory (default: `../cost-onprem`)
 
 **Note**: JWT authentication is automatically enabled on OpenShift and disabled on KIND/K8s via platform detection.
 
@@ -101,19 +101,19 @@ LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart
   jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
 
 # Download and install
-curl -L -o ros-ocp-latest.tgz "$LATEST_URL"
-helm install ros-ocp ros-ocp-latest.tgz \
-  --namespace ros-ocp \
+curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
+helm install cost-onprem cost-onprem-latest.tgz \
+  --namespace cost-onprem \
   --create-namespace
 
 # Verify installation
-helm status ros-ocp -n ros-ocp
+helm status cost-onprem -n cost-onprem
 ```
 
 **With custom values:**
 ```bash
-helm install ros-ocp ros-ocp-latest.tgz \
-  --namespace ros-ocp \
+helm install cost-onprem cost-onprem-latest.tgz \
+  --namespace cost-onprem \
   --create-namespace \
   --values my-values.yaml
 ```
@@ -124,12 +124,12 @@ helm install ros-ocp ros-ocp-latest.tgz \
 
 ```bash
 # Add Helm repository (once published)
-helm repo add ros-ocp https://insights-onprem.github.io/ros-helm-chart
+helm repo add cost-onprem https://insights-onprem.github.io/ros-helm-chart
 helm repo update
 
 # Install from repository
-helm install ros-ocp ros-ocp/ros-ocp \
-  --namespace ros-ocp \
+helm install cost-onprem cost-onprem/cost-onprem \
+  --namespace cost-onprem \
   --create-namespace
 ```
 
@@ -149,13 +149,13 @@ export USE_LOCAL_CHART=true
 ./scripts/install-helm-chart.sh
 
 # Method B: Direct Helm installation
-helm install ros-ocp ./ros-ocp \
-  --namespace ros-ocp \
+helm install cost-onprem ./cost-onprem \
+  --namespace cost-onprem \
   --create-namespace
 
 # With custom values
-helm install ros-ocp ./ros-ocp \
-  --namespace ros-ocp \
+helm install cost-onprem ./cost-onprem \
+  --namespace cost-onprem \
   --create-namespace \
   --values custom-values.yaml
 ```
@@ -170,7 +170,7 @@ Complete local development setup:
 # Step 1: Create KIND cluster with ingress
 ./scripts/deploy-kind.sh
 
-# Step 2: Deploy ROS-OCP services
+# Step 2: Deploy Cost Management On-Premise services
 ./scripts/install-helm-chart.sh
 
 # Access: All services at http://localhost:32061
@@ -211,13 +211,13 @@ Create credentials secret in deployment namespace:
 
 ```bash
 # Create secret with ODF S3 credentials
-kubectl create secret generic ros-ocp-odf-credentials \
-  --namespace=ros-ocp \
+kubectl create secret generic cost-onprem-odf-credentials \
+  --namespace=cost-onprem \
   --from-literal=access-key=<your-access-key> \
   --from-literal=secret-key=<your-secret-key>
 
 # Verify secret
-kubectl get secret ros-ocp-odf-credentials -n ros-ocp
+kubectl get secret cost-onprem-odf-credentials -n cost-onprem
 ```
 
 ### Getting ODF Credentials
@@ -268,7 +268,7 @@ vault kv get -field=access_key secret/odf/ros-credentials
 vault kv get -field=secret_key secret/odf/ros-credentials
 
 # Example with Sealed Secrets
-kubectl create secret generic ros-ocp-odf-credentials \
+kubectl create secret generic cost-onprem-odf-credentials \
   --from-literal=access-key=<key> \
   --from-literal=secret-key=<secret> \
   --dry-run=client -o yaml | \
@@ -292,16 +292,16 @@ Ensure you have permissions to:
 
 ```bash
 # Verify permissions
-oc auth can-i create secrets -n ros-ocp
-oc auth can-i create deployments -n ros-ocp
-oc auth can-i create routes -n ros-ocp
+oc auth can-i create secrets -n cost-onprem
+oc auth can-i create deployments -n cost-onprem
+oc auth can-i create routes -n cost-onprem
 ```
 
 ### 4. Authorino Setup for OAuth2 Authentication
 
 **✅ Authorino is now automatically deployed by the Helm chart!**
 
-As of ROS-OCP Helm Chart v2.0, Authorino is deployed as a standalone pod directly by the Helm chart during the standard installation. No separate installation steps are required.
+As of Cost Management On-Premise Helm Chart v2.0, Authorino is deployed as a standalone pod directly by the Helm chart during the standard installation. No separate installation steps are required.
 
 **What gets deployed automatically:**
 - Authorino Deployment (no operator dependency)
@@ -322,24 +322,24 @@ After Helm installation, verify Authorino deployment:
 
 ```bash
 # Check Authorino pod
-oc get pods -n ros-ocp -l app.kubernetes.io/component=authorino
+oc get pods -n cost-onprem -l app.kubernetes.io/component=authorino
 
 # Check Authorino services
-oc get svc -n ros-ocp -l app.kubernetes.io/component=authorino
+oc get svc -n cost-onprem -l app.kubernetes.io/component=authorino
 
 # Check AuthConfig
-oc get authconfig -n ros-ocp
+oc get authconfig -n cost-onprem
 
 # Check TLS certificate
-oc get secret -n ros-ocp | grep authorino-server-cert
+oc get secret -n cost-onprem | grep authorino-server-cert
 ```
 
 **What Authorino Does:**
 
-Authorino provides OAuth2 TokenReview authentication for the backend API, enabling OpenShift Console UI users to access ROS-OCP with their session tokens.
+Authorino provides OAuth2 TokenReview authentication for the backend API, enabling OpenShift Console UI users to access Cost Management On-Premise with their session tokens.
 
 **Authentication Flow:**
-1. User accesses ROS-OCP via OpenShift Console UI
+1. User accesses Cost Management On-Premise via OpenShift Console UI
 2. Console includes user's session token in request
 3. Envoy proxy forwards request to Authorino for validation
 4. Authorino validates token via Kubernetes TokenReview API
@@ -354,7 +354,7 @@ Authorino provides OAuth2 TokenReview authentication for the backend API, enabli
 **Single Node OpenShift (SNO):**
 - SNO cluster with ODF installed
 - 30GB+ block devices for ODF
-- Additional 6GB RAM for ROS-OCP workloads
+- Additional 6GB RAM for Cost Management On-Premise workloads
 - Additional 2 CPU cores
 - Authorino resources (minimal: ~100Mi RAM, 0.1 CPU)
 
@@ -384,11 +384,11 @@ LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart
   jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
 
 # Download and upgrade
-curl -L -o ros-ocp-latest.tgz "$LATEST_URL"
-helm upgrade ros-ocp ros-ocp-latest.tgz -n ros-ocp
+curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
+helm upgrade cost-onprem cost-onprem-latest.tgz -n cost-onprem
 
 # With custom values
-helm upgrade ros-ocp ros-ocp-latest.tgz -n ros-ocp --values my-values.yaml
+helm upgrade cost-onprem cost-onprem-latest.tgz -n cost-onprem --values my-values.yaml
 ```
 
 #### From Local Source
@@ -399,7 +399,7 @@ export USE_LOCAL_CHART=true
 ./scripts/install-helm-chart.sh
 
 # Direct Helm command
-helm upgrade ros-ocp ./ros-ocp -n ros-ocp
+helm upgrade cost-onprem ./cost-onprem -n cost-onprem
 ```
 
 ### Upgrade Considerations
@@ -413,7 +413,7 @@ helm upgrade ros-ocp ./ros-ocp -n ros-ocp
 **During upgrade:**
 - Helm performs rolling updates by default
 - Some downtime may occur during database upgrades
-- Monitor pod status: `kubectl get pods -n ros-ocp -w`
+- Monitor pod status: `kubectl get pods -n cost-onprem -w`
 
 **After upgrade:**
 ```bash
@@ -424,7 +424,7 @@ helm upgrade ros-ocp ./ros-ocp -n ros-ocp
 ./scripts/install-helm-chart.sh health
 
 # Check version
-helm list -n ros-ocp
+helm list -n cost-onprem
 ```
 
 ---
@@ -435,13 +435,13 @@ helm list -n ros-ocp
 
 ```bash
 # Check Helm release
-helm status ros-ocp -n ros-ocp
+helm status cost-onprem -n cost-onprem
 
 # Check all pods
-kubectl get pods -n ros-ocp
+kubectl get pods -n cost-onprem
 
 # Wait for all pods to be ready
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=ros-ocp -n ros-ocp --timeout=300s
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cost-onprem -n cost-onprem --timeout=300s
 ```
 
 ### Service Health
@@ -462,28 +462,28 @@ curl http://localhost:32061/api/ros/status
 
 ```bash
 # Check persistent volume claims
-kubectl get pvc -n ros-ocp
+kubectl get pvc -n cost-onprem
 
 # Verify all PVCs are bound
-kubectl get pvc -n ros-ocp | grep -v Bound && echo "ISSUE: Unbound PVCs found" || echo "OK: All PVCs bound"
+kubectl get pvc -n cost-onprem | grep -v Bound && echo "ISSUE: Unbound PVCs found" || echo "OK: All PVCs bound"
 
 # Check storage class
-kubectl get pvc -n ros-ocp -o jsonpath='{.items[*].spec.storageClassName}' | tr ' ' '\n' | sort -u
+kubectl get pvc -n cost-onprem -o jsonpath='{.items[*].spec.storageClassName}' | tr ' ' '\n' | sort -u
 ```
 
 ### Service Connectivity
 
 ```bash
 # Test database connections
-kubectl exec -it deployment/ros-ocp-rosocp-api -n ros-ocp -- \
+kubectl exec -it deployment/cost-onprem-ros-api -n cost-onprem -- \
   env | grep DATABASE_URL
 
 # Test Kafka connectivity
-kubectl exec -it statefulset/ros-ocp-kafka -n ros-ocp -- \
+kubectl exec -it statefulset/cost-onprem-kafka -n cost-onprem -- \
   kafka-topics.sh --list --bootstrap-server localhost:29092
 
 # Test MinIO/ODF access (Kubernetes)
-kubectl exec -it statefulset/ros-ocp-minio -n ros-ocp -- \
+kubectl exec -it statefulset/cost-onprem-minio -n cost-onprem -- \
   mc admin info local
 ```
 
@@ -534,7 +534,7 @@ curl -v https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/lat
 # Manual download
 LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | \
   jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
-curl -L -o ros-ocp-latest.tgz "$LATEST_URL"
+curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
 ```
 
 ### Resource Issues

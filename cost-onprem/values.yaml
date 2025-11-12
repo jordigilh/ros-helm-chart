@@ -1,0 +1,575 @@
+# =============================================================================
+# Cost Management On-Premise - Helm Chart Values
+# =============================================================================
+# This chart deploys the complete Cost Management on-premise solution:
+# - ROS (Resource Optimization Service)
+# - Cost Management Service (future)
+# - Sources API
+# - Shared infrastructure (PostgreSQL, Kafka, Redis/Valkey, MinIO/ODF)
+#
+# Naming conventions:
+# - Use camelCase for all variable names
+# - Service names match their architectural role
+# =============================================================================
+
+# Chart name overrides
+nameOverride: ""
+fullnameOverride: ""
+
+# -----------------------------------------------------------------------------
+# Global Configuration (applies to all components)
+# -----------------------------------------------------------------------------
+global:
+  # Container image settings
+  pullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+  # Storage class for persistent volumes (auto-detected if empty)
+  storageClass: ""
+
+  # Storage type for platform detection (auto-detected if empty)
+  # "odf" for OpenShift, "minio" for Kubernetes
+  storageType: ""
+
+  # Init container images (shared across all services)
+  # Using alternative registries to avoid docker.io rate limits
+  initContainers:
+    waitFor:
+      repository: registry.access.redhat.com/ubi9/ubi-minimal
+      tag: "latest"
+    minioMc:
+      repository: quay.io/minio/mc
+      tag: "RELEASE.2025-07-21T05-28-08Z"
+
+# -----------------------------------------------------------------------------
+# Authentication Provider Configuration
+# -----------------------------------------------------------------------------
+auth:
+  provider: "oauth2"
+
+# -----------------------------------------------------------------------------
+# ROS (Resource Optimization Service) - Top-level Service
+# -----------------------------------------------------------------------------
+ros:
+  # Service Account
+  serviceAccount:
+    create: true
+    name: ros-backend
+
+  # API Component - REST API for ROS
+  api:
+    image:
+      repository: quay.io/insights-onprem/ros-ocp-backend
+      tag: "latest"
+      pullPolicy: Always
+
+    port: 8000
+    metricsPort: 9000
+    pathPrefix: /api
+
+    # Service-specific configuration
+    rbacEnabled: false # RBAC is not supported yet
+    dbPoolSize: 10
+    dbMaxOverflow: 20
+    serviceName: ros-api
+    logLevel: INFO
+
+  # Processor Component - Processes uploaded data
+  processor:
+    image:
+      repository: quay.io/insights-onprem/ros-ocp-backend
+      tag: "latest"
+      pullPolicy: Always
+
+    metricsPort: 9000
+    logLevel: INFO
+    serviceName: ros-processor
+
+    # Kafka consumer configuration
+    kafkaConsumerGroupId: ros-processor
+    kafkaAutoCommit: true
+    uploadTopic: hccm.ros.events
+
+    # Kruize integration
+    kruizeWaitTime: 120
+
+  # Recommendation Poller Component - Polls Kruize for recommendations
+  recommendationPoller:
+    image:
+      repository: quay.io/insights-onprem/ros-ocp-backend
+      tag: "latest"
+      pullPolicy: Always
+
+    metricsPort: 9000
+    logLevel: INFO
+    serviceName: ros-recommendation-poller
+
+    # Kafka consumer configuration
+    kafkaConsumerGroupId: ros-recommendation-poller
+    kafkaAutoCommit: false
+    recommendationTopic: rosocp.kruize.recommendations
+
+    # Kruize integration
+    kruizeWaitTime: 120
+
+  # Housekeeper Component - Maintenance and cleanup tasks
+  housekeeper:
+    image:
+      repository: quay.io/insights-onprem/ros-ocp-backend
+      tag: "latest"
+      pullPolicy: Always
+
+    logLevel: INFO
+    serviceName: ros-housekeeper-sources
+
+    # Partition Cleaner CronJob
+    partitionCleaner:
+      enabled: true
+      schedule: "0 0 */15 * *"  # Every 15 days at midnight
+      image:
+        repository: quay.io/insights-onprem/ros-ocp-backend
+        tag: "latest"
+        pullPolicy: Always
+      serviceName: ros-housekeeper-partition
+      logLevel: INFO
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "100m"
+        limits:
+          memory: "512Mi"
+          cpu: "300m"
+
+# -----------------------------------------------------------------------------
+# Cost Management Service (Future - Placeholder)
+# -----------------------------------------------------------------------------
+# Placeholder for future cost management service components
+# When implemented, will include:
+# - API, Processor, and other components
+# - Integration with shared database, Kafka, storage
+costManagement: {}
+
+# -----------------------------------------------------------------------------
+# Kruize - Optimization Engine (ROS Dependency)
+# -----------------------------------------------------------------------------
+# Kruize is used exclusively by ROS for workload optimization recommendations
+kruize:
+  image:
+    repository: quay.io/redhat-services-prod/kruize-autotune-tenant/autotune
+    tag: "d0b4337"
+
+  port: 8080
+
+  # Kruize environment configuration
+  env:
+    loggingLevel: debug
+    rootLoggingLevel: error
+    dbConfigFile: /tmp/cdappconfig.json
+    dbDriver: "jdbc:postgresql://"
+    clusterType: kubernetes
+    k8sType: openshift  # Overridden on vanilla Kubernetes
+    authType: ""
+    monitoringAgent: "prometheus"
+    monitoringService: "prometheus"
+    monitoringEndpoint: "prometheus"
+    saveToDb: true
+    local: true
+    logAllHttpReqAndResponse: true
+
+    # Hibernate/JPA configuration
+    hibernateDialect: org.hibernate.dialect.PostgreSQLDialect
+    hibernateDriver: org.postgresql.Driver
+    hibernateC3p0MinSize: 2
+    hibernateC3p0MaxSize: 5
+    hibernateC3p0Timeout: 300
+    hibernateC3p0MaxStatements: 100
+    hibernateHbm2ddlAuto: none
+    hibernateShowSql: false
+    hibernateTimezone: UTC
+    plots: true
+
+  # Partition management
+  partitions:
+    createEnabled: true
+    deleteEnabled: true
+    deleteSchedule: "0 0 * * *"  # Daily at midnight
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 1
+    loggingLevel: info
+    rootLoggingLevel: error
+    deletePartitionsThreshold: "16"
+
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "300m"
+
+# -----------------------------------------------------------------------------
+# Sources API (Top-level Service - Shared by ROS and Cost Management)
+# -----------------------------------------------------------------------------
+sourcesApi:
+  image:
+    repository: quay.io/insights-onprem/sources-api-go
+    tag: "latest"
+    pullPolicy: Always
+
+  port: 8000
+  logLevel: DEBUG
+  bypassRbac: true
+  sourcesEnv: prod
+  encryptionKey: YWFhYWFhYWFhYWFhYWFhYQ
+  platformSourcesEventStreamTopic: platform.sources.event-stream
+
+# -----------------------------------------------------------------------------
+# Ingress Service (Shared entry point for uploads and routing)
+# -----------------------------------------------------------------------------
+ingress:
+  serviceAccount:
+    create: true
+    name: insights-ros-ingress
+
+  image:
+    repository: quay.io/insights-onprem/insights-ros-ingress
+    tag: "latest"
+    pullPolicy: Always
+
+  port: 8080
+
+  # Server configuration
+  server:
+    port: 8080
+    readTimeout: 30
+    writeTimeout: 30
+    idleTimeout: 120
+    debug: false
+
+  # Upload handling
+  upload:
+    maxUploadSize: 104857600  # 100MB
+    maxMemory: 33554432       # 32MB
+    tempDir: "/tmp"
+    allowedTypes:
+      - "application/vnd.redhat.hccm.upload"
+    requireAuth: true  # Overridden by platform detection
+
+  # Storage backend configuration
+  storage:
+    bucket: "ros-data"
+    useSSL: false      # Overridden to true on OpenShift (ODF)
+    urlExpiration: 172800  # 48 hours
+    pathPrefix: "ros"
+
+  # Kafka producer configuration
+  kafka:
+    topic: "hccm.ros.events"
+    clientId: "insights-ros-ingress"
+    batchSize: 16384
+    retries: 3
+
+  # Authentication (OpenShift only)
+  # Note: Authentication is only available on OpenShift with Keycloak (RHBK).
+  # On vanilla Kubernetes/KIND, authentication is automatically disabled.
+  auth:
+    enabled: true      # Auto-disabled on Kubernetes
+
+  # Logging
+  logging:
+    level: "info"
+    format: "json"
+    output: "stdout"
+
+  # Metrics
+  metrics:
+    enabled: true
+    path: "/metrics"
+    port: 8080
+
+# -----------------------------------------------------------------------------
+# Shared Infrastructure - Database
+# -----------------------------------------------------------------------------
+# PostgreSQL server hosts separate databases for each service
+# Each service gets its own StatefulSet for isolation and independent scaling
+database:
+  # ROS Database
+  ros:
+    image:
+      repository: quay.io/insights-onprem/postgresql
+      tag: "16"
+
+    storage:
+      size: 10Gi
+
+    # Connection settings
+    host: internal  # Use "internal" for built-in StatefulSet
+    port: 5432
+    name: postgres
+    user: postgres
+    password: postgres
+    sslMode: disable
+    url: postgresql://postgres:postgres@db-ros:5432/postgres?sslmode=disable
+
+  # Kruize Database (dedicated for Kruize service)
+  kruize:
+    image:
+      repository: quay.io/insights-onprem/postgresql
+      tag: "16"
+
+    storage:
+      size: 10Gi
+
+    host: internal
+    port: 5432
+    name: postgres
+    user: postgres
+    password: postgres
+    adminUser: postgres
+    adminPassword: postgres
+    sslMode: disable
+
+  # Sources API Database
+  sources:
+    image:
+      repository: quay.io/insights-onprem/postgresql
+      tag: "16"
+
+    storage:
+      size: 10Gi
+
+    host: internal
+    port: 5432
+    name: sources_api_development
+    user: postgres
+    password: postgres
+
+  # Cost Management Database (future placeholder - DB server will be shared with ROS)
+  costManagement: {}
+
+# -----------------------------------------------------------------------------
+# Shared Infrastructure - Kafka
+# -----------------------------------------------------------------------------
+# IMPORTANT: Kafka/Strimzi deployment is NOT managed by this Helm chart!
+# The install-helm-chart.sh script installs Strimzi operator and creates Kafka cluster separately
+# This section only contains connection settings
+kafka:
+  # Bootstrap servers for Kafka cluster
+  # This is auto-configured by the install script based on the Kafka cluster it creates
+  bootstrapServers: "cost-onprem-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
+
+  # Security protocol (PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL)
+  securityProtocol: "PLAINTEXT"
+
+# -----------------------------------------------------------------------------
+# Shared Infrastructure - Cache
+# -----------------------------------------------------------------------------
+# Redis for Kubernetes, Valkey for OpenShift
+redis:
+  image:
+    repository: quay.io/insights-onprem/redis-ephemeral
+    tag: "6"
+  maxMemory: 512mb
+  maxMemoryPolicy: allkeys-lru
+
+# Valkey (OpenShift) - defined in openshift-values.yaml
+valkey: {}
+
+# -----------------------------------------------------------------------------
+# Shared Infrastructure - Object Storage
+# -----------------------------------------------------------------------------
+# MinIO for Kubernetes, ODF for OpenShift
+minio:
+  image:
+    repository: quay.io/minio/minio
+    tag: "RELEASE.2025-07-23T15-54-02Z"
+
+  storage:
+    size: 20Gi
+
+  rootUser: minioaccesskey
+  rootPassword: miniosecretkey
+
+  ports:
+    api: 9000
+    console: 9990
+
+  buckets:
+    - insights-upload-perma
+    - koku-bucket
+    - ros-data
+
+# ODF (OpenShift) - defined in openshift-values.yaml
+odf: {}
+
+# -----------------------------------------------------------------------------
+# Authentication Configuration (JWT with Keycloak/RHBK)
+# -----------------------------------------------------------------------------
+# Note: JWT authentication only works on OpenShift with Keycloak
+# Auto-disabled on Kubernetes/KIND
+#
+# JWT authentication with RHBK using Envoy's native JWT filter
+# - OpenShift: Automatically enabled (requires RHBK to be deployed)
+# - KIND/Vanilla K8s: Automatically disabled (RHBK not available)
+# Platform detection is automatic via Helm's capability detection.
+#
+# Architecture: Envoy sidecar validates JWT tokens inline using native jwt_authn filter
+# with Lua scripting to extract claims into X-ROS headers for the backend service.
+jwtAuth:
+  # Envoy proxy sidecar (for JWT validation)
+  envoy:
+    image:
+      repository: registry.redhat.io/openshift-service-mesh/proxyv2-rhel9
+      tag: "2.6"
+      pullPolicy: IfNotPresent
+
+    port: 9080
+    adminPort: 9901
+    logLevel: info
+
+    resources:
+      limits:
+        cpu: 500m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # Authorino (OAuth2 TokenReview for Console users)
+  authorino:
+    image:
+      repository: registry.redhat.io/rhcl-1/authorino-rhel9
+      # Use SHA digest for immutable deployment
+      digest: sha256:22d44b5bccacac44ffe96206e69ac91e22557f1c4fbfd46252c6ba9b720d7d6a
+      pullPolicy: IfNotPresent
+
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # Keycloak configuration for JWT validation
+  # NOTE: JWT authentication is ONLY supported on OpenShift with Keycloak.
+  # On vanilla Kubernetes/KIND, JWT authentication is automatically disabled.
+  #
+  # Supported operator:
+  #   - Red Hat Build of Keycloak (RHBK) v22+ - k8s.keycloak.org/v2alpha1
+  keycloak:
+    # Keycloak URL - leave empty for automatic runtime discovery (OpenShift only)
+    #
+    # Runtime Discovery on OpenShift (when url is empty):
+    #   1. Searches for Keycloak Route in common namespaces (keycloak, keycloak-system)
+    #   2. Falls back to Keycloak Service discovery (cluster-local)
+    #   3. Fails with helpful message if not found
+    #
+    # Override only if using custom/external Keycloak instance on OpenShift
+    url: ""  # e.g., "https://keycloak-keycloak.apps.example.com"
+
+    # Keycloak namespace - leave empty for automatic discovery
+    # Set this if Keycloak is deployed in a custom namespace that doesn't match
+    # the standard patterns (keycloak, keycloak-system)
+    namespace: ""  # e.g., "my-auth-namespace"
+
+    # Keycloak service port for internal cluster-local discovery fallback
+    # Only used when discovering Keycloak via Service (not Route)
+    servicePort: 8080
+
+    # Keycloak realm name
+    realm: kubernetes
+
+    # Client configuration (for reference - used by Cost Management Operator)
+    client:
+      id: cost-management-operator
+
+    # JWT audience claims that will be validated
+    # Must match the 'aud' claim in incoming JWT tokens
+    # Only tokens issued for the cost-management-operator client will be accepted
+    audiences:
+      - cost-management-operator
+
+    # TLS configuration for Keycloak communication
+    tls:
+      insecureSkipVerify: false
+      # caCert: ""  # Path to CA certificate
+
+# -----------------------------------------------------------------------------
+# Network Configuration
+# -----------------------------------------------------------------------------
+# Service type for all services
+service:
+  type: ClusterIP
+
+# Kubernetes Ingress (vanilla Kubernetes)
+serviceIngress:
+  className: nginx
+  hosts:
+    - host: localhost
+      paths:
+        - path: /
+          pathType: Prefix
+
+# OpenShift Routes (auto-used on OpenShift)
+serviceRoute:
+  annotations:
+    # OpenShift-specific route annotations
+    haproxy.router.openshift.io/timeout: "30s"
+    haproxy.router.openshift.io/rewrite-target: ""
+  hosts:
+    - host: ""  # Empty host uses cluster's default route domain
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: {}
+    # Uncomment to enable TLS termination
+    # termination: edge
+    # insecureEdgeTerminationPolicy: Redirect
+
+# -----------------------------------------------------------------------------
+# Resource Defaults
+# -----------------------------------------------------------------------------
+resources:
+  # PostgreSQL resources
+  database:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  # Standard application services
+  application:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "300m"
+
+  # Kruize is memory-intensive (Java workload)
+  kruize:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+
+# -----------------------------------------------------------------------------
+# Health Probe Defaults
+# -----------------------------------------------------------------------------
+probes:
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# -----------------------------------------------------------------------------
+# Monitoring Configuration
+# -----------------------------------------------------------------------------
+monitoring:
+  enabled: true  # Enable monitoring components (ServiceMonitor, etc.)
+  scrapeInterval: 30s  # Prometheus scrape interval for metrics collection

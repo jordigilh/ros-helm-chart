@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-ros-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+    app.kubernetes.io/name: ros-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+      app.kubernetes.io/name: ros-api
+  template:
+    metadata:
+      labels:
+        {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+        app.kubernetes.io/name: ros-api
+    spec:
+      serviceAccountName: {{ .Values.ros.serviceAccount.name }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        {{- include "cost-onprem.initContainer.waitForDb" (list . "ros") | nindent 8 }}
+        {{- if .Values.kafka.bootstrapServers }}
+        {{- include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
+        {{- end }}
+      containers:
+        {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+        # Envoy sidecar for OAuth2 TokenReview authentication
+        - name: envoy-proxy
+          image: "{{ .Values.jwtAuth.envoy.image.repository }}:{{ .Values.jwtAuth.envoy.image.tag }}"
+          imagePullPolicy: {{ .Values.global.pullPolicy }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            {{- include "cost-onprem.securityContext.nonRoot" . | nindent 12 }}
+          ports:
+            - name: http-proxy
+              containerPort: {{ .Values.jwtAuth.envoy.port }}
+              protocol: TCP
+            - name: admin
+              containerPort: {{ .Values.jwtAuth.envoy.adminPort }}
+              protocol: TCP
+          command:
+            - /usr/local/bin/envoy
+          args:
+            - -c
+            - /etc/envoy/envoy.yaml
+            - --log-level
+            - {{ .Values.jwtAuth.envoy.logLevel | default "info" }}
+          volumeMounts:
+            - name: envoy-config
+              mountPath: /etc/envoy
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.jwtAuth.envoy.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.jwtAuth.envoy.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.jwtAuth.envoy.resources | nindent 12 }}
+        {{- end }}
+        - name: ros-api
+          image: "{{ .Values.ros.api.image.repository }}:{{ .Values.ros.api.image.tag }}"
+          imagePullPolicy: {{ .Values.ros.api.image.pullPolicy | default .Values.global.pullPolicy }}
+          securityContext:
+            {{- include "cost-onprem.securityContext.nonRoot" . | nindent 12 }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              ./rosocp db migrate up
+              ./rosocp start api
+          ports:
+            - name: http
+              containerPort: {{ .Values.ros.api.port }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.ros.api.metricsPort }}
+              protocol: TCP
+          env:
+            - name: PATH_PREFIX
+              value: {{ .Values.ros.api.pathPrefix | quote }}
+            - name: CLOWDER_ENABLED
+              value: "false"
+            - name: RBAC_ENABLE
+              value: {{ .Values.ros.api.rbacEnabled | quote }}
+            - name: DB_POOL_SIZE
+              value: {{ .Values.ros.api.dbPoolSize | quote }}
+            - name: DB_MAX_OVERFLOW
+              value: {{ .Values.ros.api.dbMaxOverflow | quote }}
+            - name: SERVICE_NAME
+              value: {{ .Values.ros.api.serviceName | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.ros.api.logLevel | quote }}
+            - name: DB_HOST
+              value: {{ include "cost-onprem.database.host" (list . "ros") }}
+            - name: DB_PORT
+              value: {{ .Values.database.ros.port | quote }}
+            - name: DB_NAME
+              value: {{ .Values.database.ros.name | quote }}
+            - name: DB_USER
+              value: {{ .Values.database.ros.user | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.fullname" . }}-db-credentials
+                  key: ros-password
+            - name: DATABASE_URL
+              value: {{ include "cost-onprem.database.url" . }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ include "cost-onprem.kafka.bootstrapServers" . | quote }}
+            - name: KAFKA_SECURITY_PROTOCOL
+              value: {{ include "cost-onprem.kafka.securityProtocol" . | quote }}
+            - name: ID_PROVIDER
+              value: {{ .Values.auth.provider | quote }}
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: {{ .Values.ros.api.port }}
+            initialDelaySeconds: {{ .Values.probes.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: {{ .Values.ros.api.port }}
+            initialDelaySeconds: 15
+            periodSeconds: {{ .Values.probes.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.failureThreshold }}
+          resources:
+            {{- toYaml .Values.resources.application | nindent 12 }}
+      volumes:
+        {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+        # Envoy configuration volume
+        - name: envoy-config
+          configMap:
+            name: {{ include "cost-onprem.fullname" . }}-envoy-config-ros-api
+            items:
+              - key: envoy.yaml
+                path: envoy.yaml
+        # Temporary directory for Envoy (required with read-only root filesystem)
+        - name: tmp
+          emptyDir: {}
+        {{- end }}

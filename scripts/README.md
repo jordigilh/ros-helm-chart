@@ -85,7 +85,7 @@ The script automatically applies the `cost_management_optimizations=true` label 
 
 To remove the label (if needed):
 ```bash
-kubectl label namespace ros-ocp cost_management_optimizations-
+kubectl label namespace cost-onprem cost_management_optimizations-
 ```
 
 **Usage:**
@@ -109,7 +109,7 @@ export NAMESPACE=ros-production
 ```
 
 **Environment variables:**
-- `NAMESPACE`: Target namespace (default: `ros-ocp`)
+- `NAMESPACE`: Target namespace (default: `cost-onprem`)
 - `USE_LOCAL_CHART`: Use local chart instead of GitHub (default: `false`)
 - `JWT_AUTH_ENABLED`: Enable JWT authentication (default: auto-detect)
 - `VALUES_FILE`: Custom values file path
@@ -173,7 +173,7 @@ Deploy Strimzi operator and Kafka cluster.
 **What it creates:**
 - Strimzi Operator (Kafka cluster management)
 - Kafka 3.8.0 cluster with persistent storage
-- Required Kafka topics for ROS-OCP
+- Required Kafka topics for Cost Management On-Premise
 
 **Usage:**
 ```bash
@@ -198,7 +198,7 @@ KAFKA_BOOTSTRAP_SERVERS=my-kafka:9092 ./deploy-strimzi.sh
 
 **Environment variables:**
 - `KAFKA_NAMESPACE`: Target namespace (default: `kafka`)
-- `KAFKA_CLUSTER_NAME`: Kafka cluster name (default: `ros-ocp-kafka`)
+- `KAFKA_CLUSTER_NAME`: Kafka cluster name (default: `cost-onprem-kafka`)
 - `KAFKA_VERSION`: Kafka version (default: `3.8.0`)
 - `STRIMZI_VERSION`: Strimzi operator version (default: `0.45.1`)
 - `KAFKA_ENVIRONMENT`: Environment type - `dev` or `ocp` (default: `dev`)
@@ -365,7 +365,7 @@ Most scripts support these variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NAMESPACE` | Target namespace | `ros-ocp` |
+| `NAMESPACE` | Target namespace | `cost-onprem` |
 | `VERBOSE` | Enable detailed logging | `false` |
 | `DRY_RUN` | Preview without executing | `false` |
 | `JWT_AUTH_ENABLED` | Enable JWT authentication | Auto-detect |
@@ -387,7 +387,7 @@ Most scripts support these variables:
 ./test-ocp-dataflow-jwt.sh --verbose
 
 # Check Envoy sidecar logs
-oc logs -n ros-ocp -l app.kubernetes.io/name=ingress -c envoy-proxy
+oc logs -n cost-onprem -l app.kubernetes.io/name=ingress -c envoy-proxy
 ```
 
 **Cost Management Operator Issues**
