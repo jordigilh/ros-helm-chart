@@ -12,6 +12,55 @@
 # Profile: Minimal (for development and integration testing)
 
 # =============================================================================
+# Global Configuration
+# =============================================================================
+global:
+  pullPolicy: Always
+  
+  initContainers:
+    waitFor:
+      repository: registry.access.redhat.com/ubi9/ubi-minimal
+      tag: "latest"
+
+# =============================================================================
+# Database Configuration
+# =============================================================================
+database:
+  sources:
+    host: internal
+    port: 5432
+    name: sources_api_development
+    user: postgres
+    password: postgres
+
+# =============================================================================
+# Kafka Configuration
+# =============================================================================
+kafka:
+  bootstrapServers: ""  # Set if using external Kafka, empty for internal
+
+# =============================================================================
+# Probes Configuration
+# =============================================================================
+probes:
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# =============================================================================
+# Resources Configuration
+# =============================================================================
+resources:
+  application:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# =============================================================================
 # Infrastructure Dependencies Configuration
 # =============================================================================
 
@@ -953,3 +1002,67 @@ mockRbac:
           - protocol: TCP
             port: 8111
 
+
+# =============================================================================
+# Sources API Configuration
+# =============================================================================
+# Sources API manages provider configurations and communicates them to Koku.
+# This is the proper architectural way to create and manage providers.
+
+sourcesApi:
+  enabled: true  # Enable Sources API for provider management
+
+  replicas: 1
+
+  image:
+    repository: quay.io/insights-onprem/sources-api-go
+    tag: "latest"
+    pullPolicy: Always
+
+  port: 8000
+  logLevel: DEBUG
+
+  # Bypass RBAC for on-prem deployments (no Red Hat SSO integration)
+  bypassRbac: true
+
+  # Sources environment (prod for production-like behavior)
+  sourcesEnv: prod
+
+  # Encryption key for sensitive data (change in production!)
+  encryptionKey: YWFhYWFhYWFhYWFhYWFhYQ  # base64: aaaaaaaaaaaaaaa
+
+  # Kafka topic for Sources events
+  platformSourcesEventStreamTopic: platform.sources.event-stream
+
+  # Database configuration
+  database:
+    image:
+      repository: registry.redhat.io/rhel9/postgresql-16
+      tag: "latest"
+
+    host: internal  # Uses the StatefulSet deployed by this chart
+    port: 5432
+    name: sources_api_development
+    user: postgres
+    password: postgres  # Change in production!
+
+    storage:
+      size: 5Gi
+      storageClass: ""  # Uses default storage class if empty
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  # Sources API resources
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi

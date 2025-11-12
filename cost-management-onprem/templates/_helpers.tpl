@@ -1,131 +1,168 @@
 {{/*
-Base helper functions for cost-management-onprem chart
-These are minimal helpers needed until PR #27 merges
-*/}}
-
-{{/*
 Expand the name of the chart.
 */}}
-{{- define "cost-mgmt.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
+{{- define "cost-management-onprem.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
 
 {{/*
 Create a default fully qualified app name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+If release name contains chart name it will be used as a full name.
 */}}
-{{- define "cost-mgmt.fullname" -}}
-{{- if .Values.fullnameOverride -}}
+{{- define "cost-management-onprem.fullname" -}}
+  {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
-{{- else -}}
-{{- $name := default .Chart.Name .Values.nameOverride -}}
-{{- if contains $name .Release.Name -}}
+  {{- else -}}
+    {{- $name := default .Chart.Name .Values.nameOverride -}}
+    {{- if contains $name .Release.Name -}}
 {{- .Release.Name | trunc 63 | trimSuffix "-" -}}
-{{- else -}}
+    {{- else -}}
 {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end }}
 
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "cost-mgmt.chart" -}}
-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
+{{- define "cost-management-onprem.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "cost-mgmt.labels" -}}
-helm.sh/chart: {{ include "cost-mgmt.chart" . }}
-{{ include "cost-mgmt.selectorLabels" . }}
+{{- define "cost-management-onprem.labels" -}}
+helm.sh/chart: {{ include "cost-management-onprem.chart" . }}
+{{ include "cost-management-onprem.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-{{- end -}}
+{{- end }}
 
 {{/*
 Selector labels
 */}}
-{{- define "cost-mgmt.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "cost-mgmt.name" . }}
+{{- define "cost-management-onprem.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "cost-management-onprem.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
-{{- end -}}
+{{- end }}
 
 {{/*
-Database host - placeholder until infrastructure chart exists
+Create the name of the service account to use
 */}}
-{{- define "cost-mgmt.database.host" -}}
-{{- $context := .context -}}
-{{- $database := .database | default "ros" -}}
-{{- printf "%s-%s-db" (include "cost-mgmt.fullname" $context) $database -}}
-{{- end -}}
+{{- define "cost-management-onprem.serviceAccountName" -}}
+  {{- if .Values.serviceAccount.create -}}
+{{- default (include "cost-management-onprem.fullname" .) .Values.serviceAccount.name -}}
+  {{- else -}}
+{{- default "default" .Values.serviceAccount.name -}}
+  {{- end -}}
+{{- end }}
 
 {{/*
-Redis host - placeholder
+Detect if running on OpenShift
 */}}
-{{- define "cost-mgmt.redis.host" -}}
-{{- printf "redis" -}}
+{{- define "cost-management-onprem.isOpenShift" -}}
+{{- if .Capabilities.APIVersions.Has "route.openshift.io/v1" -}}
+true
+{{- else -}}
+false
 {{- end -}}
+{{- end }}
 
 {{/*
-Redis port
+Cache service name (redis or valkey based on platform)
 */}}
-{{- define "cost-mgmt.redis.port" -}}
-{{- 6379 -}}
+{{- define "cost-management-onprem.cache.name" -}}
+{{- if eq (include "cost-management-onprem.isOpenShift" .) "true" -}}
+valkey
+{{- else -}}
+redis
 {{- end -}}
+{{- end }}
 
 {{/*
-Kafka bootstrap servers
-Uses local alias 'kafka' which points to external Strimzi Kafka cluster
+Get the Sources database host
 */}}
-{{- define "cost-mgmt.kafka.bootstrapServers" -}}
-{{- printf "kafka:9092" -}}
+{{- define "cost-management-onprem.sourcesDatabaseHost" -}}
+{{- if eq .Values.database.sources.host "internal" -}}
+{{- printf "%s-db-sources" (include "cost-management-onprem.fullname" .) -}}
+{{- else -}}
+{{- .Values.database.sources.host -}}
 {{- end -}}
+{{- end }}
 
 {{/*
-Storage endpoint (S3-compatible object storage)
-Defaults to ODF NooBaa, can be overridden for external S3 or MinIO
+Kafka host resolver
 */}}
-{{- define "cost-mgmt.storage.endpoint" -}}
-{{- .Values.infrastructure.storage.endpoint | default "http://s3.openshift-storage.svc:80" -}}
+{{- define "cost-management-onprem.kafkaHost" -}}
+{{- if .Values.kafka.bootstrapServers -}}
+  {{- $bootstrapServers := .Values.kafka.bootstrapServers -}}
+  {{- if contains "," $bootstrapServers -}}
+    {{- $firstServer := regexFind "^[^,]+" $bootstrapServers -}}
+    {{- if contains ":" $firstServer -}}
+{{- regexFind "^[^:]+" $firstServer -}}
+    {{- else -}}
+{{- $firstServer -}}
+    {{- end -}}
+  {{- else -}}
+    {{- if contains ":" $bootstrapServers -}}
+{{- regexFind "^[^:]+" $bootstrapServers -}}
+    {{- else -}}
+{{- $bootstrapServers -}}
+    {{- end -}}
+  {{- end -}}
+{{- else -}}
+kafka
 {{- end -}}
+{{- end }}
 
 {{/*
-Storage bucket name
+Kafka port resolver
 */}}
-{{- define "cost-mgmt.storage.bucketName" -}}
-{{- "koku-report" -}}
+{{- define "cost-management-onprem.kafkaPort" -}}
+{{- if .Values.kafka.bootstrapServers -}}
+  {{- $bootstrapServers := .Values.kafka.bootstrapServers -}}
+  {{- if contains "," $bootstrapServers -}}
+    {{- $firstServer := regexFind "^[^,]+" $bootstrapServers -}}
+    {{- if contains ":" $firstServer -}}
+{{- regexFind "[^:]+$" $firstServer -}}
+    {{- else -}}
+9092
+    {{- end -}}
+  {{- else -}}
+    {{- if contains ":" $bootstrapServers -}}
+{{- regexFind "[^:]+$" $bootstrapServers -}}
+    {{- else -}}
+9092
+    {{- end -}}
+  {{- end -}}
+{{- else -}}
+9092
 {{- end -}}
+{{- end }}
 
 {{/*
-Security context for pods
+Backwards compatibility aliases for cost-mgmt.* naming
 */}}
-{{- define "cost-mgmt.securityContext.pod" -}}
-runAsNonRoot: true
-seccompProfile:
-  type: RuntimeDefault
-{{- end -}}
+{{- define "cost-mgmt.name" -}}
+{{- include "cost-management-onprem.name" . -}}
+{{- end }}
 
-{{/*
-Security context for containers
-*/}}
-{{- define "cost-mgmt.securityContext.container" -}}
-allowPrivilegeEscalation: false
-capabilities:
-  drop:
-    - ALL
-readOnlyRootFilesystem: false
-runAsNonRoot: true
-seccompProfile:
-  type: RuntimeDefault
-{{- end -}}
+{{- define "cost-mgmt.fullname" -}}
+{{- include "cost-management-onprem.fullname" . -}}
+{{- end }}
 
-{{/*
-Platform detection - always OpenShift for this chart
-*/}}
-{{- define "cost-mgmt.platform.isOpenShift" -}}
-{{- true -}}
-{{- end -}}
+{{- define "cost-mgmt.chart" -}}
+{{- include "cost-management-onprem.chart" . -}}
+{{- end }}
 
+{{- define "cost-mgmt.labels" -}}
+{{- include "cost-management-onprem.labels" . -}}
+{{- end }}
+
+{{- define "cost-mgmt.selectorLabels" -}}
+{{- include "cost-management-onprem.selectorLabels" . -}}
+{{- end }}
