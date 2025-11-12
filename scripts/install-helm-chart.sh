@@ -24,7 +24,7 @@ HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-cost-onprem}
 NAMESPACE=${NAMESPACE:-cost-onprem}
 VALUES_FILE=${VALUES_FILE:-}
 REPO_OWNER="insights-onprem"
-REPO_NAME="cost-onprem-helm-chart"
+REPO_NAME="cost-onprem-chart"
 USE_LOCAL_CHART=${USE_LOCAL_CHART:-false}  # Set to true to use local chart instead of GitHub release
 LOCAL_CHART_PATH=${LOCAL_CHART_PATH:-../cost-onprem}  # Path to local chart directory
 STRIMZI_NAMESPACE=${STRIMZI_NAMESPACE:-}  # If set, use existing Strimzi operator in this namespace
@@ -1487,7 +1487,7 @@ case "${1:-}" in
         echo "  - Chart Path: Set LOCAL_CHART_PATH to specify custom chart location"
         echo "  - Examples:"
         echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem $0"
-        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem-helm-chart/cost-onprem $0"
+        echo "    USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem-chart/cost-onprem $0"
         echo ""
         echo "Examples:"
         echo "  # Complete fresh installation"
