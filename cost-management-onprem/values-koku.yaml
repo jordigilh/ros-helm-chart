@@ -1037,8 +1037,8 @@ sourcesApi:
   # Database configuration
   database:
     image:
-      repository: registry.redhat.io/rhel9/postgresql-16
-      tag: "latest"
+      repository: postgres
+      tag: "16"
 
     host: internal  # Uses the StatefulSet deployed by this chart
     port: 5432
