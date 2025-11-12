@@ -16,7 +16,7 @@
 # =============================================================================
 global:
   pullPolicy: Always
-  
+
   initContainers:
     waitFor:
       repository: registry.access.redhat.com/ubi9/ubi-minimal
