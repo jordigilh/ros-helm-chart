@@ -1,10 +1,10 @@
 # Cost Management On-Premise Kubernetes Quick Start Guide
 
-This guide walks you through deploying and testing the Cost Management On-Premise backend services on both Kubernetes and OpenShift clusters using the Helm chart from the [ros-helm-chart repository](https://github.com/insights-onprem/ros-helm-chart).
+This guide walks you through deploying and testing the Cost Management On-Premise backend services on both Kubernetes and OpenShift clusters using the Helm chart from the [cost-onprem-chart repository](https://github.com/insights-onprem/cost-onprem-chart).
 
 ## Helm Chart Location
 
-The Cost Management On-Premise Helm chart is maintained in a separate repository: **[insights-onprem/ros-helm-chart](https://github.com/insights-onprem/ros-helm-chart)**
+The Cost Management On-Premise Helm chart is maintained in a separate repository: **[insights-onprem/cost-onprem-chart](https://github.com/insights-onprem/cost-onprem-chart)**
 
 ### Deployment Methods
 
@@ -81,7 +81,7 @@ helm version
 
 #### 1. Navigate to Scripts Directory
 ```bash
-cd /path/to/ros-helm-chart/scripts/
+cd /path/to/cost-onprem-chart/scripts/
 ```
 
 #### 2. Setup KIND Cluster
@@ -106,7 +106,7 @@ The script will:
 
 #### 1. Navigate to Scripts Directory
 ```bash
-cd /path/to/ros-helm-chart/scripts/
+cd /path/to/cost-onprem-chart/scripts/
 ```
 
 #### 2. Deploy Cost Management On-Premise Services
@@ -152,7 +152,7 @@ If you prefer to manually install the Helm chart or need a specific version:
 #### 2. Install Latest Chart Release
 ```bash
 # Download and install latest chart release
-LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
+LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/cost-onprem-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
 curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
 helm install cost-onprem cost-onprem-latest.tgz -n cost-onprem --create-namespace
 ```
@@ -161,7 +161,7 @@ helm install cost-onprem cost-onprem-latest.tgz -n cost-onprem --create-namespac
 ```bash
 # Install a specific version (e.g., v0.1.0)
 VERSION="v0.1.0"
-curl -L -o cost-onprem-${VERSION}.tgz "https://github.com/insights-onprem/ros-helm-chart/releases/download/${VERSION}/cost-onprem-${VERSION}.tgz"
+curl -L -o cost-onprem-${VERSION}.tgz "https://github.com/insights-onprem/cost-onprem-chart/releases/download/${VERSION}/cost-onprem-${VERSION}.tgz"
 helm install cost-onprem cost-onprem-${VERSION}.tgz -n cost-onprem --create-namespace
 ```
 
@@ -332,8 +332,8 @@ resources:
       cpu: "200m"
 EOF
 
-# Deploy with custom values (using latest release from ros-helm-chart repository)
-LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
+# Deploy with custom values (using latest release from cost-onprem-chart repository)
+LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/cost-onprem-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
 curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
 helm upgrade --install cost-onprem cost-onprem-latest.tgz \
   --namespace cost-onprem \

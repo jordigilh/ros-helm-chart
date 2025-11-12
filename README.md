@@ -29,7 +29,7 @@ USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem ./scripts/install-helm-char
 NAMESPACE=my-namespace HELM_RELEASE_NAME=my-release ./scripts/install-helm-chart.sh
 
 # Or use Helm directly
-helm repo add cost-onprem https://insights-onprem.github.io/ros-helm-chart
+helm repo add cost-onprem https://insights-onprem.github.io/cost-onprem-chart
 helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --create-namespace
 ```
 
@@ -56,7 +56,7 @@ helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --creat
 ## 🏗️ Chart Structure
 
 ```
-ros-helm-chart/
+cost-onprem-chart/
 ├── cost-onprem/    # Helm chart directory
 │   ├── Chart.yaml             # Chart metadata (v0.2.0)
 │   ├── values.yaml            # Default configuration
@@ -223,6 +223,6 @@ See [Quick Start Guide](docs/quickstart.md) for development environment setup.
 ## 📞 Support
 
 For issues and questions:
-- **Issues**: [GitHub Issues](https://github.com/insights-onprem/ros-helm-chart/issues)
+- **Issues**: [GitHub Issues](https://github.com/insights-onprem/cost-onprem-chart/issues)
 - **Documentation**: [Complete Documentation Index](docs/README.md)
 - **Scripts**: [Automation Scripts Reference](scripts/README.md)

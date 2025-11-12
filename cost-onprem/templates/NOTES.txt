@@ -92,7 +92,7 @@ Check Authorino deployment:
   kubectl get pods -n {{ $namespace }} -l app.kubernetes.io/component=authorino
 
 For authentication setup details:
-  https://github.com/insights-onprem/ros-helm-chart/blob/main/docs/keycloak-jwt-authentication-setup.md
+  https://github.com/insights-onprem/cost-onprem-chart/blob/main/docs/keycloak-jwt-authentication-setup.md
 
 {{- else }}
 
@@ -165,14 +165,14 @@ Common issues:
   - Connection errors: Check service endpoints
 
 Full troubleshooting guide:
-  https://github.com/insights-onprem/ros-helm-chart/blob/main/docs/troubleshooting.md
+  https://github.com/insights-onprem/cost-onprem-chart/blob/main/docs/troubleshooting.md
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📚 DOCUMENTATION
 
 Complete guides available at:
-  https://github.com/insights-onprem/ros-helm-chart/tree/main/docs
+  https://github.com/insights-onprem/cost-onprem-chart/tree/main/docs
 
 Key resources:
   - Installation Guide: docs/installation.md
