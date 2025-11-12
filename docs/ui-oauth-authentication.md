@@ -48,19 +48,15 @@ flowchart LR
 
     subgraph Pod["Pod: ui"]
         subgraph Proxy["OAuth Proxy Container"]
-            P["<b>OAuth Proxy</b><br/>Port: 8443<br/>--provider=openshift"]
+            P["<b>OAuth Proxy</b><br/>Port: 8443"]
         end
 
         subgraph App["UI App Container"]
-            subgraph Nginx["Nginx"]
-                N["<b>Nginx</b><br/>Port: 8080<br/>• Serves static files<br/>• Proxies /api to ROS API<br/>• Adds Bearer token"]
-            end
-            A["<b>UI Application</b><br/>Static files"]
+            N["<b>Nginx</b><br/>Port: 8080<br/>• Serves static files<br/>• Proxies /api to ROS API<br/>• Adds Bearer token"]
         end
 
-        P -->|7. localhost:8080| N
-        N -->|8. /api requests| ROSAPI
-        N -->|9. / requests| A
+        P -->|7. localhost:8080<br/>X-Forwarded-Access-Token: <token>| N
+        N -->|8. /api requests<br/>Authorization: Bearer <token>| ROSAPI
     end
 
     subgraph ROSAPI["ROS API Service"]
@@ -71,28 +67,20 @@ flowchart LR
         O["<b>OAuth Server</b><br/>authentication.k8s.io"]
     end
 
-    subgraph ServiceCA["Service CA Operator"]
-        CA["<b>TLS Certificate</b><br/>Auto-generated"]
-    end
-
     U -->|1. HTTPS Request| R
     R -->|2. Forward| P
     P -.->|3. No cookie:<br/>Redirect| U
     U -->|4. Login| O
     O -.->|5. Callback| P
     P -.->|6. Set cookie| U
-    A -->|10. Response| N
-    N -->|11. Response| P
-    P -->|12. Response| U
-    ROSAPI -->|13. API Response| N
-    CA -.->|Provides cert| P
+    N -->|7. Response| P
+    P -->|8. Response| U
+    ROSAPI -->|9. API Response| N
 
     style P fill:#90caf9,stroke:#333,stroke-width:2px,color:#000
     style N fill:#81c784,stroke:#333,stroke-width:2px,color:#000
-    style A fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
     style ROSAPI fill:#ffb74d,stroke:#333,stroke-width:2px,color:#000
     style O fill:#f48fb1,stroke:#333,stroke-width:2px,color:#000
-    style CA fill:#ffe1f5,stroke:#333,stroke-width:2px,color:#000
     style U fill:#e1bee7,stroke:#333,stroke-width:2px,color:#000
     style R fill:#ffcc80,stroke:#333,stroke-width:2px,color:#000
 ```
@@ -100,6 +88,7 @@ flowchart LR
 ### Authentication Flow Sequence
 
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'primaryTextColor':'#000', 'secondaryTextColor':'#000', 'tertiaryTextColor':'#000', 'noteTextColor':'#000', 'activationBorderColor':'#000', 'activationBkgColor':'#fff'}}}%%
 sequenceDiagram
     autonumber
     participant User as User Browser
@@ -107,10 +96,9 @@ sequenceDiagram
     participant Proxy as OAuth Proxy<br/>(Sidecar)
     participant OAuth as OpenShift OAuth
     participant Nginx as Nginx<br/>(in UI App)
-    participant App as UI App<br/>(Static Files)
     participant ROSAPI as ROS API
 
-    Note over User,ROSAPI: <b>First Request (No Session)</b>
+    Note over User,ROSAPI: First Request (No Session)
 
     User->>Route: HTTPS GET /<br/>(no cookie)
 
@@ -150,15 +138,13 @@ sequenceDiagram
 
     Proxy->>Nginx: GET / (localhost:8080)
 
-    Nginx->>App: GET / (serve static files)
-
-    App-->>Nginx: HTML response
+    Nginx->>Nginx: Serve static files<br/>(from filesystem)
 
     Nginx-->>Proxy: HTML response
 
     Proxy-->>User: 200 OK<br/>HTML content
 
-    Note over User,ROSAPI: <b>API Request (With Session)</b>
+    Note over User,ROSAPI: API Request (With Session)
 
     User->>Route: GET /api/recommendations<br/>Cookie: _oauth_proxy=...
 
@@ -180,7 +166,7 @@ sequenceDiagram
 
     Proxy-->>User: 200 OK<br/>JSON content
 
-    Note over User,ROSAPI: <b>Session Expired</b>
+    Note over User,ROSAPI: Session Expired
 
     User->>Route: GET /<br/>Cookie: _oauth_proxy=... (expired)
 
