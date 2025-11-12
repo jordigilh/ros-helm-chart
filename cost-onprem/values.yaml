@@ -505,7 +505,7 @@ ui:
 
   oauthProxy:
     image:
-      repository: quay.io/openshift/origin-oauth-proxy
+      repository: registry.redhat.io/openshift4/ose-oauth-proxy-rhel9
       pullPolicy: IfNotPresent
       tag: "latest"
     resources:
