@@ -1035,10 +1035,10 @@ sourcesApi:
   platformSourcesEventStreamTopic: platform.sources.event-stream
 
   # Database configuration
-  database:
-    image:
-      repository: postgres
-      tag: "16"
+    database:
+      image:
+        repository: registry.redhat.io/rhel9/postgresql-16
+        tag: "latest"
 
     host: internal  # Uses the StatefulSet deployed by this chart
     port: 5432

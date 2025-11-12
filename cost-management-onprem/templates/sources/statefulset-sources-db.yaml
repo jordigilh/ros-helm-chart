@@ -36,11 +36,11 @@ spec:
               containerPort: {{ .Values.sourcesApi.database.port }}
               protocol: TCP
           env:
-            - name: POSTGRES_DB
+            - name: POSTGRESQL_DATABASE # Red Hat SCL PostgreSQL uses POSTGRESQL_* variables
               value: {{ .Values.sourcesApi.database.name | quote }}
-            - name: POSTGRES_USER
+            - name: POSTGRESQL_USER # Red Hat SCL PostgreSQL uses POSTGRESQL_* variables
               value: {{ .Values.sourcesApi.database.user | quote }}
-            - name: POSTGRES_PASSWORD
+            - name: POSTGRESQL_PASSWORD # Red Hat SCL PostgreSQL uses POSTGRESQL_* variables
               valueFrom:
                 secretKeyRef:
                   name: {{ include "cost-management-onprem.fullname" . }}-sources-credentials
