@@ -29,16 +29,15 @@ spec:
       {{- end }}
       initContainers:
         - name: wait-for-db-sources
-          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
-          command: ['bash', '-c']
+          image: postgres:16-alpine
+          command: ['sh', '-c']
           args:
             - |
               echo "Waiting for Sources database at {{ include "cost-management-onprem.sourcesDatabaseHost" . }}:{{ .Values.database.sources.port }}..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-management-onprem.sourcesDatabaseHost" . }}/{{ .Values.database.sources.port }}" 2>/dev/null; do
+              until pg_isready -h {{ include "cost-management-onprem.sourcesDatabaseHost" . }} -p {{ .Values.database.sources.port }} -U postgres; do
                 echo "Database not ready yet, retrying in 5 seconds..."
                 sleep 5
               done
-              echo "Sources database is ready"
               echo "Sources database is ready"
         {{- if .Values.kafka.bootstrapServers }}
         - name: wait-for-kafka
@@ -53,18 +52,6 @@ spec:
               done
               echo "Kafka is ready"
         {{- end }}
-        - name: wait-for-{{ $cacheName }}
-          image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
-          command: ['bash', '-c']
-          args:
-            - |
-              echo "Waiting for {{ $cacheName | title }} at {{ include "cost-management-onprem.fullname" . }}-{{ $cacheName }}:6379..."
-              until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-management-onprem.fullname" . }}-{{ $cacheName }}/6379" 2>/dev/null; do
-                echo "{{ $cacheName | title }} not ready yet, retrying in 5 seconds..."
-                sleep 5
-              done
-              echo "{{ $cacheName | title }} is ready"
-              echo "{{ $cacheName | title }} is ready"
       containers:
         - name: sources-api
           image: "{{ .Values.sourcesApi.image.repository }}:{{ .Values.sourcesApi.image.tag }}"
@@ -90,7 +77,7 @@ spec:
             - name: LOG_LEVEL
               value: {{ .Values.sourcesApi.logLevel | quote }}
             - name: REDIS_CACHE_HOST
-              value: {{ include "cost-management-onprem.fullname" . }}-{{ $cacheName }}
+              value: redis
             - name: REDIS_CACHE_PORT
               value: "6379"
             - name: BYPASS_RBAC

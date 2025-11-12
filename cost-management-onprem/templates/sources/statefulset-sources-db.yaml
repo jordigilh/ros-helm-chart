@@ -7,21 +7,21 @@ metadata:
   labels:
     {{- include "cost-management-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: database
-    app.kubernetes.io/name: sources-db
+    app.kubernetes.io/name: db-sources
 spec:
-  serviceName: {{ include "cost-management-onprem.fullname" . }}-sources-db
+  serviceName: {{ include "cost-management-onprem.fullname" . }}-db-sources
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-management-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: database
-      app.kubernetes.io/name: sources-db
+      app.kubernetes.io/name: db-sources
   template:
     metadata:
       labels:
         {{- include "cost-management-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: database
-        app.kubernetes.io/name: sources-db
+        app.kubernetes.io/name: db-sources
     spec:
       {{- if and .Values.global .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -36,11 +36,11 @@ spec:
               containerPort: {{ .Values.sourcesApi.database.port }}
               protocol: TCP
           env:
-            - name: POSTGRESQL_DATABASE
+            - name: POSTGRES_DB
               value: {{ .Values.sourcesApi.database.name | quote }}
-            - name: POSTGRESQL_USER
+            - name: POSTGRES_USER
               value: {{ .Values.sourcesApi.database.user | quote }}
-            - name: POSTGRESQL_PASSWORD
+            - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "cost-management-onprem.fullname" . }}-sources-credentials
