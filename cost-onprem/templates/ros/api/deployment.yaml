@@ -114,11 +114,14 @@ spec:
             - name: DB_NAME
               value: {{ .Values.database.ros.name | quote }}
             - name: DB_USER
-              value: {{ .Values.database.ros.user | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.database.secretName" . }}
+                  key: ros-user
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-onprem.fullname" . }}-db-credentials
+                  name: {{ include "cost-onprem.database.secretName" . }}
                   key: ros-password
             - name: DATABASE_URL
               value: {{ include "cost-onprem.database.url" . }}

@@ -9,14 +9,14 @@ data:
   cdappconfig.json: |
     {
       "database": {
-        "adminPassword": "{{ .Values.database.ros.password }}",
-        "adminUsername": "{{ .Values.database.ros.user }}",
+        "adminPassword": "{{ include "cost-onprem.database.ros.password" . }}",
+        "adminUsername": "{{ include "cost-onprem.database.ros.user" . }}",
         "hostname": "{{ include "cost-onprem.database.host" (list . "ros") }}",
         "name": "{{ .Values.database.ros.name }}",
-        "password": "{{ .Values.database.ros.password }}",
-        "port": {{ .Values.database.ros.port }},
-        "username": "{{ .Values.database.ros.user }}",
-        "sslMode": "{{ .Values.database.ros.sslMode }}"
+        "password": "{{ include "cost-onprem.database.ros.password" . }}",
+        "port": {{ .Values.database.server.port }},
+        "username": "{{ include "cost-onprem.database.ros.user" . }}",
+        "sslMode": "{{ .Values.database.server.sslMode }}"
       },
       "kafka": {
         "brokers": [

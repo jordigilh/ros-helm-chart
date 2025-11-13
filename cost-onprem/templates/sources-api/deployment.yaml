@@ -43,16 +43,19 @@ spec:
               protocol: TCP
           env:
             - name: DATABASE_USER
-              value: {{ .Values.database.sources.user | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.database.secretName" . }}
+                  key: sources-user
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-onprem.fullname" . }}-db-credentials
+                  name: {{ include "cost-onprem.database.secretName" . }}
                   key: sources-password
             - name: DATABASE_HOST
               value: {{ include "cost-onprem.sources.databaseHost" . }}
             - name: DATABASE_PORT
-              value: {{ .Values.database.sources.port | quote }}
+              value: {{ .Values.database.server.port | quote }}
             - name: DATABASE_NAME
               value: {{ .Values.database.sources.name | quote }}
             - name: LOG_LEVEL
