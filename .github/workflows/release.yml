@@ -54,14 +54,14 @@ jobs:
           echo "### Installation" >> $GITHUB_OUTPUT
           echo "\`\`\`bash" >> $GITHUB_OUTPUT
           echo "# Download and install" >> $GITHUB_OUTPUT
-          echo "curl -L -o cost-onprem-${{ steps.version.outputs.version }}.tgz https://github.com/insights-onprem/ros-helm-chart/releases/download/${{ steps.version.outputs.tag }}/cost-onprem-${{ steps.version.outputs.version }}.tgz" >> $GITHUB_OUTPUT
+          echo "curl -L -o cost-onprem-${{ steps.version.outputs.version }}.tgz https://github.com/insights-onprem/cost-onprem-chart/releases/download/${{ steps.version.outputs.tag }}/cost-onprem-${{ steps.version.outputs.version }}.tgz" >> $GITHUB_OUTPUT
           echo "helm install cost-onprem cost-onprem-${{ steps.version.outputs.version }}.tgz --namespace cost-onprem --create-namespace" >> $GITHUB_OUTPUT
           echo "\`\`\`" >> $GITHUB_OUTPUT
           echo "" >> $GITHUB_OUTPUT
           echo "### Latest Release (Always Current)" >> $GITHUB_OUTPUT
           echo "\`\`\`bash" >> $GITHUB_OUTPUT
           echo "# Always get the latest release" >> $GITHUB_OUTPUT
-          echo "curl -L -o cost-onprem-latest.tgz https://github.com/insights-onprem/ros-helm-chart/releases/download/${{ steps.version.outputs.tag }}/cost-onprem-latest.tgz" >> $GITHUB_OUTPUT
+          echo "curl -L -o cost-onprem-latest.tgz https://github.com/insights-onprem/cost-onprem-chart/releases/download/${{ steps.version.outputs.tag }}/cost-onprem-latest.tgz" >> $GITHUB_OUTPUT
           echo "helm install cost-onprem cost-onprem-latest.tgz --namespace cost-onprem --create-namespace" >> $GITHUB_OUTPUT
           echo "\`\`\`" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -83,5 +83,5 @@ jobs:
       - name: Update latest release
         run: |
           echo "Release ${{ steps.version.outputs.tag }} created successfully!"
-          echo "Versioned download: https://github.com/insights-onprem/ros-helm-chart/releases/download/${{ steps.version.outputs.tag }}/cost-onprem-${{ steps.version.outputs.version }}.tgz"
-          echo "Latest download: https://github.com/insights-onprem/ros-helm-chart/releases/download/${{ steps.version.outputs.tag }}/cost-onprem-latest.tgz"
+          echo "Versioned download: https://github.com/insights-onprem/cost-onprem-chart/releases/download/${{ steps.version.outputs.tag }}/cost-onprem-${{ steps.version.outputs.version }}.tgz"
+          echo "Latest download: https://github.com/insights-onprem/cost-onprem-chart/releases/download/${{ steps.version.outputs.tag }}/cost-onprem-latest.tgz"

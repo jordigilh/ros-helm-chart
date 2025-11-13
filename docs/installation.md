@@ -97,7 +97,7 @@ For CI/CD systems that prefer direct control:
 
 ```bash
 # Get latest release URL dynamically
-LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | \
+LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/cost-onprem-chart/releases/latest | \
   jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
 
 # Download and install
@@ -124,7 +124,7 @@ helm install cost-onprem cost-onprem-latest.tgz \
 
 ```bash
 # Add Helm repository (once published)
-helm repo add cost-onprem https://insights-onprem.github.io/ros-helm-chart
+helm repo add cost-onprem https://insights-onprem.github.io/cost-onprem-chart
 helm repo update
 
 # Install from repository
@@ -141,8 +141,8 @@ For development, testing, or custom modifications:
 
 ```bash
 # Clone the repository
-git clone https://github.com/insights-onprem/ros-helm-chart.git
-cd ros-helm-chart
+git clone https://github.com/insights-onprem/cost-onprem-chart.git
+cd cost-onprem-chart
 
 # Method A: Using installation script
 export USE_LOCAL_CHART=true
@@ -380,7 +380,7 @@ Authorino provides OAuth2 TokenReview authentication for the backend API, enabli
 
 ```bash
 # Get latest release
-LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | \
+LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/cost-onprem-chart/releases/latest | \
   jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
 
 # Download and upgrade
@@ -526,13 +526,13 @@ bash scripts/install-helm-chart.sh
 
 ```bash
 # Test GitHub connectivity
-curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest
+curl -s https://api.github.com/repos/insights-onprem/cost-onprem-chart/releases/latest
 
 # Verbose debugging
-curl -v https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest
+curl -v https://api.github.com/repos/insights-onprem/cost-onprem-chart/releases/latest
 
 # Manual download
-LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | \
+LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/cost-onprem-chart/releases/latest | \
   jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
 curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
 ```
