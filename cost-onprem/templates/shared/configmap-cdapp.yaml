@@ -11,7 +11,7 @@ data:
       "database": {
         "adminPassword": "{{ include "cost-onprem.database.ros.password" . }}",
         "adminUsername": "{{ include "cost-onprem.database.ros.user" . }}",
-        "hostname": "{{ include "cost-onprem.database.host" (list . "ros") }}",
+        "hostname": "{{ include "cost-onprem.database.host" . }}",
         "name": "{{ .Values.database.ros.name }}",
         "password": "{{ include "cost-onprem.database.ros.password" . }}",
         "port": {{ .Values.database.server.port }},

@@ -61,9 +61,9 @@ spec:
             - name: CLOWDER_ENABLED
               value: "false"
             - name: DB_HOST
-              value: {{ include "cost-onprem.database.host" (list . "ros") }}
+              value: {{ include "cost-onprem.database.host" . }}
             - name: DB_PORT
-              value: {{ .Values.database.ros.port | quote }}
+              value: {{ .Values.database.server.port | quote }}
             - name: DB_NAME
               value: {{ .Values.database.ros.name | quote }}
             - name: DB_USER

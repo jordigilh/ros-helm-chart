@@ -736,10 +736,22 @@ check_for_recommendations() {
 
     # Check Kruize database for experiments (listExperiments API has known issues)
     echo_info "Checking Kruize experiments via database..."
-    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=db-kruize" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=database" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -z "$db_pod" ]; then
-        echo_error "Kruize database pod not found"
+        echo_error "Database pod not found"
+        echo_info "Use './query-kruize.sh --cluster $cluster_id' to check recommendations later"
+        return 1
+    fi
+
+    # Extract Kruize database credentials from secret
+    local db_secret_name="${HELM_RELEASE_NAME}-db-credentials"
+    local kruize_user=$(oc get secret -n "$NAMESPACE" "$db_secret_name" -o jsonpath='{.data.kruize-user}' 2>/dev/null | base64 -d)
+    local kruize_password=$(oc get secret -n "$NAMESPACE" "$db_secret_name" -o jsonpath='{.data.kruize-password}' 2>/dev/null | base64 -d)
+    local kruize_db="kruize_db"
+
+    if [ -z "$kruize_user" ] || [ -z "$kruize_password" ]; then
+        echo_error "Unable to retrieve Kruize database credentials from secret '$db_secret_name'"
         echo_info "Use './query-kruize.sh --cluster $cluster_id' to check recommendations later"
         return 1
     fi
@@ -747,7 +759,7 @@ check_for_recommendations() {
     # Query for experiments specific to this cluster (cluster_name format: "1;cluster-id")
     echo_info "Querying for experiments matching cluster: $cluster_id"
     local exp_count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -t -c \
+        env PGPASSWORD="$kruize_password" psql -U "$kruize_user" -d "$kruize_db" -t -c \
         "SELECT COUNT(*) FROM kruize_experiments WHERE cluster_name LIKE '%${cluster_id}%';" 2>/dev/null | tr -d ' ' || echo "0")
 
     if [ "$exp_count" -eq 0 ]; then
@@ -765,7 +777,7 @@ check_for_recommendations() {
     # Show experiment details for this cluster
     echo_info "Experiment details for cluster $cluster_id:"
     oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -c \
+        env PGPASSWORD="$kruize_password" psql -U "$kruize_user" -d "$kruize_db" -c \
         "SELECT experiment_name, status, cluster_name FROM kruize_experiments
          WHERE cluster_name LIKE '%${cluster_id}%'
          ORDER BY experiment_name DESC LIMIT 3;" 2>/dev/null || true
@@ -773,7 +785,7 @@ check_for_recommendations() {
     # Check for recommendations specific to this cluster
     echo_info "Querying for recommendations for cluster: $cluster_id"
     local rec_count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -t -c \
+        env PGPASSWORD="$kruize_password" psql -U "$kruize_user" -d "$kruize_db" -t -c \
         "SELECT COUNT(*) FROM kruize_recommendations WHERE cluster_name LIKE '%${cluster_id}%';" 2>/dev/null | tr -d ' ' || echo "0")
 
     if [ "$rec_count" -eq 0 ]; then
@@ -800,7 +812,7 @@ check_for_recommendations() {
     # Show recommendation details for this cluster
     echo_info "Recommendation details for cluster $cluster_id:"
     oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -c \
+        env PGPASSWORD="$kruize_password" psql -U "$kruize_user" -d "$kruize_db" -c \
         "SELECT experiment_name, interval_end_time
          FROM kruize_recommendations
          WHERE cluster_name LIKE '%${cluster_id}%'

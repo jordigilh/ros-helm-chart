@@ -53,39 +53,38 @@ app.kubernetes.io/part-of: {{ include "cost-onprem.name" . }}
 {{- end }}
 
 {{/*
-Generic database host resolver - returns unified database service name if "internal", otherwise returns the configured host
-Usage: {{ include "cost-onprem.database.host" (list . "ros") }}
+Database host resolver - returns unified database service name if "internal", otherwise returns the configured host
+Since all databases (ros, kruize, sources) are on the same unified server, this returns a single common host.
+Usage: {{ include "cost-onprem.database.host" . }}
 */}}
 {{- define "cost-onprem.database.host" -}}
-  {{- $root := index . 0 -}}
-  {{- $dbType := index . 1 -}}
-  {{- $hostValue := index $root.Values.database $dbType "host" -}}
-  {{- if eq $hostValue "internal" -}}
-{{- printf "%s-database" (include "cost-onprem.fullname" $root) -}}
+  {{- if eq .Values.database.server.host "internal" -}}
+{{- printf "%s-database" (include "cost-onprem.fullname" .) -}}
   {{- else -}}
-{{- $hostValue -}}
+{{- .Values.database.server.host -}}
   {{- end -}}
 {{- end }}
 
 {{/*
 Get the database URL - returns complete postgresql connection string
+Uses $(DB_USER) and $(DB_PASSWORD) environment variables for credentials
 */}}
 {{- define "cost-onprem.database.url" -}}
-{{- printf "postgresql://postgres:$(DB_PASSWORD)@%s:%s/%s?sslmode=%s" (include "cost-onprem.database.host" (list . "ros")) (.Values.database.ros.port | toString) .Values.database.ros.name .Values.database.ros.sslMode }}
+{{- printf "postgresql://$(DB_USER):$(DB_PASSWORD)@%s:%s/%s?sslmode=%s" (include "cost-onprem.database.host" .) (.Values.database.server.port | toString) .Values.database.ros.name .Values.database.server.sslMode }}
 {{- end }}
 
 {{/*
-Get the kruize database host - returns internal service name if "internal", otherwise returns the configured host
+Get the kruize database host - returns unified database service name (alias for backward compatibility)
 */}}
 {{- define "cost-onprem.kruize.databaseHost" -}}
-{{- include "cost-onprem.database.host" (list . "kruize") -}}
+{{- include "cost-onprem.database.host" . -}}
 {{- end }}
 
 {{/*
-Get the sources database host - returns internal service name if "internal", otherwise returns the configured host
+Get the sources database host - returns unified database service name (alias for backward compatibility)
 */}}
 {{- define "cost-onprem.sources.databaseHost" -}}
-{{- include "cost-onprem.database.host" (list . "sources") -}}
+{{- include "cost-onprem.database.host" . -}}
 {{- end }}
 
 {{/*
