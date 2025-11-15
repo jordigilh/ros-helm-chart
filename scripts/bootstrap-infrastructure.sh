@@ -12,8 +12,7 @@
 #   --namespace <name>      Kubernetes namespace (required)
 #   --release-name <name>   Helm release name (default: cost-mgmt-infra)
 #   --skip-deploy          Skip infrastructure deployment
-#   --skip-migrations      Skip database migrations
-#   --migration-image <img> Custom Koku image for migrations
+#   --skip-migrations      Skip waiting for migrations
 #   --help                 Show this help message
 # =============================================================================
 
@@ -49,7 +48,6 @@ NAMESPACE=""
 RELEASE_NAME="cost-mgmt-infra"
 SKIP_DEPLOY=false
 SKIP_MIGRATIONS=false
-MIGRATION_IMAGE=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INFRA_CHART_DIR="$(dirname "$SCRIPT_DIR")/cost-management-infrastructure"
 
@@ -71,10 +69,6 @@ while [[ $# -gt 0 ]]; do
         --skip-migrations)
             SKIP_MIGRATIONS=true
             shift
-            ;;
-        --migration-image)
-            MIGRATION_IMAGE="$2"
-            shift 2
             ;;
         --help)
             head -n 20 "$0" | tail -n +3 | sed 's/^# //;s/^#//'
@@ -110,16 +104,11 @@ if [ "$SKIP_DEPLOY" = false ]; then
         exit 1
     fi
 
-    # Check if namespace exists
-    if ! kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
-        log_info "Creating namespace: $NAMESPACE"
-        kubectl create namespace "$NAMESPACE"
-    fi
-
     # Deploy infrastructure chart
     log_info "Deploying PostgreSQL..."
     helm upgrade --install "$RELEASE_NAME" "$INFRA_CHART_DIR" \
         --namespace "$NAMESPACE" \
+        --create-namespace \
         --wait \
         --timeout=10m
 
@@ -218,97 +207,57 @@ fi
 log_success "Database initialization complete"
 
 # =============================================================================
-# Step 4: Run Database Migrations
+# Step 4: Database Migrations
 # =============================================================================
+# NOTE: Database migrations are handled by the Helm chart via a post-install hook.
+# The migration Job template is defined in:
+#   cost-management-infrastructure/templates/migration-job.yaml
+# The migration image is configured in:
+#   cost-management-infrastructure/values.yaml (migration.image)
+#
+# If you need to run migrations manually, you can:
+#   kubectl create job manual-migration --from=job/cost-mgmt-infra-migration -n cost-mgmt
+
 if [ "$SKIP_MIGRATIONS" = false ]; then
-    log_info "Step 4: Running database migrations..."
+    log_info "Step 4: Waiting for migrations to complete..."
+    log_info "Migrations are handled by Helm post-install hook"
 
-    # Get database credentials
-    SECRET_NAME="postgres-credentials"
-    DB_HOST="postgres"
-    DB_PORT="5432"
-    DB_NAME=$(kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" -o jsonpath='{.data.database}' | base64 -d)
-    DB_USER=$(kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" -o jsonpath='{.data.username}' | base64 -d)
-    DB_PASSWORD=$(kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" -o jsonpath='{.data.password}' | base64 -d)
+    # Wait for migration job to appear and complete
+    TIMEOUT=300
+    ELAPSED=0
+    while [ $ELAPSED -lt $TIMEOUT ]; do
+        JOB_STATUS=$(kubectl get jobs -n "$NAMESPACE" -l "app.kubernetes.io/component=migration" -o jsonpath='{.items[0].status.succeeded}' 2>/dev/null || echo "")
+        if [ "$JOB_STATUS" = "1" ]; then
+            log_success "Migrations completed successfully"
+            break
+        fi
 
-    # Determine migration image
-    if [ -z "$MIGRATION_IMAGE" ]; then
-        # Try to detect from existing deployment or use default with CA bundle support
-        MIGRATION_IMAGE="quay.io/jordigilh/koku:latest-with-ca-bundle-support"
-        log_info "Using default migration image: $MIGRATION_IMAGE"
-    else
-        log_info "Using custom migration image: $MIGRATION_IMAGE"
-    fi
+        FAILED=$(kubectl get jobs -n "$NAMESPACE" -l "app.kubernetes.io/component=migration" -o jsonpath='{.items[0].status.failed}' 2>/dev/null || echo "0")
+        if [ "$FAILED" != "0" ]; then
+            log_error "Migration job failed"
+            kubectl logs -n "$NAMESPACE" -l "app.kubernetes.io/component=migration" --tail=50
+            exit 1
+        fi
 
-    # Check if migrations are needed
-    log_info "Checking if migrations are needed..."
+        sleep 5
+        ELAPSED=$((ELAPSED + 5))
+        if [ $((ELAPSED % 30)) -eq 0 ]; then
+            log_info "Still waiting for migrations... ($ELAPSED/${TIMEOUT}s)"
+        fi
+    done
 
-    MIGRATION_CHECK=$(cat <<EOF
-import os, sys, django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'koku.settings')
-os.environ['DATABASE_SERVICE_HOST'] = '$DB_HOST'
-os.environ['DATABASE_SERVICE_PORT'] = '$DB_PORT'
-os.environ['DATABASE_NAME'] = '$DB_NAME'
-os.environ['DATABASE_USER'] = '$DB_USER'
-os.environ['DATABASE_PASSWORD'] = '$DB_PASSWORD'
-sys.path.append('/opt/koku/koku')
-django.setup()
-from django.core.management import execute_from_command_line
-execute_from_command_line(['manage.py', 'showmigrations', '--plan'])
-EOF
-)
-
-    # Create migration job
-    MIGRATION_JOB="cost-mgmt-migration-$(date +%s)"
-
-    log_info "Creating migration job: $MIGRATION_JOB"
-
-    kubectl create job "$MIGRATION_JOB" \
-        --image="$MIGRATION_IMAGE" \
-        --namespace="$NAMESPACE" \
-        -- bash -c "
-        set -e
-        export DATABASE_SERVICE_NAME='DATABASE'
-        export DATABASE_SERVICE_HOST='$DB_HOST'
-        export DATABASE_SERVICE_PORT='$DB_PORT'
-        export DATABASE_ENGINE='postgresql'
-        export DATABASE_NAME='$DB_NAME'
-        export DATABASE_USER='$DB_USER'
-        export DATABASE_PASSWORD='$DB_PASSWORD'
-        export DJANGO_SECRET_KEY='migration-temp-key'
-        export CLOWDER_ENABLED=False
-        export DEVELOPMENT=False
-        export PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus
-
-        mkdir -p /tmp/prometheus
-        cd /opt/koku/koku
-
-        echo '=== Checking migrations status ==='
-        python manage.py showmigrations --plan || true
-
-        echo '=== Running migrations ==='
-        python manage.py migrate --noinput
-
-        echo '=== Migrations complete ==='
-        "
-
-    # Wait for migration job to complete
-    log_info "Waiting for migrations to complete..."
-    kubectl wait --for=condition=complete --timeout=10m job/"$MIGRATION_JOB" -n "$NAMESPACE" || {
-        log_error "Migration job failed"
-        log_info "Checking migration job logs..."
-        kubectl logs job/"$MIGRATION_JOB" -n "$NAMESPACE" --tail=50
+    if [ $ELAPSED -ge $TIMEOUT ]; then
+        log_error "Timeout waiting for migrations"
+        kubectl get jobs -n "$NAMESPACE" -l "app.kubernetes.io/component=migration"
+        kubectl logs -n "$NAMESPACE" -l "app.kubernetes.io/component=migration" --tail=50
         exit 1
-    }
-
-    log_success "Migrations completed successfully"
-
-    # Cleanup migration job
-    kubectl delete job "$MIGRATION_JOB" -n "$NAMESPACE" --ignore-not-found=true
-
+    fi
 else
-    log_warning "Skipping database migrations"
+    log_warning "Skipping migrations (--skip-migrations)"
 fi
+
+# All migration logic is now handled by the Helm chart
+# See: cost-management-infrastructure/templates/migration-job.yaml
 
 # =============================================================================
 # Step 5: Validate Setup

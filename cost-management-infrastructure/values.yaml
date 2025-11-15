@@ -19,11 +19,10 @@ postgresql:
     tag: "1-109"
     pullPolicy: IfNotPresent
   
-  # Database configuration
-  database:
-    # Main Koku database
-    name: koku
-    user: koku
+  # Database authentication
+  auth:
+    database: koku
+    username: koku
     # Password will be auto-generated and stored in secret
     # You can override by setting existingSecret
     existingSecret: ""
@@ -67,6 +66,21 @@ postgresql:
     runAsNonRoot: true
     seccompProfile:
       type: RuntimeDefault
+
+# Database Migration Job
+# Runs Django migrations after PostgreSQL is ready
+migration:
+  image:
+    repository: quay.io/jordigilh/koku
+    tag: latest-with-ca-bundle-support
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
 
 # Network Policy (OpenShift)
 networkPolicy:
