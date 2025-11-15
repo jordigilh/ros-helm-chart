@@ -26,6 +26,17 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+    # Allow connections from migration job
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: migration
+      ports:
+        - protocol: TCP
+          port: 5432
   egress:
     # Allow DNS resolution
     - to:
