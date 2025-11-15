@@ -194,3 +194,10 @@ Redis port
 {{- define "cost-mgmt.redis.port" -}}
 6379
 {{- end }}
+
+{{/*
+Alias for isOpenShift (short form)
+*/}}
+{{- define "cost-mgmt.isOpenShift" -}}
+{{- include "cost-management-onprem.isOpenShift" . -}}
+{{- end -}}
