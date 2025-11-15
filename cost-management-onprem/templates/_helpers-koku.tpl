@@ -94,16 +94,15 @@ Database Connection Helpers
 =============================================================================
 */}}
 
+
 {{/*
 Koku database host
-Returns the PostgreSQL service name for Koku database
+
+Returns the PostgreSQL service hostname. Uses the explicit host from values.yaml,
+or defaults to "postgres" (the service name from the infrastructure chart).
 */}}
 {{- define "cost-mgmt.koku.database.host" -}}
-{{- if .Values.costManagement.database.host -}}
-  {{- .Values.costManagement.database.host -}}
-{{- else -}}
-  {{- include "cost-mgmt.koku.database.name" . -}}
-{{- end -}}
+{{- .Values.costManagement.database.host | default "postgres" -}}
 {{- end -}}
 
 {{/*
@@ -294,7 +293,11 @@ Django secret name
 Koku database credentials secret name
 */}}
 {{- define "cost-mgmt.koku.database.secretName" -}}
-{{- printf "%s-koku-db-credentials" (include "cost-mgmt.fullname" .) -}}
+{{- if .Values.costManagement.database.secretName -}}
+{{- .Values.costManagement.database.secretName -}}
+{{- else -}}
+{{- printf "%s-db-credentials" (include "cost-mgmt.fullname" .) -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
@@ -463,10 +466,12 @@ Koku service account name
 Trino service account name
 */}}
 {{- define "cost-mgmt.trino.serviceAccountName" -}}
-{{- if .Values.trino.serviceAccount.create -}}
+{{- if and .Values.trino .Values.trino.serviceAccount .Values.trino.serviceAccount.create -}}
   {{- .Values.trino.serviceAccount.name | default (printf "%s-trino" (include "cost-mgmt.fullname" .)) -}}
+{{- else if and .Values.trino .Values.trino.serviceAccount .Values.trino.serviceAccount.name -}}
+  {{- .Values.trino.serviceAccount.name -}}
 {{- else -}}
-  {{- .Values.trino.serviceAccount.name | default "default" -}}
+  {{- "default" -}}
 {{- end -}}
 {{- end -}}
 
@@ -485,6 +490,8 @@ Common environment variables for Koku API and Celery
 - name: DATABASE_ENGINE
   value: "postgresql"
 - name: DATABASE_SERVICE_HOST
+  # Discovered dynamically via Helm lookup function by PostgreSQL service labels
+  # or uses explicit value from costManagement.database.host
   value: {{ include "cost-mgmt.koku.database.host" . | quote }}
 - name: DATABASE_SERVICE_PORT
   value: {{ include "cost-mgmt.koku.database.port" . | quote }}
@@ -507,6 +514,22 @@ Common environment variables for Koku API and Celery
   value: {{ include "cost-mgmt.koku.kafka.port" . | quote }}
 - name: S3_ENDPOINT
   value: {{ include "cost-mgmt.koku.s3.endpoint" . | quote }}
+- name: S3_VERIFY_SSL
+  value: {{ if hasKey .Values.costManagement "s3VerifySSL" }}{{ .Values.costManagement.s3VerifySSL | toString | quote }}{{ else }}"true"{{ end }}
+{{- if eq (include "cost-mgmt.isOpenShift" .) "true" }}
+- name: AWS_CA_BUNDLE
+  value: "/etc/ssl/certs/service-ca.crt"
+{{- end }}
+- name: AWS_ACCESS_KEY_ID
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "cost-mgmt.storage.secretName" . }}
+      key: access-key
+- name: AWS_SECRET_ACCESS_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "cost-mgmt.storage.secretName" . }}
+      key: secret-key
 - name: TRINO_HOST
   value: {{ include "cost-mgmt.koku.trino.host" . | quote }}
 - name: TRINO_PORT
@@ -518,6 +541,10 @@ Common environment variables for Koku API and Celery
       key: secret-key
 - name: UNLEASH_DISABLED
   value: {{ .Values.unleashDisabled | quote }}
+- name: SCHEDULE_REPORT_CHECKS
+  value: {{ .Values.costManagement.scheduleReportChecks | default "true" | quote }}
+- name: REPORT_DOWNLOAD_SCHEDULE
+  value: {{ .Values.costManagement.reportDownloadSchedule | default "*/5 * * * *" | quote }}
 {{- end -}}
 
 {{/*
@@ -551,5 +578,28 @@ Validate Celery Beat replicas (must be exactly 1)
 {{- if ne (.Values.costManagement.celery.beat.replicas | int) 1 -}}
   {{- fail "Celery Beat must have exactly 1 replica. Set costManagement.celery.beat.replicas to 1" -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+=============================================================================
+Security Context Helpers
+=============================================================================
+*/}}
+
+{{/*
+Pod-level security context
+*/}}
+{{- define "cost-mgmt.securityContext.pod" -}}
+runAsNonRoot: true
+{{- end -}}
+
+{{/*
+Container-level security context
+*/}}
+{{- define "cost-mgmt.securityContext.container" -}}
+allowPrivilegeEscalation: false
+capabilities:
+  drop:
+  - ALL
 {{- end -}}
 

@@ -166,3 +166,31 @@ Backwards compatibility aliases for cost-mgmt.* naming
 {{- define "cost-mgmt.selectorLabels" -}}
 {{- include "cost-management-onprem.selectorLabels" . -}}
 {{- end }}
+
+{{/*
+Storage (S3) endpoint
+*/}}
+{{- define "cost-mgmt.storage.endpoint" -}}
+{{- .Values.costManagement.s3Endpoint | default "" -}}
+{{- end }}
+
+{{/*
+Storage credentials secret name
+*/}}
+{{- define "cost-mgmt.storage.secretName" -}}
+{{- printf "%s-storage-credentials" (include "cost-management-onprem.fullname" .) -}}
+{{- end }}
+
+{{/*
+Redis host
+*/}}
+{{- define "cost-mgmt.redis.host" -}}
+redis
+{{- end }}
+
+{{/*
+Redis port
+*/}}
+{{- define "cost-mgmt.redis.port" -}}
+6379
+{{- end }}
