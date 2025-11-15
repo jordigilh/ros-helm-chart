@@ -25,11 +25,11 @@ spec:
       - name: masu
         image: "{{ include "cost-mgmt.koku.image" . }}"
         imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
-        
+
         ports:
         - containerPort: 8000
           protocol: TCP
-          
+
         # Health checks
         livenessProbe:
           httpGet:
@@ -40,7 +40,7 @@ spec:
           timeoutSeconds: 10
           failureThreshold: 5
           successThreshold: 1
-        
+
         readinessProbe:
           httpGet:
             path: /api/cost-management/v1/status/
@@ -51,7 +51,7 @@ spec:
           failureThreshold: 5
           successThreshold: 1
 
-        # Resource limits and requests  
+        # Resource limits and requests
         resources:
           {{- toYaml .Values.costManagement.masu.resources | nindent 10 }}
 
@@ -82,7 +82,7 @@ spec:
         - name: REDIS_PORT
           value: "{{ .Values.infrastructure.redis.port }}"
 
-        # Kafka configuration  
+        # Kafka configuration
         - name: INSIGHTS_KAFKA_HOST
           value: kafka
         - name: INSIGHTS_KAFKA_PORT
