@@ -29,27 +29,28 @@ spec:
         - -c
         - |
           set -e
+
+          echo "=== Running Django Migrations ==="
           export DATABASE_SERVICE_NAME='DATABASE'
           export DATABASE_SERVICE_HOST='{{ include "cost-mgmt-infra.postgresql.serviceName" . }}'
           export DATABASE_SERVICE_PORT='5432'
           export DATABASE_ENGINE='postgresql'
           export DATABASE_NAME='{{ .Values.postgresql.auth.database }}'
           export DATABASE_USER='{{ .Values.postgresql.auth.username }}'
-          export DATABASE_PASSWORD="${DB_PASSWORD}"
+          export DATABASE_PASSWORD="${DATABASE_PASSWORD}"
           export DJANGO_SECRET_KEY='migration-temp-key'
           export CLOWDER_ENABLED=False
           export DEVELOPMENT=False
           export PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus
-          
+
           mkdir -p /tmp/prometheus
           cd /opt/koku/koku
-          
-          echo "Running Django migrations..."
+
           python manage.py migrate --noinput
-          
+
           echo "✅ Migrations completed successfully"
         env:
-        - name: DB_PASSWORD
+        - name: DATABASE_PASSWORD
           valueFrom:
             secretKeyRef:
               name: {{ include "cost-mgmt-infra.postgresql.secretName" . }}

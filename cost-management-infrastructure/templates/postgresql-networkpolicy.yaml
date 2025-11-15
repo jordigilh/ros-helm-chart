@@ -37,6 +37,17 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+    # Allow connections from db-init job (uses kubectl exec, no direct connection)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: db-init
+      ports:
+        - protocol: TCP
+          port: 5432
   egress:
     # Allow DNS resolution
     - to:
