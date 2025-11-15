@@ -233,8 +233,8 @@ if [ "$SKIP_MIGRATIONS" = false ]; then
 
     # Determine migration image
     if [ -z "$MIGRATION_IMAGE" ]; then
-        # Try to detect from existing deployment or use default
-        MIGRATION_IMAGE="quay.io/project-koku/koku:latest"
+        # Try to detect from existing deployment or use default with CA bundle support
+        MIGRATION_IMAGE="quay.io/jordigilh/koku:latest-with-ca-bundle-support"
         log_info "Using default migration image: $MIGRATION_IMAGE"
     else
         log_info "Using custom migration image: $MIGRATION_IMAGE"
