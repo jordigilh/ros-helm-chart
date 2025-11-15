@@ -264,9 +264,10 @@ fi
 # =============================================================================
 log_info "Step 5: Validating setup..."
 
-# Check PostgreSQL is accessible
-if kubectl exec "$POD_NAME" -n "$NAMESPACE" -- psql -U postgres -d "$DB_NAME" -c "SELECT COUNT(*) FROM django_migrations;" >/dev/null 2>&1; then
-    log_success "Database is accessible and migrations table exists"
+# Check PostgreSQL is accessible and migrations completed
+if kubectl exec "$POD_NAME" -n "$NAMESPACE" -- psql -U postgres -d "$KOKU_DB_NAME" -c "SELECT COUNT(*) FROM django_migrations;" >/dev/null 2>&1; then
+    MIGRATION_COUNT=$(kubectl exec "$POD_NAME" -n "$NAMESPACE" -- psql -U postgres -d "$KOKU_DB_NAME" -tAc "SELECT COUNT(*) FROM django_migrations;")
+    log_success "Database is accessible and migrations table exists ($MIGRATION_COUNT migrations applied)"
 else
     log_warning "Could not verify migrations table"
 fi
