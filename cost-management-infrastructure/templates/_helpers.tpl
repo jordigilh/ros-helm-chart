@@ -61,8 +61,8 @@ postgres
 PostgreSQL secret name
 */}}
 {{- define "cost-mgmt-infra.postgresql.secretName" -}}
-{{- if .Values.postgresql.database.existingSecret -}}
-{{- .Values.postgresql.database.existingSecret -}}
+{{- if .Values.postgresql.auth.existingSecret -}}
+{{- .Values.postgresql.auth.existingSecret -}}
 {{- else -}}
 postgres-credentials
 {{- end -}}
