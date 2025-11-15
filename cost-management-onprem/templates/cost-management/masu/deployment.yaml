@@ -35,9 +35,9 @@ spec:
           httpGet:
             path: /api/cost-management/v1/status/
             port: 8000
-          initialDelaySeconds: 60
-          periodSeconds: 30
-          timeoutSeconds: 15
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 10
           failureThreshold: 5
           successThreshold: 1
         
@@ -45,45 +45,72 @@ spec:
           httpGet:
             path: /api/cost-management/v1/status/
             port: 8000
-          initialDelaySeconds: 60
-          periodSeconds: 30
-          timeoutSeconds: 15
-          failureThreshold: 10
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 10
+          failureThreshold: 5
           successThreshold: 1
-      volumes:
-      - name: tmp
-        emptyDir: {}
-{{- if eq (include "cost-mgmt.isOpenShift" .) "true" }}
-      - name: service-ca-cert
-        configMap:
-          name: {{ include "cost-mgmt.fullname" . }}-service-ca
-          items:
-            - key: service-ca.crt
-              path: service-ca.crt
-{{- end }}
 
         # Resource limits and requests  
-        volumeMounts:
-{{- if eq (include "cost-mgmt.isOpenShift" .) "true" }}
-        - name: service-ca-cert
-          mountPath: /etc/ssl/certs/service-ca.crt
-          subPath: service-ca.crt
-          readOnly: true
-{{- end }}
-        - name: tmp
-          mountPath: /tmp
-
         resources:
           {{- toYaml .Values.costManagement.masu.resources | nindent 10 }}
 
         # Environment variables
         env:
-        {{- include "cost-mgmt.koku.commonEnv" . | nindent 8 }}
+        # Database connection
+        - name: DATABASE_SERVICE_NAME
+          value: database
+        - name: DATABASE_ENGINE
+          value: postgresql
+        - name: DATABASE_SERVICE_HOST
+          value: cost-mgmt-cost-management-onprem-koku-db
+        - name: DATABASE_SERVICE_PORT
+          value: "5432"
+        - name: DATABASE_NAME
+          value: {{ .Values.costManagement.database.env.POSTGRES_DB }}
+        - name: DATABASE_USER
+          value: {{ .Values.costManagement.database.env.POSTGRES_USER }}
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cost-mgmt-cost-management-onprem-koku-db-credentials
+              key: password
+
+        # Redis configuration
+        - name: REDIS_HOST
+          value: {{ .Values.infrastructure.redis.host }}
+        - name: REDIS_PORT
+          value: "{{ .Values.infrastructure.redis.port }}"
+
+        # Kafka configuration  
+        - name: INSIGHTS_KAFKA_HOST
+          value: kafka
+        - name: INSIGHTS_KAFKA_PORT
+          value: "9092"
+
+        # S3 configuration
+        - name: S3_ENDPOINT
+          value: {{ .Values.infrastructure.storage.endpoint }}
+
+        # Trino configuration
+        - name: TRINO_HOST
+          value: cost-mgmt-cost-management-onprem-trino-coordinator
+        - name: TRINO_PORT
+          value: "8080"
+
+        # Django secret
+        - name: DJANGO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: cost-mgmt-cost-management-onprem-django-secret
+              key: secret-key
+
         # MASU-specific environment variables
         {{- range $key, $value := .Values.costManagement.masu.env }}
         - name: {{ $key }}
           value: {{ $value | quote }}
         {{- end }}
+
         # Application-specific
         - name: MASU
           value: "true"
@@ -92,6 +119,9 @@ spec:
         - name: KAFKA_CONNECT
           value: "true"
 
+        volumeMounts:
+        {{- include "cost-mgmt.koku.volumeMounts" . | nindent 8 }}
+
         # Command to run MASU server
         command:
         - /bin/bash
@@ -99,4 +129,7 @@ spec:
         - |
           cd $APP_HOME
           exec gunicorn -c gunicorn_conf.py --max-requests=1000 koku.wsgi
+
+      volumes:
+      {{- include "cost-mgmt.koku.volumes" . | nindent 6 }}
 {{- end }}

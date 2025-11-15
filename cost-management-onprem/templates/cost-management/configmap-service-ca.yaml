@@ -1,4 +1,4 @@
-{{- if .Values.costManagement.api.enabled -}}
+{{- if eq (include "cost-management-onprem.isOpenShift" $) "true" }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -6,10 +6,8 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
-    app.kubernetes.io/component: service-ca
   annotations:
-    # OpenShift will automatically inject the service CA bundle into this ConfigMap
     service.beta.openshift.io/inject-cabundle: "true"
 data: {}
-{{- end -}}
+{{- end }}
 

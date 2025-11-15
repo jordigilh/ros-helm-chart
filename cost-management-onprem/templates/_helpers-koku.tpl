@@ -603,3 +603,34 @@ capabilities:
   - ALL
 {{- end -}}
 
+{{/*
+Standard volumeMounts for Koku containers
+Includes tmp mount and OpenShift service CA cert when applicable
+*/}}
+{{- define "cost-mgmt.koku.volumeMounts" -}}
+- name: tmp
+  mountPath: /tmp
+{{- if eq (include "cost-management-onprem.isOpenShift" $) "true" }}
+- name: service-ca-cert
+  mountPath: /etc/ssl/certs/service-ca.crt
+  subPath: service-ca.crt
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{/*
+Standard volumes for Koku pods
+Includes tmp volume and OpenShift service CA cert ConfigMap when applicable
+*/}}
+{{- define "cost-mgmt.koku.volumes" -}}
+- name: tmp
+  emptyDir: {}
+{{- if eq (include "cost-management-onprem.isOpenShift" $) "true" }}
+- name: service-ca-cert
+  configMap:
+    name: {{ include "cost-mgmt.fullname" . }}-service-ca
+    items:
+      - key: service-ca.crt
+        path: service-ca.crt
+{{- end }}
+{{- end -}}
