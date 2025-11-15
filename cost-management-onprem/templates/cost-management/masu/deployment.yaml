@@ -63,17 +63,17 @@ spec:
         - name: DATABASE_ENGINE
           value: postgresql
         - name: DATABASE_SERVICE_HOST
-          value: cost-mgmt-cost-management-onprem-koku-db
+          value: {{ include "cost-mgmt.koku.database.host" . | quote }}
         - name: DATABASE_SERVICE_PORT
-          value: "5432"
+          value: {{ include "cost-mgmt.koku.database.port" . | quote }}
         - name: DATABASE_NAME
-          value: {{ .Values.costManagement.database.env.POSTGRES_DB }}
+          value: {{ include "cost-mgmt.koku.database.name" . | quote }}
         - name: DATABASE_USER
-          value: {{ .Values.costManagement.database.env.POSTGRES_USER }}
+          value: {{ .Values.costManagement.database.user | default "koku" | quote }}
         - name: DATABASE_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: cost-mgmt-cost-management-onprem-koku-db-credentials
+              name: {{ include "cost-mgmt.koku.database.secretName" . }}
               key: password
 
         # Redis configuration
