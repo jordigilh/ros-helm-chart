@@ -102,7 +102,7 @@ spec:
         - name: DJANGO_SECRET_KEY
           valueFrom:
             secretKeyRef:
-              name: cost-mgmt-cost-management-onprem-django-secret
+              name: koku-django-secret
               key: secret-key
 
         # MASU-specific environment variables
