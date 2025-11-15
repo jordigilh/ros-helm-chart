@@ -39,6 +39,25 @@ spec:
                 sleep 5
               done
               echo "Sources database is ready"
+        - name: create-sources-db
+          image: postgres:16-alpine
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-management-onprem.fullname" . }}-sources-db-credentials
+                  key: sources-password
+          command: ['sh', '-c']
+          args:
+            - |
+              echo "Checking if database {{ .Values.database.sources.name }} exists..."
+              if psql -h {{ include "cost-management-onprem.sourcesDatabaseHost" . }} -p {{ .Values.database.sources.port }} -U {{ .Values.database.sources.user }} -lqt | cut -d \| -f 1 | grep -qw {{ .Values.database.sources.name }}; then
+                echo "Database {{ .Values.database.sources.name }} already exists"
+              else
+                echo "Creating database {{ .Values.database.sources.name }}..."
+                psql -h {{ include "cost-management-onprem.sourcesDatabaseHost" . }} -p {{ .Values.database.sources.port }} -U {{ .Values.database.sources.user }} -c "CREATE DATABASE {{ .Values.database.sources.name }};"
+                echo "Database {{ .Values.database.sources.name }} created successfully"
+              fi
         {{- if .Values.kafka.bootstrapServers }}
         - name: wait-for-kafka
           image: "{{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}"
@@ -66,7 +85,7 @@ spec:
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-management-onprem.fullname" . }}-db-credentials
+                  name: {{ include "cost-management-onprem.fullname" . }}-sources-db-credentials
                   key: sources-password
             - name: DATABASE_HOST
               value: {{ include "cost-management-onprem.sourcesDatabaseHost" . }}

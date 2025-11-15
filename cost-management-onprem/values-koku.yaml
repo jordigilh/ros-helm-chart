@@ -14,6 +14,11 @@
 # =============================================================================
 # Global Configuration
 # =============================================================================
+
+# Override the full name to avoid redundant prefixes (cost-mgmt-cost-management-onprem)
+# Results in clean pod names like: koku-api-masu, koku-celery-beat, etc.
+fullnameOverride: "koku"
+
 global:
   pullPolicy: Always
 
@@ -118,16 +123,46 @@ infrastructure:
 
 costManagement:
   # ---------------------------------------------------------------------------
+  # Celery Beat Scheduler Configuration
+  # ---------------------------------------------------------------------------
+  # Enable scheduled report checks (CRITICAL for production)
+  # When enabled, Celery beat will automatically scan for new cost reports
+  scheduleReportChecks: true
+
+  # Cron schedule for report downloads (every 5 minutes by default)
+  # Format: "minute hour day month day_of_week"
+  # Examples:
+  #   "*/5 * * * *"  = Every 5 minutes
+  #   "0 * * * *"    = Every hour
+  #   "0 */6 * * *"  = Every 6 hours
+  reportDownloadSchedule: "*/5 * * * *"
+
+  # ---------------------------------------------------------------------------
+  # S3 Configuration
+  # ---------------------------------------------------------------------------
+  # SSL verification for S3 connections
+  # Set to false for on-prem S3 with self-signed certificates (ODF/Ceph/MinIO)
+  # Set to true for production AWS S3 or S3 with valid certificates
+  s3VerifySSL: false
+
+  # S3 endpoint for on-prem S3-compatible storage (ODF/Ceph/MinIO)
+  # Leave empty or comment out for AWS S3
+  s3Endpoint: "https://s3.openshift-storage.svc:443"
+
+  # ---------------------------------------------------------------------------
   # Koku API Configuration
   # ---------------------------------------------------------------------------
   api:
+    enabled: true  # Enable API pods and migration job
+
     # Image configuration
     image:
       # Use ImageStream for in-cluster builds (set to false to use external registry)
+      # Disabled for now to use quay.io directly with CSV format detection fix
       useImageStream: false
-      repository: quay.io/jordigilh/koku  # Image with UNLEASH_DISABLED support
-      tag: "unleash-disabled"
-      pullPolicy: IfNotPresent
+      repository: quay.io/jordigilh/koku
+      tag: "latest-with-ca-bundle-support"  # Includes fix for identity/TimeInterval CSV detection
+      pullPolicy: Always  # Always pull to ensure latest AMD64 build
 
     # API Reads Deployment (read-only queries)
     reads:
@@ -332,7 +367,7 @@ costManagement:
       # Essential Workers
       default:
         replicas: 1
-        queue: default
+        queue: celery
         concurrency: 5
         resources:
           requests:
@@ -344,7 +379,7 @@ costManagement:
 
       priority:
         replicas: 1
-        queue: priority
+        queue: priority,download
         concurrency: 5
         resources:
           requests:
@@ -393,7 +428,7 @@ costManagement:
       # XL Workers (minimal for dev - same resources as essential)
       priorityXl:
         replicas: 1
-        queue: priority,priority_xl
+        queue: priority,priority_xl,download
         concurrency: 5
         resources:
           requests:
@@ -467,42 +502,17 @@ costManagement:
   # ---------------------------------------------------------------------------
   # Database Configuration
   # ---------------------------------------------------------------------------
+  # PostgreSQL is deployed via the cost-management-infrastructure chart
+  # Run scripts/bootstrap-infrastructure.sh before deploying the application
   database:
-    # Database connection settings
-    host: ""  # Auto-resolved by helper: cost-mgmt.database.host
+    # Connection details for external PostgreSQL
+    host: "postgres"  # Service name from infrastructure chart
     port: 5432
     name: koku
     user: koku
     sslMode: disable
-
-    # PostgreSQL image
-    image:
-      repository: quay.io/sclorg/postgresql-13-c9s  # Public, no rate limits
-      tag: "latest"
-      pullPolicy: IfNotPresent
-
-    # Resources for Koku database
-    resources:
-      requests:
-        cpu: 500m
-        memory: 1Gi
-      limits:
-        cpu: 1000m
-        memory: 2Gi
-
-    # Storage configuration
-    storage:
-      size: 20Gi
-      storageClassName: ""  # Use default storage class in cluster
-      accessModes:
-        - ReadWriteOnce
-
-    # Environment variables for PostgreSQL
-    env:
-      POSTGRES_DB: koku
-      POSTGRES_USER: koku
-      # POSTGRES_PASSWORD: Auto-generated in secret
-      PGDATA: /var/lib/postgresql/data/pgdata
+    # Secret containing credentials (created by infrastructure chart)
+    secretName: "postgres-credentials"
 
   # ---------------------------------------------------------------------------
   # Django Configuration
@@ -764,11 +774,11 @@ trino:
     # Resources
     resources:
       requests:
-        cpu: 500m
-        memory: 2Gi
+        cpu: 250m
+        memory: 512Mi
       limits:
-        cpu: 1000m
-        memory: 6Gi
+        cpu: 500m
+        memory: 1Gi
 
     # Storage for warehouse directory (persistent across restarts)
     storage:
@@ -1035,10 +1045,10 @@ sourcesApi:
   platformSourcesEventStreamTopic: platform.sources.event-stream
 
   # Database configuration
-    database:
-      image:
-        repository: registry.redhat.io/rhel9/postgresql-16
-        tag: "latest"
+  database:
+    image:
+      repository: registry.redhat.io/rhel9/postgresql-16
+      tag: "latest"
 
     host: internal  # Uses the StatefulSet deployed by this chart
     port: 5432

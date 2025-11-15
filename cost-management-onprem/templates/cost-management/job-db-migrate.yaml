@@ -1,0 +1,71 @@
+{{- if .Values.costManagement.api.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cost-mgmt.fullname" . }}-db-migrate
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "cost-mgmt.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ .Values.costManagement.serviceAccount.name | default "koku" }}
+      {{- with .Values.costManagement.api.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: migration
+        image: {{ include "cost-mgmt.koku.image" . | quote }}
+        imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        command:
+        - bash
+        - -c
+        - |
+          set -e
+          set -o pipefail
+
+          echo "=== Starting Database Migration ==="
+          echo "Database Host: ${DATABASE_SERVICE_HOST}"
+          echo "Database Name: ${DATABASE_NAME}"
+          echo "Database User: ${DATABASE_USER}"
+
+          # Run Django migrations
+          echo "Running Django migrations..."
+          python /opt/koku/koku/manage.py migrate --noinput
+
+          echo "=== Migrations completed successfully ==="
+        env:
+        {{- include "cost-mgmt.koku.commonEnv" . | nindent 8 }}
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+{{- end }}
+
