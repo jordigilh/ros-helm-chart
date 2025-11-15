@@ -44,14 +44,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-Service account name
+Service account name (always created)
 */}}
 {{- define "cost-mgmt-infra.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "cost-mgmt-infra.fullname" .) .Values.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.serviceAccount.name }}
-{{- end }}
+cost-mgmt-infrastructure
 {{- end }}
 
 {{/*
@@ -72,3 +68,13 @@ postgres-credentials
 {{- end -}}
 {{- end -}}
 
+{{/*
+Detect if running on OpenShift
+*/}}
+{{- define "cost-mgmt-infra.isOpenShift" -}}
+{{- if .Capabilities.APIVersions.Has "route.openshift.io/v1" -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end -}}
