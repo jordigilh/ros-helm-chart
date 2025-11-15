@@ -48,45 +48,16 @@ spec:
         - name: {{ $key }}
           value: {{ $value | quote }}
         {{- end }}
-      volumes:
-      - name: tmp
-        emptyDir: {}
-{{- if eq (include "cost-mgmt.isOpenShift" .) "true" }}
-      - name: service-ca-cert
-        configMap:
-          name: {{ include "cost-mgmt.fullname" . }}-service-ca
-          items:
-            - key: service-ca.crt
-              path: service-ca.crt
-{{- end }}
-
-        volumeMounts:
-{{- if eq (include "cost-mgmt.isOpenShift" .) "true" }}
-        - name: service-ca-cert
-          mountPath: /etc/ssl/certs/service-ca.crt
-          subPath: service-ca.crt
-          readOnly: true
-{{- end }}
-        - name: tmp
-          mountPath: /tmp
 
         resources:
           {{- toYaml .Values.costManagement.celery.workers.priorityXl.resources | nindent 10 }}
 
         volumeMounts:
-{{- if eq (include "cost-mgmt.isOpenShift" .) "true" }}
-        - name: service-ca-cert
-          mountPath: /etc/ssl/certs/service-ca.crt
-          subPath: service-ca.crt
-          readOnly: true
-{{- end }}
-        - name: tmp
-          mountPath: /tmp
+        {{- include "cost-mgmt.koku.volumeMounts" . | nindent 8 }}
 
         securityContext:
           {{- include "cost-mgmt.securityContext.container" . | nindent 10 }}
 
       volumes:
-      - name: tmp
-        emptyDir: {}
+      {{- include "cost-mgmt.koku.volumes" . | nindent 6 }}
 
