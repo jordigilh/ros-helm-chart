@@ -222,21 +222,40 @@ if [ "$SKIP_MIGRATIONS" = false ]; then
     log_info "Step 4: Waiting for migrations to complete..."
     log_info "Migrations are handled by Helm post-install hook"
 
-    # Wait for migration job to appear and complete
+    # Wait for migration job to appear, complete, and validate database
     TIMEOUT=300
     ELAPSED=0
+    MIGRATIONS_COMPLETED=false
+
     while [ $ELAPSED -lt $TIMEOUT ]; do
+        # Check if migration job succeeded (before it's deleted by hook policy)
         JOB_STATUS=$(kubectl get jobs -n "$NAMESPACE" -l "app.kubernetes.io/component=migration" -o jsonpath='{.items[0].status.succeeded}' 2>/dev/null || echo "")
         if [ "$JOB_STATUS" = "1" ]; then
-            log_success "Migrations completed successfully"
+            log_success "Migrations completed successfully (job succeeded)"
+            MIGRATIONS_COMPLETED=true
             break
         fi
 
+        # Check if job failed
         FAILED=$(kubectl get jobs -n "$NAMESPACE" -l "app.kubernetes.io/component=migration" -o jsonpath='{.items[0].status.failed}' 2>/dev/null || echo "0")
         if [ "$FAILED" != "0" ]; then
             log_error "Migration job failed"
             kubectl logs -n "$NAMESPACE" -l "app.kubernetes.io/component=migration" --tail=50
             exit 1
+        fi
+
+        # Check if job no longer exists (deleted by hook-succeeded policy)
+        # In this case, validate by checking the database directly
+        JOB_EXISTS=$(kubectl get jobs -n "$NAMESPACE" -l "app.kubernetes.io/component=migration" --no-headers 2>/dev/null | wc -l | tr -d '[:space:]')
+        if [ "$JOB_EXISTS" = "0" ] && [ $ELAPSED -gt 10 ]; then
+            # Job was deleted, check database to confirm migrations
+            log_info "Migration job deleted (hook-succeeded), validating database..."
+            MIGRATION_COUNT=$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- psql -U "$KOKU_DB_USER" -d "$KOKU_DB_NAME" -tAc "SELECT COUNT(*) FROM django_migrations;" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            if [ "$MIGRATION_COUNT" -gt "0" ] 2>/dev/null; then
+                log_success "Migrations validated (found $MIGRATION_COUNT migrations in database)"
+                MIGRATIONS_COMPLETED=true
+                break
+            fi
         fi
 
         sleep 5
@@ -246,10 +265,9 @@ if [ "$SKIP_MIGRATIONS" = false ]; then
         fi
     done
 
-    if [ $ELAPSED -ge $TIMEOUT ]; then
+    if [ "$MIGRATIONS_COMPLETED" = false ]; then
         log_error "Timeout waiting for migrations"
-        kubectl get jobs -n "$NAMESPACE" -l "app.kubernetes.io/component=migration"
-        kubectl logs -n "$NAMESPACE" -l "app.kubernetes.io/component=migration" --tail=50
+        kubectl get jobs -n "$NAMESPACE" -l "app.kubernetes.io/component=migration" 2>/dev/null || log_warning "No migration jobs found"
         exit 1
     fi
 else
