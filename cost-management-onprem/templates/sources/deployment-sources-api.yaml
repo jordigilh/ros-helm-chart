@@ -45,8 +45,8 @@ spec:
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-management-onprem.fullname" . }}-sources-db-credentials
-                  key: sources-password
+                  name: {{ include "cost-management-onprem.fullname" . }}-sources-credentials
+                  key: database-password
           command: ['sh', '-c']
           args:
             - |
@@ -85,8 +85,8 @@ spec:
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "cost-management-onprem.fullname" . }}-sources-db-credentials
-                  key: sources-password
+                  name: {{ include "cost-management-onprem.fullname" . }}-sources-credentials
+                  key: database-password
             - name: DATABASE_HOST
               value: {{ include "cost-management-onprem.sourcesDatabaseHost" . }}
             - name: DATABASE_PORT
