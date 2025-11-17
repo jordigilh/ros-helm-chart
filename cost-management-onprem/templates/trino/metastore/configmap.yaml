@@ -46,24 +46,34 @@ data:
       </property>
       <!-- S3 Filesystem Configuration (aligned with SaaS dev/containers/hive-metastore/metastore-site.xml) -->
       <property>
-        <name>fs.s3.endpoint</name>
+        <name>fs.s3a.endpoint</name>
         <value>{{ include "cost-mgmt.koku.s3.endpoint" . }}</value>
         <description>S3 endpoint to connect to</description>
       </property>
       <property>
-        <name>fs.s3.access.key</name>
+        <name>fs.s3a.access.key</name>
         <value>${env.AWS_ACCESS_KEY_ID}</value>
         <description>S3 access key ID</description>
       </property>
       <property>
-        <name>fs.s3.secret.key</name>
+        <name>fs.s3a.secret.key</name>
         <value>${env.AWS_SECRET_ACCESS_KEY}</value>
         <description>S3 secret key</description>
       </property>
       <property>
-        <name>fs.s3.path.style.access</name>
+        <name>fs.s3a.path.style.access</name>
         <value>true</value>
         <description>Enable S3 path style access</description>
+      </property>
+      <property>
+        <name>fs.s3a.connection.ssl.enabled</name>
+        <value>true</value>
+        <description>Enable SSL for S3 connections</description>
+      </property>
+      <property>
+        <name>fs.s3a.impl</name>
+        <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+        <description>S3A filesystem implementation</description>
       </property>
       <property>
         <name>datanucleus.autoCreateSchema</name>
