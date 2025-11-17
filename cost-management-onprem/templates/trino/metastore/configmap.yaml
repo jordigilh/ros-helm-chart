@@ -67,8 +67,8 @@ data:
       </property>
       <property>
         <name>fs.s3a.connection.ssl.enabled</name>
-        <value>true</value>
-        <description>Enable SSL for S3 connections</description>
+        <value>false</value>
+        <description>Disable SSL validation for S3 connections (self-signed certs)</description>
       </property>
       <property>
         <name>fs.s3a.impl</name>
