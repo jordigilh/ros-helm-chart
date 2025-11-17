@@ -1,0 +1,115 @@
+{{- if .Values.trino.initSchema.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cost-mgmt.fullname" . }}-trino-init-schema
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.trino.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trino-init
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        {{- include "cost-mgmt.trino.labels" . | nindent 8 }}
+        app.kubernetes.io/component: trino-init
+    spec:
+      serviceAccountName: {{ include "cost-mgmt.trino.serviceAccountName" . }}
+      restartPolicy: OnFailure
+      
+      securityContext:
+        {{- include "cost-mgmt.securityContext.pod" . | nindent 8 }}
+
+      containers:
+      - name: init-schema
+        image: "{{ .Values.trino.coordinator.image.repository }}:{{ .Values.trino.coordinator.image.tag }}"
+        imagePullPolicy: {{ .Values.trino.coordinator.image.pullPolicy }}
+        
+        command:
+          - /bin/bash
+          - -c
+          - |
+            set -e
+            
+            echo "🔧 Waiting for Trino to be ready..."
+            until trino --execute "SELECT 1" > /dev/null 2>&1; do
+              echo "  ⏳ Trino not ready, waiting..."
+              sleep 5
+            done
+            echo "✅ Trino is ready"
+            
+            echo ""
+            echo "🔧 Waiting for database to be ready..."
+            until PGPASSWORD="${DB_PASSWORD}" psql -h "${DB_HOST}" -U "${DB_USER}" -d "${DB_NAME}" -c "SELECT 1" > /dev/null 2>&1; do
+              echo "  ⏳ Database not ready, waiting..."
+              sleep 5
+            done
+            echo "✅ Database is ready"
+            
+            echo ""
+            echo "🔧 Discovering tenant schemas from database..."
+            
+            # Query database for all tenant schemas
+            SCHEMAS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${DB_HOST}" -U "${DB_USER}" -d "${DB_NAME}" -t -c "SELECT DISTINCT schema_name FROM public.api_customer WHERE schema_name IS NOT NULL;")
+            
+            if [ -z "$SCHEMAS" ]; then
+              echo "  ℹ️  No tenant schemas found in database yet"
+              echo "  ℹ️  Schemas will be created automatically when providers are added"
+              exit 0
+            fi
+            
+            echo "  📦 Found $(echo "$SCHEMAS" | wc -l) tenant schema(s)"
+            echo ""
+            
+            # Create schema for each tenant
+            for SCHEMA_NAME in $SCHEMAS; do
+              SCHEMA_NAME=$(echo "$SCHEMA_NAME" | xargs)  # trim whitespace
+              if [ -n "$SCHEMA_NAME" ]; then
+                echo "  📦 Creating schema: ${SCHEMA_NAME}"
+                trino --execute "CREATE SCHEMA IF NOT EXISTS hive.${SCHEMA_NAME} WITH (location = 's3://{{ include "cost-mgmt.koku.s3.bucket" . }}/data/parquet/${SCHEMA_NAME}/')" 2>&1 | grep -v "WARNING" || {
+                  echo "     ⚠️  Schema already exists or creation failed (non-fatal)"
+                }
+                echo "     ✅ Schema ${SCHEMA_NAME} ready"
+              fi
+            done
+            
+            echo ""
+            echo "✅ Trino initialization complete!"
+            echo "   Schemas initialized based on existing database tenants"
+            echo ""
+            echo "ℹ️  Tables will be created automatically by MASU during first data processing"
+        
+        env:
+        - name: TRINO_HOST
+          value: {{ include "cost-mgmt.trino.coordinator.name" . }}
+        - name: TRINO_PORT
+          value: "{{ .Values.trino.coordinator.service.port }}"
+        - name: DB_HOST
+          value: {{ include "cost-mgmt.koku.database.host" . }}
+        - name: DB_NAME
+          value: {{ .Values.costManagement.database.name }}
+        - name: DB_USER
+          value: {{ .Values.costManagement.database.user }}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "cost-mgmt.database.secretName" . }}
+              key: password
+        
+        securityContext:
+          {{- include "cost-mgmt.securityContext.container" . | nindent 10 }}
+        
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+{{- end }}
+

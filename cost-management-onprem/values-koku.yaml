@@ -370,6 +370,9 @@ costManagement:
     # Topic for cost management report processing
     topic: platform.upload.announce
 
+  # Default organization ID for initial setup
+  defaultOrgId: org1234567
+
   # ---------------------------------------------------------------------------
   # Celery Configuration
   # ---------------------------------------------------------------------------
