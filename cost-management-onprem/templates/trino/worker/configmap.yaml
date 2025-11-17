@@ -36,6 +36,12 @@ data:
     connector.name=hive
     hive.metastore.uri={{ include "cost-mgmt.trino.metastore.uri" . }}
     hive.non-managed-table-writes-enabled=true
+    # S3/MinIO configuration
+    hive.s3.endpoint={{ include "cost-mgmt.koku.s3.endpoint" . }}
+    hive.s3.path-style-access=true
+    hive.s3.ssl.enabled=false
+    hive.s3.aws-access-key={{ .Values.costManagement.s3.accessKey }}
+    hive.s3.aws-secret-key={{ .Values.costManagement.s3.secretKey }}
 
   postgresql.properties: |
     connector.name=postgresql
