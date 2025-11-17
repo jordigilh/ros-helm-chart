@@ -45,6 +45,11 @@ data:
         <description>Default warehouse location (not used for external tables). Using persistent volume to avoid S3A dependencies for on-prem deployment.</description>
       </property>
       <property>
+        <name>hive.aux.jars.path</name>
+        <value>file:///opt/hadoop/share/hadoop/tools/lib/hadoop-aws-3.1.0.jar,file:///opt/hadoop/share/hadoop/tools/lib/aws-java-sdk-bundle-1.11.271.jar</value>
+        <description>Auxiliary JARs for S3 filesystem support</description>
+      </property>
+      <property>
         <name>datanucleus.autoCreateSchema</name>
         <value>true</value>
         <description>Auto-create the schema if it doesn't exist</description>
