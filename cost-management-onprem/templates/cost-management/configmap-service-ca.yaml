@@ -7,6 +7,7 @@ metadata:
   labels:
     {{- include "cost-mgmt.labels" . | nindent 4 }}
   annotations:
+    # Auto-inject OpenShift Service CA bundle (signs *.svc certificates)
     service.beta.openshift.io/inject-cabundle: "true"
 data: {}
 {{- end }}

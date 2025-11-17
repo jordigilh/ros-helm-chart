@@ -176,12 +176,12 @@ class IQETestPhase:
 
         if skip:
             print("\n⏭️  Skipped (--skip-tests)")
-            return {'passed': True, 'skipped': True}
+            return {'passed': False, 'skipped': True}
 
         if not os.path.isdir(self.iqe_dir):
             print(f"\n⚠️  IQE directory not found: {self.iqe_dir}")
             print("  Skipping IQE tests")
-            return {'passed': True, 'skipped': True, 'reason': 'IQE dir not found'}
+            return {'passed': False, 'skipped': True, 'reason': 'IQE dir not found'}
 
         # Setup port forward
         if not self.setup_port_forward():

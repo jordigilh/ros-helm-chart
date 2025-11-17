@@ -648,3 +648,4 @@ kubectl logs -n default -l app.kubernetes.io/component=db-migration -f
 
 
 
+

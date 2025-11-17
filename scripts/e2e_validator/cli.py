@@ -96,7 +96,7 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
         if not postgres_pod:
             print("  ❌ Failed to discover PostgreSQL pod with label app.kubernetes.io/component=postgresql")
             return 1
-        
+
         print(f"  ✓ Discovered PostgreSQL pod: {postgres_pod}")
 
         # Dynamically discover database secret from postgres pod
@@ -105,9 +105,9 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
         if not db_secret_info:
             print(f"  ❌ Failed to discover database secret from {postgres_pod} pod")
             return 1
-        
+
         print(f"  ✓ Discovered secret: {db_secret_info['secret_name']}")
-        
+
         # Get DB credentials from discovered secret
         db_password = k8s.get_secret(db_secret_info['secret_name'], db_secret_info['key'])
         if not db_password:
@@ -182,34 +182,63 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
         # Additional wait to ensure database is ready
         time.sleep(2)
 
+        # Get S3 configuration for preflight checks
+        # Try external route first for local execution
+        s3_endpoint = None
+        try:
+            route_output = k8s.exec_in_pod('', ['oc', 'get', 'route', '-n', 'openshift-storage', 's3', '-o', 'jsonpath={.spec.host}'])
+            if route_output and route_output.strip():
+                s3_endpoint = f"https://{route_output.strip()}"
+        except:
+            # Fallback to internal endpoint
+            s3_endpoint = "https://s3.openshift-storage.svc:443"
+
+        bucket = "cost-data"
+
+        # Fail-fast: skip remaining phases if a critical phase fails
+        should_skip_remaining = False
+        failed_phase = None
+
         # Phase 1: Preflight
-        preflight = PreflightPhase(k8s, namespace)
+        preflight = PreflightPhase(db, namespace, s3_endpoint, bucket)
         results['preflight'] = preflight.run()
-        if not results['preflight']['passed']:
-            print("\n❌ Pre-flight checks failed")
-            db_port_forward.terminate()
-            return 1
+        if not results['preflight']['passed'] and not results['preflight'].get('skipped'):
+            print("\n❌ Pre-flight checks failed - skipping remaining phases")
+            should_skip_remaining = True
+            failed_phase = 'preflight'
 
         # Phase 2: Migrations
         from .phases.migrations import MigrationsPhase
 
-        migrations = MigrationsPhase(k8s, db)
-        results['migrations'] = migrations.run(skip=skip_migrations)
-        if not results['migrations']['passed']:
-            print("\n❌ Migrations failed")
-            return 1
+        if should_skip_remaining:
+            results['migrations'] = {'passed': False, 'skipped': True, 'reason': f'{failed_phase} failed'}
+        else:
+            migrations = MigrationsPhase(k8s, db)
+            results['migrations'] = migrations.run(skip=skip_migrations)
+            if not results['migrations']['passed'] and not results['migrations'].get('skipped'):
+                print("\n❌ Migrations failed - skipping remaining phases")
+                should_skip_remaining = True
+                failed_phase = 'migrations'
 
         # Phase 3: Provider (with k8s client for Django ORM operations)
-        provider_phase = ProviderPhase(db, org_id=org_id, k8s_client=k8s)
-        results['provider'] = provider_phase.run(skip=skip_provider)
-        if not results['provider']['passed']:
-            print("\n❌ Provider setup failed")
-            return 1
-
-        provider_uuid = results['provider'].get('provider_uuid')
+        if should_skip_remaining:
+            results['provider'] = {'passed': False, 'skipped': True, 'reason': f'{failed_phase} failed'}
+            provider_uuid = None
+        else:
+            provider_phase = ProviderPhase(db, org_id=org_id, k8s_client=k8s)
+            results['provider'] = provider_phase.run(skip=skip_provider)
+            if not results['provider']['passed'] and not results['provider'].get('skipped'):
+                print("\n❌ Provider setup failed - skipping remaining phases")
+                should_skip_remaining = True
+                failed_phase = 'provider'
+            provider_uuid = results['provider'].get('provider_uuid')
 
         # Phase 4: Data Upload
-        if not skip_data:
+        if should_skip_remaining:
+            results['data_upload'] = {'passed': False, 'skipped': True, 'reason': f'{failed_phase} failed'}
+        elif skip_data:
+            results['data_upload'] = {'passed': False, 'skipped': True, 'reason': '--skip-data'}
+        else:
             from .clients.s3 import S3Client
 
             # Get S3 credentials
@@ -218,25 +247,55 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
 
             if not s3_access_key or not s3_secret_key:
                 print("\n❌ Failed to get S3 credentials")
-                return 1
+                should_skip_remaining = True
+                failed_phase = 'data_upload'
+                results['data_upload'] = {'passed': False, 'error': 'Missing S3 credentials'}
+                s3_endpoint = None  # Set to None to skip the rest of data upload logic
 
-            # Get S3 endpoint from MASU pod
-            masu_pod = k8s.get_pod_by_component('masu')
-            if not masu_pod:
-                print("\n❌ MASU pod not found")
-                return 1
+            # Get S3 endpoint - try external route first for local execution
+            # Check for external S3 route (OpenShift)
+            try:
+                route_output = k8s.exec_in_pod('', ['oc', 'get', 'route', '-n', 'openshift-storage', 's3', '-o', 'jsonpath={.spec.host}'])
+                if route_output and route_output.strip():
+                    s3_endpoint = f"https://{route_output.strip()}"
+                    print(f"  ℹ️  Using external S3 route: {s3_endpoint}")
+                else:
+                    raise Exception("No route found")
+            except:
+                # Fallback: Get from MASU pod (internal endpoint - may not work locally)
+                masu_pod = k8s.get_pod_by_component('masu')
+                if not masu_pod:
+                    print("\n❌ MASU pod not found")
+                    return 1
 
-            s3_endpoint_output = k8s.exec_in_pod(masu_pod, ['env'])
-            s3_endpoint = None
-            for line in s3_endpoint_output.split('\n'):
-                if line.startswith('S3_ENDPOINT='):
-                    s3_endpoint = line.split('=', 1)[1].strip()
-                    break
+                s3_endpoint_output = k8s.exec_in_pod(masu_pod, ['env'])
+                s3_endpoint = None
+                for line in s3_endpoint_output.split('\n'):
+                    if line.startswith('S3_ENDPOINT='):
+                        s3_endpoint = line.split('=', 1)[1].strip()
+                        break
 
-            if not s3_endpoint:
-                # Try common ODF S3 endpoint
-                s3_endpoint = "https://s3.openshift-storage.svc:443"
-                print(f"  ⚠️  S3_ENDPOINT not in env, using default: {s3_endpoint}")
+                if not s3_endpoint:
+                    # Try common ODF S3 endpoint
+                    s3_endpoint = "https://s3.openshift-storage.svc:443"
+                    print(f"  ⚠️  S3_ENDPOINT not in env, using default: {s3_endpoint}")
+
+                # Convert internal endpoints to external for local execution
+                if '.svc' in s3_endpoint:
+                    print(f"  ⚠️  Internal endpoint detected: {s3_endpoint}")
+                    print(f"  ⚠️  Attempting to find external route...")
+                    # Try to get the OpenShift cluster domain
+                    try:
+                        import subprocess
+                        result = subprocess.run(['oc', 'whoami', '--show-server'], capture_output=True, text=True)
+                        if result.returncode == 0:
+                            # Extract domain from API server URL (e.g., api.stress.parodos.dev:6443 -> stress.parodos.dev)
+                            server = result.stdout.strip()
+                            domain = server.split('//')[1].split(':')[0].replace('api.', 'apps.')
+                            s3_endpoint = f"https://s3-openshift-storage.{domain}"
+                            print(f"  ✓ Using external route: {s3_endpoint}")
+                    except Exception as e:
+                        print(f"  ❌ Could not determine external route: {e}")
 
             # Create S3 client using wrapper
             s3_client = S3Client(
@@ -259,7 +318,7 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
                 end_date = datetime(now.year + 1, 1, 1)
             else:
                 end_date = datetime(now.year, now.month + 1, 1)
-            
+
             print(f"  ℹ️  Using monthly period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
 
             results['data_upload'] = data_upload.upload_aws_cur_format(
@@ -269,51 +328,78 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
             )
 
             # Check for S3 errors
-            if not results['data_upload'].get('success', True) and 'error' in results['data_upload']:
-                print("\n❌ Data upload failed - S3 error")
-                db_port_forward.terminate()
-                return 1
+            if 'data_upload' in results:
+                if not results['data_upload'].get('success', True) and 'error' in results['data_upload']:
+                    print("\n❌ Data upload failed - S3 error")
+                    should_skip_remaining = True
+                    failed_phase = 'data_upload'
 
-            # Check if upload was skipped due to invalid data
-            if results['data_upload'].get('skipped'):
-                reason = results['data_upload'].get('reason', 'unknown')
-                valid = results['data_upload'].get('valid', False)
+                # Check if upload was skipped due to invalid data
+                elif results['data_upload'].get('skipped'):
+                    reason = results['data_upload'].get('reason', 'unknown')
+                    valid = results['data_upload'].get('valid', False)
 
-                if reason == 'invalid_data' or not valid:
-                    print("\n❌ Data upload skipped - INVALID DATA IN S3")
-                    print("   Found files but no valid manifest")
-                    print("   Run with --force to regenerate")
-                    db_port_forward.terminate()
-                    return 1
-                elif reason == 'valid_data_exists':
-                    print("\n✅ Using existing valid data")
-                    # Continue with processing
+                    if reason == 'invalid_data' or not valid:
+                        print("\n❌ Data upload skipped - INVALID DATA IN S3")
+                        print("   Found files but no valid manifest")
+                        print("   Run with --force to regenerate")
+                        should_skip_remaining = True
+                        failed_phase = 'data_upload'
+                    elif reason == 'valid_data_exists':
+                        print("\n✅ Using existing valid data")
+                        # Continue with processing
 
         # Phase 5-6: Processing (with provider UUID for targeted download)
-        processing = ProcessingPhase(
-            k8s,
-            db,
-            timeout=timeout,
-            provider_uuid=provider_uuid
-        )
-        results['processing'] = processing.run()
+        if should_skip_remaining:
+            results['processing'] = {'passed': False, 'skipped': True, 'reason': f'{failed_phase} failed'}
+        else:
+            processing = ProcessingPhase(
+                k8s,
+                db,
+                timeout=timeout,
+                provider_uuid=provider_uuid
+            )
+            results['processing'] = processing.run()
+            if not results['processing']['passed'] and not results['processing'].get('skipped'):
+                print("\n❌ Processing failed - skipping remaining phases")
+                should_skip_remaining = True
+                failed_phase = 'processing'
 
         # Phase 7: Trino validation
-        from .phases.trino_validation import TrinoValidationPhase
-
-        trino_val = TrinoValidationPhase(k8s, org_id)
-        results['trino'] = trino_val.run()
+        if should_skip_remaining:
+            results['trino'] = {'passed': False, 'skipped': True, 'reason': f'{failed_phase} failed'}
+        else:
+            from .phases.trino_validation import TrinoValidationPhase
+            trino_val = TrinoValidationPhase(k8s, org_id)
+            results['trino'] = trino_val.run()
+            if not results['trino']['passed'] and not results['trino'].get('skipped'):
+                print("\n❌ Trino validation failed - skipping remaining phases")
+                should_skip_remaining = True
+                failed_phase = 'trino'
 
         # Phase 8: IQE Tests
-        if iqe_dir:
-            iqe_tests = IQETestPhase(iqe_dir, namespace)
-            results['iqe_tests'] = iqe_tests.run(skip=skip_tests)
+        if should_skip_remaining:
+            results['iqe_tests'] = {'passed': False, 'skipped': True, 'reason': f'{failed_phase} failed'}
+        elif skip_tests:
+            if iqe_dir:
+                iqe_tests = IQETestPhase(iqe_dir, namespace)
+                results['iqe_tests'] = iqe_tests.run(skip=True)
+            else:
+                results['iqe_tests'] = {'passed': False, 'skipped': True, 'reason': 'No IQE dir'}
         else:
-            print("\n⚠️  IQE directory not found, skipping tests")
-            results['iqe_tests'] = {'passed': True, 'skipped': True, 'reason': 'No IQE dir'}
+            if iqe_dir:
+                iqe_tests = IQETestPhase(iqe_dir, namespace)
+                results['iqe_tests'] = iqe_tests.run(skip=False)
+            else:
+                print("\n⚠️  IQE directory not found, skipping tests")
+                results['iqe_tests'] = {'passed': False, 'skipped': True, 'reason': 'No IQE dir'}
 
         # Deployment Validation (optional)
-        if not skip_deployment_validation:
+        if should_skip_remaining:
+            results['deployment_validation'] = {'passed': False, 'skipped': True, 'reason': f'{failed_phase} failed'}
+        elif skip_deployment_validation:
+            results['deployment_validation'] = {'passed': False, 'skipped': True, 'reason': '--skip-deployment-validation'}
+        else:
             deployment_val = DeploymentValidationPhase(k8s, db)
             results['deployment_validation'] = deployment_val.run_all_validations()
 
@@ -325,14 +411,25 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
         elapsed = time.time() - start_time
         print(f"\nTotal Time: {elapsed:.1f}s ({elapsed/60:.1f} minutes)")
 
-        # Count passes/failures
-        phases_passed = sum(1 for r in results.values() if r.get('passed', False))
-        phases_total = len(results)
+        # Count passes/failures (excluding skipped)
+        phases_passed = sum(1 for r in results.values() if r.get('passed', False) and not r.get('skipped', False))
+        phases_skipped = sum(1 for r in results.values() if r.get('skipped', False))
+        phases_failed = sum(1 for r in results.values() if not r.get('passed', False) and not r.get('skipped', False))
+        phases_total = len(results) - phases_skipped
 
-        print(f"\nPhases: {phases_passed}/{phases_total} passed")
+        print(f"\nPhases: {phases_passed}/{phases_total} passed", end="")
+        if phases_skipped > 0:
+            print(f" ({phases_skipped} skipped)")
+        else:
+            print()
 
         for phase_name, phase_result in results.items():
-            status = "✅" if phase_result.get('passed') else "❌"
+            if phase_result.get('skipped'):
+                status = "⏭️ "
+            elif phase_result.get('passed'):
+                status = "✅"
+            else:
+                status = "❌"
             print(f"  {status} {phase_name}")
 
         # Overall result

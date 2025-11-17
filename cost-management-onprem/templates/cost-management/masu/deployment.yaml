@@ -21,6 +21,8 @@ spec:
         app.kubernetes.io/component: masu
     spec:
       serviceAccountName: {{ .Values.costManagement.serviceAccount.name }}
+      initContainers:
+      {{- include "cost-mgmt.koku.initContainer.combineCA" . | nindent 6 }}
       containers:
       - name: masu
         image: "{{ include "cost-mgmt.koku.image" . }}"
@@ -33,21 +35,21 @@ spec:
         # Health checks
         livenessProbe:
           httpGet:
-            path: /api/cost-management/v1/status/
-            port: 8000
+            path: /livez
+            port: 9000
           initialDelaySeconds: 30
           periodSeconds: 20
-          timeoutSeconds: 10
+          timeoutSeconds: 3
           failureThreshold: 5
           successThreshold: 1
 
         readinessProbe:
           httpGet:
-            path: /api/cost-management/v1/status/
-            port: 8000
+            path: /readyz
+            port: 9000
           initialDelaySeconds: 30
           periodSeconds: 20
-          timeoutSeconds: 10
+          timeoutSeconds: 3
           failureThreshold: 5
           successThreshold: 1
 
@@ -57,67 +59,21 @@ spec:
 
         # Environment variables
         env:
-        # Database connection
-        - name: DATABASE_SERVICE_NAME
-          value: database
-        - name: DATABASE_ENGINE
-          value: postgresql
-        - name: DATABASE_SERVICE_HOST
-          value: {{ include "cost-mgmt.koku.database.host" . | quote }}
-        - name: DATABASE_SERVICE_PORT
-          value: {{ include "cost-mgmt.koku.database.port" . | quote }}
-        - name: DATABASE_NAME
-          value: {{ include "cost-mgmt.koku.database.name" . | quote }}
-        - name: DATABASE_USER
-          value: {{ .Values.costManagement.database.user | default "koku" | quote }}
-        - name: DATABASE_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "cost-mgmt.koku.database.secretName" . }}
-              key: password
-
-        # Redis configuration
-        - name: REDIS_HOST
-          value: {{ .Values.infrastructure.redis.host }}
-        - name: REDIS_PORT
-          value: "{{ .Values.infrastructure.redis.port }}"
-
-        # Kafka configuration
-        - name: INSIGHTS_KAFKA_HOST
-          value: kafka
-        - name: INSIGHTS_KAFKA_PORT
-          value: "9092"
-
-        # S3 configuration
-        - name: S3_ENDPOINT
-          value: {{ .Values.infrastructure.storage.endpoint }}
-
-        # Trino configuration
-        - name: TRINO_HOST
-          value: cost-mgmt-cost-management-onprem-trino-coordinator
-        - name: TRINO_PORT
-          value: "8080"
-
-        # Django secret
-        - name: DJANGO_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: koku-django-secret
-              key: secret-key
+        # Common Koku environment variables (includes DB, Redis, S3, Trino, etc.)
+        {{- include "cost-mgmt.koku.commonEnv" . | nindent 8 }}
 
         # MASU-specific environment variables
-        {{- range $key, $value := .Values.costManagement.masu.env }}
-        - name: {{ $key }}
-          value: {{ $value | quote }}
-        {{- end }}
-
-        # Application-specific
         - name: MASU
           value: "true"
         - name: API_PATH_PREFIX
           value: /api/cost-management
         - name: KAFKA_CONNECT
           value: "true"
+
+        {{- range $key, $value := .Values.costManagement.masu.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
 
         volumeMounts:
         {{- include "cost-mgmt.koku.volumeMounts" . | nindent 8 }}

@@ -24,6 +24,9 @@ spec:
       securityContext:
         {{- include "cost-mgmt.securityContext.pod" . | nindent 8 }}
 
+      initContainers:
+      {{- include "cost-mgmt.koku.initContainer.combineCA" . | nindent 6 }}
+
       containers:
       - name: koku-api
         image: "{{ include "cost-mgmt.koku.image" . }}"

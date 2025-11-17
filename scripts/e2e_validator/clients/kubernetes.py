@@ -122,7 +122,7 @@ class KubernetesClient:
         
         output = []
         while resp.is_open():
-            resp.update(timeout=1)
+            resp.update(timeout=60)  # Increased timeout for long-running Django operations
             if resp.peek_stdout():
                 output.append(resp.read_stdout())
             if resp.peek_stderr():

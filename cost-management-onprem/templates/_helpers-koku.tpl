@@ -51,7 +51,7 @@ Usage: {{ include "cost-mgmt.koku.celery.worker.name" (dict "context" . "type" "
 Koku database name
 */}}
 {{- define "cost-mgmt.koku.database.name" -}}
-{{- printf "%s-koku-db" (include "cost-mgmt.fullname" .) -}}
+{{- .Values.costManagement.database.name | default "koku" -}}
 {{- end -}}
 
 {{/*
@@ -233,10 +233,11 @@ MinIO endpoint (uses shared MinIO from PR #27)
 {{- end -}}
 
 {{/*
-MinIO bucket name
+MinIO bucket name (DEPRECATED - use costManagement.storage.bucketName instead)
+This helper is kept for backwards compatibility but should not be used
 */}}
 {{- define "cost-mgmt.koku.s3.bucket" -}}
-{{- .Values.costManagement.api.reads.env.REQUESTED_BUCKET | default "koku-report" -}}
+{{- required "costManagement.storage.bucketName is required" .Values.costManagement.storage.bucketName -}}
 {{- end -}}
 
 {{/*
@@ -514,11 +515,13 @@ Common environment variables for Koku API and Celery
   value: {{ include "cost-mgmt.koku.kafka.port" . | quote }}
 - name: S3_ENDPOINT
   value: {{ include "cost-mgmt.koku.s3.endpoint" . | quote }}
-- name: S3_VERIFY_SSL
-  value: {{ if hasKey .Values.costManagement "s3VerifySSL" }}{{ .Values.costManagement.s3VerifySSL | toString | quote }}{{ else }}"true"{{ end }}
-{{- if eq (include "cost-mgmt.isOpenShift" .) "true" }}
+- name: REQUESTED_BUCKET
+  value: {{ required "costManagement.storage.bucketName is required" .Values.costManagement.storage.bucketName | quote }}
+{{- if eq (include "cost-management-onprem.isOpenShift" $) "true" }}
 - name: AWS_CA_BUNDLE
-  value: "/etc/ssl/certs/service-ca.crt"
+  value: /etc/pki/ca-trust/combined/ca-bundle.crt
+- name: REQUESTS_CA_BUNDLE
+  value: /etc/pki/ca-trust/combined/ca-bundle.crt
 {{- end }}
 - name: AWS_ACCESS_KEY_ID
   valueFrom:
@@ -545,6 +548,8 @@ Common environment variables for Koku API and Celery
   value: {{ .Values.costManagement.scheduleReportChecks | default "true" | quote }}
 - name: REPORT_DOWNLOAD_SCHEDULE
   value: {{ .Values.costManagement.reportDownloadSchedule | default "*/5 * * * *" | quote }}
+- name: POLLING_TIMER
+  value: {{ .Values.costManagement.celery.pollingTimer | default "86400" | quote }}
 {{- end -}}
 
 {{/*
@@ -605,32 +610,60 @@ capabilities:
 
 {{/*
 Standard volumeMounts for Koku containers
-Includes tmp mount and OpenShift service CA cert when applicable
+Includes tmp mount and combined CA bundle when on OpenShift
 */}}
 {{- define "cost-mgmt.koku.volumeMounts" -}}
 - name: tmp
   mountPath: /tmp
 {{- if eq (include "cost-management-onprem.isOpenShift" $) "true" }}
-- name: service-ca-cert
-  mountPath: /etc/ssl/certs/service-ca.crt
-  subPath: service-ca.crt
+- name: combined-ca-bundle
+  mountPath: /etc/pki/ca-trust/combined
   readOnly: true
 {{- end }}
 {{- end -}}
 
 {{/*
 Standard volumes for Koku pods
-Includes tmp volume and OpenShift service CA cert ConfigMap when applicable
+Includes tmp volume and CA bundle volumes for OpenShift
 */}}
 {{- define "cost-mgmt.koku.volumes" -}}
 - name: tmp
   emptyDir: {}
 {{- if eq (include "cost-management-onprem.isOpenShift" $) "true" }}
-- name: service-ca-cert
+- name: ca-scripts
+  configMap:
+    name: {{ include "cost-mgmt.fullname" . }}-ca-combine
+    items:
+      - key: combine-ca.sh
+        path: combine-ca.sh
+        mode: 0755
+- name: ca-source
   configMap:
     name: {{ include "cost-mgmt.fullname" . }}-service-ca
-    items:
-      - key: service-ca.crt
-        path: service-ca.crt
+- name: combined-ca-bundle
+  emptyDir: {}
+{{- end }}
+{{- end -}}
+
+{{/*
+Init container to combine CA certificates (OpenShift only)
+Combines system CA bundle with OpenShift cluster root CA and Service CA for Python SSL verification
+*/}}
+{{- define "cost-mgmt.koku.initContainer.combineCA" -}}
+{{- if eq (include "cost-management-onprem.isOpenShift" $) "true" }}
+- name: prepare-ca-bundle
+  image: {{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}
+  command: ['bash', '/scripts/combine-ca.sh']
+  volumeMounts:
+    - name: ca-scripts
+      mountPath: /scripts
+      readOnly: true
+    - name: ca-source
+      mountPath: /ca-source
+      readOnly: true
+    - name: combined-ca-bundle
+      mountPath: /ca-output
+  securityContext:
+    {{- include "cost-mgmt.securityContext.container" . | nindent 4 }}
 {{- end }}
 {{- end -}}

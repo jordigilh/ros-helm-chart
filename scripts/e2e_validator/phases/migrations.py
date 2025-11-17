@@ -115,7 +115,7 @@ class MigrationsPhase:
 
         if skip:
             print("⏭️  Skipped (--skip-migrations)")
-            return {'passed': True, 'skipped': True}
+            return {'passed': False, 'skipped': True}
 
         # Check status
         print("🔍 Checking migration status...")

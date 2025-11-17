@@ -32,6 +32,40 @@ class ProviderPhase:
         """Check for existing provider"""
         return self.db.get_provider()
 
+    def _sync_provider_to_tenant_schema(self, provider_uuid: str):
+        """Sync provider from public.api_provider to tenant schema.
+        
+        Cost Management uses a multi-tenant architecture where:
+        - public.api_provider contains the global provider registry
+        - {schema}.reporting_tenant_api_provider contains per-tenant provider views
+        
+        Billing records have FK constraints to the tenant schema table, so providers
+        must be synced for data processing to work.
+        
+        Args:
+            provider_uuid: The provider UUID to sync
+        """
+        if not self.k8s:
+            raise ValueError("KubernetesClient required for database operations")
+        
+        postgres_pod = self.k8s.get_pod_by_component('postgres', statefulset=True)
+        if not postgres_pod:
+            raise RuntimeError("Postgres pod not found")
+        
+        sync_sql = f"""
+        INSERT INTO {self.schema_name}.reporting_tenant_api_provider (uuid, name, type, provider_id)
+        SELECT uuid, name, type, uuid FROM public.api_provider 
+        WHERE uuid = '{provider_uuid}'
+        ON CONFLICT (uuid) DO NOTHING;
+        """
+        
+        try:
+            result = self.k8s.postgres_exec(postgres_pod, 'koku', sync_sql)
+            print(f"  ✓ Provider {provider_uuid} synced to tenant schema {self.schema_name}")
+        except Exception as e:
+            print(f"  ⚠️  Failed to sync provider to tenant schema: {e}")
+            raise RuntimeError(f"Provider sync failed: {e}")
+
     def create_provider_via_django_orm(self,
                                        name: str = "AWS Test Provider E2E",
                                        bucket: str = "cost-data",
@@ -161,6 +195,9 @@ except Exception as e:
 
         if not provider_uuid:
             raise RuntimeError(f"Failed to parse provider UUID from output: {output}")
+
+        # Sync provider to tenant schema (required for billing records)
+        self._sync_provider_to_tenant_schema(provider_uuid)
 
         return provider_uuid
 

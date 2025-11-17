@@ -22,7 +22,7 @@ spec:
               kubernetes.io/metadata.name: {{ .Release.Namespace }}
           podSelector:
             matchLabels:
-              app.kubernetes.io/part-of: cost-management
+              app.kubernetes.io/part-of: cost-management-onprem
       ports:
         - protocol: TCP
           port: 5432

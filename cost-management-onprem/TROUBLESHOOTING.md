@@ -12,6 +12,7 @@ This guide provides solutions to common issues encountered when deploying and op
   - [Worker Cache Blocking Processing](#worker-cache-blocking-processing)
 - [Database Issues](#database-issues)
   - [Stale Report Status](#stale-report-status)
+  - [Provider Not Synced to Tenant Schema](#provider-not-synced-to-tenant-schema)
 - [Diagnostic Commands](#diagnostic-commands)
 
 ---
@@ -37,9 +38,9 @@ This typically occurs when:
 Check the report status in the database:
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "SELECT id, report_name, manifest_id, status, started_datetime, completed_datetime, celery_task_id 
-   FROM public.reporting_common_costusagereportstatus 
-   WHERE status = 3 AND celery_task_id IS NOT NULL 
+  "SELECT id, report_name, manifest_id, status, started_datetime, completed_datetime, celery_task_id
+   FROM public.reporting_common_costusagereportstatus
+   WHERE status = 3 AND celery_task_id IS NOT NULL
    ORDER BY id DESC LIMIT 10;"
 ```
 
@@ -63,14 +64,14 @@ Exit code `137` indicates OOM kill (128 + 9 SIGKILL).
 ```bash
 # Clear stale celery_task_id to allow re-queueing
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "UPDATE public.reporting_common_costusagereportstatus 
-   SET celery_task_id = NULL 
+  "UPDATE public.reporting_common_costusagereportstatus
+   SET celery_task_id = NULL
    WHERE status = 3 AND completed_datetime IS NULL;"
 
 # Force provider polling by updating timestamp
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "UPDATE public.api_provider 
-   SET polling_timestamp = NOW() - INTERVAL '10 minutes' 
+  "UPDATE public.api_provider
+   SET polling_timestamp = NOW() - INTERVAL '10 minutes'
    WHERE uuid = '<provider-uuid>';"
 ```
 
@@ -124,14 +125,14 @@ celery:
           memory: 512Mi  # Increased from 200Mi
         limits:
           memory: 1Gi    # Increased from 400Mi
-    
+
     downloadXl:
       resources:
         requests:
           memory: 512Mi
         limits:
           memory: 1Gi
-    
+
     downloadPenalty:
       resources:
         requests:
@@ -178,17 +179,17 @@ If either exists, the orchestrator skips queueing a new task to prevent duplicat
 Check for stale celery_task_id entries:
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "SELECT id, report_name, status, celery_task_id, started_datetime 
-   FROM public.reporting_common_costusagereportstatus 
+  "SELECT id, report_name, status, celery_task_id, started_datetime
+   FROM public.reporting_common_costusagereportstatus
    WHERE celery_task_id IS NOT NULL AND completed_datetime IS NULL;"
 ```
 
 Check worker cache:
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "SELECT cache_key, expires 
-   FROM worker_cache_table 
-   WHERE cache_key LIKE '%<provider-uuid>%' 
+  "SELECT cache_key, expires
+   FROM worker_cache_table
+   WHERE cache_key LIKE '%<provider-uuid>%'
    ORDER BY expires DESC LIMIT 10;"
 ```
 
@@ -198,11 +199,11 @@ kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
 ```bash
 # Clear stale celery_task_id (for reports stuck > 2 hours)
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "UPDATE public.reporting_common_costusagereportstatus 
-   SET celery_task_id = NULL 
-   WHERE status IN (3, 4) 
-     AND celery_task_id IS NOT NULL 
-     AND completed_datetime IS NULL 
+  "UPDATE public.reporting_common_costusagereportstatus
+   SET celery_task_id = NULL
+   WHERE status IN (3, 4)
+     AND celery_task_id IS NOT NULL
+     AND completed_datetime IS NULL
      AND started_datetime < NOW() - INTERVAL '2 hours';"
 
 # Clear stale worker cache entries
@@ -214,8 +215,8 @@ kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
 ```bash
 # Reset report status to allow reprocessing
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "UPDATE public.reporting_common_costusagereportstatus 
-   SET status = 0, celery_task_id = NULL, started_datetime = NULL 
+  "UPDATE public.reporting_common_costusagereportstatus
+   SET status = 0, celery_task_id = NULL, started_datetime = NULL
    WHERE manifest_id = <manifest-id>;"
 ```
 
@@ -243,7 +244,7 @@ The `POLLING_TIMER` environment variable (default: 300 seconds / 5 minutes) cont
 Check provider polling timestamp:
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "SELECT uuid, name, polling_timestamp, paused, active 
+  "SELECT uuid, name, polling_timestamp, paused, active
    FROM public.api_provider;"
 ```
 
@@ -263,8 +264,8 @@ next_poll = polling_timestamp + POLLING_TIMER seconds
 ```bash
 # Update polling timestamp to trigger immediate processing
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "UPDATE public.api_provider 
-   SET polling_timestamp = NOW() - INTERVAL '10 minutes' 
+  "UPDATE public.api_provider
+   SET polling_timestamp = NOW() - INTERVAL '10 minutes'
    WHERE uuid = '<provider-uuid>';"
 ```
 
@@ -297,8 +298,8 @@ The `WorkerCache` (backed by `worker_cache_table`) tracks currently running task
 #### Diagnosis
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "SELECT cache_key, value, expires 
-   FROM worker_cache_table 
+  "SELECT cache_key, value, expires
+   FROM worker_cache_table
    WHERE cache_key LIKE '%<file-name>%' OR cache_key LIKE '%<provider-uuid>%';"
 ```
 
@@ -327,7 +328,7 @@ kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
 #### Diagnosis
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "SELECT r.id, r.report_name, r.status, r.started_datetime, r.completed_datetime, 
+  "SELECT r.id, r.report_name, r.status, r.started_datetime, r.completed_datetime,
           m.assembly_id, m.billing_period_start_datetime
    FROM reporting_common_costusagereportstatus r
    JOIN reporting_common_costusagereportmanifest m ON r.manifest_id = m.id
@@ -340,19 +341,143 @@ kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
 **Reset Old Stale Reports** (older than 24 hours):
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "UPDATE reporting_common_costusagereportstatus 
-   SET status = 0, celery_task_id = NULL, started_datetime = NULL 
-   WHERE status IN (3, 4) 
-     AND completed_datetime IS NULL 
+  "UPDATE reporting_common_costusagereportstatus
+   SET status = 0, celery_task_id = NULL, started_datetime = NULL
+   WHERE status IN (3, 4)
+     AND completed_datetime IS NULL
      AND started_datetime < NOW() - INTERVAL '24 hours';"
 ```
 
 **Mark as Failed** (for permanently stuck reports):
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "UPDATE reporting_common_costusagereportstatus 
-   SET status = 2, failed_status = status 
+  "UPDATE reporting_common_costusagereportstatus
+   SET status = 2, failed_status = status
    WHERE id = <report-id>;"
+```
+
+---
+
+### Provider Not Synced to Tenant Schema
+
+#### Symptoms
+- Download tasks complete successfully
+- CSV data processed and parquet files created
+- Error during bill record creation: `django.db.utils.IntegrityError: insert or update on table "reporting_awscostentrybill" violates foreign key constraint`
+- Error message: `Key (provider_id)=(<uuid>) is not present in table "reporting_tenant_api_provider"`
+- Tasks marked as FAILED (status=2) with "failed to convert files to parquet"
+
+#### Root Cause
+Cost Management uses a **multi-tenant database architecture**:
+
+**Provider Tables**:
+- `public.api_provider` - Global provider registry (created during provider setup)
+- `{schema}.reporting_tenant_api_provider` - Per-tenant provider view (required for billing)
+
+**The Problem**:
+- Billing tables (`reporting_awscostentrybill`, etc.) in tenant schemas have foreign key constraints to `{schema}.reporting_tenant_api_provider`
+- When providers are created via Django ORM or Sources API, they're only inserted into `public.api_provider`
+- The tenant schema table must be **manually synced** for billing records to work
+
+**Why This Happens**:
+- Normal SaaS flow includes automatic provider synchronization via migrations/signals
+- On-prem E2E/testing flows may bypass these synchronization mechanisms
+- Provider appears in API but data processing fails silently during bill record creation
+
+#### Diagnosis
+
+**Check if provider exists globally:**
+```bash
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
+  "SELECT uuid, name, type FROM public.api_provider WHERE uuid = '<provider-uuid>';"
+```
+
+**Check if provider exists in tenant schema:**
+```bash
+# Replace <schema-name> with your tenant schema (e.g., org1234567)
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
+  "SELECT uuid, name, type FROM <schema-name>.reporting_tenant_api_provider WHERE uuid = '<provider-uuid>';"
+```
+
+**Expected Result:**
+- Provider should exist in BOTH tables
+- If provider exists in `public.api_provider` but NOT in `{schema}.reporting_tenant_api_provider`, this is the issue
+
+**Check worker logs for FK constraint violations:**
+```bash
+kubectl logs -n <namespace> deployment/koku-celery-worker-download --tail=200 | \
+  grep -B5 -A10 "IntegrityError"
+```
+
+#### Solution
+
+**Option 1: Manual Sync (Immediate Fix)**
+
+```bash
+# Sync specific provider to tenant schema
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
+  "INSERT INTO <schema-name>.reporting_tenant_api_provider (uuid, name, type, provider_id)
+   SELECT uuid, name, type, uuid FROM public.api_provider 
+   WHERE uuid = '<provider-uuid>'
+   ON CONFLICT (uuid) DO NOTHING;"
+```
+
+**Option 2: Sync All Providers**
+
+```bash
+# Sync ALL providers to tenant schema
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
+  "INSERT INTO <schema-name>.reporting_tenant_api_provider (uuid, name, type, provider_id)
+   SELECT uuid, name, type, uuid FROM public.api_provider
+   ON CONFLICT (uuid) DO NOTHING;"
+```
+
+**After syncing, retry processing:**
+```bash
+# Clear failed report status
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
+  "DELETE FROM reporting_common_costusagereportstatus WHERE status = 2;"
+
+# Force provider polling
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
+  "UPDATE api_provider 
+   SET polling_timestamp = NOW() - INTERVAL '10 minutes',
+       data_updated_timestamp = NOW()
+   WHERE uuid = '<provider-uuid>';"
+```
+
+#### Prevention
+
+**For E2E Testing:**
+
+The E2E validator script (v1.1.0+) automatically syncs providers to tenant schema. If using custom scripts, add this step after provider creation:
+
+```python
+def sync_provider_to_tenant_schema(provider_uuid: str, schema_name: str):
+    """Sync provider from public schema to tenant schema"""
+    sql = f"""
+    INSERT INTO {schema_name}.reporting_tenant_api_provider (uuid, name, type, provider_id)
+    SELECT uuid, name, type, uuid FROM public.api_provider 
+    WHERE uuid = '{provider_uuid}'
+    ON CONFLICT (uuid) DO NOTHING;
+    """
+    # Execute via postgres_exec...
+```
+
+**For Production Deployments:**
+
+This should not occur in production as the Sources API integration includes proper synchronization. If it does occur, it indicates a migration or synchronization failure that needs investigation.
+
+**Verification:**
+
+After syncing, verify processing works:
+```bash
+# Check bill records can be created
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
+  "SELECT id, billing_period_start, provider_id 
+   FROM <schema-name>.reporting_awscostentrybill 
+   WHERE provider_id = '<provider-uuid>'
+   ORDER BY id DESC LIMIT 5;"
 ```
 
 ---
@@ -375,14 +500,14 @@ kubectl get events -n <namespace> --sort-by='.lastTimestamp' | tail -20
 ```bash
 # List all providers
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "SELECT uuid, name, type, active, paused, polling_timestamp 
+  "SELECT uuid, name, type, active, paused, polling_timestamp
    FROM api_provider;"
 
 # Check provider configuration
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "SELECT p.uuid, p.name, bs.data_source::text 
-   FROM api_provider p 
-   JOIN api_providerbillingsource bs ON p.billing_source_id = bs.id 
+  "SELECT p.uuid, p.name, bs.data_source::text
+   FROM api_provider p
+   JOIN api_providerbillingsource bs ON p.billing_source_id = bs.id
    WHERE p.uuid = '<provider-uuid>';"
 ```
 
@@ -390,10 +515,10 @@ kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
 ```bash
 # Check manifest status
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "SELECT id, assembly_id, billing_period_start_datetime, num_total_files, 
-          completed_datetime, state 
-   FROM reporting_common_costusagereportmanifest 
-   WHERE provider_id = '<provider-uuid>' 
+  "SELECT id, assembly_id, billing_period_start_datetime, num_total_files,
+          completed_datetime, state
+   FROM reporting_common_costusagereportmanifest
+   WHERE provider_id = '<provider-uuid>'
    ORDER BY billing_period_start_datetime DESC LIMIT 5;"
 
 # Check report processing status
@@ -577,7 +702,7 @@ If you encounter issues not covered in this guide:
    # Export pod logs
    kubectl logs -n <namespace> deployment/koku-celery-worker-download > download-worker.log
    kubectl logs -n <namespace> deployment/koku-celery-beat > celery-beat.log
-   
+
    # Export database state
    kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
      "SELECT * FROM reporting_common_costusagereportstatus WHERE status != 1 LIMIT 50;" \
