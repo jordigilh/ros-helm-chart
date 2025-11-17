@@ -53,7 +53,8 @@ spec:
             mkdir -p /tmp/hive-conf
 
             # Process config template (replace password placeholder)
-            sed "s/METASTORE_DB_PASSWORD/$METASTORE_DB_PASSWORD/g" \
+            # Use | delimiter and proper escaping for special characters in password
+            sed "s|METASTORE_DB_PASSWORD|${METASTORE_DB_PASSWORD}|g" \
               /config-template/metastore-site.xml > /tmp/hive-conf/metastore-site.xml
 
             # Copy to hive-site.xml as well (schematool looks for this)
