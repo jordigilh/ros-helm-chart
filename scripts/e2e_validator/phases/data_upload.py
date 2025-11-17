@@ -561,7 +561,7 @@ class DataUploadPhase:
             print(f"\n🔄 Resetting provider timestamps to enable processing...")
             try:
                 self.db.execute_query("""
-                    UPDATE api_provider 
+                    UPDATE api_provider
                     SET data_updated_timestamp = NOW(),
                         polling_timestamp = NOW() - INTERVAL '10 minutes'
                     WHERE uuid = %s
