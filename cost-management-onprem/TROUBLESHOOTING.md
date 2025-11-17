@@ -437,6 +437,137 @@ kubectl describe pod -n <namespace> <worker-pod-name> | grep -A 20 "State:"
 
 ---
 
+## Test Data Issues
+
+### Parquet Conversion Failures
+
+#### Symptoms
+- Download tasks complete successfully
+- CSV data downloaded and processed
+- Error: "could not write parquet to temp file"
+- Error: "failed to convert files to parquet"
+- Processing fails during daily data aggregation
+
+#### Root Cause
+The test data CSV is missing required columns for AWS Cost and Usage Report processing. The MASU processor performs daily data aggregation (`_generate_daily_data`) which requires specific columns:
+
+**Required for Grouping:**
+- `lineItem/LegalEntity` or `line_item_legal_entity`
+- `lineItem/LineItemDescription` or `line_item_line_item_description`
+- `bill/BillingEntity` or `bill_billing_entity`
+- `product/productFamily` or `product_product_family`
+- `product/operatingSystem` or `product_operating_system`
+- `pricing/unit` or `pricing_unit`
+- `resourceTags` (JSON column)
+- `costCategory` (JSON column)
+
+**Required for Aggregation:**
+- `lineItem/NormalizationFactor`
+- `lineItem/NormalizedUsageAmount`
+- `lineItem/CurrencyCode`
+- `pricing/publicOnDemandCost`
+- `pricing/publicOnDemandRate`
+- `savingsPlan/SavingsPlanEffectiveCost`
+- `bill/InvoiceId`
+- `product/ProductName`
+- `product/vcpu`
+- `product/memory`
+
+#### Diagnosis
+
+Check worker logs for parquet conversion errors:
+```bash
+kubectl logs -n <namespace> deployment/koku-celery-worker-download --tail=200 | \
+  grep -B5 -A10 "could not write parquet"
+```
+
+Look for KeyError exceptions indicating missing columns in the pandas groupby operation.
+
+Check what columns exist in your test data:
+```bash
+# Get CSV from S3 and inspect headers
+kubectl exec -n <namespace> deployment/koku-koku-api-masu -- \
+  aws s3 cp s3://cost-data/reports/test-report/<period>/test-report-1.csv.gz - | \
+  gunzip | head -1
+```
+
+#### Solution
+
+**Option 1: Use Production-Like Test Data (Recommended)**
+
+Use `nise` to generate complete AWS CUR data with all required columns:
+
+```bash
+# Install nise if not already installed
+pip install nise
+
+# Generate full AWS CUR data
+nise report aws \
+  --start-date 2025-10-01 \
+  --end-date 2025-11-01 \
+  --aws-report-name test-report \
+  --output-dir ./test-data
+
+# Upload to S3
+aws s3 sync ./test-data/aws/ s3://cost-data/reports/test-report/ \
+  --endpoint-url https://s3-external-endpoint
+```
+
+**Option 2: Enhance Minimal Test Data**
+
+If using minimal CSV for testing, add the missing required columns with default values:
+
+```csv
+# Minimal columns (current E2E script)
+identity/LineItemId,bill/PayerAccountId,lineItem/UsageAccountId,...
+
+# Add these required columns:
+bill/BillingEntity,lineItem/LegalEntity,lineItem/LineItemDescription,
+product/productFamily,product/operatingSystem,product/ProductName,
+pricing/unit,lineItem/NormalizationFactor,lineItem/NormalizedUsageAmount,
+lineItem/CurrencyCode,pricing/publicOnDemandCost,pricing/publicOnDemandRate,
+savingsPlan/SavingsPlanEffectiveCost,bill/InvoiceId,product/vcpu,product/memory
+
+# Example row with required fields:
+1,123456789012,123456789012,AWS,Amazon Web Services Inc.,EC2 Instance Usage,
+Compute Instance,Linux,Amazon Elastic Compute Cloud,Hrs,1.0,24.0,USD,1.00,0.0416,
+0.00,,2,8
+```
+
+**Option 3: Skip Daily Aggregation (Development Only)**
+
+For pure infrastructure testing without data validation, you can work around this by:
+1. Acknowledging that parquet conversion will fail
+2. Focusing on deployment, connectivity, and resource allocation testing
+3. Using production-like data when validating actual data processing
+
+#### Prevention
+
+When creating E2E test data:
+1. Use `nise` with full AWS schema to generate realistic test data
+2. If creating custom CSV, reference `koku/masu/util/aws/common.py` for `RECOMMENDED_COLUMNS`
+3. Ensure test data includes all columns required by `AWSPostProcessor._generate_daily_data()`
+4. Test data generation changes with a full processing cycle before committing
+
+#### Impact on E2E Validation
+
+The parquet conversion failure does **not** impact:
+- ✅ Download worker resource allocation testing (OOM fix validation)
+- ✅ Task queueing and dispatch verification
+- ✅ Worker connectivity and S3 access
+- ✅ Database schema and migrations
+- ✅ Provider configuration
+
+The failure **does** impact:
+- ❌ End-to-end data processing validation
+- ❌ Summary table population
+- ❌ Cost data availability in API
+- ❌ Trino/Parquet integration testing
+
+For OOM fix validation specifically, the fact that the worker survived the CSV download, decompression, and initial processing (which took ~2 minutes without OOM kill) **proves the memory increase was successful**.
+
+---
+
 ## Getting Help
 
 If you encounter issues not covered in this guide:
