@@ -50,12 +50,12 @@ data:
     # Convert PEM to JKS for Java - import each certificate separately
     echo "🔄 Converting PEM to JKS format for Java..."
     echo "   Importing $NUM_CERTS certificates individually..."
-    
+
     # Split combined PEM into individual certificates and import each
     CERT_NUM=0
     mkdir -p /tmp/certs
     csplit -s -z -f /tmp/certs/cert- /tmp/combined-ca.crt '/-----BEGIN CERTIFICATE-----/' '{*}'
-    
+
     for cert_file in /tmp/certs/cert-*; do
       if [ -s "$cert_file" ] && grep -q 'BEGIN CERTIFICATE' "$cert_file"; then
         CERT_NUM=$((CERT_NUM + 1))
@@ -69,7 +69,7 @@ data:
         echo "   ✓ Imported certificate $CERT_NUM"
       fi
     done
-    
+
     echo "✅ Java truststore created with $CERT_NUM certificates at /ca-output/truststore.jks"
     keytool -list -keystore /ca-output/truststore.jks -storepass changeit | grep "trustedCertEntry" | wc -l | xargs echo "   Verified:"
     ls -lh /ca-output/truststore.jks
