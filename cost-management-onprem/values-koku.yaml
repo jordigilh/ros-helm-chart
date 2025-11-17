@@ -150,6 +150,16 @@ costManagement:
   s3Endpoint: "https://s3.openshift-storage.svc:443"
 
   # ---------------------------------------------------------------------------
+  # S3 Storage Configuration
+  # ---------------------------------------------------------------------------
+  storage:
+    # Bucket name for cost reports (REQUIRED)
+    # On-prem deployments: typically "cost-data"
+    # Production AWS: typically "koku-report" or customer-specific bucket
+    # Chart will fail to install if this is not set
+    bucketName: "cost-data"
+
+  # ---------------------------------------------------------------------------
   # Koku API Configuration
   # ---------------------------------------------------------------------------
   api:
@@ -158,10 +168,10 @@ costManagement:
     # Image configuration
     image:
       # Use ImageStream for in-cluster builds (set to false to use external registry)
-      # Disabled for now to use quay.io directly with CSV format detection fix
+      # Disabled for now to use quay.io directly with fixes
       useImageStream: false
       repository: quay.io/jordigilh/koku
-      tag: "latest-with-ca-bundle-support"  # Includes fix for identity/TimeInterval CSV detection
+      tag: "latest-clean-head"  # Clean HEAD state with all reverts applied
       pullPolicy: Always  # Always pull to ensure latest AMD64 build
 
     # API Reads Deployment (read-only queries)
@@ -179,23 +189,23 @@ costManagement:
       # Health checks
       livenessProbe:
         httpGet:
-          path: /api/cost-management/v1/status/
-          port: 8000
+          path: /livez
+          port: 9000
           scheme: HTTP
         initialDelaySeconds: 30
         periodSeconds: 20
-        timeoutSeconds: 10
+        timeoutSeconds: 3
         failureThreshold: 5
         successThreshold: 1
 
       readinessProbe:
         httpGet:
-          path: /api/cost-management/v1/status/
-          port: 8000
+          path: /readyz
+          port: 9000
           scheme: HTTP
         initialDelaySeconds: 30
         periodSeconds: 20
-        timeoutSeconds: 10
+        timeoutSeconds: 3
         failureThreshold: 5
         successThreshold: 1
 
@@ -209,7 +219,6 @@ costManagement:
         DJANGO_LOG_FORMATTER: simple
         DJANGO_LOG_HANDLERS: console
         PROMETHEUS_MULTIPROC_DIR: /tmp
-        REQUESTED_BUCKET: koku-report
         REQUESTED_ROS_BUCKET: ros-report
         KOKU_ENABLE_SENTRY: "False"
         CACHED_VIEWS_DISABLED: "False"
@@ -238,23 +247,23 @@ costManagement:
       # Health checks (same as reads)
       livenessProbe:
         httpGet:
-          path: /api/cost-management/v1/status/
-          port: 8000
+          path: /livez
+          port: 9000
           scheme: HTTP
         initialDelaySeconds: 30
         periodSeconds: 20
-        timeoutSeconds: 10
+        timeoutSeconds: 3
         failureThreshold: 5
         successThreshold: 1
 
       readinessProbe:
         httpGet:
-          path: /api/cost-management/v1/status/
-          port: 8000
+          path: /readyz
+          port: 9000
           scheme: HTTP
         initialDelaySeconds: 30
         periodSeconds: 20
-        timeoutSeconds: 10
+        timeoutSeconds: 3
         failureThreshold: 5
         successThreshold: 1
 
@@ -268,7 +277,6 @@ costManagement:
         DJANGO_LOG_FORMATTER: simple
         DJANGO_LOG_HANDLERS: console
         PROMETHEUS_MULTIPROC_DIR: /tmp
-        REQUESTED_BUCKET: koku-report
         REQUESTED_ROS_BUCKET: ros-report
         KOKU_ENABLE_SENTRY: "False"
         GUNICORN_WORKERS: "1"
@@ -324,13 +332,18 @@ costManagement:
       DJANGO_LOG_LEVEL: INFO
       GUNICORN_LOG_LEVEL: INFO
       PROMETHEUS_MULTIPROC_DIR: /tmp
-      REQUESTED_BUCKET: koku-report
       REQUESTED_ROS_BUCKET: ros-report
 
   # ---------------------------------------------------------------------------
   # Celery Configuration
   # ---------------------------------------------------------------------------
   celery:
+    # Provider polling interval in seconds
+    # Default: 300 (5 minutes) - suitable for testing/development
+    # Production: 86400 (24 hours) - recommended for production deployments
+    # This controls how frequently Beat checks for new cost reports to download
+    pollingTimer: 300
+
     # Celery Beat Scheduler (must be exactly 1 replica)
     beat:
       replicas: 1  # MUST be exactly 1
@@ -338,10 +351,10 @@ costManagement:
       resources:
         requests:
           cpu: 100m
-          memory: 200Mi
+          memory: 512Mi  # Increased from 200Mi to prevent OOM
         limits:
           cpu: 200m
-          memory: 400Mi
+          memory: 1Gi    # Increased from 400Mi to prevent OOM
 
       # Beat is a scheduler - no health probes needed
       # It runs continuously once started; no requests to handle
@@ -361,7 +374,6 @@ costManagement:
         KOKU_LOG_LEVEL: INFO
         DJANGO_LOG_LEVEL: INFO
         PROMETHEUS_MULTIPROC_DIR: /tmp
-        REQUESTED_BUCKET: koku-report
         REQUESTED_ROS_BUCKET: ros-report
 
       # Essential Workers
@@ -379,7 +391,7 @@ costManagement:
 
       priority:
         replicas: 1
-        queue: priority,download
+        queue: priority
         concurrency: 5
         resources:
           requests:
@@ -425,10 +437,23 @@ costManagement:
             cpu: 200m
             memory: 400Mi
 
+      # Download Workers
+      download:
+        replicas: 1
+        queue: download
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+
       # XL Workers (minimal for dev - same resources as essential)
       priorityXl:
         replicas: 1
-        queue: priority,priority_xl,download
+        queue: priority,priority_xl
         concurrency: 5
         resources:
           requests:
@@ -453,6 +478,18 @@ costManagement:
       summaryXl:
         replicas: 1
         queue: summary,summary_xl
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+
+      downloadXl:
+        replicas: 1
+        queue: download,download_xl
         concurrency: 5
         resources:
           requests:
@@ -490,6 +527,18 @@ costManagement:
       summaryPenalty:
         replicas: 1
         queue: summary,summary_penalty
+        concurrency: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+
+      downloadPenalty:
+        replicas: 1
+        queue: download,download_penalty
         concurrency: 5
         resources:
           requests:
