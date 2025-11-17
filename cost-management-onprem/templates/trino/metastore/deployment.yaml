@@ -111,6 +111,17 @@ spec:
           value: "/tmp/hive-conf"
         - name: HIVE_AUX_JARS_PATH
           value: "/opt/hadoop/share/hadoop/tools/lib/hadoop-aws-3.1.0.jar:/opt/hadoop/share/hadoop/tools/lib/aws-java-sdk-bundle-1.11.271.jar"
+        # S3 credentials for metastore-site.xml environment variable substitution
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "cost-mgmt.storage.secretName" . }}
+              key: access-key
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "cost-mgmt.storage.secretName" . }}
+              key: secret-key
 
         resources:
           {{- toYaml .Values.trino.metastore.resources | nindent 10 }}
