@@ -1,0 +1,65 @@
+{{- if eq (include "cost-management-onprem.isOpenShift" $) "true" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cost-mgmt.fullname" . }}-trino-ca-convert
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-mgmt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trino
+data:
+  convert-ca.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "🔧 Combining CA certificates for Trino/Java SSL..."
+
+    # Start with system CA bundle
+    if [ -f /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem ]; then
+        echo "📋 Adding system CA bundle..."
+        cat /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem > /tmp/combined-ca.crt
+    elif [ -f /etc/ssl/certs/ca-bundle.crt ]; then
+        echo "📋 Adding system CA bundle..."
+        cat /etc/ssl/certs/ca-bundle.crt > /tmp/combined-ca.crt
+    elif [ -f /etc/ssl/certs/ca-certificates.crt ]; then
+        echo "📋 Adding system CA certificates..."
+        cat /etc/ssl/certs/ca-certificates.crt > /tmp/combined-ca.crt
+    else
+        echo "⚠️ No system CA bundle found, starting with empty bundle"
+        touch /tmp/combined-ca.crt
+    fi
+
+    echo "" >> /tmp/combined-ca.crt
+
+    # Add OpenShift cluster root CA (Kubernetes service account CA)
+    if [ -f /var/run/secrets/kubernetes.io/serviceaccount/ca.crt ]; then
+        echo "📋 Adding OpenShift cluster root CA..."
+        cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /tmp/combined-ca.crt
+        echo "" >> /tmp/combined-ca.crt
+    fi
+
+    # Add OpenShift Service CA (signs *.svc certificates like s3.openshift-storage.svc)
+    if [ -f /ca-source/service-ca.crt ] && [ -s /ca-source/service-ca.crt ]; then
+        echo "📋 Adding OpenShift Service CA..."
+        cat /ca-source/service-ca.crt >> /tmp/combined-ca.crt
+        echo "" >> /tmp/combined-ca.crt
+    fi
+
+    echo "✅ Combined CA bundle created with $(grep -c 'BEGIN CERTIFICATE' /tmp/combined-ca.crt) certificates"
+
+    # Convert PEM to JKS for Java
+    echo "🔄 Converting PEM to JKS format for Java..."
+    
+    # Import into Java keystore
+    keytool -importcert \
+      -noprompt \
+      -trustcacerts \
+      -alias openshift-combined-ca \
+      -file /tmp/combined-ca.crt \
+      -keystore /ca-output/truststore.jks \
+      -storepass changeit
+    
+    echo "✅ Java truststore created at /ca-output/truststore.jks"
+    ls -lh /ca-output/truststore.jks
+{{- end }}
+
