@@ -36,38 +36,18 @@ data:
     connector.name=hive
     hive.metastore.uri={{ include "cost-mgmt.trino.metastore.uri" . }}
     hive.non-managed-table-writes-enabled=true
-    # Use Hadoop configuration for S3 access (core-site.xml)
-    hive.config.resources=/etc/hadoop/conf/core-site.xml
+    hive.storage-format=Parquet
+    # Native S3 configuration (aligned with SaaS)
+    fs.native-s3.enabled=true
+    s3.endpoint={{ include "cost-mgmt.koku.s3.endpoint" . }}
+    s3.path-style-access=true
+    s3.aws-access-key=${ENV:AWS_ACCESS_KEY_ID}
+    s3.aws-secret-key=${ENV:AWS_SECRET_ACCESS_KEY}
+    s3.sse.type=None
 
   postgresql.properties: |
     connector.name=postgresql
     connection-url={{ include "cost-mgmt.trino.metastore.database.url" . }}
     connection-user={{ .Values.costManagement.database.user }}
     connection-password=${ENV:POSTGRES_PASSWORD}
-
-  core-site.xml: |
-    <?xml version="1.0"?>
-    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
-    <configuration>
-      <property>
-        <name>fs.s3a.endpoint</name>
-        <value>{{ include "cost-mgmt.koku.s3.endpoint" . }}</value>
-      </property>
-      <property>
-        <name>fs.s3a.path.style.access</name>
-        <value>true</value>
-      </property>
-      <property>
-        <name>fs.s3a.connection.ssl.enabled</name>
-        <value>false</value>
-      </property>
-      <property>
-        <name>fs.s3a.access.key</name>
-        <value>${ENV:AWS_ACCESS_KEY_ID}</value>
-      </property>
-      <property>
-        <name>fs.s3a.secret.key</name>
-        <value>${ENV:AWS_SECRET_ACCESS_KEY}</value>
-      </property>
-    </configuration>
 
