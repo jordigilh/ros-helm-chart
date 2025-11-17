@@ -87,6 +87,9 @@ spec:
         - name: config
           mountPath: /etc/trino/catalog/postgresql.properties
           subPath: postgresql.properties
+        - name: config
+          mountPath: /etc/hadoop/conf/core-site.xml
+          subPath: core-site.xml
         - name: data
           mountPath: /data/trino
 

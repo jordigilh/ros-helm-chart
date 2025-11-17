@@ -39,29 +39,29 @@ class KafkaValidationPhase:
                 text=True,
                 timeout=10
             )
-            
+
             if result.returncode != 0:
                 return {
                     'success': False,
                     'error': f'Failed to query Kafka pods: {result.stderr}',
                     'kafka_namespace': self.kafka_namespace
                 }
-            
+
             kafka_pods = json.loads(result.stdout)
-            
+
             if not kafka_pods or 'items' not in kafka_pods:
                 return {
                     'success': False,
                     'error': 'No Kafka pods found',
                     'kafka_namespace': self.kafka_namespace
                 }
-            
+
             # Check pod status
             running_pods = [
                 pod for pod in kafka_pods.get('items', [])
                 if pod.get('status', {}).get('phase') == 'Running'
             ]
-            
+
             total_pods = len(kafka_pods.get('items', []))
 
             if len(running_pods) < total_pods:
@@ -113,14 +113,14 @@ class KafkaValidationPhase:
                 text=True,
                 timeout=10
             )
-            
+
             if result.returncode != 0:
                 return {
                     'success': False,
                     'error': f'Failed to query listener pod: {result.stderr}',
                     'namespace': self.namespace
                 }
-            
+
             listener_pod = json.loads(result.stdout)
             pod_name = listener_pod.get('metadata', {}).get('name')
             pod_phase = listener_pod.get('status', {}).get('phase')
@@ -191,14 +191,14 @@ class KafkaValidationPhase:
                 text=True,
                 timeout=10
             )
-            
+
             if result.returncode != 0:
                 return {
                     'success': False,
                     'error': 'Failed to retrieve listener logs',
                     'pod_name': pod_name
                 }
-            
+
             logs = result.stdout
 
             # Look for Kafka connection indicators
@@ -256,37 +256,37 @@ class KafkaValidationPhase:
         try:
             # Get Kafka pod to run topic list command
             result = subprocess.run(
-                ['kubectl', 'get', 'pods', '-n', self.kafka_namespace, '-l', 'strimzi.io/name=ros-ocp-kafka-kafka', 
+                ['kubectl', 'get', 'pods', '-n', self.kafka_namespace, '-l', 'strimzi.io/name=ros-ocp-kafka-kafka',
                  '-o', 'jsonpath={.items[0].metadata.name}'],
                 capture_output=True,
                 text=True,
                 timeout=10
             )
-            
+
             if result.returncode != 0 or not result.stdout:
                 return {
                     'success': False,
                     'error': 'No Kafka broker pod found to check topics'
                 }
-            
+
             kafka_pod = result.stdout.strip()
-            
+
             # List topics
             result = subprocess.run(
-                ['kubectl', 'exec', '-n', self.kafka_namespace, kafka_pod, '--', 
+                ['kubectl', 'exec', '-n', self.kafka_namespace, kafka_pod, '--',
                  'bin/kafka-topics.sh', '--bootstrap-server', 'localhost:9092', '--list'],
                 capture_output=True,
                 text=True,
                 timeout=30
             )
-            
+
             if result.returncode != 0:
                 return {
                     'success': False,
                     'error': 'Failed to list Kafka topics',
                     'kafka_pod': kafka_pod
                 }
-            
+
             topics_output = result.stdout
             topics = [t.strip() for t in topics_output.split('\n') if t.strip() and not t.startswith('__')]
 
