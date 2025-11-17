@@ -60,39 +60,36 @@ spec:
 
         # Environment variables
         env:
-        # Common Koku environment variables (includes DB, Redis, S3, Trino, etc.)
-        {{- include "cost-mgmt.koku.commonEnv" . | nindent 8 }}
-
-        # Listener-specific environment variables
+        # Listener-specific environment variables (must come before commonEnv to be overridden)
         - name: MASU
           value: "true"
         - name: KAFKA_CONNECT
           value: "true"
         - name: API_PATH_PREFIX
           value: /api/cost-management
-
+        
         # Override Kafka host for cross-namespace communication
+        # Note: These will override the defaults from commonEnv
         {{- if .Values.costManagement.kafka.enabled }}
         - name: INSIGHTS_KAFKA_HOST
           value: {{ .Values.costManagement.kafka.host | quote }}
         - name: INSIGHTS_KAFKA_PORT
           value: {{ .Values.costManagement.kafka.port | quote }}
-        {{- else }}
-        - name: INSIGHTS_KAFKA_HOST
-          value: {{ include "cost-mgmt.koku.kafka.host" . | quote }}
-        - name: INSIGHTS_KAFKA_PORT
-          value: {{ include "cost-mgmt.koku.kafka.port" . | quote }}
         {{- end }}
-
+        
         # Kafka consumer configuration
         - name: KAFKA_CONSUMER_GROUP_ID
           value: {{ .Values.costManagement.kafka.consumerGroupId | default "cost-mgmt-listener-group" | quote }}
-
+        
         # Kafka topic configuration
         {{- if .Values.costManagement.kafka.topic }}
         - name: KAFKA_TOPIC
           value: {{ .Values.costManagement.kafka.topic | quote }}
         {{- end }}
+
+        # Common Koku environment variables (includes DB, Redis, S3, Trino, etc.)
+        # Note: INSIGHTS_KAFKA_HOST/PORT above will override the defaults from this
+        {{- include "cost-mgmt.koku.commonEnv" . | nindent 8 }}
 
         {{- range $key, $value := .Values.costManagement.listener.env }}
         - name: {{ $key }}
