@@ -14,6 +14,10 @@ This guide provides solutions to common issues encountered when deploying and op
 - [Database Issues](#database-issues)
   - [Stale Report Status](#stale-report-status)
   - [Provider Not Synced to Tenant Schema](#provider-not-synced-to-tenant-schema)
+- [Trino and Hive Metastore Issues](#trino-and-hive-metastore-issues)
+  - [Trino SSL Connection Failures to MinIO](#trino-ssl-connection-failures-to-minio)
+  - [Hive Metastore S3 Filesystem Not Recognized](#hive-metastore-s3-filesystem-not-recognized)
+  - [Hive Metastore Password Authentication Failures](#hive-metastore-password-authentication-failures)
 - [Diagnostic Commands](#diagnostic-commands)
 
 ---
@@ -857,6 +861,271 @@ The failure **does** impact:
 - ❌ Trino/Parquet integration testing
 
 For OOM fix validation specifically, the fact that the worker survived the CSV download, decompression, and initial processing (which took ~2 minutes without OOM kill) **proves the memory increase was successful**.
+
+---
+
+## Trino and Hive Metastore Issues
+
+### Trino SSL Connection Failures to MinIO
+
+#### Symptoms
+- Trino `CREATE TABLE` statements timeout after ~100 seconds
+- Error: `INVALID_TABLE_PROPERTY: External location is not a valid file system URI`
+- Trino coordinator logs show SSL handshake failures or certificate errors
+- Worker logs show `TrinoUserError` when attempting to create parquet tables
+
+#### Root Cause
+Trino's Java runtime doesn't trust the self-signed certificates used by OpenShift's internal S3 service (MinIO via ODF). When Trino tries to validate S3 URIs during `CREATE TABLE` operations, the SSL connection fails.
+
+The issue occurs because Java's `keytool` only imports the **first certificate** from a multi-certificate PEM file. The init container was combining multiple CA certificates (system CAs + Kubernetes CA + Service CA) into one file, but only the first certificate was being imported into the JKS truststore.
+
+#### Diagnosis
+
+**Check Trino truststore certificate count:**
+```bash
+kubectl exec -n <namespace> koku-trino-coordinator-0 -- \
+  keytool -list -keystore /etc/trino/certs/truststore.jks -storepass changeit | \
+  grep "trustedCertEntry" | wc -l
+```
+
+**Expected**: 150+ certificates  
+**Problem**: Only 1 certificate
+
+**Check for SSL errors in Trino logs:**
+```bash
+kubectl logs -n <namespace> koku-trino-coordinator-0 | grep -i "ssl\|certificate\|handshake"
+```
+
+**Test CREATE TABLE manually:**
+```bash
+kubectl exec -n <namespace> koku-trino-coordinator-0 -- \
+  trino --execute "CREATE SCHEMA IF NOT EXISTS hive.test_ssl WITH (location='s3://cost-data/test/')"
+```
+
+If this times out (>100s) or fails with SSL errors, the truststore is incomplete.
+
+#### Solution
+
+The fix splits the combined CA bundle and imports each certificate individually with a unique alias.
+
+**File**: `cost-management-onprem/templates/trino/configmap-ca-convert.yaml`
+
+```yaml
+# Split combined PEM into individual certificates and import each
+CERT_NUM=0
+mkdir -p /tmp/certs
+csplit -s -z -f /tmp/certs/cert- /tmp/combined-ca.crt '/-----BEGIN CERTIFICATE-----/' '{*}'
+
+for cert_file in /tmp/certs/cert-*; do
+  if [ -s "$cert_file" ] && grep -q 'BEGIN CERTIFICATE' "$cert_file"; then
+    CERT_NUM=$((CERT_NUM + 1))
+    keytool -importcert \
+      -noprompt \
+      -trustcacerts \
+      -alias "ca-cert-$CERT_NUM" \
+      -file "$cert_file" \
+      -keystore /ca-output/truststore.jks \
+      -storepass changeit 2>&1 | grep -v "Certificate already exists" || true
+  fi
+done
+```
+
+**Verify the fix:**
+```bash
+# Restart Trino pods
+kubectl delete pod -n <namespace> koku-trino-coordinator-0
+kubectl delete pod -n <namespace> -l app.kubernetes.io/component=trino-worker
+
+# Wait for restart
+kubectl wait --for=condition=ready pod/koku-trino-coordinator-0 -n <namespace> --timeout=120s
+
+# Verify certificate count
+kubectl exec -n <namespace> koku-trino-coordinator-0 -- \
+  keytool -list -keystore /etc/trino/certs/truststore.jks -storepass changeit | \
+  grep "trustedCertEntry" | wc -l
+# Should show 150+ certificates
+
+# Test CREATE SCHEMA with S3 location
+kubectl exec -n <namespace> koku-trino-coordinator-0 -- \
+  trino --execute "CREATE SCHEMA IF NOT EXISTS hive.test_ssl WITH (location='s3://cost-data/test/')"
+# Should complete in <10 seconds
+```
+
+---
+
+### Hive Metastore S3 Filesystem Not Recognized
+
+#### Symptoms
+- Error: `HIVE_METASTORE_ERROR: Got exception: org.apache.hadoop.fs.UnsupportedFileSystemException No FileSystem for scheme "s3"`
+- Trino `CREATE TABLE` statements fail instantly (not a timeout)
+- Worker logs show `TrinoExternalError` with `HIVE_METASTORE_ERROR`
+- Parquet files exist in S3 but Trino tables are never created
+
+#### Root Cause
+The Hive Metastore image (`quay.io/insights-onprem/hive:3.1.3`) contains the required S3 libraries (`hadoop-aws` and `aws-java-sdk-bundle`) in `/opt/hadoop/share/hadoop/tools/lib/`, but they are not in the Hive classpath by default.
+
+When Koku attempts to create Trino tables with `external_location='s3://...'`, the Hive Metastore doesn't recognize the `s3://` URI scheme and rejects the table creation.
+
+#### Diagnosis
+
+**Check if S3 libraries exist:**
+```bash
+kubectl exec -n <namespace> koku-hive-metastore-0 -- \
+  ls -la /opt/hadoop/share/hadoop/tools/lib/ | grep -E "hadoop-aws|aws-java-sdk"
+```
+
+**Expected output:**
+```
+-rw-r--r--. 1 hive hive 86220098 Mar 30  2018 aws-java-sdk-bundle-1.11.271.jar
+-rw-r--r--. 1 hive hive   456868 Mar 30  2018 hadoop-aws-3.1.0.jar
+```
+
+**Check if HIVE_AUX_JARS_PATH is set:**
+```bash
+kubectl exec -n <namespace> koku-hive-metastore-0 -- env | grep HIVE_AUX_JARS_PATH
+```
+
+**Check worker logs for S3 errors:**
+```bash
+kubectl logs -n <namespace> -l app.kubernetes.io/component=masu-worker-download --tail=100 | \
+  grep -A 3 "attempting to create parquet table"
+```
+
+Look for: `UnsupportedFileSystemException No FileSystem for scheme "s3"`
+
+#### Solution
+
+Add `HIVE_AUX_JARS_PATH` as a Kubernetes environment variable in the Hive Metastore deployment to include the S3 libraries in the classpath.
+
+**File**: `cost-management-onprem/templates/trino/metastore/deployment.yaml`
+
+```yaml
+env:
+- name: METASTORE_DB_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "cost-mgmt.trino.metastore.database.secretName" . }}
+      key: password
+- name: HIVE_CONF_DIR
+  value: "/tmp/hive-conf"
+- name: HIVE_AUX_JARS_PATH
+  value: "/opt/hadoop/share/hadoop/tools/lib/hadoop-aws-3.1.0.jar:/opt/hadoop/share/hadoop/tools/lib/aws-java-sdk-bundle-1.11.271.jar"
+```
+
+**Verify the fix:**
+```bash
+# Restart Hive Metastore
+kubectl delete pod -n <namespace> koku-hive-metastore-0
+
+# Wait for restart
+kubectl wait --for=condition=ready pod/koku-hive-metastore-0 -n <namespace> --timeout=120s
+
+# Verify environment variable
+kubectl exec -n <namespace> koku-hive-metastore-0 -- env | grep HIVE_AUX_JARS_PATH
+
+# Check Hive Metastore logs for S3 support confirmation
+kubectl logs -n <namespace> koku-hive-metastore-0 | grep "S3 filesystem"
+# Should show: ✅ HIVE_AUX_JARS_PATH set to: /opt/hadoop/share/hadoop/tools/lib/...
+```
+
+---
+
+### Hive Metastore Password Authentication Failures
+
+#### Symptoms
+- Hive Metastore pod crash-loops with status `Error` or `CrashLoopBackOff`
+- Logs show: `FATAL: password authentication failed for user "metastore"`
+- Error: `org.apache.hadoop.hive.metastore.HiveMetaException: Failed to get schema version`
+- Restarts: 3+
+
+#### Root Cause
+The startup script uses `sed` to substitute the database password from an environment variable into `metastore-site.xml`. If the password contains special characters (like `/`), the default `sed` delimiter causes substitution failures.
+
+```bash
+# This fails if password contains /
+sed "s/METASTORE_DB_PASSWORD/$METASTORE_DB_PASSWORD/g" config.xml
+```
+
+#### Diagnosis
+
+**Check Hive Metastore logs:**
+```bash
+kubectl logs -n <namespace> koku-hive-metastore-0 | grep -A 5 "password authentication"
+```
+
+**Check if password was substituted:**
+```bash
+kubectl exec -n <namespace> koku-hive-metastore-0 -- \
+  cat /tmp/hive-conf/metastore-site.xml | grep -A 2 "ConnectionPassword"
+```
+
+If it shows `<value>METASTORE_DB_PASSWORD</value>` (the placeholder), substitution failed.
+
+**Verify the password works directly:**
+```bash
+# Get the password
+PASSWORD=$(kubectl get secret -n <namespace> koku-metastore-db-credentials -o jsonpath='{.data.password}' | base64 -d)
+
+# Test PostgreSQL connection
+kubectl exec -n <namespace> koku-hive-metastore-db-0 -- \
+  sh -c "PGPASSWORD='$PASSWORD' psql -U metastore -d metastore -c 'SELECT 1'"
+```
+
+If this succeeds but Hive fails, it's a sed substitution issue.
+
+#### Solution
+
+Change the `sed` delimiter from `/` to `|` to handle special characters in passwords.
+
+**File**: `cost-management-onprem/templates/trino/metastore/deployment.yaml`
+
+```yaml
+# OLD (fails with special characters):
+sed "s/METASTORE_DB_PASSWORD/$METASTORE_DB_PASSWORD/g" \
+  /config-template/metastore-site.xml > /tmp/hive-conf/metastore-site.xml
+
+# NEW (handles special characters):
+sed "s|METASTORE_DB_PASSWORD|${METASTORE_DB_PASSWORD}|g" \
+  /config-template/metastore-site.xml > /tmp/hive-conf/metastore-site.xml
+```
+
+**If the issue persists after the fix:**
+
+The Hive Metastore may have cached a bad connection attempt. Reset the PostgreSQL password explicitly:
+
+```bash
+# Get the correct password
+PASSWORD=$(kubectl get secret -n <namespace> koku-metastore-db-credentials -o jsonpath='{.data.password}' | base64 -d)
+
+# Reset the password in PostgreSQL
+kubectl exec -n <namespace> koku-hive-metastore-db-0 -- \
+  sh -c "psql -U postgres -d postgres -c \"ALTER USER metastore WITH PASSWORD '$PASSWORD'\""
+
+# Force clean restart
+kubectl delete pod -n <namespace> koku-hive-metastore-0
+```
+
+**Verify the fix:**
+```bash
+# Wait for restart
+sleep 30
+
+# Check logs - should show successful schema initialization
+kubectl logs -n <namespace> koku-hive-metastore-0 | grep -E "Schema initialization|Starting Hive"
+# Should show: ✅ Schema already initialized - skipping initialization
+#              Starting Hive Metastore Server
+
+# Verify no more restarts
+kubectl get pod -n <namespace> koku-hive-metastore-0 -o jsonpath='{.status.containerStatuses[0].restartCount}'
+# Should be 0 or 1
+```
+
+**Test Trino connectivity:**
+```bash
+kubectl exec -n <namespace> koku-trino-coordinator-0 -- \
+  trino --execute "SHOW SCHEMAS FROM hive"
+# Should list schemas including 'default' and 'information_schema'
+```
 
 ---
 
