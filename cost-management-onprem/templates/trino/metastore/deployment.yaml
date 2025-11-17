@@ -65,9 +65,12 @@ spec:
             export HIVE_HOME=/opt/hive
 
             # Enable S3 filesystem support by adding AWS libraries to Hive auxiliary jars path
+            # Set both as environment variable (from K8s) and explicitly in shell
             echo "Enabling S3 filesystem support..."
             export HIVE_AUX_JARS_PATH=/opt/hadoop/share/hadoop/tools/lib/hadoop-aws-3.1.0.jar:/opt/hadoop/share/hadoop/tools/lib/aws-java-sdk-bundle-1.11.271.jar
+            export HADOOP_CLASSPATH="${HADOOP_CLASSPATH}:${HIVE_AUX_JARS_PATH}"
             echo "✅ HIVE_AUX_JARS_PATH set to: $HIVE_AUX_JARS_PATH"
+            echo "✅ HADOOP_CLASSPATH includes S3 libraries"
 
             # Verify config was created
             echo "Config file check:"
