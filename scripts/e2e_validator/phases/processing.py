@@ -28,7 +28,7 @@ class ProcessingPhase:
 
     def trigger_processing(self) -> Dict:
         """Trigger MASU processing via Celery task
-        
+
         Uses provider-specific download task if provider_uuid is set,
         otherwise uses generic check_report_updates.
         """
@@ -38,17 +38,21 @@ class ProcessingPhase:
         if self.db and self.provider_uuid:
             print(f"\n🔄 Resetting provider timestamps to enable processing...")
             try:
-                self.db.execute_query("""
+                result = self.db.execute_query("""
                     UPDATE api_provider 
                     SET data_updated_timestamp = NOW(),
                         polling_timestamp = NOW() - INTERVAL '10 minutes'
                     WHERE uuid = %s
+                    RETURNING uuid, polling_timestamp, data_updated_timestamp
                 """, (self.provider_uuid,))
-                print(f"  ✅ Provider {self.provider_uuid} ready for polling")
+                if result:
+                    print(f"  ✅ Provider {self.provider_uuid} ready for polling")
+                else:
+                    print(f"  ⚠️  Provider not found in database")
             except Exception as e:
                 print(f"  ⚠️  Failed to reset timestamps: {e}")
                 print(f"  ℹ️  Processing may be delayed until next natural polling cycle")
-        
+
         masu_pod = self.k8s.get_pod_by_component('masu')
         if not masu_pod:
             return {'success': False, 'error': 'MASU pod not found'}
@@ -79,9 +83,9 @@ except Exception as e:
                 task_name = 'unknown'
                 if 'TASK_NAME=' in output:
                     task_name = output.split('TASK_NAME=')[1].split('\n')[0].strip()
-                
+
                 result = {'success': True, 'task_id': task_id, 'task_name': task_name}
-                
+
                 # Include provider info if available
                 if 'PROVIDER_TYPE=' in output:
                     result['provider_type'] = output.split('PROVIDER_TYPE=')[1].split('\n')[0].strip()
@@ -89,7 +93,7 @@ except Exception as e:
                     result['provider_name'] = output.split('PROVIDER_NAME=')[1].split('\n')[0].strip()
                 if 'ORG_ID=' in output:
                     result['org_id'] = output.split('ORG_ID=')[1].split('\n')[0].strip()
-                
+
                 return result
             elif 'ERROR=' in output:
                 error = output.split('ERROR=')[1].split('\n')[0].strip()
@@ -167,7 +171,7 @@ except Exception as e:
         print(f"  Timeout: {self.timeout}s")
         if self.provider_uuid:
             print(f"  Provider UUID: {self.provider_uuid}")
-        
+
         trigger_result = self.trigger_processing()
 
         if not trigger_result['success']:
@@ -181,7 +185,7 @@ except Exception as e:
 
         print(f"  ✅ Task triggered: {trigger_result['task_id']}")
         print(f"     Task name: {trigger_result.get('task_name', 'unknown')}")
-        
+
         if 'provider_type' in trigger_result:
             print(f"     Provider: {trigger_result['provider_name']} ({trigger_result['provider_type']})")
             print(f"     Org ID: {trigger_result['org_id']}")

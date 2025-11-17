@@ -561,13 +561,17 @@ class DataUploadPhase:
         if self.db and self.provider_uuid:
             print(f"\n🔄 Resetting provider timestamps to enable processing...")
             try:
-                self.db.execute_query("""
+                result = self.db.execute_query("""
                     UPDATE api_provider
                     SET data_updated_timestamp = NOW(),
                         polling_timestamp = NOW() - INTERVAL '10 minutes'
                     WHERE uuid = %s
+                    RETURNING uuid, polling_timestamp, data_updated_timestamp
                 """, (self.provider_uuid,))
-                print(f"  ✅ Provider {self.provider_uuid} ready for polling")
+                if result:
+                    print(f"  ✅ Provider {self.provider_uuid} ready for polling")
+                else:
+                    print(f"  ⚠️  Provider not found in database")
             except Exception as e:
                 print(f"  ⚠️  Failed to reset timestamps: {e}")
                 print(f"  ℹ️  Processing may be delayed until next natural polling cycle")
