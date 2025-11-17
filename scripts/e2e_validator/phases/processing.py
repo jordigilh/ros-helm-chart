@@ -39,7 +39,7 @@ class ProcessingPhase:
             print(f"\n🔄 Resetting provider timestamps to enable processing...")
             try:
                 result = self.db.execute_query("""
-                    UPDATE api_provider 
+                    UPDATE api_provider
                     SET data_updated_timestamp = NOW(),
                         polling_timestamp = NOW() - INTERVAL '10 minutes'
                     WHERE uuid = %s
@@ -113,68 +113,68 @@ except Exception as e:
 
     def mark_manifests_complete(self) -> Dict:
         """Mark all processed manifests as complete to trigger summary
-        
+
         In on-prem deployments, manifests don't auto-complete after file processing.
         This method identifies manifests where all files are processed and marks them complete.
-        
+
         Returns:
             Dict with count of manifests marked complete
         """
         if not self.provider_uuid:
             return {'marked_complete': 0, 'error': 'No provider UUID specified'}
-        
+
         try:
             result = self.db.execute_query("""
-                UPDATE reporting_common_costusagereportmanifest 
-                SET completed_datetime = NOW() 
+                UPDATE reporting_common_costusagereportmanifest
+                SET completed_datetime = NOW()
                 WHERE provider_id = %s
                   AND completed_datetime IS NULL
                   AND num_total_files = (
-                      SELECT COUNT(*) 
-                      FROM reporting_common_costusagereportstatus 
-                      WHERE manifest_id = reporting_common_costusagereportmanifest.id 
+                      SELECT COUNT(*)
+                      FROM reporting_common_costusagereportstatus
+                      WHERE manifest_id = reporting_common_costusagereportmanifest.id
                         AND status = 1
                   )
                 RETURNING id;
             """, (self.provider_uuid,))
-            
+
             count = len(result) if result else 0
             return {'marked_complete': count}
         except Exception as e:
             return {'marked_complete': 0, 'error': str(e)}
-    
+
     def check_summary_status(self) -> Dict:
         """Check if summary tables have been populated
-        
+
         Returns:
             Dict with summary data counts
         """
         if not self.provider_uuid:
             return {'has_data': False, 'row_count': 0}
-        
+
         try:
             # Get tenant schema for this provider
             schema_result = self.db.execute_query("""
-                SELECT c.schema_name 
+                SELECT c.schema_name
                 FROM api_provider p
                 JOIN api_customer c ON p.customer_id = c.id
                 WHERE p.uuid = %s
             """, (self.provider_uuid,))
-            
+
             if not schema_result:
                 return {'has_data': False, 'row_count': 0, 'error': 'Provider not found'}
-            
+
             schema_name = schema_result[0][0]
-            
+
             # Check daily summary table
             count_result = self.db.execute_query(f"""
-                SELECT COUNT(*) 
-                FROM {schema_name}.reporting_awscostentrylineitem_daily_summary 
+                SELECT COUNT(*)
+                FROM {schema_name}.reporting_awscostentrylineitem_daily_summary
                 WHERE source_uuid = %s
             """, (self.provider_uuid,))
-            
+
             row_count = count_result[0][0] if count_result else 0
-            
+
             return {
                 'has_data': row_count > 0,
                 'row_count': row_count,
@@ -279,16 +279,16 @@ except Exception as e:
         if self.provider_uuid and monitor_result['success']:
             print(f"\n📋 Checking manifest completion status...")
             completion_result = self.mark_manifests_complete()
-            
+
             if 'error' in completion_result:
                 print(f"  ⚠️  Error marking manifests complete: {completion_result['error']}")
             elif completion_result['marked_complete'] > 0:
                 print(f"  ✅ Marked {completion_result['marked_complete']} manifest(s) as complete")
-                
+
                 # Wait a bit for summary to trigger
                 print(f"\n⏳ Waiting 30s for summary tables to populate...")
                 time.sleep(30)
-                
+
                 # Check summary status
                 summary_result = self.check_summary_status()
                 if summary_result.get('has_data'):

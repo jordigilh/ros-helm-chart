@@ -19,6 +19,7 @@ from .phases.data_upload import DataUploadPhase
 from .phases.processing import ProcessingPhase
 from .phases.iqe_tests import IQETestPhase
 from .phases.deployment_validation import DeploymentValidationPhase
+from .phases.kafka_validation import KafkaValidationPhase
 
 
 @click.command()
@@ -219,6 +220,23 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
                 print("\n❌ Migrations failed - skipping remaining phases")
                 should_skip_remaining = True
                 failed_phase = 'migrations'
+
+        # Phase 2.5: Kafka Validation (Event-Driven Processing)
+        if should_skip_remaining:
+            results['kafka_validation'] = {'passed': False, 'skipped': True, 'reason': f'{failed_phase} failed'}
+        else:
+            kafka_validation = KafkaValidationPhase(k8s, namespace=namespace)
+            kafka_results = kafka_validation.run()
+            results['kafka_validation'] = {
+                'passed': kafka_results.get('overall_success', False),
+                'skipped': False,
+                **kafka_results
+            }
+            # Kafka validation is informational - don't fail the pipeline if it fails
+            # (This allows graceful degradation if Kafka listener isn't deployed yet)
+            if not results['kafka_validation']['passed']:
+                print("\n⚠️  Kafka validation failed - continuing with remaining phases")
+                print("   (Kafka listener is optional - orchestrator will use chords as fallback)")
 
         # Phase 3: Provider (with k8s client for Django ORM operations)
         if should_skip_remaining:

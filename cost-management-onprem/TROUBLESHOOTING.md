@@ -46,7 +46,7 @@ Without step 3, summary tables never populate, even though data processing succe
 **Check if files are processed but manifests incomplete:**
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c "
-SELECT 
+SELECT
   m.id,
   m.assembly_id,
   m.num_total_files,
@@ -66,8 +66,8 @@ If this returns rows, you have manifests where all files are complete but the ma
 **Check if summary tables are empty:**
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c "
-SELECT COUNT(*) 
-FROM <schema>.reporting_awscostentrylineitem_daily_summary 
+SELECT COUNT(*)
+FROM <schema>.reporting_awscostentrylineitem_daily_summary
 WHERE source_uuid = '<provider-uuid>';
 "
 ```
@@ -77,7 +77,7 @@ If count is 0 but parquet files exist, summary hasn't run.
 **Check bill records:**
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c "
-SELECT id, billing_period_start, 
+SELECT id, billing_period_start,
        summary_data_creation_datetime IS NOT NULL as summary_created
 FROM <schema>.reporting_awscostentrybill
 WHERE provider_id = '<provider-uuid>';
@@ -94,14 +94,14 @@ Mark manifests as complete where all files are processed:
 
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c "
-UPDATE reporting_common_costusagereportmanifest 
-SET completed_datetime = NOW() 
+UPDATE reporting_common_costusagereportmanifest
+SET completed_datetime = NOW()
 WHERE provider_id = '<provider-uuid>'
   AND completed_datetime IS NULL
   AND num_total_files = (
-      SELECT COUNT(*) 
-      FROM reporting_common_costusagereportstatus 
-      WHERE manifest_id = reporting_common_costusagereportmanifest.id 
+      SELECT COUNT(*)
+      FROM reporting_common_costusagereportstatus
+      WHERE manifest_id = reporting_common_costusagereportmanifest.id
         AND status = 1
   );
 "
@@ -113,7 +113,7 @@ After marking manifests complete, trigger a new polling cycle to initiate summar
 
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c "
-UPDATE api_provider 
+UPDATE api_provider
 SET data_updated_timestamp = NOW(),
     polling_timestamp = NOW() - INTERVAL '10 minutes'
 WHERE uuid = '<provider-uuid>';
@@ -141,14 +141,31 @@ The script will:
 
 **For Production Deployments:**
 
-This issue indicates a difference between SaaS and on-prem processing flows. Consider:
-1. Investigating why manifest completion signals aren't firing in on-prem
-2. Adding database triggers or signals to auto-complete manifests
-3. Adding periodic cleanup jobs to mark stale manifests complete
+The root cause is **unreliable Celery chord callbacks** due to Redis instability or worker restarts. The SaaS-aligned solution is to deploy highly available infrastructure:
+
+1. **Deploy Redis in HA mode** (Sentinel or Cluster)
+   - See `cost-management-infrastructure/values-redis-ha.yaml`
+   - Ensures chord callbacks survive pod restarts
+   - Provides persistent result backend
+   - This is how SaaS achieves reliable manifest completion
+
+2. **Ensure adequate worker resources**
+   - No OOMKills during processing (see [Worker OOM Kills](#worker-oom-kills))
+   - Proper memory limits configured in `values-koku.yaml`
+
+3. **Configure Celery result expiration**
+   - Default: 8 hours (`CELERY_RESULT_EXPIRES=28800`)
+   - Sufficient for chord barrier to complete
+
+4. **Monitor chord health**
+   - Alert on manifests stuck in incomplete state
+   - Track chord callback success rate
 
 **For E2E Testing:**
 
 Always use the E2E validator script v1.2.0+ which includes automatic manifest completion handling.
+- Not needed in production with HA Redis
+- Serves as operational workaround for testing environments
 
 #### Verification
 
@@ -157,12 +174,12 @@ After marking manifests complete and triggering a new cycle:
 ```bash
 # Wait 5-10 minutes, then check summary data
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c "
-SELECT 
+SELECT
   COUNT(*) as row_count,
   SUM(unblended_cost) as total_cost,
   MIN(usage_start) as earliest_date,
   MAX(usage_start) as latest_date
-FROM <schema>.reporting_awscostentrylineitem_daily_summary 
+FROM <schema>.reporting_awscostentrylineitem_daily_summary
 WHERE source_uuid = '<provider-uuid>';
 "
 ```
@@ -567,7 +584,7 @@ kubectl logs -n <namespace> deployment/koku-celery-worker-download --tail=200 | 
 # Sync specific provider to tenant schema
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
   "INSERT INTO <schema-name>.reporting_tenant_api_provider (uuid, name, type, provider_id)
-   SELECT uuid, name, type, uuid FROM public.api_provider 
+   SELECT uuid, name, type, uuid FROM public.api_provider
    WHERE uuid = '<provider-uuid>'
    ON CONFLICT (uuid) DO NOTHING;"
 ```
@@ -590,7 +607,7 @@ kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
 
 # Force provider polling
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "UPDATE api_provider 
+  "UPDATE api_provider
    SET polling_timestamp = NOW() - INTERVAL '10 minutes',
        data_updated_timestamp = NOW()
    WHERE uuid = '<provider-uuid>';"
@@ -607,7 +624,7 @@ def sync_provider_to_tenant_schema(provider_uuid: str, schema_name: str):
     """Sync provider from public schema to tenant schema"""
     sql = f"""
     INSERT INTO {schema_name}.reporting_tenant_api_provider (uuid, name, type, provider_id)
-    SELECT uuid, name, type, uuid FROM public.api_provider 
+    SELECT uuid, name, type, uuid FROM public.api_provider
     WHERE uuid = '{provider_uuid}'
     ON CONFLICT (uuid) DO NOTHING;
     """
@@ -624,8 +641,8 @@ After syncing, verify processing works:
 ```bash
 # Check bill records can be created
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "SELECT id, billing_period_start, provider_id 
-   FROM <schema-name>.reporting_awscostentrybill 
+  "SELECT id, billing_period_start, provider_id
+   FROM <schema-name>.reporting_awscostentrybill
    WHERE provider_id = '<provider-uuid>'
    ORDER BY id DESC LIMIT 5;"
 ```

@@ -335,6 +335,42 @@ costManagement:
       REQUESTED_ROS_BUCKET: ros-report
 
   # ---------------------------------------------------------------------------
+  # Kafka Listener (Event-Driven Processing)
+  # ---------------------------------------------------------------------------
+  # Listener consumes Kafka messages for reliable manifest completion
+  # Handles ALL provider types (OCP, AWS, Azure, GCP)
+  listener:
+    enabled: true
+    replicas: 1
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+    # Environment variables specific to Listener
+    env:
+      KOKU_LOG_LEVEL: INFO
+      DJANGO_LOG_LEVEL: INFO
+      PROMETHEUS_MULTIPROC_DIR: /tmp
+      REQUESTED_ROS_BUCKET: ros-report
+
+  # ---------------------------------------------------------------------------
+  # Kafka Configuration
+  # ---------------------------------------------------------------------------
+  kafka:
+    enabled: true
+    # Kafka service in separate namespace
+    host: ros-ocp-kafka-kafka-bootstrap.kafka.svc.cluster.local
+    port: 9092
+    consumerGroupId: cost-mgmt-listener-group
+    # Topic for cost management report processing
+    topic: platform.upload.announce
+
+  # ---------------------------------------------------------------------------
   # Celery Configuration
   # ---------------------------------------------------------------------------
   celery:
