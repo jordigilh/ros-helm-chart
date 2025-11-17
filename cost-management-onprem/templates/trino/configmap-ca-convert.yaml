@@ -1,4 +1,3 @@
-{{- if eq (include "cost-management-onprem.isOpenShift" $) "true" }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -61,5 +60,4 @@ data:
     
     echo "✅ Java truststore created at /ca-output/truststore.jks"
     ls -lh /ca-output/truststore.jks
-{{- end }}
 

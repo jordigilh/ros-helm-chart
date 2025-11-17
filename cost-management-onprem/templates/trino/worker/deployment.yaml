@@ -22,7 +22,6 @@ spec:
       securityContext:
         {{- include "cost-mgmt.securityContext.pod" . | nindent 8 }}
 
-{{- if eq (include "cost-management-onprem.isOpenShift" $) "true" }}
       initContainers:
       - name: prepare-trino-ca-bundle
         image: {{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}
@@ -38,7 +37,6 @@ spec:
             mountPath: /ca-output
         securityContext:
           {{- include "cost-mgmt.securityContext.container" . | nindent 10 }}
-{{- end }}
 
       containers:
       - name: trino
@@ -94,11 +92,9 @@ spec:
           subPath: postgresql.properties
         - name: data
           mountPath: /data/trino
-{{- if eq (include "cost-management-onprem.isOpenShift" $) "true" }}
         - name: trino-ca-certs
           mountPath: /etc/trino/certs
           readOnly: true
-{{- end }}
 
         securityContext:
           {{- include "cost-mgmt.securityContext.container" . | nindent 10 }}
@@ -110,7 +106,6 @@ spec:
       - name: data
         emptyDir:
           sizeLimit: {{ .Values.trino.worker.storage.size }}
-{{- if eq (include "cost-management-onprem.isOpenShift" $) "true" }}
       - name: trino-ca-scripts
         configMap:
           name: {{ include "cost-mgmt.fullname" . }}-trino-ca-convert
@@ -123,5 +118,4 @@ spec:
           name: {{ include "cost-mgmt.fullname" . }}-service-ca
       - name: trino-ca-certs
         emptyDir: {}
-{{- end }}
 
