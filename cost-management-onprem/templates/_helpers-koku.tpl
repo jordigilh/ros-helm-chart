@@ -537,6 +537,8 @@ Common environment variables for Koku API and Celery
   value: {{ include "cost-mgmt.koku.trino.host" . | quote }}
 - name: TRINO_PORT
   value: {{ include "cost-mgmt.koku.trino.port" . | quote }}
+- name: TRINO_S3A_OR_S3
+  value: "s3"
 - name: DJANGO_SECRET_KEY
   valueFrom:
     secretKeyRef:
