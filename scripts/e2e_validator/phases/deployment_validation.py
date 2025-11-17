@@ -140,6 +140,78 @@ class DeploymentValidationPhase:
         
         return result
     
+    def validate_celery_workers(self) -> Dict[str, any]:
+        """Validate all required Celery workers are deployed and running"""
+        print("\n👷 Infrastructure: Celery Workers")
+        
+        required_workers = {
+            'default': 'celery queue',
+            'priority': 'priority tasks',
+            'download': 'data download tasks',
+            'refresh': 'refresh tasks',
+            'summary': 'summary tasks',
+            'hcs': 'HCS tasks',
+        }
+        
+        workers_status = {}
+        missing = []
+        not_ready = []
+        
+        for worker_type, description in required_workers.items():
+            try:
+                deployments = self.k8s.apps_v1.list_namespaced_deployment(
+                    namespace=self.k8s.namespace,
+                    label_selector=f"worker-queue={worker_type}"
+                )
+                
+                if not deployments.items:
+                    missing.append(f"{worker_type} ({description})")
+                    workers_status[worker_type] = {'deployed': False, 'ready': False}
+                    print(f"  ✗ {worker_type}: NOT DEPLOYED - {description}")
+                else:
+                    deployment = deployments.items[0]
+                    ready_replicas = deployment.status.ready_replicas or 0
+                    desired_replicas = deployment.spec.replicas
+                    is_ready = ready_replicas >= desired_replicas
+                    
+                    workers_status[worker_type] = {
+                        'deployed': True,
+                        'ready': is_ready,
+                        'ready_replicas': ready_replicas,
+                        'desired_replicas': desired_replicas
+                    }
+                    
+                    if is_ready:
+                        print(f"  ✓ {worker_type}: {ready_replicas}/{desired_replicas} ready - {description}")
+                    else:
+                        not_ready.append(f"{worker_type} ({ready_replicas}/{desired_replicas})")
+                        print(f"  ⚠️  {worker_type}: {ready_replicas}/{desired_replicas} ready - {description}")
+                        
+            except Exception as e:
+                missing.append(f"{worker_type} (error: {e})")
+                workers_status[worker_type] = {'deployed': False, 'ready': False, 'error': str(e)}
+                print(f"  ✗ {worker_type}: ERROR - {e}")
+        
+        result = {
+            'required_count': len(required_workers),
+            'deployed_count': sum(1 for w in workers_status.values() if w.get('deployed')),
+            'ready_count': sum(1 for w in workers_status.values() if w.get('ready')),
+            'missing': missing,
+            'not_ready': not_ready,
+            'workers': workers_status,
+            'passed': len(missing) == 0 and len(not_ready) == 0
+        }
+        
+        if result['passed']:
+            print(f"  ✅ All {len(required_workers)} worker types deployed and ready")
+        else:
+            if missing:
+                print(f"  ❌ Missing {len(missing)} worker types: {', '.join(missing)}")
+            if not_ready:
+                print(f"  ⚠️  {len(not_ready)} workers not ready: {', '.join(not_ready)}")
+        
+        return result
+    
     # ========================================================================
     # Integration Validation
     # ========================================================================
@@ -507,6 +579,7 @@ except Exception as e:
         self.results['infrastructure']['pod_health'] = self.validate_pod_health()
         self.results['infrastructure']['services'] = self.validate_services()
         self.results['infrastructure']['storage'] = self.validate_persistent_storage()
+        self.results['infrastructure']['celery_workers'] = self.validate_celery_workers()
         
         # Integration
         self.results['integration']['database'] = self.validate_database_connectivity()
