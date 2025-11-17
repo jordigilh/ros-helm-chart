@@ -438,6 +438,8 @@ costManagement:
             memory: 400Mi
 
       # Download Workers
+      # Note: Higher memory limits to prevent OOM during large file downloads
+      # AWS CUR files can be large when decompressed and loaded into memory
       download:
         replicas: 1
         queue: download
@@ -445,10 +447,10 @@ costManagement:
         resources:
           requests:
             cpu: 100m
-            memory: 200Mi
+            memory: 512Mi
           limits:
             cpu: 200m
-            memory: 400Mi
+            memory: 1Gi
 
       # XL Workers (minimal for dev - same resources as essential)
       priorityXl:
@@ -494,10 +496,10 @@ costManagement:
         resources:
           requests:
             cpu: 100m
-            memory: 200Mi
+            memory: 512Mi
           limits:
             cpu: 200m
-            memory: 400Mi
+            memory: 1Gi
 
       # Penalty Workers
       priorityPenalty:
@@ -543,10 +545,10 @@ costManagement:
         resources:
           requests:
             cpu: 100m
-            memory: 200Mi
+            memory: 512Mi
           limits:
             cpu: 200m
-            memory: 400Mi
+            memory: 1Gi
 
   # ---------------------------------------------------------------------------
   # Database Configuration
