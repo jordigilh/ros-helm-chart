@@ -9,6 +9,8 @@ Validates that:
 """
 
 import time
+import json
+import subprocess
 from typing import Dict, Optional
 from ..clients.kubernetes import KubernetesClient
 
@@ -31,23 +33,35 @@ class KafkaValidationPhase:
 
         try:
             # Check for Kafka pods
-            kafka_pods = self.k8s.run_command(
-                f"kubectl get pods -n {self.kafka_namespace} -l strimzi.io/kind=Kafka -o json"
+            result = subprocess.run(
+                ['kubectl', 'get', 'pods', '-n', self.kafka_namespace, '-l', 'strimzi.io/kind=Kafka', '-o', 'json'],
+                capture_output=True,
+                text=True,
+                timeout=10
             )
-
+            
+            if result.returncode != 0:
+                return {
+                    'success': False,
+                    'error': f'Failed to query Kafka pods: {result.stderr}',
+                    'kafka_namespace': self.kafka_namespace
+                }
+            
+            kafka_pods = json.loads(result.stdout)
+            
             if not kafka_pods or 'items' not in kafka_pods:
                 return {
                     'success': False,
                     'error': 'No Kafka pods found',
                     'kafka_namespace': self.kafka_namespace
                 }
-
+            
             # Check pod status
             running_pods = [
                 pod for pod in kafka_pods.get('items', [])
                 if pod.get('status', {}).get('phase') == 'Running'
             ]
-
+            
             total_pods = len(kafka_pods.get('items', []))
 
             if len(running_pods) < total_pods:
@@ -93,17 +107,21 @@ class KafkaValidationPhase:
                 }
 
             # Get full pod details
-            import json
-            pod_json = self.k8s.run_command(f"kubectl get pod {listener_pod_name} -n {self.namespace} -o json", capture_output=True)
-            listener_pod = json.loads(pod_json) if isinstance(pod_json, str) else pod_json
-
-            if not listener_pod:
+            result = subprocess.run(
+                ['kubectl', 'get', 'pod', listener_pod_name, '-n', self.namespace, '-o', 'json'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
                 return {
                     'success': False,
-                    'error': 'Kafka listener pod not found',
+                    'error': f'Failed to query listener pod: {result.stderr}',
                     'namespace': self.namespace
                 }
-
+            
+            listener_pod = json.loads(result.stdout)
             pod_name = listener_pod.get('metadata', {}).get('name')
             pod_phase = listener_pod.get('status', {}).get('phase')
 
@@ -167,17 +185,21 @@ class KafkaValidationPhase:
                 }
 
             # Check listener logs for Kafka connection
-            logs_cmd = f"kubectl logs -n {self.namespace} {pod_name} --tail=100"
-            result = self.k8s.run_command(logs_cmd, capture_output=True)
-
-            if not result:
+            result = subprocess.run(
+                ['kubectl', 'logs', '-n', self.namespace, pod_name, '--tail=100'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
                 return {
                     'success': False,
                     'error': 'Failed to retrieve listener logs',
                     'pod_name': pod_name
                 }
-
-            logs = result.get('stdout', '') if isinstance(result, dict) else str(result)
+            
+            logs = result.stdout
 
             # Look for Kafka connection indicators
             kafka_connected = (
@@ -233,30 +255,39 @@ class KafkaValidationPhase:
 
         try:
             # Get Kafka pod to run topic list command
-            kafka_pods = self.k8s.run_command(
-                f"kubectl get pods -n {self.kafka_namespace} -l strimzi.io/name=ros-ocp-kafka-kafka -o jsonpath='{{.items[0].metadata.name}}'"
+            result = subprocess.run(
+                ['kubectl', 'get', 'pods', '-n', self.kafka_namespace, '-l', 'strimzi.io/name=ros-ocp-kafka-kafka', 
+                 '-o', 'jsonpath={.items[0].metadata.name}'],
+                capture_output=True,
+                text=True,
+                timeout=10
             )
-
-            if not kafka_pods:
+            
+            if result.returncode != 0 or not result.stdout:
                 return {
                     'success': False,
                     'error': 'No Kafka broker pod found to check topics'
                 }
-
-            kafka_pod = kafka_pods.strip() if isinstance(kafka_pods, str) else str(kafka_pods).strip()
-
+            
+            kafka_pod = result.stdout.strip()
+            
             # List topics
-            topics_cmd = f"kubectl exec -n {self.kafka_namespace} {kafka_pod} -- bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"
-            topics_result = self.k8s.run_command(topics_cmd, capture_output=True)
-
-            if not topics_result:
+            result = subprocess.run(
+                ['kubectl', 'exec', '-n', self.kafka_namespace, kafka_pod, '--', 
+                 'bin/kafka-topics.sh', '--bootstrap-server', 'localhost:9092', '--list'],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result.returncode != 0:
                 return {
                     'success': False,
                     'error': 'Failed to list Kafka topics',
                     'kafka_pod': kafka_pod
                 }
-
-            topics_output = topics_result.get('stdout', '') if isinstance(topics_result, dict) else str(topics_result)
+            
+            topics_output = result.stdout
             topics = [t.strip() for t in topics_output.split('\n') if t.strip() and not t.startswith('__')]
 
             # Check for required topic

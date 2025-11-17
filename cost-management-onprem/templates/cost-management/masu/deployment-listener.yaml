@@ -67,7 +67,7 @@ spec:
           value: "true"
         - name: API_PATH_PREFIX
           value: /api/cost-management
-        
+
         # Override Kafka host for cross-namespace communication
         # Note: These will override the defaults from commonEnv
         {{- if .Values.costManagement.kafka.enabled }}
@@ -76,11 +76,11 @@ spec:
         - name: INSIGHTS_KAFKA_PORT
           value: {{ .Values.costManagement.kafka.port | quote }}
         {{- end }}
-        
+
         # Kafka consumer configuration
         - name: KAFKA_CONSUMER_GROUP_ID
           value: {{ .Values.costManagement.kafka.consumerGroupId | default "cost-mgmt-listener-group" | quote }}
-        
+
         # Kafka topic configuration
         {{- if .Values.costManagement.kafka.topic }}
         - name: KAFKA_TOPIC
