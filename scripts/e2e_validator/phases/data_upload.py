@@ -25,7 +25,9 @@ class DataUploadPhase:
                  bucket: str = "cost-data",
                  report_name: str = "test-report",
                  report_prefix: str = "reports",
-                 k8s_client=None):
+                 k8s_client=None,
+                 db_client=None,
+                 provider_uuid: Optional[str] = None):
         """Initialize data upload phase
 
         Args:
@@ -35,6 +37,8 @@ class DataUploadPhase:
             report_name: Report name
             report_prefix: S3 key prefix (default: "reports/")
             k8s_client: KubernetesClient (for in-pod execution)
+            db_client: DatabaseClient (for provider timestamp updates)
+            provider_uuid: Provider UUID (for timestamp updates after upload)
         """
         self.s3 = s3_client
         self.nise = nise_client
@@ -42,6 +46,8 @@ class DataUploadPhase:
         self.report_name = report_name
         self.report_prefix = report_prefix
         self.k8s = k8s_client
+        self.db = db_client
+        self.provider_uuid = provider_uuid
 
     def check_existing_data(self) -> Dict[str, any]:
         """Check if VALID test data already exists
@@ -548,6 +554,22 @@ class DataUploadPhase:
         print(f"   - Previous month CSV: {prev_csv_key}")
         print(f"   - Previous month Manifest: {prev_manifest_key}")
         print(f"   - Total objects in S3: {total_objects}")
+
+        # Reset provider timestamps to enable immediate processing
+        # This ensures check_report_updates won't skip the provider
+        if self.db and self.provider_uuid:
+            print(f"\n🔄 Resetting provider timestamps to enable processing...")
+            try:
+                self.db.execute_query("""
+                    UPDATE api_provider 
+                    SET data_updated_timestamp = NOW(),
+                        polling_timestamp = NOW() - INTERVAL '10 minutes'
+                    WHERE uuid = %s
+                """, (self.provider_uuid,))
+                print(f"  ✅ Provider {self.provider_uuid} ready for polling")
+            except Exception as e:
+                print(f"  ⚠️  Failed to reset timestamps: {e}")
+                print(f"  ℹ️  Processing may be delayed until next natural polling cycle")
 
         return {
             'passed': True,

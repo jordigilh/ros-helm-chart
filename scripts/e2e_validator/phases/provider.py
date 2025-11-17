@@ -34,31 +34,31 @@ class ProviderPhase:
 
     def _sync_provider_to_tenant_schema(self, provider_uuid: str):
         """Sync provider from public.api_provider to tenant schema.
-        
+
         Cost Management uses a multi-tenant architecture where:
         - public.api_provider contains the global provider registry
         - {schema}.reporting_tenant_api_provider contains per-tenant provider views
-        
+
         Billing records have FK constraints to the tenant schema table, so providers
         must be synced for data processing to work.
-        
+
         Args:
             provider_uuid: The provider UUID to sync
         """
         if not self.k8s:
             raise ValueError("KubernetesClient required for database operations")
-        
+
         postgres_pod = self.k8s.get_pod_by_component('postgres', statefulset=True)
         if not postgres_pod:
             raise RuntimeError("Postgres pod not found")
-        
+
         sync_sql = f"""
         INSERT INTO {self.schema_name}.reporting_tenant_api_provider (uuid, name, type, provider_id)
-        SELECT uuid, name, type, uuid FROM public.api_provider 
+        SELECT uuid, name, type, uuid FROM public.api_provider
         WHERE uuid = '{provider_uuid}'
         ON CONFLICT (uuid) DO NOTHING;
         """
-        
+
         try:
             result = self.k8s.postgres_exec(postgres_pod, 'koku', sync_sql)
             print(f"  ✓ Provider {provider_uuid} synced to tenant schema {self.schema_name}")

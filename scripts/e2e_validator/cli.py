@@ -306,7 +306,13 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
             )
 
             # DataUploadPhase with S3 client (direct upload via HTTPS)
-            data_upload = DataUploadPhase(s3_client.s3, nise, k8s_client=k8s)
+            data_upload = DataUploadPhase(
+                s3_client.s3, 
+                nise, 
+                k8s_client=k8s,
+                db_client=db,
+                provider_uuid=provider_uuid
+            )
 
             # Use direct AWS CUR format upload (no need for in-pod execution)
             # Use monthly boundaries that MASU expects (first day of month to first day of next month)
