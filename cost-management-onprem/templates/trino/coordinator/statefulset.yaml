@@ -25,7 +25,7 @@ spec:
 
       initContainers:
       - name: prepare-trino-ca-bundle
-        image: {{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}
+        image: "{{ .Values.trino.coordinator.image.repository }}:{{ .Values.trino.coordinator.image.tag }}"
         command: ['bash', '/scripts/convert-ca.sh']
         volumeMounts:
           - name: trino-ca-scripts
