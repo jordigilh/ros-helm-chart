@@ -4,6 +4,7 @@ This guide provides solutions to common issues encountered when deploying and op
 
 ## Table of Contents
 - [Data Processing Issues](#data-processing-issues)
+  - [Manifests Not Auto-Completing After File Processing](#manifests-not-auto-completing-after-file-processing)
   - [Reports Stuck in "Downloading" Status](#reports-stuck-in-downloading-status)
   - [Worker OOM Kills](#worker-oom-kills)
   - [Tasks Not Being Queued](#tasks-not-being-queued)
@@ -18,6 +19,155 @@ This guide provides solutions to common issues encountered when deploying and op
 ---
 
 ## Data Processing Issues
+
+### Manifests Not Auto-Completing After File Processing
+
+#### Symptoms
+- CSV files download successfully
+- Parquet files created in S3
+- Report status shows status=1 (COMPLETE) in `reporting_common_costusagereportstatus`
+- Manifest `completed_datetime` remains NULL in `reporting_common_costusagereportmanifest`
+- Summary tables remain empty (no data in `reporting_awscostentrylineitem_daily_summary`)
+- Bill records have NULL `summary_data_creation_datetime`
+
+#### Root Cause
+In on-prem deployments, manifests are not automatically marked as complete after all their files are processed. This differs from SaaS behavior where manifest completion triggers summary table population.
+
+**The Flow:**
+1. File downloads complete → status=1 in costusagereportstatus
+2. Parquet conversion completes → files in S3
+3. **MISSING STEP:** Manifest completion should be marked
+4. Summary tables should be populated
+
+Without step 3, summary tables never populate, even though data processing succeeded.
+
+#### Diagnosis
+
+**Check if files are processed but manifests incomplete:**
+```bash
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c "
+SELECT 
+  m.id,
+  m.assembly_id,
+  m.num_total_files,
+  m.completed_datetime IS NOT NULL as manifest_complete,
+  COUNT(CASE WHEN s.status = 1 THEN 1 END) as files_completed
+FROM reporting_common_costusagereportmanifest m
+LEFT JOIN reporting_common_costusagereportstatus s ON s.manifest_id = m.id
+WHERE m.provider_id = '<provider-uuid>'
+GROUP BY m.id, m.assembly_id, m.num_total_files, m.completed_datetime
+HAVING m.num_total_files = COUNT(CASE WHEN s.status = 1 THEN 1 END)
+   AND m.completed_datetime IS NULL;
+"
+```
+
+If this returns rows, you have manifests where all files are complete but the manifest isn't marked complete.
+
+**Check if summary tables are empty:**
+```bash
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c "
+SELECT COUNT(*) 
+FROM <schema>.reporting_awscostentrylineitem_daily_summary 
+WHERE source_uuid = '<provider-uuid>';
+"
+```
+
+If count is 0 but parquet files exist, summary hasn't run.
+
+**Check bill records:**
+```bash
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c "
+SELECT id, billing_period_start, 
+       summary_data_creation_datetime IS NOT NULL as summary_created
+FROM <schema>.reporting_awscostentrybill
+WHERE provider_id = '<provider-uuid>';
+"
+```
+
+If `summary_created` is false, summary processing hasn't occurred.
+
+#### Solution
+
+**Option 1: Manual Manifest Completion**
+
+Mark manifests as complete where all files are processed:
+
+```bash
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c "
+UPDATE reporting_common_costusagereportmanifest 
+SET completed_datetime = NOW() 
+WHERE provider_id = '<provider-uuid>'
+  AND completed_datetime IS NULL
+  AND num_total_files = (
+      SELECT COUNT(*) 
+      FROM reporting_common_costusagereportstatus 
+      WHERE manifest_id = reporting_common_costusagereportmanifest.id 
+        AND status = 1
+  );
+"
+```
+
+**Option 2: Trigger Another Polling Cycle**
+
+After marking manifests complete, trigger a new polling cycle to initiate summary:
+
+```bash
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c "
+UPDATE api_provider 
+SET data_updated_timestamp = NOW(),
+    polling_timestamp = NOW() - INTERVAL '10 minutes'
+WHERE uuid = '<provider-uuid>';
+"
+```
+
+Wait 5-10 minutes (POLLING_TIMER default is 300s) for Celery Beat to trigger the next cycle.
+
+**Option 3: Use E2E Validator v1.2.0+**
+
+The E2E validation script (v1.2.0+) automatically handles manifest completion:
+
+```bash
+cd /path/to/ros-helm-chart/scripts
+python3 -m e2e_validator.cli --namespace <namespace> --skip-migrations
+```
+
+The script will:
+- Wait for file processing to complete
+- Automatically mark manifests as complete
+- Wait for summary tables to populate
+- Validate end-to-end data flow
+
+#### Prevention
+
+**For Production Deployments:**
+
+This issue indicates a difference between SaaS and on-prem processing flows. Consider:
+1. Investigating why manifest completion signals aren't firing in on-prem
+2. Adding database triggers or signals to auto-complete manifests
+3. Adding periodic cleanup jobs to mark stale manifests complete
+
+**For E2E Testing:**
+
+Always use the E2E validator script v1.2.0+ which includes automatic manifest completion handling.
+
+#### Verification
+
+After marking manifests complete and triggering a new cycle:
+
+```bash
+# Wait 5-10 minutes, then check summary data
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c "
+SELECT 
+  COUNT(*) as row_count,
+  SUM(unblended_cost) as total_cost,
+  MIN(usage_start) as earliest_date,
+  MAX(usage_start) as latest_date
+FROM <schema>.reporting_awscostentrylineitem_daily_summary 
+WHERE source_uuid = '<provider-uuid>';
+"
+```
+
+If row_count > 0, summary processing succeeded!
 
 ### Reports Stuck in "Downloading" Status
 
