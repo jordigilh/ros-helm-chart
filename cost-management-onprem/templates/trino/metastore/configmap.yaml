@@ -41,8 +41,8 @@ data:
       </property>
       <property>
         <name>metastore.warehouse.dir</name>
-        <value>s3://{{ include "cost-mgmt.koku.s3.bucket" . }}/data/</value>
-        <description>Default warehouse location (using S3, aligned with SaaS)</description>
+        <value>file:///warehouse</value>
+        <description>Default warehouse location for managed tables (not used - we only use external tables with explicit S3 locations)</description>
       </property>
       <!-- S3 Filesystem Configuration (aligned with SaaS dev/containers/hive-metastore/metastore-site.xml) -->
       <property>
