@@ -44,20 +44,33 @@ data:
         echo "" >> /tmp/combined-ca.crt
     fi
 
-    echo "✅ Combined CA bundle created with $(grep -c 'BEGIN CERTIFICATE' /tmp/combined-ca.crt) certificates"
+    NUM_CERTS=$(grep -c 'BEGIN CERTIFICATE' /tmp/combined-ca.crt)
+    echo "✅ Combined CA bundle created with $NUM_CERTS certificates"
 
-    # Convert PEM to JKS for Java
+    # Convert PEM to JKS for Java - import each certificate separately
     echo "🔄 Converting PEM to JKS format for Java..."
+    echo "   Importing $NUM_CERTS certificates individually..."
     
-    # Import into Java keystore
-    keytool -importcert \
-      -noprompt \
-      -trustcacerts \
-      -alias openshift-combined-ca \
-      -file /tmp/combined-ca.crt \
-      -keystore /ca-output/truststore.jks \
-      -storepass changeit
+    # Split combined PEM into individual certificates and import each
+    CERT_NUM=0
+    mkdir -p /tmp/certs
+    csplit -s -z -f /tmp/certs/cert- /tmp/combined-ca.crt '/-----BEGIN CERTIFICATE-----/' '{*}'
     
-    echo "✅ Java truststore created at /ca-output/truststore.jks"
+    for cert_file in /tmp/certs/cert-*; do
+      if [ -s "$cert_file" ] && grep -q 'BEGIN CERTIFICATE' "$cert_file"; then
+        CERT_NUM=$((CERT_NUM + 1))
+        keytool -importcert \
+          -noprompt \
+          -trustcacerts \
+          -alias "ca-cert-$CERT_NUM" \
+          -file "$cert_file" \
+          -keystore /ca-output/truststore.jks \
+          -storepass changeit 2>&1 | grep -v "Certificate already exists" || true
+        echo "   ✓ Imported certificate $CERT_NUM"
+      fi
+    done
+    
+    echo "✅ Java truststore created with $CERT_NUM certificates at /ca-output/truststore.jks"
+    keytool -list -keystore /ca-output/truststore.jks -storepass changeit | grep "trustedCertEntry" | wc -l | xargs echo "   Verified:"
     ls -lh /ca-output/truststore.jks
 
