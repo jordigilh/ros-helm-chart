@@ -555,8 +555,9 @@ class DataUploadPhase:
         print(f"   - Previous month Manifest: {prev_manifest_key}")
         print(f"   - Total objects in S3: {total_objects}")
 
-        # Reset provider timestamps to enable immediate processing
-        # This ensures check_report_updates won't skip the provider
+        # Reset provider timestamps after upload (belt-and-suspenders approach)
+        # NOTE: Processing phase also does this, but we do it here too
+        # in case there's a delay between upload and processing trigger
         if self.db and self.provider_uuid:
             print(f"\n🔄 Resetting provider timestamps to enable processing...")
             try:

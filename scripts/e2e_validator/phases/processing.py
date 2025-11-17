@@ -32,6 +32,23 @@ class ProcessingPhase:
         Uses provider-specific download task if provider_uuid is set,
         otherwise uses generic check_report_updates.
         """
+        # Reset provider timestamps to enable immediate processing
+        # This is critical for E2E testing - without this, the provider
+        # may be skipped due to polling_timestamp > data_updated_timestamp
+        if self.db and self.provider_uuid:
+            print(f"\n🔄 Resetting provider timestamps to enable processing...")
+            try:
+                self.db.execute_query("""
+                    UPDATE api_provider 
+                    SET data_updated_timestamp = NOW(),
+                        polling_timestamp = NOW() - INTERVAL '10 minutes'
+                    WHERE uuid = %s
+                """, (self.provider_uuid,))
+                print(f"  ✅ Provider {self.provider_uuid} ready for polling")
+            except Exception as e:
+                print(f"  ⚠️  Failed to reset timestamps: {e}")
+                print(f"  ℹ️  Processing may be delayed until next natural polling cycle")
+        
         masu_pod = self.k8s.get_pod_by_component('masu')
         if not masu_pod:
             return {'success': False, 'error': 'MASU pod not found'}
