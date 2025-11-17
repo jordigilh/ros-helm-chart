@@ -41,13 +41,29 @@ data:
       </property>
       <property>
         <name>metastore.warehouse.dir</name>
-        <value>file:///warehouse</value>
-        <description>Default warehouse location (not used for external tables). Using persistent volume to avoid S3A dependencies for on-prem deployment.</description>
+        <value>s3://{{ include "cost-mgmt.koku.s3.bucket" . }}/data/</value>
+        <description>Default warehouse location (using S3, aligned with SaaS)</description>
+      </property>
+      <!-- S3 Filesystem Configuration (aligned with SaaS dev/containers/hive-metastore/metastore-site.xml) -->
+      <property>
+        <name>fs.s3.endpoint</name>
+        <value>{{ include "cost-mgmt.koku.s3.endpoint" . }}</value>
+        <description>S3 endpoint to connect to</description>
       </property>
       <property>
-        <name>hive.aux.jars.path</name>
-        <value>file:///opt/hadoop/share/hadoop/tools/lib/hadoop-aws-3.1.0.jar,file:///opt/hadoop/share/hadoop/tools/lib/aws-java-sdk-bundle-1.11.271.jar</value>
-        <description>Auxiliary JARs for S3 filesystem support</description>
+        <name>fs.s3.access.key</name>
+        <value>${env.AWS_ACCESS_KEY_ID}</value>
+        <description>S3 access key ID</description>
+      </property>
+      <property>
+        <name>fs.s3.secret.key</name>
+        <value>${env.AWS_SECRET_ACCESS_KEY}</value>
+        <description>S3 secret key</description>
+      </property>
+      <property>
+        <name>fs.s3.path.style.access</name>
+        <value>true</value>
+        <description>Enable S3 path style access</description>
       </property>
       <property>
         <name>datanucleus.autoCreateSchema</name>
