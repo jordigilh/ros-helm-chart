@@ -35,7 +35,8 @@ class ProviderPhase:
     def create_provider_via_django_orm(self,
                                        name: str = "AWS Test Provider E2E",
                                        bucket: str = "cost-data",
-                                       report_name: str = "test-report") -> str:
+                                       report_name: str = "test-report",
+                                       report_prefix: str = "reports") -> str:
         """Create provider using Django ORM AND provision tenant
 
         This does TWO things:
@@ -46,6 +47,7 @@ class ProviderPhase:
             name: Provider name
             bucket: S3 bucket name
             report_name: Report name
+            report_prefix: Report prefix in bucket
 
         Returns:
             Provider UUID
@@ -116,7 +118,7 @@ try:
                 "data_source": {{
                     "bucket": "{bucket}",
                     "report_name": "{report_name}",
-                    "report_prefix": ""
+                    "report_prefix": "{report_prefix}"
                 }}
             }}
         )
@@ -166,7 +168,7 @@ except Exception as e:
                                         name: str = "AWS Test Provider E2E",
                                         bucket: str = "cost-data",
                                         report_name: str = "test-report",
-                                        report_prefix: str = "") -> str:
+                                        report_prefix: str = "reports") -> str:
         """Create provider via Sources API (Red Hat recommended method)
 
         This is the proper Day 2 operations approach that:
@@ -198,7 +200,8 @@ except Exception as e:
     def create_provider(self,
                        name: str = "AWS Test Provider E2E",
                        bucket: str = "cost-data",
-                       report_name: str = "test-report") -> str:
+                       report_name: str = "test-report",
+                       report_prefix: str = "reports") -> str:
         """Create provider using best available method
 
         Priority:
@@ -210,24 +213,26 @@ except Exception as e:
             name: Provider name
             bucket: S3 bucket name
             report_name: Report name
+            report_prefix: Report prefix in bucket
 
         Returns:
             Provider UUID
         """
         # Prefer Sources API if available
         if self.sources_api:
-            return self.create_provider_via_sources_api(name, bucket, report_name)
+            return self.create_provider_via_sources_api(name, bucket, report_name, report_prefix)
 
         # Use Django ORM approach if k8s client available
         if self.k8s:
-            return self.create_provider_via_django_orm(name, bucket, report_name)
+            return self.create_provider_via_django_orm(name, bucket, report_name, report_prefix)
 
         # Fallback to direct SQL (won't provision tenant properly!)
         return self.db.create_provider(
             name=name,
             org_id=self.org_id,
             bucket=bucket,
-            report_name=report_name
+            report_name=report_name,
+            report_prefix=report_prefix
         )
 
     def run(self, skip: bool = False) -> Dict:
@@ -362,7 +367,7 @@ except Exception as e:
                         RETURNING uuid
                     """, (
                         billing_source_uuid,
-                        '{"bucket": "cost-data", "report_name": "test-report", "report_prefix": ""}'
+                        '{"bucket": "cost-data", "report_name": "test-report", "report_prefix": "reports"}'
                     ))
 
                     # Step 2: Get the internal ID of the billing source
