@@ -180,7 +180,13 @@ Storage (S3) Helpers
 Storage (S3) endpoint
 */}}
 {{- define "cost-mgmt.storage.endpoint" -}}
-{{- .Values.storage.endpoint | default .Values.costManagement.s3Endpoint | default "http://s3.openshift-storage.svc:80" -}}
+{{- if .Values.storage -}}
+  {{- .Values.storage.endpoint | default "http://s3.openshift-storage.svc:80" -}}
+{{- else if and .Values.costManagement .Values.costManagement.s3Endpoint -}}
+  {{- .Values.costManagement.s3Endpoint -}}
+{{- else -}}
+  {{- "http://s3.openshift-storage.svc:80" -}}
+{{- end -}}
 {{- end }}
 
 {{/*
