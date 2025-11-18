@@ -419,11 +419,28 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
                 print("\n⚠️  IQE directory not found, skipping tests")
                 results['iqe_tests'] = {'passed': False, 'skipped': True, 'reason': 'No IQE dir'}
 
-        # Deployment Validation (optional)
+        # Deployment Validation (requires all critical phases to pass)
+        # Critical phases: preflight, migrations, provider, processing, trino
+        critical_phases = ['preflight', 'migrations', 'provider', 'processing', 'trino']
+        critical_phases_passed = all(
+            results.get(phase, {}).get('passed', False) 
+            for phase in critical_phases 
+            if phase in results
+        )
+        
         if should_skip_remaining:
             results['deployment_validation'] = {'passed': False, 'skipped': True, 'reason': f'{failed_phase} failed'}
         elif skip_deployment_validation:
             results['deployment_validation'] = {'passed': False, 'skipped': True, 'reason': '--skip-deployment-validation'}
+        elif not critical_phases_passed:
+            # Don't run deployment validation if critical phases failed
+            failed = [p for p in critical_phases if not results.get(p, {}).get('passed', False) and not results.get(p, {}).get('skipped', False)]
+            results['deployment_validation'] = {
+                'passed': False, 
+                'skipped': False,
+                'reason': f'Critical phase(s) failed: {", ".join(failed)}'
+            }
+            print(f"\n⚠️  Skipping deployment validation - critical phases failed: {', '.join(failed)}")
         else:
             deployment_val = DeploymentValidationPhase(k8s, db)
             results['deployment_validation'] = deployment_val.run_all_validations()
