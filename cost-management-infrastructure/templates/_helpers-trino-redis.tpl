@@ -193,7 +193,11 @@ Storage (S3) endpoint
 Storage credentials secret name
 */}}
 {{- define "cost-mgmt.storage.secretName" -}}
-{{- .Values.storage.secretName | default (printf "%s-storage-credentials" (include "cost-mgmt.fullname" .)) -}}
+{{- if and .Values.storage .Values.storage.secretName -}}
+  {{- .Values.storage.secretName -}}
+{{- else -}}
+  {{- printf "%s-storage-credentials" (include "cost-mgmt.fullname" .) -}}
+{{- end -}}
 {{- end }}
 
 {{/*
