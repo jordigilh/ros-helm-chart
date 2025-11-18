@@ -111,31 +111,6 @@ except Exception as e:
         except Exception:
             return 0
 
-    def _sync_provider_to_tenant_schema(self) -> Dict:
-        """Sync provider from public.api_provider to tenant schema
-        
-        This is required for bill creation FK constraint to succeed.
-        In production, this is handled automatically, but in E2E we need to ensure it.
-        
-        Returns:
-            Dict with success status
-        """
-        if not self.provider_uuid:
-            return {'success': False, 'error': 'No provider UUID specified'}
-        
-        try:
-            result = self.db.execute_query(f"""
-                INSERT INTO {self.org_id}.reporting_tenant_api_provider (uuid, name, type, provider_id)
-                SELECT uuid, name, type, uuid FROM public.api_provider
-                WHERE uuid = %s
-                ON CONFLICT (uuid) DO NOTHING
-                RETURNING uuid;
-            """, (self.provider_uuid,))
-            
-            return {'success': True, 'synced': len(result) > 0 if result else False}
-        except Exception as e:
-            return {'success': False, 'error': str(e)}
-    
     def fix_stuck_reports(self) -> Dict:
         """Fix reports that are stuck due to Celery/DB sync issues
 
@@ -328,14 +303,6 @@ except Exception as e:
                     print(f"  ✅ Cleared {fix_result['cleared_task_ids']} stale task ID(s)")
             else:
                 print(f"  ✓ No stuck reports found")
-            
-            # Ensure provider is synced to tenant schema (required for bill creation FK constraint)
-            print("🔧 Ensuring provider synced to tenant schema...")
-            sync_result = self._sync_provider_to_tenant_schema()
-            if not sync_result.get('success'):
-                print(f"  ⚠️  Provider sync failed: {sync_result.get('error')}")
-            else:
-                print(f"  ✓ Provider synced to tenant schema")
 
         # Trigger processing
         print("\n🚀 Triggering MASU data processing...")

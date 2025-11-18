@@ -166,6 +166,16 @@ try:
         provider.setup_complete = True
         provider.save()
 
+    # CRITICAL: Sync provider to tenant schema for bill creation FK constraint
+    # In production this happens automatically, but in E2E we need explicit sync
+    with connection.cursor() as cursor:
+        cursor.execute(f"""
+            INSERT INTO {{org_id}}.reporting_tenant_api_provider (uuid, name, type, provider_id)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (uuid) DO NOTHING
+        """, [str(provider.uuid), provider.name, provider.type, str(provider.uuid)])
+    print(f"PROVIDER_SYNCED_TO_TENANT_SCHEMA")
+
     print(f"PROVIDER_UUID={{provider.uuid}}")
     print(f"PROVIDER_NAME={{provider.name}}")
 except Exception as e:
