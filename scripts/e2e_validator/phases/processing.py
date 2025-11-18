@@ -651,7 +651,7 @@ except Exception as e:
                 print(f"  ⚠️  Error marking manifests complete: {completion_result['error']}")
             elif completion_result['marked_complete'] > 0:
                 print(f"  ✅ Marked {completion_result['marked_complete']} manifest(s) as complete")
-                
+
                 # If monitoring timed out but files are processed, consider it a success
                 if not monitor_result['success'] and completion_result['marked_complete'] > 0:
                     print(f"  ℹ️  Manifests were completed manually (chord callback issue)")

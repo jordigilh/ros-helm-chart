@@ -78,3 +78,22 @@ true
 false
 {{- end -}}
 {{- end -}}
+
+{{/*
+=============================================================================
+Compatibility Aliases for cost-mgmt.* functions
+(Used by Trino/Redis templates that reference "cost-mgmt" naming)
+=============================================================================
+*/}}
+
+{{- define "cost-mgmt.fullname" -}}
+{{- include "cost-mgmt-infra.fullname" . -}}
+{{- end -}}
+
+{{- define "cost-mgmt.labels" -}}
+{{- include "cost-mgmt-infra.labels" . -}}
+{{- end -}}
+
+{{- define "cost-mgmt.selectorLabels" -}}
+{{- include "cost-mgmt-infra.selectorLabels" . -}}
+{{- end -}}

@@ -92,7 +92,7 @@ args:
   - "/data"
   - --dbfilename
   - "dump.rdb"
-  
+
   # AOF (append-only file for durability)
   - --appendonly
   - "yes"
@@ -467,7 +467,7 @@ kubectl logs -n cost-mgmt deployment/koku-celery-worker-default --tail=20
 
 **Status:** ✅ Deployed and ready for E2E validation
 
-**Author:** AI Assistant (Claude)  
-**Date:** November 18, 2025  
+**Author:** AI Assistant (Claude)
+**Date:** November 18, 2025
 **Deployment:** cost-mgmt namespace (OpenShift)
 

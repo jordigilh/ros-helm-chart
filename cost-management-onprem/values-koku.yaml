@@ -97,7 +97,7 @@ infrastructure:
       repository: "registry.redhat.io/rhel10/valkey-8"
       tag: "latest"
       pullPolicy: IfNotPresent
-    
+
     # Persistence configuration for Celery chord callback reliability
     # IMPORTANT: Enable this for production to prevent data loss on pod restarts
     persistence:
