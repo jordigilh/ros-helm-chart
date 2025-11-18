@@ -8,28 +8,28 @@ Trino & Hive Metastore Helpers
 Trino coordinator service name
 */}}
 {{- define "cost-mgmt.trino.coordinator.name" -}}
-{{- printf "%s-trino-coordinator" (include "cost-mgmt.fullname" .) -}}
+trino-coordinator
 {{- end -}}
 
 {{/*
 Trino worker name
 */}}
 {{- define "cost-mgmt.trino.worker.name" -}}
-{{- printf "%s-trino-worker" (include "cost-mgmt.fullname" .) -}}
+trino-worker
 {{- end -}}
 
 {{/*
 Hive metastore service name
 */}}
 {{- define "cost-mgmt.trino.metastore.name" -}}
-{{- printf "%s-hive-metastore" (include "cost-mgmt.fullname" .) -}}
+hive-metastore
 {{- end -}}
 
 {{/*
 Hive metastore database name
 */}}
 {{- define "cost-mgmt.trino.metastore.database.name" -}}
-{{- printf "%s-hive-metastore-db" (include "cost-mgmt.fullname" .) -}}
+hive-metastore-db
 {{- end -}}
 
 {{/*
