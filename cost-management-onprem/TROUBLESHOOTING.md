@@ -265,7 +265,7 @@ This is a **database write failure** where:
 1. A Celery task is queued and assigned a `celery_task_id` (status=2 or 3)
 2. Before the task executes (before line 59 in `_process_report_file` where status→PROCESSING), one of these occurs:
    - Worker pod crashes or restarts
-   - Database connection fails  
+   - Database connection fails
    - Database transaction is rolled back
 3. Redis shows the task as SUCCESS (stale or cached result)
 4. Database never gets updated with actual processing status
@@ -278,7 +278,7 @@ This is a **database write failure** where:
 **Check for reports with this pattern:**
 ```bash
 kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
-  "SELECT id, report_name, manifest_id, status, 
+  "SELECT id, report_name, manifest_id, status,
           celery_task_id IS NOT NULL as has_task,
           started_datetime IS NULL as never_started,
           completed_datetime IS NULL as not_complete
@@ -1002,7 +1002,7 @@ kubectl exec -n <namespace> koku-trino-coordinator-0 -- \
   grep "trustedCertEntry" | wc -l
 ```
 
-**Expected**: 150+ certificates  
+**Expected**: 150+ certificates
 **Problem**: Only 1 certificate
 
 **Check for SSL errors in Trino logs:**
