@@ -56,7 +56,7 @@ class ProviderPhase:
             raise RuntimeError("Postgres pod not found")
 
         sync_sql = f"""
-        INSERT INTO {self.schema_name}.reporting_tenant_api_provider (uuid, name, type, provider_id)
+        INSERT INTO {self.org_id}.reporting_tenant_api_provider (uuid, name, type, provider_id)
         SELECT uuid, name, type, uuid FROM public.api_provider
         WHERE uuid = '{provider_uuid}'
         ON CONFLICT (uuid) DO NOTHING;
@@ -64,7 +64,7 @@ class ProviderPhase:
 
         try:
             result = self.k8s.postgres_exec(postgres_pod, 'koku', sync_sql)
-            print(f"  ✓ Provider {provider_uuid} synced to tenant schema {self.schema_name}")
+            print(f"  ✓ Provider {provider_uuid} synced to tenant schema {self.org_id}")
         except Exception as e:
             print(f"  ⚠️  Failed to sync provider to tenant schema: {e}")
             raise RuntimeError(f"Provider sync failed: {e}")
@@ -169,11 +169,11 @@ try:
     # CRITICAL: Sync provider to tenant schema for bill creation FK constraint
     # In production this happens automatically, but in E2E we need explicit sync
     with connection.cursor() as cursor:
-        cursor.execute(f"""
-            INSERT INTO {{org_id}}.reporting_tenant_api_provider (uuid, name, type, provider_id)
-            VALUES (%s, %s, %s, %s)
+        cursor.execute("""
+            INSERT INTO %s.reporting_tenant_api_provider (uuid, name, type, provider_id)
+            VALUES (%%s, %%s, %%s, %%s)
             ON CONFLICT (uuid) DO NOTHING
-        """, [str(provider.uuid), provider.name, provider.type, str(provider.uuid)])
+        """ % org_id, [str(provider.uuid), provider.name, provider.type, str(provider.uuid)])
     print(f"PROVIDER_SYNCED_TO_TENANT_SCHEMA")
 
     print(f"PROVIDER_UUID={{provider.uuid}}")
