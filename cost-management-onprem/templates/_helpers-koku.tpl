@@ -509,6 +509,8 @@ Common environment variables for Koku API and Celery
   value: {{ include "cost-mgmt.koku.redis.host" . | quote }}
 - name: REDIS_PORT
   value: {{ include "cost-mgmt.koku.redis.port" . | quote }}
+- name: CELERY_RESULT_EXPIRES
+  value: {{ .Values.costManagement.celery.resultExpires | default "28800" | quote }}
 - name: INSIGHTS_KAFKA_HOST
   value: {{ include "cost-mgmt.koku.kafka.host" . | quote }}
 - name: INSIGHTS_KAFKA_PORT

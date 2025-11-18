@@ -97,6 +97,13 @@ infrastructure:
       repository: "registry.redhat.io/rhel10/valkey-8"
       tag: "latest"
       pullPolicy: IfNotPresent
+    
+    # Persistence configuration for Celery chord callback reliability
+    # IMPORTANT: Enable this for production to prevent data loss on pod restarts
+    persistence:
+      enabled: true  # Set to false for ephemeral testing
+      size: 5Gi      # Adjust based on workload
+      storageClassName: ""  # Use default storage class (adjust for ODF/NFS)
 
     # Valkey configuration
     bindAddress: "0.0.0.0"
@@ -370,9 +377,6 @@ costManagement:
     # Topic for cost management report processing
     topic: platform.upload.announce
 
-  # Default organization ID for initial setup
-  defaultOrgId: org1234567
-
   # ---------------------------------------------------------------------------
   # Celery Configuration
   # ---------------------------------------------------------------------------
@@ -382,6 +386,13 @@ costManagement:
     # Production: 86400 (24 hours) - recommended for production deployments
     # This controls how frequently Beat checks for new cost reports to download
     pollingTimer: 300
+
+    # Celery result expiration time in seconds (default: 28800 = 8 hours)
+    # CRITICAL: This must be long enough for Celery chord callbacks to complete
+    # If chord tasks take longer than this, callbacks will fail and manifests won't auto-complete
+    # SaaS uses 8 hours to handle slow processing with worker restarts
+    # Requires Redis persistence to be effective (see infrastructure.redis.persistence.enabled)
+    resultExpires: 28800  # 8 hours
 
     # Celery Beat Scheduler (must be exactly 1 replica)
     beat:

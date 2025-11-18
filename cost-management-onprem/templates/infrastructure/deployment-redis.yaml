@@ -42,12 +42,26 @@ spec:
           - "6379"
           - --protected-mode
           - "no"
+          # RDB persistence for Celery chord callback reliability
+          # Snapshots: save if 1 key changed in 900s, 10 keys in 300s, or 10000 keys in 60s
           - --save
-          - ""
+          - "900 1 300 10 60 10000"
+          - --dir
+          - "/data"
+          - --dbfilename
+          - "dump.rdb"
+          # AOF persistence for additional durability
+          - --appendonly
+          - "yes"
+          - --appendfsync
+          - "everysec"
           - --maxmemory
           - {{ .Values.infrastructure.redis.maxMemory | default "512mb" | quote }}
           - --maxmemory-policy
           - {{ .Values.infrastructure.redis.maxMemoryPolicy | default "allkeys-lru" | quote }}
+        volumeMounts:
+        - name: data
+          mountPath: /data
         livenessProbe:
           exec:
             command:
@@ -68,4 +82,12 @@ spec:
           failureThreshold: 3
         resources:
           {{- toYaml .Values.infrastructure.redis.resources | nindent 10 }}
+      volumes:
+      - name: data
+        {{- if .Values.infrastructure.redis.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: redis-data
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
 
