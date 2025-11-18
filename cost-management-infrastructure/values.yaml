@@ -81,7 +81,7 @@ migration:
 storage:
   # S3 endpoint
   endpoint: "http://s3.openshift-storage.svc:80"
-  
+
   # Credentials secret reference (should exist in the cluster)
   credentialsSecret:
     # Namespace where the source secret is located (typically openshift-storage for ODF)
