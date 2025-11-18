@@ -25,8 +25,8 @@ spec:
         {{- include "cost-mgmt.securityContext.pod" . | nindent 8 }}
       containers:
       - name: redis
-        image: "{{ .Values.infrastructure.redis.image.repository }}:{{ .Values.infrastructure.redis.image.tag }}"
-        imagePullPolicy: {{ .Values.infrastructure.redis.image.pullPolicy | default "IfNotPresent" }}
+        image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+        imagePullPolicy: {{ .Values.redis.image.pullPolicy | default "IfNotPresent" }}
         securityContext:
           {{- include "cost-mgmt.securityContext.container" . | nindent 10 }}
         ports:
@@ -37,7 +37,7 @@ spec:
           - valkey-server
         args:
           - --bind
-          - {{ .Values.infrastructure.redis.bindAddress | default "0.0.0.0" | quote }}
+          - {{ .Values.redis.bindAddress | default "0.0.0.0" | quote }}
           - --port
           - "6379"
           - --protected-mode
@@ -56,9 +56,9 @@ spec:
           - --appendfsync
           - "everysec"
           - --maxmemory
-          - {{ .Values.infrastructure.redis.maxMemory | default "512mb" | quote }}
+          - {{ .Values.redis.maxMemory | default "512mb" | quote }}
           - --maxmemory-policy
-          - {{ .Values.infrastructure.redis.maxMemoryPolicy | default "allkeys-lru" | quote }}
+          - {{ .Values.redis.maxMemoryPolicy | default "allkeys-lru" | quote }}
         volumeMounts:
         - name: data
           mountPath: /data
@@ -81,10 +81,10 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 3
         resources:
-          {{- toYaml .Values.infrastructure.redis.resources | nindent 10 }}
+          {{- toYaml .Values.redis.resources | nindent 10 }}
       volumes:
       - name: data
-        {{- if .Values.infrastructure.redis.persistence.enabled }}
+        {{- if .Values.redis.persistence.enabled }}
         persistentVolumeClaim:
           claimName: redis-data
         {{- else }}

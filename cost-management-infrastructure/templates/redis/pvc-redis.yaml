@@ -1,4 +1,4 @@
-{{- if .Values.infrastructure.redis.persistence.enabled }}
+{{- if .Values.redis.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -11,11 +11,11 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  {{- if .Values.infrastructure.redis.persistence.storageClassName }}
-  storageClassName: {{ .Values.infrastructure.redis.persistence.storageClassName }}
+  {{- if .Values.redis.persistence.storageClassName }}
+  storageClassName: {{ .Values.redis.persistence.storageClassName }}
   {{- end }}
   resources:
     requests:
-      storage: {{ .Values.infrastructure.redis.persistence.size | default "5Gi" }}
+      storage: {{ .Values.redis.persistence.size | default "5Gi" }}
 {{- end }}
 
