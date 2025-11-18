@@ -172,6 +172,44 @@ Redis port
 
 {{/*
 =============================================================================
+Storage (S3) Helpers
+=============================================================================
+*/}}
+
+{{/*
+Storage (S3) endpoint
+*/}}
+{{- define "cost-mgmt.storage.endpoint" -}}
+{{- .Values.costManagement.s3Endpoint | default "" -}}
+{{- end }}
+
+{{/*
+Storage credentials secret name
+*/}}
+{{- define "cost-mgmt.storage.secretName" -}}
+{{- printf "%s-storage-credentials" (include "cost-mgmt.fullname" .) -}}
+{{- end }}
+
+{{/*
+S3 endpoint (alias for Koku compatibility)
+*/}}
+{{- define "cost-mgmt.koku.s3.endpoint" -}}
+{{- include "cost-mgmt.storage.endpoint" . -}}
+{{- end -}}
+
+{{/*
+Koku database credentials secret name
+*/}}
+{{- define "cost-mgmt.koku.database.secretName" -}}
+{{- if .Values.costManagement.database.secretName -}}
+{{- .Values.costManagement.database.secretName -}}
+{{- else -}}
+{{- printf "%s-db-credentials" (include "cost-mgmt.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+=============================================================================
 Security Context Helpers
 =============================================================================
 */}}
