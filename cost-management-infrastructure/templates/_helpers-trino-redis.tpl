@@ -170,3 +170,31 @@ Redis port
 6379
 {{- end }}
 
+{{/*
+=============================================================================
+Security Context Helpers
+=============================================================================
+*/}}
+
+{{/*
+Pod-level security context
+*/}}
+{{- define "cost-mgmt.securityContext.pod" -}}
+runAsNonRoot: true
+seccompProfile:
+  type: RuntimeDefault
+{{- end -}}
+
+{{/*
+Container-level security context
+*/}}
+{{- define "cost-mgmt.securityContext.container" -}}
+allowPrivilegeEscalation: false
+capabilities:
+  drop:
+    - ALL
+runAsNonRoot: true
+seccompProfile:
+  type: RuntimeDefault
+{{- end -}}
+
