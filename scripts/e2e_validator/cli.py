@@ -415,35 +415,24 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
             if iqe_dir:
                 iqe_tests = IQETestPhase(iqe_dir, namespace)
                 results['iqe_tests'] = iqe_tests.run(skip=False)
+                # IQE tests are optional - don't fail the pipeline if they fail
+                if not results['iqe_tests']['passed'] and not results['iqe_tests'].get('skipped'):
+                    print("\n⚠️  IQE tests failed - continuing (IQE tests are optional)")
             else:
                 print("\n⚠️  IQE directory not found, skipping tests")
                 results['iqe_tests'] = {'passed': False, 'skipped': True, 'reason': 'No IQE dir'}
 
-        # Deployment Validation (requires all critical phases to pass)
-        # Critical phases: preflight, migrations, provider, processing, trino
-        critical_phases = ['preflight', 'migrations', 'provider', 'processing', 'trino']
-        critical_phases_passed = all(
-            results.get(phase, {}).get('passed', False) 
-            for phase in critical_phases 
-            if phase in results
-        )
-        
+        # Deployment Validation - always last, runs only if no critical phases failed
         if should_skip_remaining:
             results['deployment_validation'] = {'passed': False, 'skipped': True, 'reason': f'{failed_phase} failed'}
         elif skip_deployment_validation:
             results['deployment_validation'] = {'passed': False, 'skipped': True, 'reason': '--skip-deployment-validation'}
-        elif not critical_phases_passed:
-            # Don't run deployment validation if critical phases failed
-            failed = [p for p in critical_phases if not results.get(p, {}).get('passed', False) and not results.get(p, {}).get('skipped', False)]
-            results['deployment_validation'] = {
-                'passed': False, 
-                'skipped': False,
-                'reason': f'Critical phase(s) failed: {", ".join(failed)}'
-            }
-            print(f"\n⚠️  Skipping deployment validation - critical phases failed: {', '.join(failed)}")
         else:
             deployment_val = DeploymentValidationPhase(k8s, db)
             results['deployment_validation'] = deployment_val.run_all_validations()
+            # Deployment validation is informational - don't mark subsequent phases as failed
+            if not results['deployment_validation']['passed']:
+                print("\n⚠️  Deployment validation failed - some infrastructure checks did not pass")
 
         # Final Summary
         print("\n" + "="*70)
