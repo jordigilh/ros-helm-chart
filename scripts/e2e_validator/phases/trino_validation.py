@@ -61,7 +61,7 @@ class TrinoValidationPhase:
 
     def verify_tables(self) -> Dict:
         """Verify expected parquet tables exist in Trino
-        
+
         Note: Trino contains parquet tables (aws_line_items*), not PostgreSQL summary tables.
         PostgreSQL summary tables are populated FROM Trino data.
         """
@@ -101,7 +101,7 @@ class TrinoValidationPhase:
 
     def run_sample_query(self) -> Dict:
         """Execute sample query to verify parquet data accessible
-        
+
         Queries the parquet table (aws_line_items_daily) in Trino, not PostgreSQL summary tables.
         """
         print("  🔍 Running sample query...")
