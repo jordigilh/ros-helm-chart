@@ -12,7 +12,7 @@ from typing import Dict
 class ProcessingPhase:
     """Phase 5-6: Trigger and monitor data processing"""
 
-    def __init__(self, k8s_client, db_client, timeout: int = 300, provider_uuid: str = None):
+    def __init__(self, k8s_client, db_client, timeout: int = 300, provider_uuid: str = None, org_id: str = "org1234567"):
         """Initialize processing phase
 
         Args:
@@ -20,11 +20,13 @@ class ProcessingPhase:
             db_client: DatabaseClient instance
             timeout: Processing timeout in seconds (default 300s = 5 minutes)
             provider_uuid: Provider UUID to process (if None, scans all providers)
+            org_id: Organization ID / tenant schema name
         """
         self.k8s = k8s_client
         self.db = db_client
         self.timeout = timeout
         self.provider_uuid = provider_uuid
+        self.org_id = org_id
 
     def trigger_processing(self) -> Dict:
         """Trigger MASU processing via Celery task

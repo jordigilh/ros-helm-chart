@@ -381,7 +381,8 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
                 k8s,
                 db,
                 timeout=timeout,
-                provider_uuid=provider_uuid
+                provider_uuid=provider_uuid,
+                org_id=org_id
             )
             results['processing'] = processing.run()
             if not results['processing']['passed'] and not results['processing'].get('skipped'):
