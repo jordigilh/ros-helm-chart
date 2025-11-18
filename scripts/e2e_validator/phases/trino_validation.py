@@ -121,10 +121,13 @@ class TrinoValidationPhase:
 
             # Parse count from output
             try:
-                # Output format: "  <count>\n(1 row)"
+                # Output format: "  <count>\n(1 row)" or "<count>" or "\"<count>\""
                 lines = output.strip().split('\n')
                 for line in lines:
                     line = line.strip()
+                    # Remove quotes if present
+                    line = line.strip('"')
+                    # Try to parse as integer
                     if line.isdigit():
                         count = int(line)
                         print(f"    ✓ Query successful: {count} rows in table")
