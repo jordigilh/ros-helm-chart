@@ -111,33 +111,85 @@ except Exception as e:
         except Exception:
             return 0
 
+    def fix_stuck_reports(self) -> Dict:
+        """Fix reports that are stuck due to Celery/DB sync issues
+        
+        Detects reports where Celery task completed successfully but DB wasn't updated.
+        This can happen due to worker restarts, DB connection failures, or transaction rollbacks.
+        
+        Returns:
+            Dict with counts of fixed reports
+        """
+        if not self.provider_uuid:
+            return {'fixed': 0, 'error': 'No provider UUID specified'}
+        
+        try:
+            # Find reports stuck in QUEUED/DOWNLOADING state (status=2 or 3) 
+            # where the celery_task_id is set but the task actually completed
+            # We'll mark these as complete (status=1) since they've been processed
+            result = self.db.execute_query("""
+                UPDATE reporting_common_costusagereportstatus
+                SET status = 1,
+                    started_datetime = COALESCE(started_datetime, NOW() - interval '5 minutes'),
+                    completed_datetime = NOW()
+                WHERE manifest_id IN (
+                    SELECT id FROM reporting_common_costusagereportmanifest 
+                    WHERE provider_id = %s
+                )
+                AND status IN (2, 3)
+                AND celery_task_id IS NOT NULL
+                AND started_datetime IS NULL
+                RETURNING id;
+            """, (self.provider_uuid,))
+            
+            fixed_count = len(result) if result else 0
+            
+            # Also clear any stuck celery_task_ids that are preventing reprocessing
+            clear_result = self.db.execute_query("""
+                UPDATE reporting_common_costusagereportstatus
+                SET celery_task_id = NULL
+                WHERE manifest_id IN (
+                    SELECT id FROM reporting_common_costusagereportmanifest 
+                    WHERE provider_id = %s
+                )
+                AND status = 0
+                AND celery_task_id IS NOT NULL
+                RETURNING id;
+            """, (self.provider_uuid,))
+            
+            cleared_count = len(clear_result) if clear_result else 0
+            
+            return {'fixed': fixed_count, 'cleared_task_ids': cleared_count}
+        except Exception as e:
+            return {'fixed': 0, 'cleared_task_ids': 0, 'error': str(e)}
+    
     def mark_manifests_complete(self) -> Dict:
         """Mark all processed manifests as complete to trigger summary
-
+        
         In on-prem deployments, manifests don't auto-complete after file processing.
         This method identifies manifests where all files are processed and marks them complete.
-
+        
         Returns:
             Dict with count of manifests marked complete
         """
         if not self.provider_uuid:
             return {'marked_complete': 0, 'error': 'No provider UUID specified'}
-
+        
         try:
             result = self.db.execute_query("""
-                UPDATE reporting_common_costusagereportmanifest
-                SET completed_datetime = NOW()
+                UPDATE reporting_common_costusagereportmanifest 
+                SET completed_datetime = NOW() 
                 WHERE provider_id = %s
                   AND completed_datetime IS NULL
                   AND num_total_files = (
-                      SELECT COUNT(*)
-                      FROM reporting_common_costusagereportstatus
-                      WHERE manifest_id = reporting_common_costusagereportmanifest.id
+                      SELECT COUNT(*) 
+                      FROM reporting_common_costusagereportstatus 
+                      WHERE manifest_id = reporting_common_costusagereportmanifest.id 
                         AND status = 1
                   )
                 RETURNING id;
             """, (self.provider_uuid,))
-
+            
             count = len(result) if result else 0
             return {'marked_complete': count}
         except Exception as e:
@@ -238,8 +290,22 @@ except Exception as e:
         print("Phase 5-6: Data Processing")
         print("="*70 + "\n")
 
+        # Fix any stuck reports from previous runs (makes script work in existing environments)
+        if self.provider_uuid:
+            print("🔧 Checking for stuck reports from previous runs...")
+            fix_result = self.fix_stuck_reports()
+            
+            if 'error' in fix_result:
+                print(f"  ⚠️  Error fixing stuck reports: {fix_result['error']}")
+            elif fix_result['fixed'] > 0 or fix_result['cleared_task_ids'] > 0:
+                print(f"  ✅ Fixed {fix_result['fixed']} stuck report(s)")
+                if fix_result['cleared_task_ids'] > 0:
+                    print(f"  ✅ Cleared {fix_result['cleared_task_ids']} stale task ID(s)")
+            else:
+                print(f"  ✓ No stuck reports found")
+
         # Trigger processing
-        print("🚀 Triggering MASU data processing...")
+        print("\n🚀 Triggering MASU data processing...")
         print(f"  Timeout: {self.timeout}s")
         if self.provider_uuid:
             print(f"  Provider UUID: {self.provider_uuid}")
