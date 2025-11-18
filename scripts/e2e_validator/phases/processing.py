@@ -197,6 +197,63 @@ except Exception as e:
         except Exception as e:
             return {'marked_complete': 0, 'error': str(e)}
 
+    def create_aws_hive_tables(self):
+        """Create AWS Hive schema and tables manually (workaround for Koku bug)
+        
+        Koku only auto-creates Hive schemas for GCP (parquet_report_processor.py line 466-468).
+        AWS table creation is conditional and often skipped. This manually creates them.
+        
+        Returns:
+            Dict with success status and tables created or error message
+        """
+        try:
+            trino_pod = self.k8s.get_pod_by_component("trino-coordinator")
+            if not trino_pod:
+                return {'error': 'Trino coordinator pod not found'}
+            
+            # Create schema first
+            schema_sql = f"CREATE SCHEMA IF NOT EXISTS hive.{self.org_id}"
+            self.k8s.exec_in_pod(trino_pod, ['trino', '--execute', schema_sql])
+            
+            tables_created = []
+            
+            # Create aws_line_items (non-daily) external table
+            table_sql = f"""CREATE TABLE IF NOT EXISTS hive.{self.org_id}.aws_line_items (
+                lineitem_usagestartdate timestamp, lineitem_usageenddate timestamp,
+                lineitem_productcode varchar, lineitem_usagetype varchar,
+                lineitem_operation varchar, lineitem_availabilityzone varchar,
+                lineitem_resourceid varchar, lineitem_usageamount double,
+                lineitem_unblendedcost double, lineitem_blendedcost double,
+                product_region varchar, bill_invoiceid varchar,
+                bill_payeraccountid varchar, source varchar, year varchar, month varchar
+            ) WITH (
+                external_location = 's3a://cost-data/data/parquet/{self.org_id}/AWS',
+                format = 'PARQUET', partitioned_by = ARRAY['source', 'year', 'month']
+            )"""
+            self.k8s.exec_in_pod(trino_pod, ['trino', '--execute', table_sql])
+            tables_created.append('aws_line_items')
+            
+            # Create aws_line_items_daily external table
+            daily_table_sql = f"""CREATE TABLE IF NOT EXISTS hive.{self.org_id}.aws_line_items_daily (
+                lineitem_usagestartdate timestamp, lineitem_usageenddate timestamp,
+                lineitem_productcode varchar, lineitem_usagetype varchar,
+                lineitem_operation varchar, lineitem_availabilityzone varchar,
+                lineitem_resourceid varchar, lineitem_usageamount double,
+                lineitem_unblendedcost double, lineitem_blendedcost double,
+                product_region varchar, bill_invoiceid varchar,
+                bill_payeraccountid varchar, source varchar, year varchar, month varchar
+            ) WITH (
+                external_location = 's3a://cost-data/data/parquet/{self.org_id}/AWS-local',
+                format = 'PARQUET', partitioned_by = ARRAY['source', 'year', 'month']
+            )"""
+            self.k8s.exec_in_pod(trino_pod, ['trino', '--execute', daily_table_sql])
+            tables_created.append('aws_line_items_daily')
+            
+            return {'success': True, 'tables': tables_created}
+            
+        except Exception as e:
+            return {'error': str(e)}
+
     def monitor_summary_population(self, timeout: int = 60) -> Dict:
         """Monitor summary table population with progress details and AWS cost samples
 
