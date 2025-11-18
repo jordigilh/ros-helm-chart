@@ -665,6 +665,15 @@ except Exception as e:
                     elif 'error' in summary_result:
                         print(f"  ⚠️  Summary check failed: {summary_result['error']}")
 
+                # WORKAROUND: Create AWS Hive schema and tables manually (Koku bug - only auto-creates for GCP)
+                print(f"\n🔧 Creating AWS Hive schema and tables (workaround for Koku bug)...")
+                hive_result = self.create_aws_hive_tables()
+                if hive_result.get('success'):
+                    print(f"  ✅ Created Hive schema '{self.org_id}' and tables")
+                    print(f"     Tables: {', '.join(hive_result.get('tables', []))}")
+                elif 'error' in hive_result:
+                    print(f"  ⚠️  Failed to create Hive tables: {hive_result['error']}")
+                
                 # Wait for Trino tables to be created (parquet conversion is async)
                 trino_result = self.wait_for_trino_tables(timeout=60)
                 if not trino_result['success']:
