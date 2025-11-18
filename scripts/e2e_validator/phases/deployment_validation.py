@@ -611,12 +611,20 @@ except Exception as e:
         print(f"Passed: {passed}/{total} tests")
         print("="*60)
 
+        # Determine overall pass/fail based on score threshold
+        # Use 80% as passing threshold (less strict than deployment_ready 95%)
+        passed_overall = score >= 80
+        
         self.results['summary'] = {
             'total_tests': total,
             'passed_tests': passed,
             'score': score,
             'deployment_ready': score >= 95
         }
+        
+        # Add top-level 'passed' key for CLI status reporting
+        self.results['passed'] = passed_overall
+        self.results['skipped'] = False
 
         return self.results
 
