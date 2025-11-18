@@ -60,16 +60,21 @@ class TrinoValidationPhase:
             return False
 
     def verify_tables(self) -> Dict:
-        """Verify expected tables exist"""
+        """Verify expected parquet tables exist in Trino
+        
+        Note: Trino contains parquet tables (aws_line_items*), not PostgreSQL summary tables.
+        PostgreSQL summary tables are populated FROM Trino data.
+        """
         print(f"  🔍 Checking Trino tables in {self.org_id}...")
         trino_pod = self.k8s.get_pod_by_component('trino-coordinator')
 
         if not trino_pod:
             return {'tables': [], 'expected': []}
 
+        # These are the parquet table names used by SaaS (aligned with TRINO_TABLE_MAP)
         expected_tables = [
-            'reporting_awscostentrylineitem_daily_summary',
-            'reporting_awscostentry',
+            'aws_line_items_daily',  # Daily aggregated parquet data
+            'aws_line_items',        # Raw line items parquet data
         ]
 
         try:
@@ -95,14 +100,18 @@ class TrinoValidationPhase:
             return {'tables': [], 'expected': expected_tables, 'error': str(e)}
 
     def run_sample_query(self) -> Dict:
-        """Execute sample query to verify data accessible"""
+        """Execute sample query to verify parquet data accessible
+        
+        Queries the parquet table (aws_line_items_daily) in Trino, not PostgreSQL summary tables.
+        """
         print("  🔍 Running sample query...")
         trino_pod = self.k8s.get_pod_by_component('trino-coordinator')
 
         if not trino_pod:
             return {'passed': False, 'error': 'Trino pod not available'}
 
-        query = f"SELECT COUNT(*) FROM hive.{self.org_id}.reporting_awscostentrylineitem_daily_summary"
+        # Query the parquet table (aligned with SaaS TRINO_LINE_ITEM_DAILY_TABLE)
+        query = f"SELECT COUNT(*) FROM hive.{self.org_id}.aws_line_items_daily"
 
         try:
             output = self.k8s.exec_in_pod(
