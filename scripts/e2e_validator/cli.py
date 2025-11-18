@@ -402,7 +402,7 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
                 should_skip_remaining = True
                 failed_phase = 'trino'
 
-        # Phase 8: IQE Tests
+        # Phase 8: IQE Tests (MANDATORY)
         if should_skip_remaining:
             results['iqe_tests'] = {'passed': False, 'skipped': True, 'reason': f'{failed_phase} failed'}
         elif skip_tests:
@@ -415,12 +415,16 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
             if iqe_dir:
                 iqe_tests = IQETestPhase(iqe_dir, namespace)
                 results['iqe_tests'] = iqe_tests.run(skip=False)
-                # IQE tests are optional - don't fail the pipeline if they fail
+                # IQE tests are MANDATORY - fail fast if they fail
                 if not results['iqe_tests']['passed'] and not results['iqe_tests'].get('skipped'):
-                    print("\n⚠️  IQE tests failed - continuing (IQE tests are optional)")
+                    print("\n❌ IQE tests failed - skipping remaining phases (IQE tests are mandatory)")
+                    should_skip_remaining = True
+                    failed_phase = 'iqe_tests'
             else:
-                print("\n⚠️  IQE directory not found, skipping tests")
-                results['iqe_tests'] = {'passed': False, 'skipped': True, 'reason': 'No IQE dir'}
+                print("\n❌ IQE directory not found - IQE tests are mandatory")
+                results['iqe_tests'] = {'passed': False, 'skipped': False, 'reason': 'No IQE dir', 'error': 'IQE directory not found'}
+                should_skip_remaining = True
+                failed_phase = 'iqe_tests'
 
         # Deployment Validation - always last, runs only if no critical phases failed
         if should_skip_remaining:

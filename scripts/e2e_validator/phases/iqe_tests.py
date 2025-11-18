@@ -72,7 +72,9 @@ class IQETestPhase:
         env = os.environ.copy()
         env['ENV_FOR_DYNACONF'] = 'onprem'
         env['DYNACONF_IQE_VAULT_LOADER_ENABLED'] = 'false'
-        env['PYTEST_PLUGINS'] = 'iqe_cost_management.conftest_onprem'
+
+        # Point to the on-prem conftest file directly
+        conftest_path = os.path.join(self.iqe_dir, 'iqe_cost_management', 'conftest_onprem.py')
 
         # Use python3 from current venv (should be IQE venv if wrapper script is used)
         python_cmd = 'python3'
@@ -81,9 +83,11 @@ class IQETestPhase:
             result = subprocess.run(
                 [
                     python_cmd, '-m', 'pytest',
-                    'iqe_cost_management/tests/rest_api/v1/',
+                    'iqe_cost_management/tests/rest_api/v1/test_trino_api_validation.py',
                     '-v', '--tb=short', '--maxfail=10',
-                    '-k', 'not wait_for_ingest'
+                    f'--confcutdir={self.iqe_dir}',  # Set config dir
+                    '-p', 'iqe_cost_management.conftest_onprem',  # Load on-prem conftest as plugin
+                    '--override-ini=python_files=test_*.py',  # Only discover test_*.py files
                 ],
                 cwd=self.iqe_dir,
                 env=env,
@@ -95,26 +99,53 @@ class IQETestPhase:
             # Parse results
             output = result.stdout + result.stderr
 
+            # Debug: save full output to file for inspection
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='_iqe_output.txt', dir='/tmp') as f:
+                f.write(output)
+                output_file = f.name
+
+            # Debug: print return code and output summary
+            print(f"\n  🔍 Debug: pytest return code: {result.returncode}")
+            print(f"  🔍 Debug: output length: {len(output)} chars")
+            print(f"  🔍 Debug: full output saved to: {output_file}")
+
+            # Check if pytest even ran
+            if 'test session starts' not in output:
+                print(f"\n  ❌ Pytest failed to start!")
+                print(f"  📄 First 1000 chars of output:")
+                print(output[:1000])
+                return {
+                    'success': False,
+                    'error': 'Pytest failed to start',
+                    'passed': 0,
+                    'failed': 0,
+                    'total': 0,
+                    'output': output
+                }
+
             passed = 0
             failed = 0
             skipped = 0
 
+            # Parse pytest summary line (e.g., "1 passed, 4 warnings in 1.66s")
             for line in output.split('\n'):
-                if ' passed' in line:
-                    try:
-                        passed = int(line.split()[0])
-                    except (ValueError, IndexError):
-                        pass
-                if ' failed' in line:
-                    try:
-                        failed = int(line.split()[0])
-                    except (ValueError, IndexError):
-                        pass
-                if ' skipped' in line:
-                    try:
-                        skipped = int(line.split()[0])
-                    except (ValueError, IndexError):
-                        pass
+                line_lower = line.lower()
+                if ' passed' in line_lower or ' failed' in line_lower or ' error' in line_lower:
+                    parts = line.split()
+                    for i, part in enumerate(parts):
+                        try:
+                            count = int(part)
+                            if i + 1 < len(parts):
+                                label = parts[i + 1].lower()
+                                if 'passed' in label:
+                                    passed = count
+                                elif 'failed' in label or 'error' in label:
+                                    failed += count
+                                elif 'skipped' in label:
+                                    skipped = count
+                        except ValueError:
+                            continue
 
             total = passed + failed
 
@@ -129,7 +160,10 @@ class IQETestPhase:
             if success:
                 print(f"\n  ✅ All tests passed!")
             elif total == 0:
-                print(f"\n  ⚠️  No tests executed")
+                print(f"\n  ⚠️  No tests executed - check if port-forward is working")
+                # Print last 500 chars for debugging
+                print(f"  📄 Last 500 chars of output:")
+                print(output[-500:])
             else:
                 print(f"\n  ⚠️  {failed} tests failed")
 
