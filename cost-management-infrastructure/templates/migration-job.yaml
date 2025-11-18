@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "cost-mgmt-infra.fullname" . }}-migration
+  name: migration
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt-infra.labels" . | nindent 4 }}

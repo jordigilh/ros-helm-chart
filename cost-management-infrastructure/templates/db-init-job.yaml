@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "cost-mgmt-infra.fullname" . }}-db-init
+  name: db-init
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-mgmt-infra.labels" . | nindent 4 }}
