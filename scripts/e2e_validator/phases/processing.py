@@ -235,6 +235,88 @@ except Exception as e:
         except Exception as e:
             return {'has_data': False, 'row_count': 0, 'error': str(e)}
 
+    def wait_for_trino_tables(self, timeout: int = 60) -> Dict:
+        """Wait for Trino tables to be created after parquet conversion
+        
+        Parquet conversion and table creation happen asynchronously after
+        file processing completes. This waits for the tables to appear.
+        
+        Args:
+            timeout: Maximum wait time in seconds
+        
+        Returns:
+            Dict with success status and table info
+        """
+        import time
+        
+        if not self.k8s or not self.org_id:
+            return {'success': False, 'error': 'Missing k8s client or org_id'}
+        
+        # Get Trino coordinator pod
+        try:
+            trino_pod = self.k8s.get_pod_by_component('trino-coordinator')
+            if not trino_pod:
+                return {'success': False, 'error': 'Trino coordinator pod not found'}
+        except Exception as e:
+            return {'success': False, 'error': f'Failed to find Trino pod: {e}'}
+        
+        print(f"\n⏳ Waiting for Trino tables (timeout: {timeout}s)...")
+        
+        start_time = time.time()
+        expected_tables = ['aws_line_items', 'aws_line_items_daily']
+        found_tables = []
+        
+        while time.time() - start_time < timeout:
+            # Check if tables exist
+            check_sql = f"SHOW TABLES IN hive.{self.org_id}"
+            
+            try:
+                result = self.k8s.run_pod_command(
+                    trino_pod,
+                    ['trino', '--execute', check_sql]
+                )
+                
+                # Parse table names from output
+                tables_in_schema = []
+                for line in result.split('\n'):
+                    line = line.strip()
+                    # Skip headers, warnings, and empty lines
+                    if line and not line.startswith('WARNING') and line != '"default"' and line != '"information_schema"':
+                        # Remove quotes if present
+                        table = line.strip('"')
+                        if table and table not in ['Table', '-----', '(0 rows)', '(1 row)', '(2 rows)']:
+                            tables_in_schema.append(table)
+                
+                # Check if we have both expected tables
+                found_tables = [t for t in expected_tables if t in tables_in_schema]
+                
+                if len(found_tables) == len(expected_tables):
+                    elapsed = int(time.time() - start_time)
+                    print(f"  ✅ All Trino tables found after {elapsed}s: {', '.join(found_tables)}")
+                    return {
+                        'success': True,
+                        'tables': found_tables,
+                        'elapsed': elapsed
+                    }
+                elif found_tables:
+                    print(f"  ⏳ Partial tables found ({len(found_tables)}/{len(expected_tables)}): {', '.join(found_tables)}")
+                
+            except Exception as e:
+                # Trino might not be ready yet or schema doesn't exist - keep waiting
+                pass
+            
+            time.sleep(5)
+        
+        # Timeout
+        elapsed = int(time.time() - start_time)
+        return {
+            'success': False,
+            'timeout': True,
+            'tables': found_tables,
+            'expected': expected_tables,
+            'elapsed': elapsed
+        }
+
     def monitor_processing(self) -> Dict:
         """Monitor data processing until complete or timeout"""
         print(f"\n⏳ Monitoring processing (timeout: {self.timeout}s)...")
@@ -363,6 +445,14 @@ except Exception as e:
                     print(f"  ⚠️  Summary data not yet populated (may need more time)")
                     if 'error' in summary_result:
                         print(f"     Error: {summary_result['error']}")
+                
+                # Wait for Trino tables to be created (parquet conversion is async)
+                trino_result = self.wait_for_trino_tables(timeout=60)
+                if not trino_result['success']:
+                    if 'timeout' in trino_result:
+                        print(f"  ⚠️  Trino tables not ready after {trino_result['elapsed']}s (found: {trino_result.get('tables', [])})")
+                    elif 'error' in trino_result:
+                        print(f"  ⚠️  Could not check Trino tables: {trino_result['error']}")
             else:
                 print(f"  ℹ️  No manifests needed completion marking")
 
