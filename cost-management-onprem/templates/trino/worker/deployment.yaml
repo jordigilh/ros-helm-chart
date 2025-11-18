@@ -64,6 +64,11 @@ spec:
             secretKeyRef:
               name: {{ include "cost-mgmt.koku.database.secretName" . }}
               key: password
+        - name: METASTORE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "cost-mgmt.trino.metastore.database.secretName" . }}
+              key: password
         # AWS region required for native S3 support
         - name: AWS_REGION
           value: "us-east-1"
