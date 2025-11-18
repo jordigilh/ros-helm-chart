@@ -294,7 +294,7 @@ except Exception as e:
         if self.provider_uuid:
             print("🔧 Checking for stuck reports from previous runs...")
             fix_result = self.fix_stuck_reports()
-            
+
             if 'error' in fix_result:
                 print(f"  ⚠️  Error fixing stuck reports: {fix_result['error']}")
             elif fix_result['fixed'] > 0 or fix_result['cleared_task_ids'] > 0:
