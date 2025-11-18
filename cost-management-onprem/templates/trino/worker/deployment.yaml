@@ -88,8 +88,8 @@ spec:
           mountPath: /etc/trino/catalog/hive.properties
           subPath: hive.properties
         - name: config
-          mountPath: /etc/trino/catalog/postgresql.properties
-          subPath: postgresql.properties
+          mountPath: /etc/trino/catalog/postgres.properties
+          subPath: postgres.properties
         - name: data
           mountPath: /data/trino
         - name: trino-ca-certs
