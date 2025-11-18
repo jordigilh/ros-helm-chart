@@ -142,6 +142,20 @@ class KubernetesClient:
         """
         return self.exec_in_pod(pod_name, ['python3', '-c', python_code])
     
+    def postgres_exec(self, pod_name: str, database: str, sql: str) -> str:
+        """Execute SQL in PostgreSQL pod
+        
+        Args:
+            pod_name: Name of PostgreSQL pod
+            database: Database name
+            sql: SQL to execute
+            
+        Returns:
+            SQL output as string
+        """
+        command = ['psql', '-d', database, '-c', sql]
+        return self.exec_in_pod(pod_name, command)
+    
     def get_secret(self, secret_name: str, key: str) -> Optional[str]:
         """Get secret value
         
