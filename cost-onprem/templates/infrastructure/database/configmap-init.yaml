@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-db-init
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+data:
+  # PostgreSQL initialization script
+  # This script runs automatically on first database initialization
+  # Uses PostgreSQL's /docker-entrypoint-initdb.d/ mechanism
+  init-databases.sql: |
+    -- ========================================
+    -- Create Dedicated Database Users
+    -- ========================================
+    -- Each service gets its own database user with restricted privileges
+
+    -- ROS User
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '{{ .Values.database.ros.user }}') THEN
+        CREATE USER {{ .Values.database.ros.user }} WITH PASSWORD '{{ .Values.database.ros.password }}';
+      END IF;
+    END
+    $$;
+
+    -- Kruize User
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '{{ .Values.database.kruize.user }}') THEN
+        CREATE USER {{ .Values.database.kruize.user }} WITH PASSWORD '{{ .Values.database.kruize.password }}';
+      END IF;
+    END
+    $$;
+
+    -- Sources User
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '{{ .Values.database.sources.user }}') THEN
+        CREATE USER {{ .Values.database.sources.user }} WITH PASSWORD '{{ .Values.database.sources.password }}';
+      END IF;
+    END
+    $$;
+
+    -- ========================================
+    -- Create Databases
+    -- ========================================
+
+    -- ROS Database
+    SELECT 'CREATE DATABASE {{ .Values.database.ros.name }}'
+    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ .Values.database.ros.name }}')
+    \gexec
+
+    -- Kruize Database
+    SELECT 'CREATE DATABASE {{ .Values.database.kruize.name }}'
+    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ .Values.database.kruize.name }}')
+    \gexec
+
+    -- Sources Database
+    SELECT 'CREATE DATABASE {{ .Values.database.sources.name }}'
+    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ .Values.database.sources.name }}')
+    \gexec
+
+    -- ========================================
+    -- Grant Database Ownership and Privileges
+    -- ========================================
+    -- Each user gets full access to their own database only
+
+    -- ROS Database - owned by ros_user
+    GRANT ALL PRIVILEGES ON DATABASE {{ .Values.database.ros.name }} TO {{ .Values.database.ros.user }};
+    ALTER DATABASE {{ .Values.database.ros.name }} OWNER TO {{ .Values.database.ros.user }};
+
+    -- Kruize Database - owned by kruize_user
+    GRANT ALL PRIVILEGES ON DATABASE {{ .Values.database.kruize.name }} TO {{ .Values.database.kruize.user }};
+    ALTER DATABASE {{ .Values.database.kruize.name }} OWNER TO {{ .Values.database.kruize.user }};
+
+    -- Sources Database - owned by sources_user
+    GRANT ALL PRIVILEGES ON DATABASE {{ .Values.database.sources.name }} TO {{ .Values.database.sources.user }};
+    ALTER DATABASE {{ .Values.database.sources.name }} OWNER TO {{ .Values.database.sources.user }};

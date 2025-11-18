@@ -8,6 +8,18 @@ set -eo pipefail
 # Default values
 NAMESPACE="${NAMESPACE:-cost-onprem}"
 
+# Extract database credentials from secret
+DB_SECRET_NAME="${DB_SECRET_NAME:-cost-onprem-db-credentials}"
+KRUIZE_USER=$(oc get secret -n "$NAMESPACE" "$DB_SECRET_NAME" -o jsonpath='{.data.kruize-user}' 2>/dev/null | base64 -d)
+KRUIZE_PASSWORD=$(oc get secret -n "$NAMESPACE" "$DB_SECRET_NAME" -o jsonpath='{.data.kruize-password}' 2>/dev/null | base64 -d)
+KRUIZE_DB="kruize_db"
+
+if [ -z "$KRUIZE_USER" ] || [ -z "$KRUIZE_PASSWORD" ]; then
+    echo "Error: Unable to retrieve Kruize database credentials from secret '$DB_SECRET_NAME'" >&2
+    echo "Ensure the secret exists and contains 'kruize-user' and 'kruize-password' keys" >&2
+    exit 1
+fi
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -34,7 +46,7 @@ echo_info() {
 
 # Function to check if we can access Kruize database
 check_kruize_access() {
-    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=db-kruize" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=database" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -z "$db_pod" ]; then
         echo_error "Kruize database pod not found in namespace: $NAMESPACE"
@@ -53,7 +65,7 @@ list_experiments() {
     local db_pod=$(check_kruize_access) || return 1
 
     local count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM kruize_experiments;" 2>/dev/null | tr -d ' ' || echo "0")
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -t -c "SELECT COUNT(*) FROM kruize_experiments;" 2>/dev/null | tr -d ' ' || echo "0")
 
     if [ "$count" -eq 0 ]; then
         echo_warning "No experiments found in database"
@@ -66,7 +78,7 @@ list_experiments() {
 
     echo_info "Experiment details:"
     oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -c \
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -c \
         "SELECT experiment_id, experiment_name, cluster_name, status, mode
          FROM kruize_experiments
          ORDER BY experiment_id DESC
@@ -81,7 +93,7 @@ list_recommendations() {
     local db_pod=$(check_kruize_access) || return 1
 
     local count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM kruize_recommendations;" 2>/dev/null | tr -d ' ' || echo "0")
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -t -c "SELECT COUNT(*) FROM kruize_recommendations;" 2>/dev/null | tr -d ' ' || echo "0")
 
     if [ "$count" -eq 0 ]; then
         echo_warning "No recommendations found in database"
@@ -97,7 +109,7 @@ list_recommendations() {
 
     echo_info "Recent recommendations:"
     oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -c \
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -c \
         "SELECT experiment_name, interval_end_time, cluster_name
          FROM kruize_recommendations
          ORDER BY interval_end_time DESC
@@ -121,7 +133,7 @@ query_by_experiment() {
 
     echo_info "Matching experiments:"
     oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -c \
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -c \
         "SELECT experiment_id, experiment_name, cluster_name, status
          FROM kruize_experiments
          WHERE experiment_name LIKE '%${experiment_pattern}%'
@@ -130,7 +142,7 @@ query_by_experiment() {
     echo ""
     echo_info "Recommendations for matching experiments:"
     oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -c \
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -c \
         "SELECT r.experiment_name, r.interval_end_time, r.cluster_name
          FROM kruize_recommendations r
          WHERE r.experiment_name LIKE '%${experiment_pattern}%'
@@ -155,7 +167,7 @@ query_by_cluster() {
 
     echo_info "Experiments for cluster:"
     oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -c \
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -c \
         "SELECT experiment_id, experiment_name, status, mode
          FROM kruize_experiments
          WHERE cluster_name = '${cluster_id}'
@@ -164,7 +176,7 @@ query_by_cluster() {
     echo ""
     echo_info "Recommendation count for cluster:"
     local rec_count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -t -c \
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -t -c \
         "SELECT COUNT(*)
          FROM kruize_recommendations r
          JOIN kruize_experiments e ON r.experiment_name = e.experiment_name
@@ -190,7 +202,7 @@ get_recommendation_details() {
 
     echo_info "Latest recommendations for experiment:"
     oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -x -c \
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -x -c \
         "SELECT * FROM kruize_recommendations WHERE experiment_name = '${experiment_name}' ORDER BY interval_end_time DESC LIMIT 5;" 2>/dev/null || echo_error "Failed to query recommendation"
 }
 
@@ -211,7 +223,7 @@ run_custom_query() {
     local db_pod=$(check_kruize_access) || return 1
 
     oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -c "$query" 2>/dev/null || echo_error "Query failed"
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -c "$query" 2>/dev/null || echo_error "Query failed"
 }
 
 # Function to show schema
@@ -223,17 +235,17 @@ show_schema() {
 
     echo_info "Tables in database:"
     oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -c "\dt" 2>/dev/null || echo_error "Failed to list tables"
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -c "\dt" 2>/dev/null || echo_error "Failed to list tables"
 
     echo ""
     echo_info "Experiments table structure:"
     oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -c "\d kruize_experiments" 2>/dev/null || true
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -c "\d kruize_experiments" 2>/dev/null || true
 
     echo ""
     echo_info "Recommendations table structure:"
     oc exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -c "\d kruize_recommendations" 2>/dev/null || true
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -c "\d kruize_recommendations" 2>/dev/null || true
 }
 
 # Help function
@@ -277,7 +289,13 @@ EXAMPLES:
   $0 --schema
 
 DATABASE ACCESS:
-  This script connects to the Kruize PostgreSQL database pod using oc exec.
+  This script connects to the Kruize PostgreSQL database using dedicated Kruize credentials.
+
+  Database Configuration:
+    - Database Name: kruize_db (on unified database server)
+    - User Credentials: Retrieved from secret {{ release-name }}-db-credentials
+    - Secret Keys: kruize-user, kruize-password
+    - Database Pod: Identified by label app.kubernetes.io/name=database
 
   Available tables:
     - kruize_experiments: Experiment definitions and status

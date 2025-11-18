@@ -713,11 +713,22 @@ verify_processing() {
 
     # Check database for workload records
     echo_info "Checking database for workload records..."
-    local db_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=db-ros" -o jsonpath='{.items[0].metadata.name}')
+    local db_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=database" -o jsonpath='{.items[0].metadata.name}')
 
     if [ -n "$db_pod" ]; then
+        # Extract ROS database credentials from secret
+        local db_secret_name="${HELM_RELEASE_NAME}-db-credentials"
+        local ros_user=$(kubectl get secret -n "$NAMESPACE" "$db_secret_name" -o jsonpath='{.data.ros-user}' 2>/dev/null | base64 -d)
+        local ros_password=$(kubectl get secret -n "$NAMESPACE" "$db_secret_name" -o jsonpath='{.data.ros-password}' 2>/dev/null | base64 -d)
+        local ros_db="ros_db"
+
+        if [ -z "$ros_user" ] || [ -z "$ros_password" ]; then
+            echo_warning "Unable to retrieve ROS database credentials from secret '$db_secret_name'"
+            return 1
+        fi
+
         local row_count=$(kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM workloads;" 2>/dev/null | tr -d ' ' || echo "0")
+            env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -t -c "SELECT COUNT(*) FROM workloads;" 2>/dev/null | tr -d ' ' || echo "0")
 
         if [ "$row_count" -gt 0 ]; then
             echo_success "Found $row_count workload records in database"
@@ -725,7 +736,7 @@ verify_processing() {
             # Show sample data
             echo_info "Sample workload data:"
             kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-                psql -U postgres -d postgres -c \
+                env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -c \
                 "SELECT cluster_uuid, workload_name, workload_type, namespace FROM workloads LIMIT 3;" 2>/dev/null || true
         else
             echo_warning "No workload data found in database yet"
@@ -734,19 +745,30 @@ verify_processing() {
 
     # Check Kruize experiments via database (listExperiments API has known issue with KruizeLMExperimentEntry)
     echo_info "Checking Kruize experiments via database..."
-    local db_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=db-kruize" -o jsonpath='{.items[0].metadata.name}')
+    local kruize_db_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=database" -o jsonpath='{.items[0].metadata.name}')
 
-    if [ -n "$db_pod" ]; then
-        local exp_count=$(kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM kruize_experiments;" 2>/dev/null | tr -d ' ' || echo "0")
+    if [ -n "$kruize_db_pod" ]; then
+        # Extract Kruize database credentials from secret
+        local db_secret_name="${HELM_RELEASE_NAME}-db-credentials"
+        local kruize_user=$(kubectl get secret -n "$NAMESPACE" "$db_secret_name" -o jsonpath='{.data.kruize-user}' 2>/dev/null | base64 -d)
+        local kruize_password=$(kubectl get secret -n "$NAMESPACE" "$db_secret_name" -o jsonpath='{.data.kruize-password}' 2>/dev/null | base64 -d)
+        local kruize_db="kruize_db"
+
+        if [ -z "$kruize_user" ] || [ -z "$kruize_password" ]; then
+            echo_warning "Unable to retrieve Kruize database credentials from secret '$db_secret_name'"
+            return 1
+        fi
+
+        local exp_count=$(kubectl exec -n "$NAMESPACE" "$kruize_db_pod" -- \
+            env PGPASSWORD="$kruize_password" psql -U "$kruize_user" -d "$kruize_db" -t -c "SELECT COUNT(*) FROM kruize_experiments;" 2>/dev/null | tr -d ' ' || echo "0")
 
         if [ "$exp_count" -gt 0 ]; then
             echo_success "Found $exp_count Kruize experiment(s) in database"
 
             # Show experiment details
             echo_info "Recent experiment details:"
-            kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-                psql -U postgres -d postgres -c \
+            kubectl exec -n "$NAMESPACE" "$kruize_db_pod" -- \
+                env PGPASSWORD="$kruize_password" psql -U "$kruize_user" -d "$kruize_db" -c \
                 "SELECT experiment_name, status, mode FROM kruize_experiments ORDER BY experiment_id DESC LIMIT 1;" 2>/dev/null || true
         else
             echo_warning "No Kruize experiments found in database yet"
@@ -990,16 +1012,27 @@ verify_workloads_in_db() {
 
     # Check database for workload records with detailed analysis
     echo_info "Checking workloads table in ROS database..."
-    local db_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=db-ros" -o jsonpath='{.items[0].metadata.name}')
+    local db_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=database" -o jsonpath='{.items[0].metadata.name}')
 
     if [ -z "$db_pod" ]; then
         echo_error "ROS database pod not found"
         return 1
     fi
 
+    # Extract ROS database credentials from secret
+    local db_secret_name="${HELM_RELEASE_NAME}-db-credentials"
+    local ros_user=$(kubectl get secret -n "$NAMESPACE" "$db_secret_name" -o jsonpath='{.data.ros-user}' 2>/dev/null | base64 -d)
+    local ros_password=$(kubectl get secret -n "$NAMESPACE" "$db_secret_name" -o jsonpath='{.data.ros-password}' 2>/dev/null | base64 -d)
+    local ros_db="ros_db"
+
+    if [ -z "$ros_user" ] || [ -z "$ros_password" ]; then
+        echo_error "Unable to retrieve ROS database credentials from secret '$db_secret_name'"
+        return 1
+    fi
+
     # Test database connectivity
     echo_info "Testing database connectivity..."
-    if ! kubectl exec -n "$NAMESPACE" "$db_pod" -- psql -U postgres -d postgres -c "SELECT 1;" >/dev/null 2>&1; then
+    if ! kubectl exec -n "$NAMESPACE" "$db_pod" -- env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -c "SELECT 1;" >/dev/null 2>&1; then
         echo_error "Cannot connect to ROS database"
         return 1
     fi
@@ -1008,7 +1041,7 @@ verify_workloads_in_db() {
     # Check if workloads table exists
     echo_info "Verifying workloads table exists..."
     local table_exists=$(kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -t -c \
+        env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -t -c \
         "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'workloads');" 2>/dev/null | tr -d ' ' || echo "f")
 
     if [ "$table_exists" = "t" ]; then
@@ -1020,7 +1053,7 @@ verify_workloads_in_db() {
 
     # Get workload count
     local workload_count=$(kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-        psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM workloads;" 2>/dev/null | tr -d ' ' || echo "0")
+        env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -t -c "SELECT COUNT(*) FROM workloads;" 2>/dev/null | tr -d ' ' || echo "0")
 
     if [ "$workload_count" -gt 0 ]; then
         echo_success "✓ Found $workload_count workload(s) in database"
@@ -1028,13 +1061,13 @@ verify_workloads_in_db() {
         # Show workload table schema
         echo_info "Workload table schema:"
         kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -c \
+            env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -c \
             "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = 'workloads' ORDER BY ordinal_position;" 2>/dev/null || true
 
         # Show detailed workload information
         echo_info "Detailed workload information:"
         kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -c \
+            env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -c \
             "SELECT
                 id,
                 org_id,
@@ -1055,15 +1088,15 @@ verify_workloads_in_db() {
 
         # Check for required fields
         local missing_org_id=$(kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM workloads WHERE org_id IS NULL OR org_id = '';" 2>/dev/null | tr -d ' \n' || echo "0")
+            env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -t -c "SELECT COUNT(*) FROM workloads WHERE org_id IS NULL OR org_id = '';" 2>/dev/null | tr -d ' \n' || echo "0")
         missing_org_id=${missing_org_id:-0}
 
         local missing_workload_name=$(kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM workloads WHERE workload_name IS NULL OR workload_name = '';" 2>/dev/null | tr -d ' \n' || echo "0")
+            env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -t -c "SELECT COUNT(*) FROM workloads WHERE workload_name IS NULL OR workload_name = '';" 2>/dev/null | tr -d ' \n' || echo "0")
         missing_workload_name=${missing_workload_name:-0}
 
         local missing_workload_type=$(kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -t -c "SELECT COUNT(*) FROM workloads WHERE workload_type IS NULL OR workload_type = '';" 2>/dev/null | tr -d ' \n' || echo "0")
+            env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -t -c "SELECT COUNT(*) FROM workloads WHERE workload_type IS NULL OR workload_type = '';" 2>/dev/null | tr -d ' \n' || echo "0")
         missing_workload_type=${missing_workload_type:-0}
 
         if [ "$missing_org_id" -eq 0 ] && [ "$missing_workload_name" -eq 0 ] && [ "$missing_workload_type" -eq 0 ]; then
@@ -1078,10 +1111,10 @@ verify_workloads_in_db() {
         # Check cluster relationships
         echo_info "Checking cluster relationships..."
         local cluster_count=$(kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -t -c "SELECT COUNT(DISTINCT cluster_id) FROM workloads;" 2>/dev/null | tr -d ' ' || echo "0")
+            env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -t -c "SELECT COUNT(DISTINCT cluster_id) FROM workloads;" 2>/dev/null | tr -d ' ' || echo "0")
 
         local orphaned_workloads=$(kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -t -c \
+            env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -t -c \
             "SELECT COUNT(*) FROM workloads w
              LEFT JOIN clusters c ON w.cluster_id = c.id
              WHERE c.id IS NULL;" 2>/dev/null | tr -d ' ' || echo "0")
@@ -1096,7 +1129,7 @@ verify_workloads_in_db() {
         # Show workload distribution by type
         echo_info "Workload distribution by type:"
         kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -c \
+            env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -c \
             "SELECT workload_type, COUNT(*) as count
              FROM workloads
              GROUP BY workload_type
@@ -1105,7 +1138,7 @@ verify_workloads_in_db() {
         # Show workload distribution by namespace
         echo_info "Workload distribution by namespace:"
         kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -c \
+            env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -c \
             "SELECT namespace, COUNT(*) as count
              FROM workloads
              GROUP BY namespace
@@ -1114,7 +1147,7 @@ verify_workloads_in_db() {
 
         # Check container information
         local total_containers=$(kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -t -c \
+            env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -t -c \
             "SELECT SUM(array_length(containers, 1)) FROM workloads WHERE containers IS NOT NULL;" 2>/dev/null | tr -d ' ' || echo "0")
 
         echo_info "Total containers across all workloads: $total_containers"
@@ -1122,7 +1155,7 @@ verify_workloads_in_db() {
         # Verify recent data updates
         echo_info "Checking data freshness..."
         local recent_updates=$(kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -t -c \
+            env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -t -c \
             "SELECT COUNT(*) FROM workloads WHERE metrics_upload_at > NOW() - INTERVAL '1 hour';" 2>/dev/null | tr -d ' ' || echo "0")
 
         if [ "$recent_updates" -gt 0 ]; then
@@ -1134,7 +1167,7 @@ verify_workloads_in_db() {
         # Show most recent workload activity
         echo_info "Most recent workload uploads:"
         kubectl exec -n "$NAMESPACE" "$db_pod" -- \
-            psql -U postgres -d postgres -c \
+            env PGPASSWORD="$ros_password" psql -U "$ros_user" -d "$ros_db" -c \
             "SELECT workload_name, namespace, workload_type, metrics_upload_at
              FROM workloads
              ORDER BY metrics_upload_at DESC

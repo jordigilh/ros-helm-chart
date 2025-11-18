@@ -3,28 +3,28 @@ Reusable Init Container Templates
 */}}
 
 {{/*
-Wait for Database init container
+Wait for Database init container - waits for unified database server
 Usage: {{ include "cost-onprem.initContainer.waitForDb" (list . "ros") | nindent 8 }}
 Parameters:
   - Root context (.)
-  - Database type ("ros", "kruize", "sources")
+  - Database type ("ros", "kruize", "sources") - used for naming only
 */}}
 {{- define "cost-onprem.initContainer.waitForDb" -}}
 {{- $root := index . 0 -}}
 {{- $dbType := index . 1 -}}
-- name: wait-for-db-{{ $dbType }}
+- name: wait-for-database
   image: "{{ $root.Values.global.initContainers.waitFor.repository }}:{{ $root.Values.global.initContainers.waitFor.tag }}"
   securityContext:
     {{- include "cost-onprem.securityContext.nonRoot" $root | nindent 4 }}
   command: ['bash', '-c']
   args:
     - |
-      echo "Waiting for {{ $dbType }} database at {{ include "cost-onprem.fullname" $root }}-db-{{ $dbType }}:{{ index $root.Values.database $dbType "port" }}..."
-      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.fullname" $root }}-db-{{ $dbType }}/{{ index $root.Values.database $dbType "port" }}" 2>/dev/null; do
-        echo "Database not ready yet, retrying in 5 seconds..."
+      echo "Waiting for unified database server at {{ include "cost-onprem.fullname" $root }}-database:{{ $root.Values.database.server.port }}..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.fullname" $root }}-database/{{ $root.Values.database.server.port }}" 2>/dev/null; do
+        echo "Database server not ready yet, retrying in 5 seconds..."
         sleep 5
       done
-      echo "{{ $dbType }} database is ready"
+      echo "Database server is ready"
 {{- end -}}
 
 {{/*

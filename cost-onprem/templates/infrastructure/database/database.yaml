@@ -1,26 +1,26 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "cost-onprem.fullname" . }}-db-ros
+  name: {{ include "cost-onprem.fullname" . }}-database
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: database
-    app.kubernetes.io/name: db-ros
+    app.kubernetes.io/name: database
 spec:
-  serviceName: {{ include "cost-onprem.fullname" . }}-db-ros
+  serviceName: {{ include "cost-onprem.fullname" . }}-database
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: database
-      app.kubernetes.io/name: db-ros
+      app.kubernetes.io/name: database
   template:
     metadata:
       labels:
         {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: database
-        app.kubernetes.io/name: db-ros
+        app.kubernetes.io/name: database
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -28,33 +28,34 @@ spec:
       {{- end }}
       containers:
         - name: postgres
-          image: "{{ .Values.database.ros.image.repository }}:{{ .Values.database.ros.image.tag }}"
+          image: "{{ .Values.database.server.image.repository }}:{{ .Values.database.server.image.tag }}"
           imagePullPolicy: {{ .Values.global.pullPolicy }}
           ports:
             - name: postgres
-              containerPort: {{ .Values.database.ros.port }}
+              containerPort: {{ .Values.database.server.port }}
               protocol: TCP
           env:
-            - name: POSTGRES_DB
-              value: {{ .Values.database.ros.name | quote }}
             - name: POSTGRES_USER
-              value: {{ .Values.database.ros.user | quote }}
+              value: {{ .Values.database.server.adminUser | quote }}
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "cost-onprem.fullname" . }}-db-credentials
-                  key: ros-password
+                  key: admin-password
             - name: PGDATA
               value: "/var/lib/postgresql/data/pgdata"
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
           livenessProbe:
             exec:
               command:
                 - pg_isready
                 - -U
-                - {{ .Values.database.ros.user }}
+                - {{ .Values.database.server.adminUser }}
             initialDelaySeconds: {{ .Values.probes.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
@@ -64,13 +65,17 @@ spec:
               command:
                 - pg_isready
                 - -U
-                - {{ .Values.database.ros.user }}
+                - {{ .Values.database.server.adminUser }}
             initialDelaySeconds: 5
             periodSeconds: {{ .Values.probes.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
             failureThreshold: {{ .Values.probes.failureThreshold }}
           resources:
             {{- toYaml .Values.resources.database | nindent 12 }}
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: {{ include "cost-onprem.fullname" . }}-db-init
   volumeClaimTemplates:
     - metadata:
         name: postgres-storage
@@ -80,4 +85,4 @@ spec:
         storageClassName: {{ include "cost-onprem.storage.databaseClass" . }}
         resources:
           requests:
-            storage: {{ .Values.database.ros.storage.size }}
+            storage: {{ .Values.database.server.storage.size }}

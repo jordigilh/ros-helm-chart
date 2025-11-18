@@ -81,6 +81,17 @@ spec:
               value: {{ .Values.kruize.env.hibernateTimezone | quote }}
             - name: local
               value: {{ .Values.kruize.env.local | quote }}
+            # Database credentials from secret
+            - name: database_user
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.database.secretName" . }}
+                  key: kruize-user
+            - name: database_password
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.database.secretName" . }}
+                  key: kruize-password
           volumeMounts:
             - name: kruize-config
               mountPath: /tmp/cdappconfig.json
@@ -146,6 +157,17 @@ spec:
               value: {{ .Values.kruize.env.hibernateTimezone | quote }}
             - name: plots
               value: {{ .Values.kruize.env.plots | quote }}
+            # Database credentials from secret
+            - name: database_user
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.database.secretName" . }}
+                  key: kruize-user
+            - name: database_password
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.database.secretName" . }}
+                  key: kruize-password
           volumeMounts:
             - name: kruize-config
               mountPath: /tmp/cdappconfig.json

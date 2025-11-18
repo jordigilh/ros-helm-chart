@@ -53,39 +53,98 @@ app.kubernetes.io/part-of: {{ include "cost-onprem.name" . }}
 {{- end }}
 
 {{/*
-Generic database host resolver - returns internal service name if "internal", otherwise returns the configured host
-Usage: {{ include "cost-onprem.database.host" (list . "ros") }}
+Database host resolver - returns unified database service name if "internal", otherwise returns the configured host
+Since all databases (ros, kruize, sources) are on the same unified server, this returns a single common host.
+Usage: {{ include "cost-onprem.database.host" . }}
 */}}
 {{- define "cost-onprem.database.host" -}}
-  {{- $root := index . 0 -}}
-  {{- $dbType := index . 1 -}}
-  {{- $hostValue := index $root.Values.database $dbType "host" -}}
-  {{- if eq $hostValue "internal" -}}
-{{- printf "%s-db-%s" (include "cost-onprem.fullname" $root) $dbType -}}
+  {{- if eq .Values.database.server.host "internal" -}}
+{{- printf "%s-database" (include "cost-onprem.fullname" .) -}}
   {{- else -}}
-{{- $hostValue -}}
+{{- .Values.database.server.host -}}
   {{- end -}}
 {{- end }}
 
 {{/*
 Get the database URL - returns complete postgresql connection string
+Uses $(DB_USER) and $(DB_PASSWORD) environment variables for credentials
 */}}
 {{- define "cost-onprem.database.url" -}}
-{{- printf "postgresql://postgres:$(DB_PASSWORD)@%s:%s/%s?sslmode=%s" (include "cost-onprem.database.host" (list . "ros")) (.Values.database.ros.port | toString) .Values.database.ros.name .Values.database.ros.sslMode }}
+{{- printf "postgresql://$(DB_USER):$(DB_PASSWORD)@%s:%s/%s?sslmode=%s" (include "cost-onprem.database.host" .) (.Values.database.server.port | toString) .Values.database.ros.name .Values.database.server.sslMode }}
 {{- end }}
 
 {{/*
-Get the kruize database host - returns internal service name if "internal", otherwise returns the configured host
+Get the kruize database host - returns unified database service name (alias for backward compatibility)
 */}}
 {{- define "cost-onprem.kruize.databaseHost" -}}
-{{- include "cost-onprem.database.host" (list . "kruize") -}}
+{{- include "cost-onprem.database.host" . -}}
 {{- end }}
 
 {{/*
-Get the sources database host - returns internal service name if "internal", otherwise returns the configured host
+Get the sources database host - returns unified database service name (alias for backward compatibility)
 */}}
 {{- define "cost-onprem.sources.databaseHost" -}}
-{{- include "cost-onprem.database.host" (list . "sources") -}}
+{{- include "cost-onprem.database.host" . -}}
+{{- end }}
+
+{{/*
+Get the database credentials secret name - returns existingSecret if set, otherwise returns generated secret name
+Usage: {{ include "cost-onprem.database.secretName" . }}
+*/}}
+{{- define "cost-onprem.database.secretName" -}}
+{{- if .Values.database.existingSecret -}}
+{{- .Values.database.existingSecret -}}
+{{- else -}}
+{{- printf "%s-db-credentials" (include "cost-onprem.fullname" .) -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get ROS database username - returns value from values.yaml (used for both secret generation and ConfigMap)
+Usage: {{ include "cost-onprem.database.ros.user" . }}
+*/}}
+{{- define "cost-onprem.database.ros.user" -}}
+{{- .Values.database.ros.user -}}
+{{- end }}
+
+{{/*
+Get ROS database password - returns value from values.yaml (used for both secret generation and ConfigMap)
+Usage: {{ include "cost-onprem.database.ros.password" . }}
+*/}}
+{{- define "cost-onprem.database.ros.password" -}}
+{{- .Values.database.ros.password -}}
+{{- end }}
+
+{{/*
+Get Kruize database username - returns value from values.yaml (used for both secret generation and ConfigMap)
+Usage: {{ include "cost-onprem.database.kruize.user" . }}
+*/}}
+{{- define "cost-onprem.database.kruize.user" -}}
+{{- .Values.database.kruize.user -}}
+{{- end }}
+
+{{/*
+Get Kruize database password - returns value from values.yaml (used for both secret generation and ConfigMap)
+Usage: {{ include "cost-onprem.database.kruize.password" . }}
+*/}}
+{{- define "cost-onprem.database.kruize.password" -}}
+{{- .Values.database.kruize.password -}}
+{{- end }}
+
+{{/*
+Get Sources database username - returns value from values.yaml (used for both secret generation and ConfigMap)
+Usage: {{ include "cost-onprem.database.sources.user" . }}
+*/}}
+{{- define "cost-onprem.database.sources.user" -}}
+{{- .Values.database.sources.user -}}
+{{- end }}
+
+{{/*
+Get Sources database password - returns value from values.yaml (used for both secret generation and ConfigMap)
+Usage: {{ include "cost-onprem.database.sources.password" . }}
+*/}}
+{{- define "cost-onprem.database.sources.password" -}}
+{{- .Values.database.sources.password -}}
 {{- end }}
 
 {{/*
