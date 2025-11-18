@@ -6,6 +6,7 @@ This guide provides solutions to common issues encountered when deploying and op
 - [Data Processing Issues](#data-processing-issues)
   - [Manifests Not Auto-Completing After File Processing](#manifests-not-auto-completing-after-file-processing)
   - [Reports Stuck in "Downloading" Status](#reports-stuck-in-downloading-status)
+  - [Celery Task Success but Database Not Updated](#celery-task-success-but-database-not-updated)
   - [Worker OOM Kills](#worker-oom-kills)
   - [Tasks Not Being Queued](#tasks-not-being-queued)
 - [Worker and Scheduler Issues](#worker-and-scheduler-issues)
@@ -247,6 +248,119 @@ kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
 ```
 
 **Long-term Fix** - See [Worker OOM Kills](#worker-oom-kills)
+
+---
+
+### Celery Task Success but Database Not Updated
+
+#### Symptoms
+- Celery task shows `State: SUCCESS` when queried via `AsyncResult`
+- Database record shows `status=2` (QUEUED) or `status=3` (DOWNLOADING)
+- `started_datetime` is NULL despite task being "complete"
+- `celery_task_id` is set but task never actually executed
+- Processing appears stuck indefinitely
+
+####  Root Cause
+This is a **database write failure** where:
+1. A Celery task is queued and assigned a `celery_task_id` (status=2 or 3)
+2. Before the task executes (before line 59 in `_process_report_file` where status→PROCESSING), one of these occurs:
+   - Worker pod crashes or restarts
+   - Database connection fails  
+   - Database transaction is rolled back
+3. Redis shows the task as SUCCESS (stale or cached result)
+4. Database never gets updated with actual processing status
+5. Orchestrator sees `celery_task_id` set and assumes task is running, blocking reprocessing
+
+**Key indicator:** If `started_datetime IS NULL` but `celery_task_id IS NOT NULL`, the task was queued but never started execution, despite what Celery's result backend reports.
+
+#### Diagnosis
+
+**Check for reports with this pattern:**
+```bash
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
+  "SELECT id, report_name, manifest_id, status, 
+          celery_task_id IS NOT NULL as has_task,
+          started_datetime IS NULL as never_started,
+          completed_datetime IS NULL as not_complete
+   FROM public.reporting_common_costusagereportstatus
+   WHERE status IN (2, 3)
+     AND celery_task_id IS NOT NULL
+     AND started_datetime IS NULL
+   ORDER BY id DESC LIMIT 10;"
+```
+
+**Check the Celery task state (if task ID known):**
+```python
+kubectl exec -n <namespace> deployment/koku-koku-api-masu -- \
+  python koku/manage.py shell -c \
+  "from celery.result import AsyncResult; \
+   result = AsyncResult('TASK_ID_HERE'); \
+   print(f'State: {result.state}'); \
+   print(f'Ready: {result.ready()}'); \
+   print(f'Successful: {result.successful()}' if result.ready() else 'Pending')"
+```
+
+**Check worker pod stability:**
+```bash
+# Look for restarts or failures around the time of task queueing
+kubectl get events -n <namespace> --sort-by='.lastTimestamp' | \
+  grep -E '(OOM|kill|Error|Failed)' | tail -20
+
+# Check worker pod restart counts
+kubectl get pods -n <namespace> | grep celery-worker
+```
+
+#### Solution
+
+**Immediate Fix** - Mark these reports as complete (they're likely already processed):
+```bash
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
+  "UPDATE public.reporting_common_costusagereportstatus
+   SET status = 1,
+       started_datetime = NOW() - interval '5 minutes',
+       completed_datetime = NOW()
+   WHERE status IN (2, 3)
+     AND celery_task_id IS NOT NULL
+     AND started_datetime IS NULL
+   RETURNING id, report_name;"
+```
+
+**Or clear task IDs to allow reprocessing:**
+```bash
+kubectl exec postgres-0 -n <namespace> -- psql -U koku -d koku -c \
+  "UPDATE public.reporting_common_costusagereportstatus
+   SET celery_task_id = NULL
+   WHERE status IN (2, 3)
+     AND celery_task_id IS NOT NULL
+     AND started_datetime IS NULL
+   RETURNING id, report_name;"
+```
+
+**Automated Fix** - Use the E2E validator script (v1.3.0+):
+```bash
+cd scripts && ./e2e-validate.sh
+```
+The E2E validator now automatically detects and fixes this issue in the `fix_stuck_reports()` method during the processing phase.
+
+#### Prevention
+
+1. **Ensure worker pod stability:**
+   - Adequate memory limits (see [Worker OOM Kills](#worker-oom-kills))
+   - Proper database connection pooling
+   - Health checks configured
+
+2. **Monitor worker restarts:**
+   ```bash
+   kubectl get pods -n <namespace> -w | grep celery-worker
+   ```
+
+3. **Database connection resilience:**
+   - Ensure `DATABASE_ENGINE_POOL_SIZE` is appropriate
+   - Configure connection timeouts properly
+   - Use persistent database connections
+
+4. **Use the E2E validator regularly:**
+   The validator's `fix_stuck_reports()` method provides automatic detection and resolution.
 
 ---
 
