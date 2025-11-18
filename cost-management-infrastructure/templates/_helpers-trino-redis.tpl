@@ -180,14 +180,14 @@ Storage (S3) Helpers
 Storage (S3) endpoint
 */}}
 {{- define "cost-mgmt.storage.endpoint" -}}
-{{- .Values.costManagement.s3Endpoint | default "" -}}
+{{- .Values.storage.endpoint | default .Values.costManagement.s3Endpoint | default "http://s3.openshift-storage.svc:80" -}}
 {{- end }}
 
 {{/*
 Storage credentials secret name
 */}}
 {{- define "cost-mgmt.storage.secretName" -}}
-{{- printf "%s-storage-credentials" (include "cost-mgmt.fullname" .) -}}
+{{- .Values.storage.secretName | default (printf "%s-storage-credentials" (include "cost-mgmt.fullname" .)) -}}
 {{- end }}
 
 {{/*
@@ -201,10 +201,12 @@ S3 endpoint (alias for Koku compatibility)
 Koku database credentials secret name
 */}}
 {{- define "cost-mgmt.koku.database.secretName" -}}
-{{- if .Values.costManagement.database.secretName -}}
+{{- if and .Values.costManagement .Values.costManagement.database .Values.costManagement.database.secretName -}}
 {{- .Values.costManagement.database.secretName -}}
+{{- else if .Values.postgresql.auth.existingSecret -}}
+{{- .Values.postgresql.auth.existingSecret -}}
 {{- else -}}
-{{- printf "%s-db-credentials" (include "cost-mgmt.fullname" .) -}}
+{{- include "cost-mgmt-infra.postgresql.secretName" . -}}
 {{- end -}}
 {{- end -}}
 
