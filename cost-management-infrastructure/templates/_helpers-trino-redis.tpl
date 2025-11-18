@@ -196,7 +196,7 @@ Storage credentials secret name
 {{- if and .Values.storage .Values.storage.secretName -}}
   {{- .Values.storage.secretName -}}
 {{- else -}}
-  {{- printf "%s-storage-credentials" (include "cost-mgmt.fullname" .) -}}
+  storage-credentials
 {{- end -}}
 {{- end }}
 
