@@ -71,6 +71,7 @@ class ProviderPhase:
 
     def create_provider_via_django_orm(self,
                                        name: str = "AWS Test Provider E2E",
+                                       provider_type: str = "AWS",
                                        bucket: str = "cost-data",
                                        report_name: str = "test-report",
                                        report_prefix: str = "reports") -> str:
@@ -82,6 +83,7 @@ class ProviderPhase:
 
         Args:
             name: Provider name
+            provider_type: Provider type ('AWS', 'Azure', 'GCP')
             bucket: S3 bucket name
             report_name: Report name
             report_prefix: Report prefix in bucket
@@ -96,6 +98,15 @@ class ProviderPhase:
         if not masu_pod:
             raise RuntimeError("MASU pod not found")
 
+        # Map provider type string to Django constant
+        provider_type_map = {
+            'AWS': 'Provider.PROVIDER_AWS',
+            'Azure': 'Provider.PROVIDER_AZURE',
+            'GCP': 'Provider.PROVIDER_GCP',
+            'OCP': 'Provider.PROVIDER_OCP'
+        }
+        django_provider_type = provider_type_map.get(provider_type, 'Provider.PROVIDER_AWS')
+
         # Python code to run in MASU pod - provisions tenant AND creates provider
         django_code = f'''
 import os, sys, django
@@ -109,6 +120,7 @@ from django.core.management import call_command
 import uuid
 
 org_id = "{self.org_id}"
+provider_type_str = "{provider_type}"
 
 try:
     # STEP 1: Provision tenant schema
@@ -133,13 +145,14 @@ try:
         name="{name}",
         defaults={{
             "uuid": str(uuid.uuid4()),
-            "type": Provider.PROVIDER_AWS,
+            "type": {django_provider_type},
             "setup_complete": False,
             "active": True,
             "paused": False,
             "customer": customer
         }}
     )
+    print(f"PROVIDER_TYPE={{provider_type_str}}")
 
     if created:
         # Create authentication with UUID
@@ -148,16 +161,39 @@ try:
             defaults={{"credentials": {{}}}}
         )
 
-        # Create billing source with UUID
-        billing, _ = ProviderBillingSource.objects.get_or_create(
-            uuid=str(uuid.uuid4()),
-            defaults={{
-                "data_source": {{
-                    "bucket": "{bucket}",
-                    "report_name": "{report_name}",
-                    "report_prefix": "{report_prefix}"
+        # Create provider-specific billing source
+        if provider_type_str == 'AWS':
+            data_source = {{
+                "bucket": "{bucket}",
+                "report_name": "{report_name}",
+                "report_prefix": "{report_prefix}"
+            }}
+        elif provider_type_str == 'Azure':
+            data_source = {{
+                "resource_group": {{
+                    "directory": "",
+                    "export_name": "{report_name}"
+                }},
+                "storage_account": {{
+                    "local_dir": "{bucket}",
+                    "container": ""
                 }}
             }}
+        elif provider_type_str == 'GCP':
+            data_source = {{
+                "dataset": "{bucket}",
+                "table_id": "{report_name}"
+            }}
+        else:
+            data_source = {{
+                "bucket": "{bucket}",
+                "report_name": "{report_name}",
+                "report_prefix": "{report_prefix}"
+            }}
+
+        billing, _ = ProviderBillingSource.objects.get_or_create(
+            uuid=str(uuid.uuid4()),
+            defaults={{"data_source": data_source}}
         )
 
         # Link to provider
@@ -249,32 +285,40 @@ except Exception as e:
 
     def create_provider(self,
                        name: str = "AWS Test Provider E2E",
+                       provider_type: str = "AWS",
                        bucket: str = "cost-data",
                        report_name: str = "test-report",
                        report_prefix: str = "reports") -> str:
         """Create provider using best available method
 
         Priority:
-        1. Sources API (preferred, Red Hat recommended)
-        2. Django ORM (requires k8s_client, properly provisions tenant)
+        1. Django ORM (properly provisions tenant + creates provider)
+        2. Sources API (if available - Red Hat recommended for Day 2)
         3. Direct SQL (fallback, may not provision tenant properly)
 
         Args:
             name: Provider name
-            bucket: S3 bucket name
+            provider_type: Provider type ('AWS', 'Azure', 'GCP')
+            bucket: S3 bucket name (or storage account for Azure)
             report_name: Report name
             report_prefix: Report prefix in bucket
 
         Returns:
             Provider UUID
         """
-        # Prefer Sources API if available
-        if self.sources_api:
-            return self.create_provider_via_sources_api(name, bucket, report_name, report_prefix)
-
-        # Use Django ORM approach if k8s client available
+        # Use Django ORM approach if k8s client available (preferred for E2E)
         if self.k8s:
-            return self.create_provider_via_django_orm(name, bucket, report_name, report_prefix)
+            return self.create_provider_via_django_orm(
+                name=name,
+                provider_type=provider_type,
+                bucket=bucket,
+                report_name=report_name,
+                report_prefix=report_prefix
+            )
+
+        # Sources API only works for AWS currently
+        if self.sources_api and provider_type == 'AWS':
+            return self.create_provider_via_sources_api(name, bucket, report_name, report_prefix)
 
         # Fallback to direct SQL (won't provision tenant properly!)
         return self.db.create_provider(
@@ -285,17 +329,18 @@ except Exception as e:
             report_prefix=report_prefix
         )
 
-    def run(self, skip: bool = False) -> Dict:
+    def run(self, skip: bool = False, provider_type: str = "AWS") -> Dict:
         """Run provider setup phase
 
         Args:
             skip: Skip provider creation if True
+            provider_type: Provider type to create ('AWS', 'Azure', 'GCP')
 
         Returns:
             Results dict
         """
         print("\n" + "="*70)
-        print("Phase 3: Provider Setup")
+        print(f"Phase 3: Provider Setup ({provider_type})")
         print("="*70 + "\n")
 
         if skip:
@@ -506,17 +551,23 @@ except Exception as e:
                     }
 
         # Create new provider
-        print("\n📝 Creating new provider...")
+        provider_name = f"{provider_type} Test Provider E2E"
+        print(f"\n📝 Creating new {provider_type} provider...")
         try:
-            provider_uuid = self.create_provider()
-            print(f"  ✅ Provider created")
+            provider_uuid = self.create_provider(
+                name=provider_name,
+                provider_type=provider_type
+            )
+            print(f"  ✅ {provider_type} provider created")
+            print(f"  ℹ️  Name: {provider_name}")
             print(f"  ℹ️  UUID: {provider_uuid}")
 
             return {
                 'passed': True,
                 'created': True,
                 'provider_uuid': provider_uuid,
-                'provider_name': 'AWS Test Provider E2E'
+                'provider_name': provider_name,
+                'provider_type': provider_type
             }
         except Exception as e:
             print(f"  ❌ Provider creation failed: {e}")

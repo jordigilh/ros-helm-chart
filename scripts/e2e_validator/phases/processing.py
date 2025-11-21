@@ -197,62 +197,149 @@ except Exception as e:
         except Exception as e:
             return {'marked_complete': 0, 'error': str(e)}
 
-    def create_aws_hive_tables(self):
-        """Create AWS Hive schema and tables manually (workaround for Koku bug)
-        
+    def create_hive_tables_for_provider(self, provider_type: str):
+        """Create Hive schema and tables for any cloud provider (workaround for Koku bug)
+
         Koku only auto-creates Hive schemas for GCP (parquet_report_processor.py line 466-468).
-        AWS table creation is conditional and often skipped. This manually creates them.
-        
+        AWS/Azure table creation is conditional and often skipped. This manually creates them.
+
+        Args:
+            provider_type: 'AWS', 'Azure', or 'GCP'
+
         Returns:
             Dict with success status and tables created or error message
         """
+        # Provider-specific table definitions
+        PROVIDER_SCHEMAS = {
+            'AWS': {
+                'base_table': 'aws_line_items',
+                'daily_table': 'aws_line_items_daily',
+                's3_path': f's3a://cost-data/data/parquet/{self.org_id}/AWS',
+                's3_daily_path': f's3a://cost-data/data/parquet/{self.org_id}/AWS-local',
+                'has_daily': True,
+                'columns': [
+                    'lineitem_usagestartdate timestamp',
+                    'lineitem_usageenddate timestamp',
+                    'lineitem_productcode varchar',
+                    'lineitem_usagetype varchar',
+                    'lineitem_operation varchar',
+                    'lineitem_availabilityzone varchar',
+                    'lineitem_resourceid varchar',
+                    'lineitem_usageamount double',
+                    'lineitem_unblendedcost double',
+                    'lineitem_blendedcost double',
+                    'product_region varchar',
+                    'bill_invoiceid varchar',
+                    'bill_payeraccountid varchar'
+                ]
+            },
+            'Azure': {
+                'base_table': 'azure_line_items',
+                'daily_table': None,  # Azure doesn't create daily tables
+                's3_path': f's3a://cost-data/data/parquet/{self.org_id}/Azure',
+                's3_daily_path': None,
+                'has_daily': False,
+                'columns': [
+                    'date timestamp',
+                    'billingperiodstartdate timestamp',
+                    'billingperiodenddate timestamp',
+                    'quantity double',
+                    'resourcerate double',
+                    'costinbillingcurrency double',
+                    'effectiveprice double',
+                    'unitprice double',
+                    'paygprice double',
+                    'subscriptionid varchar',
+                    'resourcegroup varchar',
+                    'metercategory varchar',
+                    'metersubcategory varchar',
+                    'resourcelocation varchar',
+                    'servicename varchar',
+                    'resource_id_matched boolean'
+                ]
+            },
+            'GCP': {
+                'base_table': 'gcp_line_items',
+                'daily_table': 'gcp_line_items_daily',
+                's3_path': f's3a://cost-data/data/parquet/{self.org_id}/GCP',
+                's3_daily_path': f's3a://cost-data/data/parquet/{self.org_id}/GCP-local',
+                'has_daily': True,
+                'columns': [
+                    'usage_start_time timestamp',
+                    'usage_end_time timestamp',
+                    'export_time timestamp',
+                    'cost double',
+                    'currency_conversion_rate double',
+                    'usage_amount double',
+                    'usage_amount_in_pricing_units double',
+                    'credit_amount double',
+                    'invoice_month varchar',
+                    'project_id varchar',
+                    'project_name varchar',
+                    'service_description varchar',
+                    'sku_description varchar',
+                    'location_region varchar'
+                ]
+            }
+        }
+
+        if provider_type not in PROVIDER_SCHEMAS:
+            return {'error': f'Unsupported provider type: {provider_type}'}
+
+        schema = PROVIDER_SCHEMAS[provider_type]
+
         try:
             trino_pod = self.k8s.get_pod_by_component("trino-coordinator")
             if not trino_pod:
                 return {'error': 'Trino coordinator pod not found'}
-            
+
             # Create schema first
             schema_sql = f"CREATE SCHEMA IF NOT EXISTS hive.{self.org_id}"
             self.k8s.exec_in_pod(trino_pod, ['trino', '--execute', schema_sql])
-            
+
             tables_created = []
-            
-            # Create aws_line_items (non-daily) external table
-            table_sql = f"""CREATE TABLE IF NOT EXISTS hive.{self.org_id}.aws_line_items (
-                lineitem_usagestartdate timestamp, lineitem_usageenddate timestamp,
-                lineitem_productcode varchar, lineitem_usagetype varchar,
-                lineitem_operation varchar, lineitem_availabilityzone varchar,
-                lineitem_resourceid varchar, lineitem_usageamount double,
-                lineitem_unblendedcost double, lineitem_blendedcost double,
-                product_region varchar, bill_invoiceid varchar,
-                bill_payeraccountid varchar, source varchar, year varchar, month varchar
+
+            # Build column list
+            columns_str = ',\n                '.join(schema['columns'])
+
+            # Create base table
+            table_sql = f"""CREATE TABLE IF NOT EXISTS hive.{self.org_id}.{schema['base_table']} (
+                {columns_str},
+                source varchar, year varchar, month varchar
             ) WITH (
-                external_location = 's3a://cost-data/data/parquet/{self.org_id}/AWS',
+                external_location = '{schema['s3_path']}',
                 format = 'PARQUET', partitioned_by = ARRAY['source', 'year', 'month']
             )"""
             self.k8s.exec_in_pod(trino_pod, ['trino', '--execute', table_sql])
-            tables_created.append('aws_line_items')
-            
-            # Create aws_line_items_daily external table
-            daily_table_sql = f"""CREATE TABLE IF NOT EXISTS hive.{self.org_id}.aws_line_items_daily (
-                lineitem_usagestartdate timestamp, lineitem_usageenddate timestamp,
-                lineitem_productcode varchar, lineitem_usagetype varchar,
-                lineitem_operation varchar, lineitem_availabilityzone varchar,
-                lineitem_resourceid varchar, lineitem_usageamount double,
-                lineitem_unblendedcost double, lineitem_blendedcost double,
-                product_region varchar, bill_invoiceid varchar,
-                bill_payeraccountid varchar, source varchar, year varchar, month varchar
-            ) WITH (
-                external_location = 's3a://cost-data/data/parquet/{self.org_id}/AWS-local',
-                format = 'PARQUET', partitioned_by = ARRAY['source', 'year', 'month']
-            )"""
-            self.k8s.exec_in_pod(trino_pod, ['trino', '--execute', daily_table_sql])
-            tables_created.append('aws_line_items_daily')
-            
-            return {'success': True, 'tables': tables_created}
-            
+            tables_created.append(schema['base_table'])
+
+            # Create daily table if provider supports it
+            if schema['has_daily']:
+                daily_table_sql = f"""CREATE TABLE IF NOT EXISTS hive.{self.org_id}.{schema['daily_table']} (
+                    {columns_str},
+                    source varchar, year varchar, month varchar
+                ) WITH (
+                    external_location = '{schema['s3_daily_path']}',
+                    format = 'PARQUET', partitioned_by = ARRAY['source', 'year', 'month']
+                )"""
+                self.k8s.exec_in_pod(trino_pod, ['trino', '--execute', daily_table_sql])
+                tables_created.append(schema['daily_table'])
+
+            return {'success': True, 'tables': tables_created, 'provider': provider_type}
+
         except Exception as e:
-            return {'error': str(e)}
+            return {'error': str(e), 'provider': provider_type}
+
+    def create_aws_hive_tables(self):
+        """Create AWS Hive schema and tables manually (workaround for Koku bug)
+
+        DEPRECATED: Use create_hive_tables_for_provider('AWS') instead.
+        Kept for backwards compatibility.
+
+        Returns:
+            Dict with success status and tables created or error message
+        """
+        return self.create_hive_tables_for_provider('AWS')
 
     def monitor_summary_population(self, timeout: int = 60) -> Dict:
         """Monitor summary table population with progress details and AWS cost samples
@@ -722,15 +809,20 @@ except Exception as e:
                     elif 'error' in summary_result:
                         print(f"  ⚠️  Summary check failed: {summary_result['error']}")
 
-                # WORKAROUND: Create AWS Hive schema and tables manually (Koku bug - only auto-creates for GCP)
-                print(f"\n🔧 Creating AWS Hive schema and tables (workaround for Koku bug)...")
-                hive_result = self.create_aws_hive_tables()
+                # WORKAROUND: Create Hive schema and tables manually (Koku bug - only auto-creates for GCP)
+                # Detect provider type from trigger result
+                provider_type = trigger_result.get('provider_type', 'AWS')  # Default to AWS for backwards compatibility
+
+                print(f"\n🔧 Creating {provider_type} Hive schema and tables (workaround for Koku bug)...")
+                hive_result = self.create_hive_tables_for_provider(provider_type)
                 if hive_result.get('success'):
-                    print(f"  ✅ Created Hive schema '{self.org_id}' and tables")
+                    print(f"  ✅ Created Hive schema '{self.org_id}' and tables for {provider_type}")
                     print(f"     Tables: {', '.join(hive_result.get('tables', []))}")
+                    if not hive_result.get('tables'):
+                        print(f"     Note: {provider_type} may not require daily tables")
                 elif 'error' in hive_result:
-                    print(f"  ⚠️  Failed to create Hive tables: {hive_result['error']}")
-                
+                    print(f"  ⚠️  Failed to create Hive tables for {provider_type}: {hive_result['error']}")
+
                 # Wait for Trino tables to be created (parquet conversion is async)
                 trino_result = self.wait_for_trino_tables(timeout=60)
                 if not trino_result['success']:

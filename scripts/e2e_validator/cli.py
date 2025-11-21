@@ -25,18 +25,20 @@ from .phases.kafka_validation import KafkaValidationPhase
 @click.command()
 @click.option('--namespace', default='cost-mgmt', help='Kubernetes namespace')
 @click.option('--org-id', default='org1234567', help='Organization ID')
+@click.option('--provider-type', type=click.Choice(['aws', 'azure', 'gcp', 'ocp'], case_sensitive=False), default='aws', help='Cloud provider type to test')
 @click.option('--skip-migrations', is_flag=True, help='Skip database migrations')
 @click.option('--skip-provider', is_flag=True, help='Skip provider setup')
 @click.option('--skip-data', is_flag=True, help='Skip data upload')
-@click.option('--skip-tests', is_flag=True, help='Skip IQE tests')
+@click.option('--skip-tests', is_flag=True, help='Skip IQE tests (only allowed in smoke-test mode)')
 @click.option('--skip-deployment-validation', is_flag=True, help='Skip deployment validation')
 @click.option('--quick', is_flag=True, help='Quick mode (skip all setup)')
+@click.option('--smoke-test', is_flag=True, help='Smoke test mode: fast validation with minimal data')
 @click.option('--force', is_flag=True, help='Force data regeneration even if data exists')
 @click.option('--timeout', default=300, help='Processing timeout (seconds)')
 @click.option('--scenarios', default='all', help='Comma-separated scenario list or "all"')
 @click.option('--iqe-dir', default=None, help='IQE plugin directory (auto-detect if not provided)')
-def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
-         skip_tests, skip_deployment_validation, quick, force, timeout, scenarios, iqe_dir):
+def main(namespace, org_id, provider_type, skip_migrations, skip_provider, skip_data,
+         skip_tests, skip_deployment_validation, quick, smoke_test, force, timeout, scenarios, iqe_dir):
     """
     E2E Validation Suite for Cost Management
 
@@ -48,6 +50,15 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
         skip_migrations = True
         # NOTE: We don't skip provider because billing source must be configured
         # for MASU to process data. Provider setup is fast (~2 seconds).
+
+    # Normalize provider type to uppercase for internal use
+    provider_type = provider_type.upper()
+
+    # Validate skip-tests flag usage
+    if skip_tests and not smoke_test:
+        print("\n❌ ERROR: Cannot skip IQE tests in full validation mode")
+        print("   Use --smoke-test to enable fast validation without IQE tests")
+        return 1
 
     # Auto-detect IQE directory
     if iqe_dir is None:
@@ -76,6 +87,8 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
     print(f"\nConfiguration:")
     print(f"  Namespace:  {namespace}")
     print(f"  Org ID:     {org_id}")
+    print(f"  Provider:   {provider_type}")
+    print(f"  Mode:       {'SMOKE TEST (fast 4-row CSV)' if smoke_test else 'FULL VALIDATION (nise)'}")
     print(f"  Scenarios:  {len(scenario_list)}")
     print(f"  Timeout:    {timeout}s")
     if iqe_dir:
@@ -244,7 +257,7 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
             provider_uuid = None
         else:
             provider_phase = ProviderPhase(db, org_id=org_id, k8s_client=k8s)
-            results['provider'] = provider_phase.run(skip=skip_provider)
+            results['provider'] = provider_phase.run(skip=skip_provider, provider_type=provider_type)
             if not results['provider']['passed'] and not results['provider'].get('skipped'):
                 print("\n❌ Provider setup failed - skipping remaining phases")
                 should_skip_remaining = True
@@ -345,10 +358,12 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
 
             print(f"  ℹ️  Using monthly period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
 
-            results['data_upload'] = data_upload.upload_aws_cur_format(
+            results['data_upload'] = data_upload.upload_provider_data(
+                provider_type=provider_type,
                 start_date=start_date,
                 end_date=end_date,
-                force=force
+                force=force,
+                smoke_test=smoke_test
             )
 
             # Check for S3 errors
@@ -446,7 +461,32 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
         elapsed = time.time() - start_time
         print(f"\nTotal Time: {elapsed:.1f}s ({elapsed/60:.1f} minutes)")
 
-        # Count passes/failures (excluding skipped)
+        # Define critical phases that MUST pass (never be skipped or failed)
+        critical_phases = ['preflight', 'provider', 'data_upload', 'processing']
+
+        # IQE tests are critical in full validation mode only
+        if not smoke_test:
+            critical_phases.append('iqe_tests')
+
+        # Trino validation is critical for AWS/Azure/GCP (not for OCP-only)
+        if provider_type in ['AWS', 'AZURE', 'GCP']:
+            critical_phases.append('trino')
+
+        # Check critical phase status
+        critical_failures = []
+        critical_skipped = []
+        critical_passed = []
+
+        for phase in critical_phases:
+            result = results.get(phase, {'passed': False, 'skipped': False})
+            if result.get('skipped', False):
+                critical_skipped.append(phase)
+            elif not result.get('passed', False):
+                critical_failures.append(phase)
+            else:
+                critical_passed.append(phase)
+
+        # Count all phases for summary
         phases_passed = sum(1 for r in results.values() if r.get('passed', False) and not r.get('skipped', False))
         phases_skipped = sum(1 for r in results.values() if r.get('skipped', False))
         phases_failed = sum(1 for r in results.values() if not r.get('passed', False) and not r.get('skipped', False))
@@ -467,18 +507,26 @@ def main(namespace, org_id, skip_migrations, skip_provider, skip_data,
                 status = "❌"
             print(f"  {status} {phase_name}")
 
-        # Overall result
-        all_passed = phases_passed == phases_total
+        # Overall result - ALL critical phases must pass
+        validation_mode = "SMOKE TEST" if smoke_test else "FULL VALIDATION"
 
-        if all_passed:
-            print("\n✅ E2E VALIDATION PASSED")
-            print("\nDeployment is functioning correctly!")
-            print("Database layer validated (architecture-agnostic)")
-            return 0
-        else:
-            print("\n⚠️  E2E VALIDATION INCOMPLETE")
-            print("\nSome phases failed or were skipped")
+        if critical_failures or critical_skipped:
+            print(f"\n❌ E2E {validation_mode} FAILED")
+            if critical_failures:
+                print(f"\nCritical phases failed: {', '.join(critical_failures)}")
+            if critical_skipped:
+                print(f"Critical phases skipped: {', '.join(critical_skipped)}")
+            print("\n⚠️  Validation cannot pass with critical phase failures/skips")
             return 1
+        else:
+            print(f"\n✅ E2E {validation_mode} PASSED")
+            print(f"\nAll {len(critical_passed)} critical phases completed successfully!")
+            print(f"Critical phases: {', '.join(critical_passed)}")
+            if provider_type == 'OCP':
+                print("OCP provider validated (architecture-agnostic)")
+            else:
+                print("Database layer validated (architecture-agnostic)")
+            return 0
 
     except KeyboardInterrupt:
         print("\n\n⚠️  Interrupted by user")

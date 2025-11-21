@@ -353,36 +353,113 @@ class NiseClient:
             'report', 'aws',
             '--start-date', start_date.strftime('%Y-%m-%d'),
             '--end-date', end_date.strftime('%Y-%m-%d'),
-            '--aws-account-id', account_id,
-            '--aws-report-name', 'test-report',
-            '--output', output_dir,
+            '--write-monthly'
         ]
 
-        # Add tags if specified
-        if tags:
-            for tag in tags:
-                cmd.extend(['--aws-tags', tag])
-
-        # Add instance types
-        if instance_types:
-            for instance_type in instance_types:
-                cmd.extend(['--aws-instance-type', instance_type])
-
-        # Add regions
-        if regions:
-            for region in regions:
-                cmd.extend(['--aws-region', region])
-
-        # Add storage types (EBS volumes, S3, etc)
-        if storage_types:
-            for storage_type in storage_types:
-                if 'gp' in storage_type or 'io' in storage_type or 'st' in storage_type:
-                    cmd.extend(['--aws-ebs-type', storage_type])
-                elif 's3' in storage_type.lower():
-                    cmd.extend(['--aws-s3-tier', storage_type])
-
         print(f"    Generating AWS CUR: {account_id}, {start_date.date()} to {end_date.date()}")
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        # AWS nise writes to current directory
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=output_dir)
+
+        return output_dir
+
+    def generate_azure_export(self,
+                             start_date: datetime,
+                             end_date: datetime,
+                             subscription_id: str = '11111111-1111-1111-1111-111111111111',
+                             output_dir: Optional[str] = None,
+                             container_name: str = 'cost-data',
+                             report_name: str = 'test-report',
+                             report_prefix: str = 'reports',
+                             resource_group: bool = True) -> str:
+        """Generate Azure Cost Export
+
+        Args:
+            start_date: Start date
+            end_date: End date
+            subscription_id: Azure subscription ID
+            output_dir: Output directory
+            container_name: Azure container name
+            report_name: Report name
+            report_prefix: Report prefix
+            resource_group: Generate resource group based report
+
+        Returns:
+            Path to generated data
+        """
+        if output_dir is None:
+            if self.temp_dir is None:
+                self.temp_dir = tempfile.mkdtemp(prefix='nise-e2e-')
+            output_dir = self.temp_dir
+
+        cmd = [
+            self.nise_path,
+            'report', 'azure',
+            '--start-date', start_date.strftime('%Y-%m-%d'),
+            '--end-date', end_date.strftime('%Y-%m-%d'),
+            '--azure-container-name', container_name,
+            '--azure-report-name', report_name,
+            '--azure-report-prefix', report_prefix,
+            '--write-monthly'
+        ]
+
+        if resource_group:
+            cmd.append('--resource-group')
+
+        print(f"    Generating Azure export: {subscription_id}, {start_date.date()} to {end_date.date()}")
+        # Azure nise writes to current directory
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=output_dir)
+
+        return output_dir
+
+    def generate_gcp_export(self,
+                           start_date: datetime,
+                           end_date: datetime,
+                           project_id: str = 'test-project-12345',
+                           output_dir: Optional[str] = None,
+                           dataset_name: str = 'cost-data',
+                           table_name: str = 'test-report',
+                           bucket_name: str = 'cost-data',
+                           report_prefix: str = 'reports',
+                           resource_level: bool = True) -> str:
+        """Generate GCP Billing Export
+
+        Args:
+            start_date: Start date
+            end_date: End date
+            project_id: GCP project ID
+            output_dir: Output directory
+            dataset_name: BigQuery dataset name
+            table_name: BigQuery table name
+            bucket_name: GCS bucket name
+            report_prefix: Report prefix
+            resource_level: Generate resource level report
+
+        Returns:
+            Path to generated data
+        """
+        if output_dir is None:
+            if self.temp_dir is None:
+                self.temp_dir = tempfile.mkdtemp(prefix='nise-e2e-')
+            output_dir = self.temp_dir
+
+        cmd = [
+            self.nise_path,
+            'report', 'gcp',
+            '--start-date', start_date.strftime('%Y-%m-%d'),
+            '--end-date', end_date.strftime('%Y-%m-%d'),
+            '--gcp-dataset-name', dataset_name,
+            '--gcp-table-name', table_name,
+            '--gcp-bucket-name', bucket_name,
+            '--gcp-report-prefix', report_prefix,
+            '--write-monthly'
+        ]
+
+        if resource_level:
+            cmd.append('--resource-level')
+
+        print(f"    Generating GCP export: {project_id}, {start_date.date()} to {end_date.date()}")
+        # GCP nise writes to current directory
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=output_dir)
 
         return output_dir
 
@@ -519,4 +596,33 @@ class NiseScenarioValidator:
             'tolerance': tolerance,
             'passed': passed
         }
+
+    def generate_ocp_usage(self, start_date: datetime, end_date: datetime, cluster_id: str = 'test-cluster') -> str:
+        """Generate OCP (OpenShift) usage data using nise
+
+        Args:
+            start_date: Start date for data generation
+            end_date: End date for data generation
+            cluster_id: Cluster identifier
+
+        Returns:
+            str: Path to directory containing generated files
+        """
+        output_dir = f'{self.output_path}/ocp_{start_date.strftime("%Y%m%d")}_{end_date.strftime("%Y%m%d")}'
+        os.makedirs(output_dir, exist_ok=True)
+
+        cmd = [
+            self.nise_path,
+            'report', 'ocp',
+            '--start-date', start_date.strftime('%Y-%m-%d'),
+            '--end-date', end_date.strftime('%Y-%m-%d'),
+            '--ocp-cluster-id', cluster_id,
+            '--write-monthly'
+        ]
+
+        print(f"    Generating OCP usage: {cluster_id}, {start_date.date()} to {end_date.date()}")
+        # OCP nise writes to current directory
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=output_dir)
+
+        return output_dir
 
