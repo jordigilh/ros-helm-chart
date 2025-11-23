@@ -1,0 +1,11 @@
+apiVersion: console.openshift.io/v1
+kind: ConsoleLink
+metadata:
+  name: cost-management
+spec:
+  applicationMenu:
+    imageURL: static/assets/public/imgs/logos/redhat.svg
+    section: Red Hat Applications
+  href: {{ if and .Values.serviceRoute.hosts (index .Values.serviceRoute.hosts 0).host }}{{ printf "https://%s/" (index .Values.serviceRoute.hosts 0).host | quote }}{{ else }}{{ printf "https://%s-ui-%s.%s/" (include "cost-onprem.fullname" .) .Release.Namespace (include "cost-onprem.platform.clusterDomain" .) | quote }}{{ end }}
+  location: ApplicationMenu
+  text: Cost Management

@@ -21,4 +21,3 @@ spec:
     app.kubernetes.io/component: ui
   type: ClusterIP
 {{- end }}
-
