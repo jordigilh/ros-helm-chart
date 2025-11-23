@@ -79,8 +79,8 @@ spec:
   tls:
     termination: {{ .Values.serviceRoute.tls.termination }}
     {{- if .Values.serviceRoute.tls.insecureEdgeTerminationPolicy }}
-      insecureEdgeTerminationPolicy: {{ .Values.serviceRoute.tls.insecureEdgeTerminationPolicy }}
-      {{- end }}
+    insecureEdgeTerminationPolicy: {{ .Values.serviceRoute.tls.insecureEdgeTerminationPolicy }}
+    {{- end }}
   {{- end }}
 ---
 # UI route
