@@ -57,7 +57,7 @@ cd scripts && ./cost-mgmt-ocp-dataflow.sh --force
 
 **Output (from PostgreSQL summary table):**
 ```sql
-SELECT 
+SELECT
     pod_request_cpu_core_hours,
     pod_request_memory_gigabyte_hours
 FROM org1234567.reporting_ocpusagelineitem_daily_summary
@@ -197,11 +197,11 @@ The deployed system correctly:
 **Database Queries:**
 ```sql
 -- Verify summary data
-SELECT * FROM org1234567.reporting_ocpusagelineitem_daily_summary 
+SELECT * FROM org1234567.reporting_ocpusagelineitem_daily_summary
 WHERE cluster_id = 'test-cluster-123';
 
 -- Check cost calculations
-SELECT 
+SELECT
     SUM(pod_request_cpu_core_hours) as cpu_hours,
     SUM(pod_request_memory_gigabyte_hours) as mem_hours
 FROM org1234567.reporting_ocpusagelineitem_daily_summary

@@ -116,7 +116,7 @@ cost-onprem-chart/
 │       │   └── metastore/            # Hive Metastore + DB
 │       └── redis/                    # Celery result backend
 │
-├── cost-management-onprem/           # ⭐ NEW: Cost Management Application chart  
+├── cost-management-onprem/           # ⭐ NEW: Cost Management Application chart
 │   ├── Chart.yaml                    # Application chart metadata
 │   ├── values.yaml                   # Application configuration
 │   └── templates/                    # Application resources
