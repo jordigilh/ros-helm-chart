@@ -1,6 +1,44 @@
-# Cost Management On-Premise Helm Chart
+# Cost Management On-Premise Helm Charts
 
-Kubernetes Helm chart for deploying the complete Cost Management On-Premise solution, including Resource Optimization Service (ROS) and future cost management capabilities.
+This repository contains Helm charts for deploying cost management solutions on-premise:
+
+1. **`cost-onprem/`** - Resource Optimization Service (ROS) with Kruize integration
+2. **`cost-management-infrastructure/`** - Cost Management data processing infrastructure (PostgreSQL, Trino, Hive, Redis) ⭐ NEW
+3. **`cost-management-onprem/`** - Cost Management application (Koku API, MASU, Celery workers) ⭐ NEW
+
+---
+
+## 📊 Cost Management (Koku) Deployment ⭐ NEW
+
+Complete Helm charts for deploying the full Cost Management stack with OCP cost analytics capabilities.
+
+**🚀 Quick Start:**
+```bash
+# Automated deployment (recommended)
+./scripts/install-cost-management-complete.sh
+
+# Or deploy components separately
+./scripts/bootstrap-infrastructure.sh        # Infrastructure (PostgreSQL, Trino, Hive)
+./scripts/install-cost-helm-chart.sh        # Application (Koku API, MASU, Workers)
+```
+
+**📖 Documentation:**
+- **[Cost Management Installation Guide](docs/cost-management-installation.md)** - Complete deployment guide
+- **Prerequisites**: OpenShift 4.18+, ODF (150GB+), Kafka/Strimzi
+- **Architecture**: 2-chart deployment (infrastructure + application)
+- **E2E Testing**: Automated validation with `./scripts/cost-mgmt-ocp-dataflow.sh`
+
+**Key Features:**
+- 📊 Complete OCP cost data pipeline (Kafka → CSV → Parquet → Trino → PostgreSQL)
+- 🔄 37 Kubernetes resources with optimized resource requests/limits
+- 🧪 Python-based E2E validation framework
+- 📦 Modular deployment (infrastructure and application separately or together)
+
+---
+
+## 🎯 Resource Optimization Service (ROS)
+
+Kubernetes Helm chart for deploying the Resource Optimization Service (ROS) with Kruize integration and future cost management capabilities.
 
 ## 🚀 Quick Start
 
@@ -53,26 +91,53 @@ helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --creat
 
 **Need more?** Configuration, security, templates, and specialized guides are available in the [Complete Documentation Index](docs/README.md).
 
-## 🏗️ Chart Structure
+## 🏗️ Repository Structure
 
 ```
 cost-onprem-chart/
-├── cost-onprem/    # Helm chart directory
-│   ├── Chart.yaml             # Chart metadata (v0.2.0)
-│   ├── values.yaml            # Default configuration
-│   └── templates/             # Kubernetes resource templates (organized by service)
-│       ├── ros/               # Resource Optimization Service
-│       ├── kruize/            # Kruize optimization engine
-│       ├── sources-api/       # Source management
-│       ├── ingress/           # API gateway
-│       ├── infrastructure/    # Database, Kafka, storage, cache
-│       ├── auth/              # Authentication (Authorino)
-│       ├── monitoring/        # Prometheus ServiceMonitor
-│       ├── shared/            # Shared resources
-│       └── cost-management/   # Future cost management components
-├── docs/                      # Documentation
-├── scripts/                   # Installation and automation scripts
-└── .github/workflows/         # CI/CD automation
+├── cost-onprem/                      # ROS Helm chart
+│   ├── Chart.yaml                    # Chart metadata (v0.2.0)
+│   ├── values.yaml                   # Default configuration
+│   └── templates/                    # Kubernetes resource templates
+│       ├── ros/                      # Resource Optimization Service
+│       ├── kruize/                   # Kruize optimization engine
+│       ├── sources-api/              # Source management
+│       ├── ingress/                  # API gateway
+│       ├── infrastructure/           # Database, Kafka, storage, cache
+│       ├── auth/                     # Authentication (Authorino)
+│       └── monitoring/               # Prometheus ServiceMonitor
+│
+├── cost-management-infrastructure/   # ⭐ NEW: Cost Management Infrastructure chart
+│   ├── Chart.yaml                    # Infrastructure chart metadata
+│   ├── values.yaml                   # Infrastructure configuration
+│   └── templates/                    # Infrastructure resources
+│       ├── postgresql/               # Main Koku database
+│       ├── trino/                    # Query engine (coordinator + workers)
+│       │   └── metastore/            # Hive Metastore + DB
+│       └── redis/                    # Celery result backend
+│
+├── cost-management-onprem/           # ⭐ NEW: Cost Management Application chart  
+│   ├── Chart.yaml                    # Application chart metadata
+│   ├── values.yaml                   # Application configuration
+│   └── templates/                    # Application resources
+│       ├── cost-management/          # Koku API, MASU, Celery workers
+│       └── sources/                  # Sources API + DB
+│
+├── docs/                             # Documentation
+│   ├── cost-management-installation.md  # ⭐ NEW: Cost Management guide
+│   ├── installation.md               # ROS installation guide
+│   ├── quickstart.md                 # ROS quick start
+│   └── ...                           # Other guides
+│
+├── scripts/                          # Installation and automation scripts
+│   ├── install-helm-chart.sh        # ROS deployment
+│   ├── install-cost-management-complete.sh  # ⭐ NEW: Full Cost Management
+│   ├── bootstrap-infrastructure.sh   # ⭐ NEW: Infrastructure only
+│   ├── install-cost-helm-chart.sh   # ⭐ NEW: Application only
+│   ├── cost-mgmt-ocp-dataflow.sh    # ⭐ NEW: E2E validation
+│   └── e2e_validator/                # ⭐ NEW: Python test framework
+│
+└── .github/workflows/                # CI/CD automation
 ```
 
 ## 📦 Services Deployed

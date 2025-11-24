@@ -333,7 +333,7 @@ display_next_steps() {
     echo ""
     echo_info "For more information, see the documentation:"
     echo "   - README.md"
-    echo "   - INSTALLATION_GUIDE.md"
+    echo "   - docs/cost-management-installation.md"
     echo ""
 }
 

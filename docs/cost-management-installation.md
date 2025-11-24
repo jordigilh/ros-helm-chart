@@ -331,7 +331,7 @@ oc get pods -n $NAMESPACE | grep koku
 
 **Option B: Using provided script (Application Only)**
 
-This script deploys **only the Cost Management application chart** (Koku API, MASU, Celery workers). 
+This script deploys **only the Cost Management application chart** (Koku API, MASU, Celery workers).
 
 **⚠️ Prerequisites:** Infrastructure chart must be deployed first (see Step 2 or use `bootstrap-infrastructure.sh`)
 

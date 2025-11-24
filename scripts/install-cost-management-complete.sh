@@ -327,7 +327,7 @@ if [ -f "$SCRIPT_DIR/install-cost-helm-chart.sh" ]; then
     export HELM_RELEASE_NAME="cost-mgmt"
     export USE_LOCAL_CHART=true
     export LOCAL_CHART_PATH="$CHART_PATH"
-    
+
     # Call the application installer script
     # This script handles:
     # - Secret creation (Django, Sources API, Hive Metastore DB, S3 storage)
