@@ -256,7 +256,7 @@ class KafkaValidationPhase:
         try:
             # Get Kafka pod to run topic list command
             result = subprocess.run(
-                ['kubectl', 'get', 'pods', '-n', self.kafka_namespace, '-l', 'strimzi.io/name=ros-ocp-kafka-kafka',
+                ['kubectl', 'get', 'pods', '-n', self.kafka_namespace, '-l', 'strimzi.io/name=cost-onprem-kafka-kafka',
                  '-o', 'jsonpath={.items[0].metadata.name}'],
                 capture_output=True,
                 text=True,
