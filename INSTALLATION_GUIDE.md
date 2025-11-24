@@ -249,7 +249,7 @@ oc project $NAMESPACE
 
 ### Step 2: Deploy Infrastructure Chart
 
-The infrastructure chart deploys the data processing layer: PostgreSQL, Hive Metastore, and Trino.
+The infrastructure chart deploys the data processing layer: PostgreSQL, Hive Metastore, Trino, and Redis.
 
 **Option A: Using Helm directly (manual control)**
 ```bash
@@ -266,8 +266,31 @@ helm install cost-management-infrastructure ./cost-management-infrastructure \
 oc get pods -n $NAMESPACE | grep -E "postgres|hive|trino"
 ```
 
-**Option B: Use automated script (recommended - see Step 4)**
-Skip to Step 4 for automated deployment of both infrastructure and application charts.
+**Option B: Using provided script (Infrastructure Only)**
+
+This script deploys **only the infrastructure chart** with automated setup and migration handling.
+
+**Features:**
+- 🎯 Automated infrastructure deployment
+- 📦 PostgreSQL, Trino, Hive Metastore, Redis setup
+- 🔄 Automatic database migration execution
+- ✅ Component health verification
+
+**Note:** This script is also used internally by `install-cost-management-complete.sh` (Option C) for infrastructure deployment.
+
+```bash
+# Deploy only infrastructure
+./scripts/bootstrap-infrastructure.sh --namespace cost-mgmt
+
+# With custom release name
+./scripts/bootstrap-infrastructure.sh --namespace cost-mgmt --release-name my-infra
+
+# Skip migrations (run manually later)
+./scripts/bootstrap-infrastructure.sh --namespace cost-mgmt --skip-migrations
+```
+
+**Option C: Use automated script (recommended - see Step 4)**
+Skip to Step 4 for automated deployment of **both** infrastructure and application charts using `install-cost-management-complete.sh`.
 
 **Expected Pods:**
 - `postgres-0` (StatefulSet, Ready 1/1)
@@ -306,17 +329,36 @@ helm install cost-management-onprem ./cost-management-onprem \
 oc get pods -n $NAMESPACE | grep koku
 ```
 
-**Option B: Using provided script**
+**Option B: Using provided script (Application Only)**
+
+This script deploys **only the Cost Management application chart** (Koku API, MASU, Celery workers). 
+
+**⚠️ Prerequisites:** Infrastructure chart must be deployed first (see Step 2 or use `bootstrap-infrastructure.sh`)
+
+**Features:**
+- 🔐 Automatic secret creation (Django, Sources API, Hive Metastore, S3)
+- 🔍 Auto-discovers S3 credentials from ODF
+- ✅ Chart validation and linting before deployment
+- 🎯 Pod readiness checks and status reporting
+
+**Note:** This script is also used internally by `install-cost-management-complete.sh` (Option C) for application deployment.
+
 ```bash
 # Deploy only the application chart
 ./scripts/install-cost-helm-chart.sh
 
 # With custom namespace
 NAMESPACE=my-namespace ./scripts/install-cost-helm-chart.sh
+
+# Show deployment status
+./scripts/install-cost-helm-chart.sh status
+
+# Clean uninstall
+./scripts/install-cost-helm-chart.sh cleanup
 ```
 
 **Option C: Use automated script (recommended - see Step 4)**
-Skip to Step 4 for automated deployment of both infrastructure and application charts.
+Skip to Step 4 for automated deployment of **both** infrastructure and application charts using `install-cost-management-complete.sh`.
 
 **Expected Pods:**
 - `koku-koku-api-*` (Deployment, multiple replicas)
@@ -348,10 +390,17 @@ cd /path/to/ros-helm-chart/scripts
 1. ✅ Verifies pre-requirements (ODF, Kafka)
 2. ✅ Auto-discovers ODF S3 credentials
 3. ✅ Creates namespace if needed
-4. ✅ Deploys infrastructure chart (PostgreSQL, Hive, Trino)
-5. ✅ Deploys cost management chart (Koku API, listeners, workers)
-6. ✅ Runs database migrations
+4. ✅ Deploys infrastructure chart via `bootstrap-infrastructure.sh` (PostgreSQL, Hive, Trino, Redis)
+5. ✅ Deploys cost management chart via `install-cost-helm-chart.sh` (Koku API, listeners, workers)
+6. ✅ Runs database migrations automatically
 7. ✅ Verifies all components are healthy
+
+**Architecture:**
+This script orchestrates the complete deployment by calling:
+- **Phase 1:** `bootstrap-infrastructure.sh` (infrastructure chart)
+- **Phase 2:** `install-cost-helm-chart.sh` (application chart)
+
+This modular approach allows you to run each phase independently if needed (see Steps 2 and 3).
 
 **Script Features:**
 - **Auto-discovery:** Finds ODF S3 credentials automatically

@@ -319,49 +319,33 @@ log_phase "Phase 2: Application Deployment"
 
 log_header "Step 2.1: Application Chart Deployment"
 
-log_info "Deploying Cost Management application..."
-log_info "Chart path: $CHART_PATH"
+log_info "Deploying Cost Management application using install-cost-helm-chart.sh..."
 
-if [ ! -d "$CHART_PATH" ]; then
-    log_error "Chart directory not found: $CHART_PATH"
-    exit 1
-fi
-
-if [ ! -f "$CHART_PATH/values.yaml" ]; then
-    log_error "values.yaml not found in $CHART_PATH"
-    exit 1
-fi
-
-log_info "Running Helm install/upgrade..."
-helm upgrade --install cost-mgmt \
-    "$CHART_PATH" \
-    --namespace "$NAMESPACE" \
-    --wait \
-    --timeout 10m
-
-log_success "Application deployment completed"
-
-log_info "Waiting for pods to be ready (this may take a few minutes)..."
-sleep 10
-
-# Wait for critical pods
-CRITICAL_COMPONENTS=(
-    "koku-api"
-    "masu"
-    "celery-beat"
-)
-
-for component in "${CRITICAL_COMPONENTS[@]}"; do
-    log_info "Waiting for $component..."
-    if oc wait --for=condition=ready pod \
-        -l "app.kubernetes.io/component=$component" \
-        -n "$NAMESPACE" \
-        --timeout=300s 2>/dev/null; then
-        log_success "$component is ready"
+if [ -f "$SCRIPT_DIR/install-cost-helm-chart.sh" ]; then
+    # Set environment variables for the application installer
+    export NAMESPACE="$NAMESPACE"
+    export HELM_RELEASE_NAME="cost-mgmt"
+    export USE_LOCAL_CHART=true
+    export LOCAL_CHART_PATH="$CHART_PATH"
+    
+    # Call the application installer script
+    # This script handles:
+    # - Secret creation (Django, Sources API, Hive Metastore DB, S3 storage)
+    # - S3 endpoint auto-discovery
+    # - Chart validation and linting
+    # - Helm deployment with proper configuration
+    # - Pod readiness checks
+    if "$SCRIPT_DIR/install-cost-helm-chart.sh"; then
+        log_success "Application deployment completed"
     else
-        log_warning "$component may not be ready yet (check manually)"
+        log_error "Application deployment failed"
+        exit 1
     fi
-done
+else
+    log_error "install-cost-helm-chart.sh not found at $SCRIPT_DIR"
+    log_error "This script is required for application deployment"
+    exit 1
+fi
 
 # =============================================================================
 # Phase 3: Verification
