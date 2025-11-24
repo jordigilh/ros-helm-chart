@@ -504,10 +504,10 @@ cross_platform_date_ago() {
     local target_epoch=$(($(date +%s) - seconds_ago))
 
     # Try BSD date format first (macOS)
-    if date -r "$target_epoch" "$format" 2>/dev/null; then
+    if TZ=UTC date -r "$target_epoch" "$format" 2>/dev/null; then
         return 0
     # Try GNU date format (Linux)
-    elif date -d "@$target_epoch" "$format" 2>/dev/null; then
+    elif TZ=UTC date -d "@$target_epoch" "$format" 2>/dev/null; then
         return 0
     else
         # Fallback: use epoch time directly
