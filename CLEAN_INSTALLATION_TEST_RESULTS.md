@@ -174,7 +174,7 @@ The deployed system correctly:
 
 1. **For Production Deployment:**
    - Use the `install-cost-management-complete.sh` script
-   - Follow the `INSTALLATION_GUIDE.md`
+   - Follow the `docs/cost-management-installation.md`
    - Ensure ODF has at least 150GB available
    - Run the E2E test post-installation to verify
 

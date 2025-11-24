@@ -1,6 +1,44 @@
-# Cost Management On-Premise Helm Chart
+# Cost Management On-Premise Helm Charts
 
-Kubernetes Helm chart for deploying the complete Cost Management On-Premise solution, including Resource Optimization Service (ROS) and future cost management capabilities.
+This repository contains Helm charts for deploying cost management solutions on-premise:
+
+1. **`cost-onprem/`** - Resource Optimization Service (ROS) with Kruize integration
+2. **`cost-management-infrastructure/`** - Cost Management data processing infrastructure (PostgreSQL, Trino, Hive, Redis) ⭐ NEW
+3. **`cost-management-onprem/`** - Cost Management application (Koku API, MASU, Celery workers) ⭐ NEW
+
+---
+
+## 📊 Cost Management (Koku) Deployment ⭐ NEW
+
+Complete Helm charts for deploying the full Cost Management stack with OCP cost analytics capabilities.
+
+**🚀 Quick Start:**
+```bash
+# Automated deployment (recommended)
+./scripts/install-cost-management-complete.sh
+
+# Or deploy components separately
+./scripts/bootstrap-infrastructure.sh        # Infrastructure (PostgreSQL, Trino, Hive)
+./scripts/install-cost-helm-chart.sh        # Application (Koku API, MASU, Workers)
+```
+
+**📖 Documentation:**
+- **[Cost Management Installation Guide](docs/cost-management-installation.md)** - Complete deployment guide
+- **Prerequisites**: OpenShift 4.18+, ODF (150GB+), Kafka/Strimzi
+- **Architecture**: 2-chart deployment (infrastructure + application)
+- **E2E Testing**: Automated validation with `./scripts/cost-mgmt-ocp-dataflow.sh`
+
+**Key Features:**
+- 📊 Complete OCP cost data pipeline (Kafka → CSV → Parquet → Trino → PostgreSQL)
+- 🔄 37 Kubernetes resources with optimized resource requests/limits
+- 🧪 Python-based E2E validation framework
+- 📦 Modular deployment (infrastructure and application separately or together)
+
+---
+
+## 🎯 Resource Optimization Service (ROS)
+
+Kubernetes Helm chart for deploying the Resource Optimization Service (ROS) with Kruize integration and future cost management capabilities.
 
 ## 🚀 Quick Start
 
@@ -53,7 +91,7 @@ helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --creat
 
 **Need more?** Configuration, security, templates, and specialized guides are available in the [Complete Documentation Index](docs/README.md).
 
-## 🏗️ Chart Structure
+## 🏗️ Repository Structure
 
 ```
 cost-onprem-chart/
