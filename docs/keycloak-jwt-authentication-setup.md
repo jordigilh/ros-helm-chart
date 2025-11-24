@@ -1002,7 +1002,7 @@ echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq -r '.account_number'
   "typ": "Bearer",
   "azp": "cost-management-operator",
   "scope": "api.console email profile",
-  "org_id": "1",             <-- MUST BE PRESENT (REQUIRED)
+  "org_id": "12345",             <-- MUST BE PRESENT (REQUIRED)
   "account_number": "1",     <-- RECOMMENDED FOR ACCOUNT ISOLATION
   "clientId": "cost-management-operator",
   "email_verified": false,
