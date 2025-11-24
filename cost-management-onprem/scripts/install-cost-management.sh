@@ -56,32 +56,32 @@ command_exists() {
 # Check prerequisites
 check_prerequisites() {
     echo_info "Checking prerequisites..."
-    
+
     local missing_tools=()
-    
+
     if ! command_exists kubectl; then
         missing_tools+=("kubectl")
     fi
-    
+
     if ! command_exists helm; then
         missing_tools+=("helm")
     fi
-    
+
     if ! command_exists jq; then
         missing_tools+=("jq")
     fi
-    
+
     if [ ${#missing_tools[@]} -gt 0 ]; then
         echo_error "Missing required tools: ${missing_tools[*]}"
         return 1
     fi
-    
+
     # Check kubectl connection
     if ! kubectl cluster-info &>/dev/null; then
         echo_error "Cannot connect to Kubernetes cluster. Please configure kubectl."
         return 1
     fi
-    
+
     echo_success "Prerequisites check passed"
     return 0
 }
@@ -89,7 +89,7 @@ check_prerequisites() {
 # Check if namespace exists
 check_namespace() {
     echo_info "Checking namespace: $NAMESPACE"
-    
+
     if ! kubectl get namespace "$NAMESPACE" &>/dev/null; then
         echo_info "Namespace '$NAMESPACE' does not exist. Creating..."
         kubectl create namespace "$NAMESPACE"
@@ -102,44 +102,44 @@ check_namespace() {
 # Check if Object Bucket Claims exist
 check_object_bucket_claims() {
     echo_info "Checking Object Bucket Claims..."
-    
+
     local obcs_missing=()
-    
+
     if ! kubectl get obc "$OBC_KOKU_NAME" -n "$NAMESPACE" &>/dev/null; then
         obcs_missing+=("$OBC_KOKU_NAME")
     fi
-    
+
     if ! kubectl get obc "$OBC_ROS_NAME" -n "$NAMESPACE" &>/dev/null; then
         obcs_missing+=("$OBC_ROS_NAME")
     fi
-    
+
     if [ ${#obcs_missing[@]} -gt 0 ]; then
         echo_error "Missing Object Bucket Claims: ${obcs_missing[*]}"
         echo_info "Please create the OBCs first using:"
         echo_info "  kubectl apply -f obc-configs/"
         return 1
     fi
-    
+
     echo_success "Object Bucket Claims exist"
-    
+
     # Wait for OBCs to be bound
     echo_info "Waiting for OBCs to be bound..."
     local timeout=60
     local elapsed=0
-    
+
     while [ $elapsed -lt $timeout ]; do
         local koku_phase=$(kubectl get obc "$OBC_KOKU_NAME" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
         local ros_phase=$(kubectl get obc "$OBC_ROS_NAME" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-        
+
         if [[ "$koku_phase" == "Bound" && "$ros_phase" == "Bound" ]]; then
             echo_success "OBCs are bound"
             return 0
         fi
-        
+
         sleep 2
         elapsed=$((elapsed + 2))
     done
-    
+
     echo_error "Timeout waiting for OBCs to be bound"
     return 1
 }
@@ -147,27 +147,27 @@ check_object_bucket_claims() {
 # Verify S3 credentials are available
 verify_s3_credentials() {
     echo_info "Verifying S3 credentials from OBC secrets..."
-    
+
     # Check koku-report secret
     if ! kubectl get secret "$OBC_KOKU_NAME" -n "$NAMESPACE" &>/dev/null; then
         echo_error "Secret '$OBC_KOKU_NAME' not found in namespace '$NAMESPACE'"
         echo_info "OBC may not have created the secret yet. Wait a few seconds and try again."
         return 1
     fi
-    
+
     # Verify required keys exist
     local access_key=$(kubectl get secret "$OBC_KOKU_NAME" -n "$NAMESPACE" -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' 2>/dev/null || echo "")
     local secret_key=$(kubectl get secret "$OBC_KOKU_NAME" -n "$NAMESPACE" -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' 2>/dev/null || echo "")
-    
+
     if [[ -z "$access_key" || -z "$secret_key" ]]; then
         echo_error "S3 credentials not found in secret '$OBC_KOKU_NAME'"
         return 1
     fi
-    
+
     # Decode and display (partial) for verification
     local decoded_access_key=$(echo "$access_key" | base64 -d)
     echo_success "S3 credentials found: ${decoded_access_key:0:8}***"
-    
+
     return 0
 }
 
@@ -176,35 +176,35 @@ configure_s3_credentials() {
     echo_info "S3 credentials will be configured from secrets automatically by Kubernetes"
     echo_info "Secret: $OBC_KOKU_NAME"
     echo_info "Keys: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY"
-    
+
     # The Helm chart should reference the secret, and Kubernetes will inject the env vars
     # This is documented in the values file
-    
+
     echo_success "S3 credential configuration ready"
 }
 
 # Install or upgrade Helm chart
 install_helm_chart() {
     echo_info "Installing/Upgrading Cost Management Helm chart..."
-    
+
     local helm_args=(
         "$HELM_RELEASE_NAME"
         "$CHART_PATH"
         "--namespace" "$NAMESPACE"
         "--create-namespace"
     )
-    
+
     if [ -n "$VALUES_FILE" ]; then
         helm_args+=("--values" "$VALUES_FILE")
     fi
-    
+
     if [ "$DRY_RUN" == "true" ]; then
         helm_args+=("--dry-run")
         echo_warning "DRY RUN MODE: No actual installation will occur"
     fi
-    
+
     echo_info "Running: helm upgrade --install ${helm_args[*]}"
-    
+
     if helm upgrade --install "${helm_args[@]}"; then
         echo_success "Helm chart installed/upgraded successfully"
         return 0
@@ -220,13 +220,13 @@ post_install_configuration() {
         echo_info "Skipping post-install configuration (dry run mode)"
         return 0
     fi
-    
+
     echo_info "Applying post-install configuration..."
-    
+
     # Wait for deployments to be ready
     echo_info "Waiting for deployments to be ready..."
     local timeout=180
-    
+
     echo_info "Waiting for MASU deployment..."
     if ! kubectl rollout status deployment/"${HELM_RELEASE_NAME}-cost-management-onprem-koku-api-masu" \
         -n "$NAMESPACE" --timeout="${timeout}s" &>/dev/null; then
@@ -234,7 +234,7 @@ post_install_configuration() {
     else
         echo_success "MASU deployment ready"
     fi
-    
+
     echo_info "Waiting for Celery worker deployment..."
     if ! kubectl rollout status deployment/"${HELM_RELEASE_NAME}-cost-management-onprem-celery-worker-default" \
         -n "$NAMESPACE" --timeout="${timeout}s" &>/dev/null; then
@@ -242,7 +242,7 @@ post_install_configuration() {
     else
         echo_success "Celery worker deployment ready"
     fi
-    
+
     # Add S3 credentials to MASU if not already present
     echo_info "Ensuring MASU has S3 credentials..."
     if kubectl set env deployment/"${HELM_RELEASE_NAME}-cost-management-onprem-koku-api-masu" \
@@ -250,33 +250,33 @@ post_install_configuration() {
         --from=secret/"$OBC_KOKU_NAME" \
         AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY \
         --dry-run=client &>/dev/null; then
-        
+
         kubectl set env deployment/"${HELM_RELEASE_NAME}-cost-management-onprem-koku-api-masu" \
             -n "$NAMESPACE" \
             --from=secret/"$OBC_KOKU_NAME" \
             AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
-        
+
         echo_success "S3 credentials added to MASU"
-        
+
         # Wait for rollout
         kubectl rollout status deployment/"${HELM_RELEASE_NAME}-cost-management-onprem-koku-api-masu" \
             -n "$NAMESPACE" --timeout="${timeout}s" || true
     fi
-    
+
     echo_success "Post-install configuration complete"
 }
 
 # Verify installation
 verify_installation() {
     echo_info "Verifying installation..."
-    
+
     # Check pod status
     echo_info "Checking pod status..."
     local ready_pods=$(kubectl get pods -n "$NAMESPACE" --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l | tr -d ' ')
     local total_pods=$(kubectl get pods -n "$NAMESPACE" --no-headers 2>/dev/null | wc -l | tr -d ' ')
-    
+
     echo_info "Pods running: $ready_pods/$total_pods"
-    
+
     # Check for critical pods
     local critical_components=(
         "koku-db"
@@ -287,21 +287,21 @@ verify_installation() {
         "celery-beat"
         "celery-worker-default"
     )
-    
+
     local missing_components=()
     for component in "${critical_components[@]}"; do
         if ! kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=${component}" --no-headers 2>/dev/null | grep -q "Running"; then
             missing_components+=("$component")
         fi
     done
-    
+
     if [ ${#missing_components[@]} -gt 0 ]; then
         echo_warning "Some critical components are not running: ${missing_components[*]}"
         echo_info "Use 'kubectl get pods -n $NAMESPACE' to check status"
     else
         echo_success "All critical components are running"
     fi
-    
+
     echo_success "Installation verification complete"
 }
 
@@ -352,7 +352,7 @@ main() {
     [ -n "$VALUES_FILE" ] && echo_info "  Values File: $VALUES_FILE"
     [ "$DRY_RUN" == "true" ] && echo_warning "  DRY RUN MODE"
     echo ""
-    
+
     # Run installation steps
     check_prerequisites || exit 1
     check_namespace || exit 1
@@ -363,7 +363,7 @@ main() {
     post_install_configuration || exit 1
     verify_installation || exit 1
     display_next_steps
-    
+
     echo ""
     echo_success "Installation script completed successfully!"
     echo ""
