@@ -25,11 +25,52 @@
 
 | Component | Requirement | Notes |
 |-----------|-------------|-------|
-| **OpenShift Container Platform (OCP)** | 4.12+ | Or Kubernetes 1.24+ |
-| **Storage** | 150GB+ available | For development/testing |
+| **OpenShift Container Platform (OCP)** | **4.18+** | Minimum tested version |
+| **Storage** | 150GB+ available | For development/testing, 300GB+ production |
 | **CPU** | 8+ cores | Minimum for all components |
 | **Memory** | 16GB+ RAM | Minimum for all components |
 | **Network** | Cluster networking | Inter-pod communication required |
+
+### Resource Requirements by Component
+
+#### Infrastructure Chart (cost-management-infrastructure)
+
+| Component | Pods | CPU Request | CPU Limit | Memory Request | Memory Limit |
+|-----------|------|-------------|-----------|----------------|--------------|
+| **PostgreSQL** | 1 | 500m | 1000m | 1Gi | 2Gi |
+| **Trino Coordinator** | 1 | 1000m | 2000m | 2Gi | 4Gi |
+| **Trino Worker** | 1 | 1000m | 2000m | 2Gi | 4Gi |
+| **Hive Metastore** | 1 | 500m | 1000m | 1Gi | 2Gi |
+| **Hive Metastore DB** | 1 | 250m | 500m | 512Mi | 1Gi |
+| **Redis** | 1 | 200m | 400m | 256Mi | 512Mi |
+| **Subtotal** | **6** | **3.45 cores** | **6.9 cores** | **6.75 GB** | **13.5 GB** |
+
+#### Application Chart (cost-management-onprem)
+
+| Component | Pods | CPU Request | CPU Limit | Memory Request | Memory Limit |
+|-----------|------|-------------|-----------|----------------|--------------|
+| **Koku API Reads** | 2 | 300m each | 600m each | 500Mi each | 1Gi each |
+| **Koku API Writes** | 1 | 300m | 600m | 500Mi | 1Gi |
+| **Koku API Listener** | 1 | 200m | 400m | 256Mi | 512Mi |
+| **MASU** | 1 | 300m | 600m | 500Mi | 1Gi |
+| **Celery Beat** | 1 | 100m | 200m | 256Mi | 512Mi |
+| **Celery Workers** | 17 | 100-500m | 200-1000m | 256Mi-1Gi | 512Mi-2Gi |
+| **Sources API** | 1 | 200m | 400m | 256Mi | 512Mi |
+| **Sources DB** | 1 | 250m | 500m | 512Mi | 1Gi |
+| **Subtotal** | **26** | **~6.5 cores** | **~13 cores** | **~12 GB** | **~24 GB** |
+
+#### Total Deployment Resources
+
+| Metric | Development | Production |
+|--------|-------------|------------|
+| **Total Pods** | 37 | 37+ (with replicas) |
+| **Total CPU Request** | **~10 cores** | **15+ cores** |
+| **Total CPU Limit** | **~20 cores** | **30+ cores** |
+| **Total Memory Request** | **~19 GB** | **32+ GB** |
+| **Total Memory Limit** | **~38 GB** | **64+ GB** |
+| **Storage (ODF)** | **150 GB** | **300+ GB** |
+
+**Note:** Production deployments should scale Koku API reads, Celery workers, and add Trino workers based on data volume.
 
 ### Required OpenShift Components
 

@@ -6,13 +6,18 @@ Kubernetes Helm chart for deploying the complete Resource Optimization Service (
 
 ## 🆕 Cost Management On-Premise Deployment
 
-For **Cost Management** deployments (OCP cost analysis with Trino/Hive), see:
+Full **Cost Management (Koku)** deployment with OCP cost analysis, Parquet processing, and Trino analytics.
 
-📖 **[Cost Management Installation Guide](INSTALLATION_GUIDE.md)**
+📖 **[Complete Installation Guide](INSTALLATION_GUIDE.md)** | 
+✅ **[E2E Test Results](E2E_TEST_SUCCESS.md)** |
+🧪 **[Clean Installation Test](CLEAN_INSTALLATION_TEST_RESULTS.md)**
 
-**Two-chart architecture:**
-1. **Infrastructure Chart** (`cost-management-infrastructure/`) - PostgreSQL, Hive, Trino
-2. **Application Chart** (`cost-management-onprem/`) - Koku API, listeners, workers
+### Quick Start
+
+**Prerequisites:**
+- OpenShift 4.18+
+- ODF/NooBaa with 150GB+ storage
+- Kafka/Strimzi cluster
 
 **Automated installation:**
 ```bash
@@ -21,8 +26,28 @@ For **Cost Management** deployments (OCP cost analysis with Trino/Hive), see:
 
 **E2E validation:**
 ```bash
-./scripts/cost-mgmt-ocp-dataflow.sh --force
+cd scripts && ./cost-mgmt-ocp-dataflow.sh --force
 ```
+
+### Architecture
+
+**Two-chart deployment:**
+1. **Infrastructure** (`cost-management-infrastructure/`)
+   - PostgreSQL (Koku database)
+   - Trino (Parquet analytics)
+   - Hive Metastore (table metadata)
+   - Redis (Celery result backend)
+
+2. **Application** (`cost-management-onprem/`)
+   - Koku API (reads/writes)
+   - MASU (data processor)
+   - Kafka Listener (auto-ingestion)
+   - 17 Celery workers (download, OCP, summary, etc.)
+   - Sources API (provider management)
+
+**Resources:** 37 pods, ~10 CPU cores, ~19GB RAM (development)
+
+**Data Flow:** Kafka → CSV → Parquet → Trino → PostgreSQL → Cost Reports
 
 ---
 
