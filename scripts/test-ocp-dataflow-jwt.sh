@@ -415,9 +415,13 @@ test_oauth2_backend_auth() {
 }
 
 # Function to query backend API with OAuth2 token
+# Returns: Sets global variables QUERY_HTTP_CODE and QUERY_RESPONSE_BODY
 query_backend_api() {
     local endpoint="$1"
     local description="$2"
+
+    QUERY_HTTP_CODE=""
+    QUERY_RESPONSE_BODY=""
 
     if [ -z "$OAUTH2_TOKEN" ]; then
         echo_error "OAuth2 token not available"
@@ -435,22 +439,54 @@ query_backend_api() {
         -H "Accept: application/json" \
         "$full_url" 2>/dev/null)
 
-    local http_code=$(echo "$response" | tail -n 1)
-    local response_body=$(echo "$response" | sed '$d')
+    QUERY_HTTP_CODE=$(echo "$response" | tail -n 1)
+    QUERY_RESPONSE_BODY=$(echo "$response" | sed '$d')
 
-    if [ "$http_code" = "200" ]; then
-        echo_success "  ✓ HTTP $http_code"
+    if [ "$QUERY_HTTP_CODE" = "200" ]; then
+        echo_success "  ✓ HTTP $QUERY_HTTP_CODE"
         if command -v jq >/dev/null 2>&1; then
-            echo "$response_body" | jq '.' 2>/dev/null || echo "$response_body"
+            echo "$QUERY_RESPONSE_BODY" | jq '.' 2>/dev/null || echo "$QUERY_RESPONSE_BODY"
         else
-            echo "$response_body"
+            echo "$QUERY_RESPONSE_BODY"
         fi
         return 0
     else
-        echo_error "  ✗ HTTP $http_code"
-        echo_error "  Response: $response_body"
+        echo_error "  ✗ HTTP $QUERY_HTTP_CODE"
+        echo_error "  Response: $QUERY_RESPONSE_BODY"
         return 1
     fi
+}
+
+# Function to check if recommendations API response contains data (not empty array)
+check_recommendations_has_data() {
+    local response_body="$1"
+
+    if [ -z "$response_body" ]; then
+        return 1
+    fi
+
+    # Count items in the response (supports both {data: [...]} and direct array formats)
+    local rec_count=0
+    if command -v jq >/dev/null 2>&1; then
+        rec_count=$(echo "$response_body" | jq 'if type == "object" and has("data") then (.data | length) elif type == "array" then length else 0 end' 2>/dev/null || echo "0")
+    elif command -v python3 >/dev/null 2>&1; then
+        rec_count=$(echo "$response_body" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    if isinstance(data, dict) and 'data' in data and isinstance(data['data'], list):
+        print(len(data['data']))
+    elif isinstance(data, list):
+        print(len(data))
+    else:
+        print(0)
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+    fi
+
+    # Return success if count > 0
+    [ "$rec_count" -gt 0 ]
 }
 
 # Function to get service URL
@@ -941,11 +977,25 @@ main() {
     # Test 2: Recommendations endpoint (list recommendations)
     echo_info "Query 2: List Recommendations"
     if query_backend_api "/api/cost-management/v1/recommendations/openshift" "Recommendations List"; then
-        echo_success "  ✓ Recommendations endpoint accessible"
-        backend_queries_passed=$((backend_queries_passed + 1))
+        # Check if response contains actual data (not empty array)
+        if check_recommendations_has_data "$QUERY_RESPONSE_BODY"; then
+            echo_success "  ✓ Recommendations endpoint contains data"
+            backend_queries_passed=$((backend_queries_passed + 1))
+        else
+            echo_error "  ✗ No recommendations found in API response"
+            echo_info ""
+            echo_info "Troubleshooting steps:"
+            echo_info "  1. Check if data was uploaded and processed:"
+            echo_info "     oc logs -n $NAMESPACE deployment/cost-onprem-ros-processor --tail=100"
+            echo_info "  2. Check Kruize logs:"
+            echo_info "     oc logs -n $NAMESPACE deployment/cost-onprem-kruize --tail=100"
+            echo_info "  3. Query recommendations directly:"
+            echo_info "     ./query-kruize.sh --recommendations"
+            exit 1
+        fi
     else
-        echo_warning "  ⚠ Recommendations endpoint failed (may be empty or not yet populated)"
-        # Not failing the test for this as data might not be ready yet
+        echo_warning "  ⚠ Recommendations endpoint failed"
+        backend_queries_failed=$((backend_queries_failed + 1))
     fi
     echo ""
 
