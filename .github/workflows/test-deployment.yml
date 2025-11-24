@@ -1,22 +1,22 @@
 name: Helm Chart Quality Test
 
-# This workflow tests the Cost Management On-Premise Helm chart deployment on Kind using the local chart
+# This workflow tests the ROS-OCP Helm chart deployment on Kind using the local chart
 # Deployment flow:
 #   1. Setup KIND cluster
 #   2. Deploy Kafka infrastructure (Strimzi + Kafka) - prerequisite
-#   3. Deploy Cost Management On-Premise application
+#   3. Deploy ROS-OCP application
 #
 # Uses alternative registries to avoid Docker Hub rate limiting:
 # - public.ecr.aws for official images (postgres, redis, busybox, confluent)
 # - quay.io for application images (already configured)
 # - ghcr.io as fallback for some images
 # 
-# Chart Source: Uses local cost-onprem/ directory instead of GitHub releases
+# Chart Source: Uses local ros-ocp/ directory instead of GitHub releases
 
 on:
   pull_request:
     paths:
-      - 'cost-onprem/**'
+      - 'ros-ocp/**'
       - 'scripts/install-helm-chart.sh'
       - 'scripts/deploy-strimzi.sh'
       - 'scripts/deploy-kind.sh'
@@ -80,9 +80,9 @@ jobs:
 
       - name: Set up environment and Podman configuration
         run: |
-          echo "KIND_CLUSTER_NAME=cost-onprem-test-cluster" >> $GITHUB_ENV
-          echo "HELM_RELEASE_NAME=cost-onprem-test" >> $GITHUB_ENV
-          echo "NAMESPACE=cost-onprem-test" >> $GITHUB_ENV
+          echo "KIND_CLUSTER_NAME=ros-ocp-test-cluster" >> $GITHUB_ENV
+          echo "HELM_RELEASE_NAME=ros-ocp-test" >> $GITHUB_ENV
+          echo "NAMESPACE=ros-ocp-test" >> $GITHUB_ENV
 
       - name: Setup KIND cluster
         timeout-minutes: 15
@@ -132,14 +132,14 @@ jobs:
           export HELM_RELEASE_NAME=${{ env.HELM_RELEASE_NAME }}
           export NAMESPACE=${{ env.NAMESPACE }}
           export USE_LOCAL_CHART=true
-          export LOCAL_CHART_PATH=../cost-onprem
+          export LOCAL_CHART_PATH=../ros-ocp
           export HELM_TIMEOUT=900s
 
           # Make scripts executable
           chmod +x install-helm-chart.sh
 
           # Deploy Helm chart using local chart
-          echo "Installing Cost Management On-Premise Helm chart from local source..."
+          echo "Installing ROS-OCP Helm chart from local source..."
           echo "Using local chart: $LOCAL_CHART_PATH"
           echo "Using Helm timeout: $HELM_TIMEOUT"
           ./install-helm-chart.sh
@@ -197,7 +197,7 @@ jobs:
           echo "Kafka Events:"
           kubectl get events -n kafka --sort-by='.lastTimestamp' || true
 
-          echo "=== Cost Management On-Premise Pods Status ==="
+          echo "=== ROS-OCP Pods Status ==="
           kubectl get pods -n ${{ env.NAMESPACE }} -o wide || true
           kubectl get pods --all-namespaces | head -20 || true
 
@@ -236,7 +236,7 @@ jobs:
           echo "Strimzi Operator Logs:"
           kubectl logs -n kafka -l name=strimzi-cluster-operator --tail=50 || true
           echo "Kafka Broker Logs:"
-          kubectl logs -n kafka -l strimzi.io/name=onprem-kafka-kafka --tail=30 || true
+          kubectl logs -n kafka -l strimzi.io/name=ros-ocp-kafka-kafka --tail=30 || true
           
           echo "=== Ingress Service Logs ==="
           kubectl logs -n ${{ env.NAMESPACE }} -l app.kubernetes.io/name=ingress --tail=30 || true

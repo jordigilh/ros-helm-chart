@@ -1,0 +1,94 @@
+# Development values for Trino - Minimal resource footprint
+# This configuration reduces Trino resource requirements for local development
+# and testing environments.
+#
+# Usage:
+#   helm install trino ./trino-chart -f values-dev.yaml
+
+# Trino Coordinator - Development configuration
+coordinator:
+  enabled: true
+
+  # JVM configuration - Minimal heap for development
+  jvm:
+    maxHeapSize: "2G"      # Reduced from 6G
+    initialHeapSize: "2G"  # Reduced from 6G
+
+  # Resource limits - Minimal for development
+  resources:
+    requests:
+      cpu: 500m          # Reduced from 1000m
+      memory: 2Gi        # Reduced from 6Gi
+    limits:
+      cpu: 1000m         # Reduced from 2000m
+      memory: 3Gi        # Reduced from 8Gi
+
+  # Storage - Smaller size
+  storage:
+    size: 10Gi           # Reduced from 50Gi
+
+# Trino Worker - Development configuration
+worker:
+  enabled: true
+  replicas: 1            # Reduced from 2 - Single worker for dev
+
+  # JVM configuration - Minimal heap for development
+  jvm:
+    maxHeapSize: "2G"    # Reduced from 6G
+    initialHeapSize: "2G" # Reduced from 6G
+
+  # Resource limits - Minimal for development
+  resources:
+    requests:
+      cpu: 500m          # Reduced from 1000m
+      memory: 2Gi        # Reduced from 6Gi
+    limits:
+      cpu: 1000m         # Reduced from 2000m
+      memory: 3Gi        # Reduced from 8Gi
+
+  # Storage - Smaller size
+  storage:
+    size: 10Gi           # Reduced from 50Gi
+
+  # Disable autoscaling for dev
+  autoscaling:
+    enabled: false
+
+# Hive Metastore - Development configuration
+metastore:
+  enabled: true
+
+  # Resource limits - Minimal for development
+  resources:
+    requests:
+      cpu: 250m          # Reduced from 500m
+      memory: 512Mi      # Reduced from 2Gi
+    limits:
+      cpu: 500m          # Reduced from 1000m
+      memory: 1Gi        # Reduced from 4Gi
+
+  # Database configuration
+  database:
+    external: false      # Use internal PostgreSQL
+
+    # Internal database - Minimal resources
+    internal:
+      storage:
+        size: 5Gi        # Reduced from 10Gi
+      resources:
+        requests:
+          cpu: 100m      # Reduced from 250m
+          memory: 256Mi  # Reduced from 512Mi
+        limits:
+          cpu: 250m      # Reduced from 500m
+          memory: 512Mi  # Reduced from 1Gi
+
+# Catalogs - Same as production
+catalogs:
+  hive:
+    enabled: true
+    connectorName: hive
+    s3:
+      pathStyleAccess: true
+      useMinIO: true
+

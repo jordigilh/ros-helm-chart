@@ -4,12 +4,12 @@ on:
   pull_request:
     branches: [ main, master ]
     paths:
-      - 'cost-onprem/**'
+      - 'ros-ocp/**'
 
   push:
     branches: [ main, master ]
     paths:
-      - 'cost-onprem/**'
+      - 'ros-ocp/**'
 
   workflow_dispatch:
 
@@ -38,7 +38,7 @@ jobs:
       - name: Get current chart version
         id: current_version
         run: |
-          CURRENT_VERSION=$(grep '^version:' cost-onprem/Chart.yaml | sed 's/version: *//' | tr -d '"' | tr -d "'")
+          CURRENT_VERSION=$(grep '^version:' ros-ocp/Chart.yaml | sed 's/version: *//' | tr -d '"' | tr -d "'")
           echo "Current chart version: $CURRENT_VERSION"
           echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
@@ -152,7 +152,7 @@ jobs:
             echo "  Minor: $(semver bump minor $LATEST_VERSION)"
             echo "  Major: $(semver bump major $LATEST_VERSION)"
             echo ""
-            echo "Update cost-onprem/Chart.yaml with one of the suggested versions:"
+            echo "Update ros-ocp/Chart.yaml with one of the suggested versions:"
             echo "  version: $(semver bump patch $LATEST_VERSION)  # For bug fixes"
             echo "  version: $(semver bump minor $LATEST_VERSION)  # For new features"
             echo "  version: $(semver bump major $LATEST_VERSION)  # For breaking changes"
@@ -181,7 +181,7 @@ jobs:
               echo "📝 **Details**: $MESSAGE" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "### 💡 How to Fix" >> $GITHUB_STEP_SUMMARY
-              echo "Update the \`version\` field in \`cost-onprem/Chart.yaml\` to a higher semantic version." >> $GITHUB_STEP_SUMMARY
+              echo "Update the \`version\` field in \`ros-ocp/Chart.yaml\` to a higher semantic version." >> $GITHUB_STEP_SUMMARY
               ;;
             "warning")
               echo "⚠️ **Status**: Version check completed with warnings" >> $GITHUB_STEP_SUMMARY
@@ -205,13 +205,13 @@ jobs:
           script: |
             const message = `## ❌ Version Check Failed
 
-            The Helm chart version in \`cost-onprem/Chart.yaml\` must be semantically higher than the latest release.
+            The Helm chart version in \`ros-ocp/Chart.yaml\` must be semantically higher than the latest release.
 
             **Current version**: \`${{ steps.current_version.outputs.version }}\`
             **Latest release**: \`${{ steps.latest_release.outputs.version }}\`
 
             ### 💡 Suggested fixes:
-            Update the \`version\` field in \`cost-onprem/Chart.yaml\` to one of:
+            Update the \`version\` field in \`ros-ocp/Chart.yaml\` to one of:
             - \`$(semver bump patch ${{ steps.latest_release.outputs.version }})\` for bug fixes
             - \`$(semver bump minor ${{ steps.latest_release.outputs.version }})\` for new features
             - \`$(semver bump major ${{ steps.latest_release.outputs.version }})\` for breaking changes

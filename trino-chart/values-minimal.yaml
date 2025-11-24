@@ -1,0 +1,94 @@
+# Minimal values for Trino - Absolute minimum for testing
+# WARNING: This configuration may not handle production workloads well.
+# Use only for basic testing and development.
+#
+# Usage:
+#   helm install trino ./trino-chart -f values-minimal.yaml
+
+# Trino Coordinator - Minimal configuration
+coordinator:
+  enabled: true
+
+  # JVM configuration - Absolute minimum heap
+  jvm:
+    maxHeapSize: "1G"      # Minimum viable for Trino
+    initialHeapSize: "1G"
+
+  # Resource limits - Bare minimum
+  resources:
+    requests:
+      cpu: 250m            # Minimal CPU
+      memory: 1Gi          # Minimal memory
+    limits:
+      cpu: 500m
+      memory: 2Gi
+
+  # Storage - Minimal size
+  storage:
+    size: 5Gi
+
+# Trino Worker - Minimal configuration
+worker:
+  enabled: true
+  replicas: 1              # Single worker only
+
+  # JVM configuration - Absolute minimum heap
+  jvm:
+    maxHeapSize: "1G"      # Minimum viable for Trino
+    initialHeapSize: "1G"
+
+  # Resource limits - Bare minimum
+  resources:
+    requests:
+      cpu: 250m            # Minimal CPU
+      memory: 1Gi          # Minimal memory
+    limits:
+      cpu: 500m
+      memory: 2Gi
+
+  # Storage - Minimal size
+  storage:
+    size: 5Gi
+
+  # No autoscaling
+  autoscaling:
+    enabled: false
+
+# Hive Metastore - Minimal configuration
+metastore:
+  enabled: true
+
+  # Resource limits - Bare minimum
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi
+
+  # Database configuration
+  database:
+    external: false
+
+    # Internal database - Minimal
+    internal:
+      storage:
+        size: 2Gi          # Minimal storage
+      resources:
+        requests:
+          cpu: 50m         # Minimal CPU
+          memory: 128Mi    # Minimal memory
+        limits:
+          cpu: 100m
+          memory: 256Mi
+
+# Catalogs
+catalogs:
+  hive:
+    enabled: true
+    connectorName: hive
+    s3:
+      pathStyleAccess: true
+      useMinIO: true
+

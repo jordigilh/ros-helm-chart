@@ -29,16 +29,16 @@ jobs:
 
       - name: Update Chart.yaml version
         run: |
-          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" cost-onprem/Chart.yaml
+          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" ros-ocp/Chart.yaml
 
       - name: Package Helm chart
         run: |
-          helm package cost-onprem
+          helm package ros-ocp
 
       - name: Create latest symlink
         run: |
           # Create a copy with 'latest' in the name for convenience
-          cp cost-onprem-${{ steps.version.outputs.version }}.tgz cost-onprem-latest.tgz
+          cp ros-ocp-${{ steps.version.outputs.version }}.tgz ros-ocp-latest.tgz
 
       - name: Generate changelog
         id: changelog
@@ -49,20 +49,20 @@ jobs:
           echo "" >> $GITHUB_OUTPUT
           echo "### Helm Chart Updates" >> $GITHUB_OUTPUT
           echo "- Chart version: ${{ steps.version.outputs.version }}" >> $GITHUB_OUTPUT
-          echo "- Package: cost-onprem-${{ steps.version.outputs.version }}.tgz" >> $GITHUB_OUTPUT
+          echo "- Package: ros-ocp-${{ steps.version.outputs.version }}.tgz" >> $GITHUB_OUTPUT
           echo "" >> $GITHUB_OUTPUT
           echo "### Installation" >> $GITHUB_OUTPUT
           echo "\`\`\`bash" >> $GITHUB_OUTPUT
           echo "# Download and install" >> $GITHUB_OUTPUT
-          echo "curl -L -o cost-onprem-${{ steps.version.outputs.version }}.tgz https://github.com/insights-onprem/ros-helm-chart/releases/download/${{ steps.version.outputs.tag }}/cost-onprem-${{ steps.version.outputs.version }}.tgz" >> $GITHUB_OUTPUT
-          echo "helm install cost-onprem cost-onprem-${{ steps.version.outputs.version }}.tgz --namespace cost-onprem --create-namespace" >> $GITHUB_OUTPUT
+          echo "curl -L -o ros-ocp-${{ steps.version.outputs.version }}.tgz https://github.com/insights-onprem/ros-helm-chart/releases/download/${{ steps.version.outputs.tag }}/ros-ocp-${{ steps.version.outputs.version }}.tgz" >> $GITHUB_OUTPUT
+          echo "helm install ros-ocp ros-ocp-${{ steps.version.outputs.version }}.tgz --namespace ros-ocp --create-namespace" >> $GITHUB_OUTPUT
           echo "\`\`\`" >> $GITHUB_OUTPUT
           echo "" >> $GITHUB_OUTPUT
           echo "### Latest Release (Always Current)" >> $GITHUB_OUTPUT
           echo "\`\`\`bash" >> $GITHUB_OUTPUT
           echo "# Always get the latest release" >> $GITHUB_OUTPUT
-          echo "curl -L -o cost-onprem-latest.tgz https://github.com/insights-onprem/ros-helm-chart/releases/download/${{ steps.version.outputs.tag }}/cost-onprem-latest.tgz" >> $GITHUB_OUTPUT
-          echo "helm install cost-onprem cost-onprem-latest.tgz --namespace cost-onprem --create-namespace" >> $GITHUB_OUTPUT
+          echo "curl -L -o ros-ocp-latest.tgz https://github.com/insights-onprem/ros-helm-chart/releases/download/${{ steps.version.outputs.tag }}/ros-ocp-latest.tgz" >> $GITHUB_OUTPUT
+          echo "helm install ros-ocp ros-ocp-latest.tgz --namespace ros-ocp --create-namespace" >> $GITHUB_OUTPUT
           echo "\`\`\`" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
@@ -73,8 +73,8 @@ jobs:
           name: Release ${{ steps.version.outputs.tag }}
           body: ${{ steps.changelog.outputs.changelog }}
           files: |
-            cost-onprem-${{ steps.version.outputs.version }}.tgz
-            cost-onprem-latest.tgz
+            ros-ocp-${{ steps.version.outputs.version }}.tgz
+            ros-ocp-latest.tgz
           draft: false
           prerelease: false
         env:
@@ -83,5 +83,5 @@ jobs:
       - name: Update latest release
         run: |
           echo "Release ${{ steps.version.outputs.tag }} created successfully!"
-          echo "Versioned download: https://github.com/insights-onprem/ros-helm-chart/releases/download/${{ steps.version.outputs.tag }}/cost-onprem-${{ steps.version.outputs.version }}.tgz"
-          echo "Latest download: https://github.com/insights-onprem/ros-helm-chart/releases/download/${{ steps.version.outputs.tag }}/cost-onprem-latest.tgz"
+          echo "Versioned download: https://github.com/insights-onprem/ros-helm-chart/releases/download/${{ steps.version.outputs.tag }}/ros-ocp-${{ steps.version.outputs.version }}.tgz"
+          echo "Latest download: https://github.com/insights-onprem/ros-helm-chart/releases/download/${{ steps.version.outputs.tag }}/ros-ocp-latest.tgz"

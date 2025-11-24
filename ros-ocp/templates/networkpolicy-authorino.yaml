@@ -1,0 +1,42 @@
+{{- if eq (include "ros-ocp.jwt.shouldEnable" .) "true" }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ros-ocp.fullname" . }}-authorino
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorino-networkpolicy
+    app.kubernetes.io/part-of: ros-ocp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: authorino
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow connections from rosocp-api pods (Envoy sidecar)
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: rosocp-api
+    ports:
+    - protocol: TCP
+      port: 50051  # gRPC authorization service
+
+  # Allow connections from Prometheus for metrics scraping
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: openshift-monitoring
+    ports:
+    - protocol: TCP
+      port: 8080  # Metrics endpoint
+
+  # Allow connections from same namespace for health checks
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8083  # OIDC server (if enabled)
+{{- end }}

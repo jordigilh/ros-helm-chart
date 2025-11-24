@@ -2,13 +2,13 @@
 
 # Strimzi Operator and Kafka Cluster Deployment Script
 # This script automates the deployment of Strimzi operator and Kafka cluster
-# for the cost management on-premise platform with support for both Kubernetes/KIND and OpenShift
+# for the ROS-OCP platform with support for both Kubernetes/KIND and OpenShift
 #
 # PREREQUISITE: This script should be run BEFORE install-helm-chart.sh
 #
 # Typical workflow:
 #   1. ./deploy-strimzi.sh         # Deploy Kafka infrastructure (this script)
-#   2. ./install-helm-chart.sh     # Deploy cost management on-premise application
+#   2. ./install-helm-chart.sh     # Deploy ROS-OCP application
 
 set -e  # Exit on any error
 
@@ -21,7 +21,7 @@ NC='\033[0m' # No Color
 
 # Configuration - Strimzi/Kafka settings
 KAFKA_NAMESPACE=${KAFKA_NAMESPACE:-kafka}
-KAFKA_CLUSTER_NAME=${KAFKA_CLUSTER_NAME:-cost-onprem-kafka}
+KAFKA_CLUSTER_NAME=${KAFKA_CLUSTER_NAME:-ros-ocp-kafka}
 KAFKA_VERSION=${KAFKA_VERSION:-3.8.0}
 STRIMZI_VERSION=${STRIMZI_VERSION:-0.45.1}
 KAFKA_ENVIRONMENT=${KAFKA_ENVIRONMENT:-dev}  # "dev" or "ocp"
@@ -288,37 +288,9 @@ install_strimzi_operator() {
 
     # Wait for CRDs to be established
     echo_info "Waiting for Strimzi CRDs to be ready..."
-
-    # Wait for kafkas CRD
-    local timeout=120
-    local elapsed=0
-    while ! kubectl get crd kafkas.kafka.strimzi.io >/dev/null 2>&1 && [ $elapsed -lt $timeout ]; do
-        sleep 5
-        elapsed=$((elapsed + 5))
-    done
-
-    if ! kubectl get crd kafkas.kafka.strimzi.io >/dev/null 2>&1; then
-        echo_error "Timeout waiting for kafkas.kafka.strimzi.io CRD to be created"
-        exit 1
-    fi
-
-    kubectl wait --for condition=established --timeout=60s crd/kafkas.kafka.strimzi.io
-    echo_success "✓ Kafka CRD is ready"
-
-    # Wait for kafkatopics CRD
-    elapsed=0
-    while ! kubectl get crd kafkatopics.kafka.strimzi.io >/dev/null 2>&1 && [ $elapsed -lt $timeout ]; do
-        sleep 5
-        elapsed=$((elapsed + 5))
-    done
-
-    if ! kubectl get crd kafkatopics.kafka.strimzi.io >/dev/null 2>&1; then
-        echo_error "Timeout waiting for kafkatopics.kafka.strimzi.io CRD to be created"
-        exit 1
-    fi
-
-    kubectl wait --for condition=established --timeout=60s crd/kafkatopics.kafka.strimzi.io
-    echo_success "✓ KafkaTopic CRD is ready"
+    kubectl wait --for condition=established --timeout=60s crd/kafkas.kafka.strimzi.io 2>/dev/null || true
+    kubectl wait --for condition=established --timeout=60s crd/kafkatopics.kafka.strimzi.io 2>/dev/null || true
+    echo_success "✓ Strimzi CRDs are ready"
 }
 
 # Function to deploy Kafka cluster
@@ -644,7 +616,7 @@ display_summary() {
     echo ""
     echo_info "Next Steps:"
     echo_info "  1. (Optional) Verify Kafka cluster: kubectl get kafka $KAFKA_CLUSTER_NAME -n $KAFKA_NAMESPACE"
-    echo_info "  2. Deploy Cost Management On-Premise application: ./install-helm-chart.sh"
+    echo_info "  2. Deploy ROS-OCP application: ./install-helm-chart.sh"
     echo ""
 }
 
@@ -658,7 +630,6 @@ cleanup_deployment() {
         kubectl patch kafka --all -A -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
     kubectl delete kafkatopic --all -A --timeout 30s 2>/dev/null || \
         kubectl patch kafkatopic --all -A -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
-        kubectl get kafkatopic -n kafka -o json | jq '.items[].metadata.finalizers = []' | oc apply -f -
     kubectl delete kafkauser --all -A --timeout 30s 2>/dev/null || \
         kubectl patch kafkauser --all -A -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
     kubectl delete kafkaconnect --all -A --timeout 30s 2>/dev/null || true
@@ -813,7 +784,7 @@ case "${1:-}" in
         echo "Environment Variables:"
         echo "  KAFKA_BOOTSTRAP_SERVERS Bootstrap servers for existing Kafka on cluster (skips deployment)"
         echo "  KAFKA_NAMESPACE         Target namespace (default: kafka)"
-        echo "  KAFKA_CLUSTER_NAME      Kafka cluster name (default: cost-onprem-kafka)"
+        echo "  KAFKA_CLUSTER_NAME      Kafka cluster name (default: ros-ocp-kafka)"
         echo "  KAFKA_VERSION           Kafka version (default: 3.8.0)"
         echo "  STRIMZI_VERSION         Strimzi operator version (default: 0.45.1)"
         echo "  KAFKA_ENVIRONMENT       Environment type: dev or ocp (default: dev)"

@@ -1,0 +1,212 @@
+# Default values for Trino
+# This chart deploys a minimal Trino cluster for Koku cost management
+
+global:
+  storageClass: ""  # Auto-detect if empty
+  pullPolicy: IfNotPresent
+
+# Trino Coordinator configuration
+coordinator:
+  enabled: true
+  image:
+    repository: trinodb/trino
+    tag: "435"
+    pullPolicy: IfNotPresent
+
+  replicas: 1  # Coordinator should always be 1
+
+  port: 8080
+
+  # JVM configuration
+  jvm:
+    maxHeapSize: "6G"
+    initialHeapSize: "6G"
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 6Gi
+    limits:
+      cpu: 2000m
+      memory: 8Gi
+
+  # Storage for Trino data
+  storage:
+    size: 50Gi
+
+  # Probes
+  livenessProbe:
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 5
+
+  readinessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# Trino Worker configuration
+worker:
+  enabled: true
+  image:
+    repository: trinodb/trino
+    tag: "435"
+    pullPolicy: IfNotPresent
+
+  replicas: 2  # Start with 2, scale as needed
+
+  port: 8080
+
+  # JVM configuration
+  jvm:
+    maxHeapSize: "6G"
+    initialHeapSize: "6G"
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 6Gi
+    limits:
+      cpu: 2000m
+      memory: 8Gi
+
+  # Storage for Trino data
+  storage:
+    size: 50Gi
+
+  # Probes
+  livenessProbe:
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 5
+
+  readinessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  # Auto-scaling (optional)
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+# Hive Metastore configuration
+metastore:
+  enabled: true
+  image:
+    repository: apache/hive
+    tag: "3.1.3"
+    pullPolicy: IfNotPresent
+
+  port: 9083
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: 1000m
+      memory: 4Gi
+
+  # PostgreSQL configuration for metastore database
+  database:
+    # Use external PostgreSQL or deploy internal
+    external: false
+
+    # External database settings (if external: true)
+    host: ""
+    port: 5432
+    name: metastore
+    user: hive
+    password: ""
+
+    # Internal database settings (if external: false)
+    internal:
+      image:
+        repository: postgres
+        tag: "15"
+      storage:
+        size: 10Gi
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+
+# Trino catalog configuration
+catalogs:
+  # Hive catalog for S3/MinIO
+  hive:
+    enabled: true
+    connectorName: hive
+
+    # S3/MinIO configuration
+    s3:
+      endpoint: ""  # Will be auto-configured based on environment
+      accessKey: ""  # From secret
+      secretKey: ""  # From secret
+      pathStyleAccess: true
+
+      # For MinIO (Kubernetes)
+      useMinIO: true
+      minioService: "ros-ocp-minio"  # Adjust if different
+      minioPort: 9000
+
+      # For ODF (OpenShift)
+      useODF: false
+      odfService: "s3.openshift-storage.svc"
+      odfPort: 443
+
+    # Hive metastore URI
+    metastoreUri: ""  # Auto-configured: thrift://{{ release-name }}-metastore:9083
+
+# Service configuration
+service:
+  type: ClusterIP
+  coordinator:
+    port: 8080
+    name: http
+  worker:
+    port: 8080
+    name: http
+  metastore:
+    port: 9083
+    name: thrift
+
+# ServiceAccount
+serviceAccount:
+  create: true
+  name: trino
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+

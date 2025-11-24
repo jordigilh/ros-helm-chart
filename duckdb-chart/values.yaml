@@ -1,0 +1,129 @@
+# Default values for DuckDB
+# Lightweight alternative to Trino for on-prem Koku deployments
+
+global:
+  storageClass: ""  # Auto-detect if empty
+  pullPolicy: IfNotPresent
+
+# DuckDB service configuration
+duckdb:
+  enabled: true
+
+  # Deployment mode
+  mode: "http-server"  # Options: http-server, embedded
+
+  # Image configuration
+  image:
+    # Using Python with DuckDB installed for HTTP server
+    repository: python
+    tag: "3.11-slim"
+    pullPolicy: IfNotPresent
+
+  # Number of replicas (typically 1 for DuckDB)
+  replicas: 1
+
+  # Service port
+  port: 8080
+
+  # Resource limits - Very lightweight!
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+  # Persistent storage for DuckDB database file
+  persistence:
+    enabled: true
+    size: 5Gi
+    mountPath: /data
+
+  # S3/MinIO configuration
+  s3:
+    endpoint: ""  # Will be auto-configured based on environment
+    accessKey: ""  # From secret
+    secretKey: ""  # From secret
+    pathStyleAccess: true
+    useSSL: false
+
+    # For MinIO (Kubernetes)
+    useMinIO: true
+    minioService: "ros-ocp-minio"
+    minioPort: 9000
+
+    # For ODF (OpenShift)
+    useODF: false
+    odfService: "s3.openshift-storage.svc"
+    odfPort: 443
+
+  # DuckDB configuration
+  config:
+    # Memory limit for DuckDB operations
+    memoryLimit: "1GB"
+
+    # Number of threads
+    threads: 2
+
+    # Extensions to install
+    extensions:
+      - httpfs  # For S3/HTTP access
+      - parquet  # For Parquet files (built-in but explicit)
+      - json  # For JSON processing
+
+    # Temporary directory
+    tempDirectory: "/tmp/duckdb"
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 8080
+  name: http
+
+# ServiceAccount
+serviceAccount:
+  create: true
+  name: duckdb
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Environment variables
+env:
+  # Additional environment variables
+  []
+

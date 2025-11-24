@@ -1,8 +1,32 @@
-# Cost Management On-Premise Helm Chart
+# ROS-OCP Helm Chart
 
-Kubernetes Helm chart for deploying the complete Cost Management On-Premise solution, including Resource Optimization Service (ROS) and future cost management capabilities.
+Kubernetes Helm chart for deploying the complete Resource Optimization Service (ROS-OCP) backend stack.
 
-## 🚀 Quick Start
+---
+
+## 🆕 Cost Management On-Premise Deployment
+
+For **Cost Management** deployments (OCP cost analysis with Trino/Hive), see:
+
+📖 **[Cost Management Installation Guide](INSTALLATION_GUIDE.md)**
+
+**Two-chart architecture:**
+1. **Infrastructure Chart** (`cost-management-infrastructure/`) - PostgreSQL, Hive, Trino
+2. **Application Chart** (`cost-management-onprem/`) - Koku API, listeners, workers
+
+**Automated installation:**
+```bash
+./scripts/install-cost-management-complete.sh
+```
+
+**E2E validation:**
+```bash
+./scripts/cost-mgmt-ocp-dataflow.sh --force
+```
+
+---
+
+## 🚀 Quick Start (Legacy ROS-OCP)
 
 ### Automated Deployment (Recommended)
 
@@ -10,7 +34,7 @@ Kubernetes Helm chart for deploying the complete Cost Management On-Premise solu
 # Step 1: Create KIND cluster (development/testing)
 ./scripts/deploy-kind.sh
 
-# Step 2: Deploy Cost Management On-Premise services
+# Step 2: Deploy ROS-OCP services
 ./scripts/install-helm-chart.sh
 
 # Access services at http://localhost:32061
@@ -23,14 +47,14 @@ Kubernetes Helm chart for deploying the complete Cost Management On-Premise solu
 ./scripts/install-helm-chart.sh
 
 # Or use local chart for development
-USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem ./scripts/install-helm-chart.sh
+USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp ./scripts/install-helm-chart.sh
 
 # Or specify custom namespace and release name
 NAMESPACE=my-namespace HELM_RELEASE_NAME=my-release ./scripts/install-helm-chart.sh
 
 # Or use Helm directly
-helm repo add cost-onprem https://insights-onprem.github.io/ros-helm-chart
-helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --create-namespace
+helm repo add ros-ocp https://insights-onprem.github.io/ros-helm-chart
+helm install ros-ocp ros-ocp/ros-ocp --namespace ros-ocp --create-namespace
 ```
 
 **Note for OpenShift:** See [Authentication Setup](#-authentication-setup) section for required prerequisites (Authorino and Keycloak)
@@ -47,8 +71,9 @@ helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --creat
 | 🚀 Getting Started | 🏭 Production Setup | 🔧 Operations |
 |-------------------|-------------------|---------------|
 | [Quick Start](docs/quickstart.md)<br/>*Fast deployment walkthrough* | [Installation Guide](docs/installation.md)<br/>*Detailed installation instructions* | [Troubleshooting](docs/troubleshooting.md)<br/>*Common issues & solutions* |
-| [Platform Guide](docs/platform-guide.md)<br/>*Kubernetes vs OpenShift* | [JWT Authentication](docs/native-jwt-authentication.md)<br/>*Ingress authentication (Keycloak)* | [Force Upload](docs/force-operator-upload.md)<br/>*Testing & validation* |
-| | [OAuth2 TokenReview](docs/oauth2-tokenreview-authentication.md)<br/>*Backend authentication (Authorino)* | [Scripts Reference](scripts/README.md)<br/>*Automation scripts* |
+| [Platform Guide](docs/platform-guide.md)<br/>*Kubernetes vs OpenShift* | [**Cost Management Install**](docs/cost-management-installation.md)<br/>*Two-chart architecture (NEW)* | [Force Upload](docs/force-operator-upload.md)<br/>*Testing & validation* |
+| | [JWT Authentication](docs/native-jwt-authentication.md)<br/>*Ingress authentication (Keycloak)* | [Scripts Reference](scripts/README.md)<br/>*Automation scripts* |
+| | [OAuth2 TokenReview](docs/oauth2-tokenreview-authentication.md)<br/>*Backend authentication (Authorino)* | |
 | | [Keycloak Setup](docs/keycloak-jwt-authentication-setup.md)<br/>*SSO configuration* | |
 
 **Need more?** Configuration, security, templates, and specialized guides are available in the [Complete Documentation Index](docs/README.md).
@@ -57,19 +82,10 @@ helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --creat
 
 ```
 ros-helm-chart/
-├── cost-onprem/    # Helm chart directory
-│   ├── Chart.yaml             # Chart metadata (v0.2.0)
+├── ros-ocp/                    # Helm chart directory
+│   ├── Chart.yaml             # Chart metadata
 │   ├── values.yaml            # Default configuration
-│   └── templates/             # Kubernetes resource templates (organized by service)
-│       ├── ros/               # Resource Optimization Service
-│       ├── kruize/            # Kruize optimization engine
-│       ├── sources-api/       # Source management
-│       ├── ingress/           # API gateway
-│       ├── infrastructure/    # Database, Kafka, storage, cache
-│       ├── auth/              # Authentication (Authorino)
-│       ├── monitoring/        # Prometheus ServiceMonitor
-│       ├── shared/            # Shared resources
-│       └── cost-management/   # Future cost management components
+│   └── templates/             # Kubernetes resource templates (46 files)
 ├── docs/                      # Documentation
 ├── scripts/                   # Installation and automation scripts
 └── .github/workflows/         # CI/CD automation
@@ -87,13 +103,13 @@ ros-helm-chart/
 
 ### Application Services
 - **Ingress**: File upload API and routing gateway (with Envoy sidecar for JWT authentication on OpenShift)
-- **ROS API**: Main REST API for recommendations and status (with Envoy sidecar for authentication on OpenShift)
-- **ROS Processor**: Data processing service for cost optimization
-- **ROS Recommendation Poller**: Kruize integration for recommendations
-- **ROS Housekeeper**: Maintenance tasks and data cleanup
+- **ROS-OCP API**: Main REST API for recommendations and status (with Envoy sidecar for authentication on OpenShift)
+- **ROS-OCP Processor**: Data processing service for cost optimization
+- **ROS-OCP Recommendation Poller**: Kruize integration for recommendations
+- **ROS-OCP Housekeeper**: Maintenance tasks and data cleanup
 - **Kruize Autotune**: Optimization recommendation engine (direct authentication, protected by network policies)
 - **Sources API**: Source management and integration (middleware-based authentication for protected endpoints, unauthenticated metadata endpoints for internal use)
-- **Redis/Valkey**: Caching layer for performance
+- **Redis**: Caching layer for performance
 
 **Security Architecture (OpenShift)**:
 - **Ingress Authentication**: Envoy sidecar with JWT validation (Keycloak) for external uploads
@@ -129,7 +145,7 @@ All services accessible at **http://localhost:32061**:
 ### OpenShift
 Services accessible via OpenShift Routes:
 ```bash
-oc get routes -n cost-onprem
+oc get routes -n ros-ocp
 ```
 
 **See [Platform Guide](docs/platform-guide.md) for platform-specific details**
@@ -138,20 +154,18 @@ oc get routes -n cost-onprem
 
 ### JWT Authentication (OpenShift/Production)
 
-For OpenShift deployments, JWT authentication is **automatically enabled** and requires Keycloak configuration:
+For OpenShift deployments, JWT authentication is **automatically enabled** and requires Keycloak and Authorino configuration:
 
 ```bash
 # Step 1: Deploy Red Hat Build of Keycloak (RHBK)
 ./scripts/deploy-rhbk.sh
 
-# Step 2: Configure Cost Management Operator with JWT credentials
+# Step 2: Install Authorino for OAuth2 authentication
+./scripts/install-authorino.sh
+
+# Step 3: Configure Cost Management Operator with JWT credentials
 ./scripts/setup-cost-mgmt-tls.sh
-
-# Step 3: Deploy Cost Management On-Premise (Authorino is automatically deployed)
-./scripts/install-helm-chart.sh
 ```
-
-**Note:** Authorino is now automatically deployed by the Helm chart. No separate installation required.
 
 **📖 See [Keycloak Setup Guide](docs/keycloak-jwt-authentication-setup.md) for detailed configuration instructions**
 
@@ -196,18 +210,30 @@ The chart includes comprehensive CI/CD automation:
 - **Full Deployment Test**: E2E testing with KIND cluster
 - **Automated Releases**: Version-tagged releases with packaged charts
 
+### OCP Smoke Testing
+Fast validation using nise-generated data for financial correctness:
+```bash
+# Quick smoke test (~30-60 seconds)
+./scripts/cost-mgmt-ocp-dataflow.sh --smoke-test --force
+
+# Full validation (~1-3 minutes)
+./scripts/cost-mgmt-ocp-dataflow.sh --force
+```
+
+**📖 See [OCP Smoke Test Guide](OCP_SMOKE_TEST_GUIDE.md) for detailed testing approach**
+
 ## 🚨 Troubleshooting
 
 **Quick diagnostics:**
 ```bash
 # Check pods
-kubectl get pods -n cost-onprem
+kubectl get pods -n ros-ocp
 
 # View logs
-kubectl logs -n cost-onprem -l app.kubernetes.io/component=api
+kubectl logs -n ros-ocp -l app.kubernetes.io/name=rosocp-api
 
 # Check storage
-kubectl get pvc -n cost-onprem
+kubectl get pvc -n ros-ocp
 ```
 
 **See [Troubleshooting Guide](docs/troubleshooting.md) for comprehensive solutions**

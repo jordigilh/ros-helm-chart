@@ -1,22 +1,22 @@
-# Cost Management On-Premise Kubernetes Quick Start Guide
+# ROS-OCP Kubernetes Quick Start Guide
 
-This guide walks you through deploying and testing the Cost Management On-Premise backend services on both Kubernetes and OpenShift clusters using the Helm chart from the [ros-helm-chart repository](https://github.com/insights-onprem/ros-helm-chart).
+This guide walks you through deploying and testing the ROS-OCP backend services on both Kubernetes and OpenShift clusters using the Helm chart from the [ros-helm-chart repository](https://github.com/insights-onprem/ros-helm-chart).
 
 ## Helm Chart Location
 
-The Cost Management On-Premise Helm chart is maintained in a separate repository: **[insights-onprem/ros-helm-chart](https://github.com/insights-onprem/ros-helm-chart)**
+The ROS-OCP Helm chart is maintained in a separate repository: **[insights-onprem/ros-helm-chart](https://github.com/insights-onprem/ros-helm-chart)**
 
 ### Deployment Methods
 
 The deployment scripts provide flexible options for both Kubernetes and OpenShift:
 
 1. **KIND Cluster Setup** (Development): The `deploy-kind.sh` script creates and configures a KIND cluster with ingress controller
-2. **Helm Chart Deployment**: The `install-helm-chart.sh` script deploys the Cost Management On-Premise services with automatic platform detection
+2. **Helm Chart Deployment**: The `install-helm-chart.sh` script deploys the ROS-OCP services with automatic platform detection
 3. **Development Mode**: Use `USE_LOCAL_CHART=true` to install from a local chart directory
 
 ### Chart Features
 
-- **46 Kubernetes templates** for complete Cost Management On-Premise stack deployment
+- **46 Kubernetes templates** for complete ROS-OCP stack deployment
 - **Platform detection** (Kubernetes vs OpenShift) with appropriate resource selection
 - **Automated CI/CD** with lint validation, version checking, and deployment testing
 - **Comprehensive documentation** and troubleshooting guides
@@ -96,7 +96,7 @@ The script will:
 - ✅ Install NGINX ingress controller
 - ✅ Configure port mapping (32061 for HTTP access)
 
-#### 3. Deploy Cost Management On-Premise Services
+#### 3. Deploy ROS-OCP Services
 ```bash
 # Deploy using latest GitHub release (recommended)
 ./install-helm-chart.sh
@@ -109,7 +109,7 @@ The script will:
 cd /path/to/ros-helm-chart/scripts/
 ```
 
-#### 2. Deploy Cost Management On-Premise Services
+#### 2. Deploy ROS-OCP Services
 ```bash
 # Deploy with auto-platform detection (recommended)
 ./install-helm-chart.sh
@@ -125,7 +125,7 @@ The script will:
 ```
 [INFO] Running health checks...
 [SUCCESS] ✓ Ingress API is accessible via http://localhost:32061/ready
-[SUCCESS] ✓ Cost Management On-Premise API is accessible via http://localhost:32061/status
+[SUCCESS] ✓ ROS-OCP API is accessible via http://localhost:32061/status
 [SUCCESS] ✓ Kruize API is accessible via http://localhost:32061/api/kruize/listPerformanceProfiles
 [SUCCESS] All core services are healthy and operational!
 ```
@@ -153,25 +153,25 @@ If you prefer to manually install the Helm chart or need a specific version:
 ```bash
 # Download and install latest chart release
 LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
-curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
-helm install cost-onprem cost-onprem-latest.tgz -n cost-onprem --create-namespace
+curl -L -o ros-ocp-latest.tgz "$LATEST_URL"
+helm install ros-ocp ros-ocp-latest.tgz -n ros-ocp --create-namespace
 ```
 
 #### 3. Install Specific Chart Version
 ```bash
 # Install a specific version (e.g., v0.1.0)
 VERSION="v0.1.0"
-curl -L -o cost-onprem-${VERSION}.tgz "https://github.com/insights-onprem/ros-helm-chart/releases/download/${VERSION}/cost-onprem-${VERSION}.tgz"
-helm install cost-onprem cost-onprem-${VERSION}.tgz -n cost-onprem --create-namespace
+curl -L -o ros-ocp-${VERSION}.tgz "https://github.com/insights-onprem/ros-helm-chart/releases/download/${VERSION}/ros-ocp-${VERSION}.tgz"
+helm install ros-ocp ros-ocp-${VERSION}.tgz -n ros-ocp --create-namespace
 ```
 
 #### 4. Development Mode (Local Chart)
 ```bash
 # Use local chart source (auto-detects platform)
-USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem ./install-helm-chart.sh
+USE_LOCAL_CHART=true LOCAL_CHART_PATH=../ros-ocp ./install-helm-chart.sh
 
 # Or direct Helm installation
-helm install cost-onprem ./cost-onprem -n cost-onprem --create-namespace
+helm install ros-ocp ./ros-ocp -n ros-ocp --create-namespace
 ```
 
 ## Access Points
@@ -181,8 +181,8 @@ After successful deployment, these services are available via the ingress contro
 | Service | URL | Description |
 |---------|-----|-------------|
 | **Ingress Health** | http://localhost:32061/ready | Health check endpoint |
-| **Cost Management On-Premise API** | http://localhost:32061/status | Main REST API status |
-| **Cost Management On-Premise API** | http://localhost:32061/api/ros/* | Recommendations API |
+| **ROS-OCP API** | http://localhost:32061/status | Main REST API status |
+| **ROS-OCP API** | http://localhost:32061/api/ros/* | Recommendations API |
 | **Kruize API** | http://localhost:32061/api/kruize/* | Optimization engine |
 | **Sources API** | http://localhost:32061/api/sources/* | Source management |
 | **File Upload** | http://localhost:32061/api/ingress/* | Data upload endpoint |
@@ -193,7 +193,7 @@ After successful deployment, these services are available via the ingress contro
 # Test Ingress health
 curl http://localhost:32061/ready
 
-# Test Cost Management On-Premise API
+# Test ROS-OCP API
 curl http://localhost:32061/status
 
 # Test Kruize API
@@ -221,7 +221,7 @@ The test will:
 
 **Expected Output:**
 ```
-[INFO] Cost Management On-Premise Kubernetes Data Flow Test
+[INFO] ROS-OCP Kubernetes Data Flow Test
 ==================================
 [SUCCESS] Step 1: Upload completed successfully
 [SUCCESS] Steps 2-3: Koku simulation and Kafka event completed successfully
@@ -233,7 +233,7 @@ The test will:
 ### 2. View Service Logs
 ```bash
 # List available services
-# Note: Run from cost-onprem-backend repository
+# Note: Run from ros-ocp-backend repository
 git clone https://github.com/gciavarrini/ros-ocp-backend.git
 cd ros-ocp-backend/deployment/kubernetes/scripts/
 
@@ -244,20 +244,20 @@ cd ros-ocp-backend/deployment/kubernetes/scripts/
 ./test-ocp-dataflow.sh logs
 
 # View specific service logs
-./test-k8s-dataflow.sh logs ros-processor    # Kubernetes
-./test-ocp-dataflow.sh logs ros-processor    # OpenShift
+./test-k8s-dataflow.sh logs rosocp-processor    # Kubernetes
+./test-ocp-dataflow.sh logs rosocp-processor    # OpenShift
 ```
 
 ### 3. Monitor Processing
 ```bash
 # Watch pods in real-time
-kubectl get pods -n cost-onprem -w
+kubectl get pods -n ros-ocp -w
 
 # Check persistent volumes
-kubectl get pvc -n cost-onprem
+kubectl get pvc -n ros-ocp
 
 # View all services
-kubectl get svc -n cost-onprem
+kubectl get svc -n ros-ocp
 ```
 
 ## Manual Testing
@@ -286,18 +286,18 @@ curl -X POST \
 ### Check Database
 ```bash
 # Connect to ROS database
-kubectl exec -it -n cost-onprem deployment/cost-onprem-db-ros -- \
+kubectl exec -it -n ros-ocp deployment/ros-ocp-db-ros -- \
   psql -U postgres -d postgres -c "SELECT COUNT(*) FROM workloads;"
 ```
 
 ### Monitor Kafka Topics
 ```bash
 # List topics
-kubectl exec -n cost-onprem deployment/cost-onprem-kafka -- \
+kubectl exec -n ros-ocp deployment/ros-ocp-kafka -- \
   kafka-topics --list --bootstrap-server localhost:29092
 
 # Monitor events
-kubectl exec -n cost-onprem deployment/cost-onprem-kafka -- \
+kubectl exec -n ros-ocp deployment/ros-ocp-kafka -- \
   kafka-console-consumer --bootstrap-server localhost:29092 \
   --topic hccm.ros.events --from-beginning
 ```
@@ -308,7 +308,7 @@ kubectl exec -n cost-onprem deployment/cost-onprem-kafka -- \
 ```bash
 # Customize deployment
 export KIND_CLUSTER_NAME=my-ros-cluster
-export HELM_RELEASE_NAME=my-cost-onprem
+export HELM_RELEASE_NAME=my-ros-ocp
 export NAMESPACE=my-namespace
 
 # Deploy with custom settings
@@ -334,9 +334,9 @@ EOF
 
 # Deploy with custom values (using latest release from ros-helm-chart repository)
 LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/ros-helm-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
-curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
-helm upgrade --install cost-onprem cost-onprem-latest.tgz \
-  --namespace cost-onprem \
+curl -L -o ros-ocp-latest.tgz "$LATEST_URL"
+helm upgrade --install ros-ocp ros-ocp-latest.tgz \
+  --namespace ros-ocp \
   --create-namespace \
   -f my-values.yaml
 ```
@@ -358,13 +358,13 @@ helm upgrade --install cost-onprem cost-onprem-latest.tgz \
 ### Manual Cleanup
 ```bash
 # Delete Helm release
-helm uninstall cost-onprem -n cost-onprem
+helm uninstall ros-ocp -n ros-ocp
 
 # Delete namespace
-kubectl delete namespace cost-onprem
+kubectl delete namespace ros-ocp
 
 # Delete KIND cluster
-kind delete cluster --name cost-onprem-cluster
+kind delete cluster --name ros-ocp-cluster
 ```
 
 ## Quick Status Check
@@ -373,24 +373,24 @@ Use this script to verify all services are working:
 
 ```bash
 #!/bin/bash
-echo "=== Cost Management On-Premise Status Check ==="
+echo "=== ROS-OCP Status Check ==="
 
 # Check pod status
 echo "Pod Status:"
-kubectl get pods -n cost-onprem
+kubectl get pods -n ros-ocp
 
 # Check services with issues
 echo -e "\nPods with issues:"
-kubectl get pods -n cost-onprem --field-selector=status.phase!=Running
+kubectl get pods -n ros-ocp --field-selector=status.phase!=Running
 
 # Check Kafka connectivity
 echo -e "\nKafka connectivity test:"
-kubectl exec -n cost-onprem deployment/cost-onprem-ros-processor -- nc -zv cost-onprem-kafka 29092 2>/dev/null && echo "✓ Kafka accessible" || echo "✗ Kafka connection failed"
+kubectl exec -n ros-ocp deployment/ros-ocp-rosocp-processor -- nc -zv ros-ocp-kafka 29092 2>/dev/null && echo "✓ Kafka accessible" || echo "✗ Kafka connection failed"
 
 # Check API endpoints
 echo -e "\nAPI Health Checks:"
 curl -s http://localhost:32061/ready >/dev/null && echo "✓ Ingress API" || echo "✗ Ingress API failed"
-curl -s http://localhost:32061/status >/dev/null && echo "✓ Cost Management On-Premise API" || echo "✗ Cost Management On-Premise API failed"
+curl -s http://localhost:32061/status >/dev/null && echo "✓ ROS-OCP API" || echo "✗ ROS-OCP API failed"
 curl -s http://localhost:32061/api/kruize/listPerformanceProfiles >/dev/null && echo "✓ Kruize API" || echo "✗ Kruize API failed"
 
 echo -e "\nFor detailed troubleshooting, run: ./test-k8s-dataflow.sh health"
@@ -410,8 +410,8 @@ After successful deployment:
 
 For issues or questions:
 - Check [Troubleshooting Guide](troubleshooting.md)
-- Review test output: Clone [cost-onprem-backend](https://github.com/insights-onprem/ros-ocp-backend) and run:
+- Review test output: Clone [ros-ocp-backend](https://github.com/gciavarrini/ros-ocp-backend) and run:
   - Kubernetes: `./deployment/kubernetes/scripts/test-k8s-dataflow.sh`
   - OpenShift: `./deployment/kubernetes/scripts/test-ocp-dataflow.sh`
-- Check pod logs: `kubectl logs -n cost-onprem <pod-name>`
-- Verify configuration: `helm get values cost-onprem -n cost-onprem`
+- Check pod logs: `kubectl logs -n ros-ocp <pod-name>`
+- Verify configuration: `helm get values ros-ocp -n ros-ocp`

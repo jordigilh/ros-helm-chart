@@ -1,0 +1,22 @@
+{{- $isOpenShift := eq (include "ros-ocp.isOpenShift" .) "true" }}
+{{- $cacheName := include "ros-ocp.cache.name" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ros-ocp.fullname" . }}-{{ $cacheName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ros-ocp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/name: {{ $cacheName }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: 6379
+      targetPort: {{ $cacheName }}
+      protocol: TCP
+      name: {{ $cacheName }}
+  selector:
+    {{- include "ros-ocp.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/name: {{ $cacheName }}

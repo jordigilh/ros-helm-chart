@@ -9,6 +9,10 @@
 
 set -euo pipefail
 
+# Script configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
 # Default configuration
 DEFAULT_NAMESPACE="costmanagement-metrics-operator"
 DEFAULT_KEYCLOAK_NAMESPACE="keycloak"
@@ -459,7 +463,7 @@ check_prerequisites() {
     print_success "Keycloak namespace '$KEYCLOAK_NAMESPACE' found"
 
     # Check if Keycloak is running
-    if ! oc get pods -n "$KEYCLOAK_NAMESPACE" --no-headers | grep -q '^keycloak-.*Running'; then
+    if ! oc get pods -n "$KEYCLOAK_NAMESPACE" | grep -q "keycloak.*Running"; then
         print_warning "Keycloak pods may not be running in namespace '$KEYCLOAK_NAMESPACE'"
         print_status "Continuing anyway..."
     else
@@ -469,8 +473,8 @@ check_prerequisites() {
     # Auto-detect ingress URL if not provided
     if [[ -z "$DEFAULT_INGRESS_URL" ]]; then
         # Find the ROS ingress route and determine if it uses TLS
-        local ingress_ns=$(oc get route -A --no-headers -l 'app.kubernetes.io/component=ingress' | head -n1 | awk '{print $1}')
-        local ingress_name=$(oc get route -A --no-headers -l 'app.kubernetes.io/component=ingress' | head -n1 | awk '{print $2}')
+        local ingress_ns=$(oc get route -A | grep -E 'ros.*ingress|ingress.*ros' | head -n1 | awk '{print $1}')
+        local ingress_name=$(oc get route -A | grep -E 'ros.*ingress|ingress.*ros' | head -n1 | awk '{print $2}')
 
         if [[ -n "$ingress_ns" ]] && [[ -n "$ingress_name" ]]; then
             local ingress_host=$(oc get route "$ingress_name" -n "$ingress_ns" -o jsonpath='{.spec.host}' 2>/dev/null)

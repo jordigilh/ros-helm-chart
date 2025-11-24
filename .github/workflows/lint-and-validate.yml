@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [ main, master ]
     paths:
-      - 'cost-onprem/**'
+      - 'ros-ocp/**'
   workflow_dispatch:
 
 jobs:
@@ -24,17 +24,17 @@ jobs:
     - name: Lint Helm chart
       run: |
         echo "=== Linting Helm chart ==="
-        cd cost-onprem
+        cd ros-ocp
         helm lint .
 
     - name: Validate Helm templates
       run: |
         echo "=== Validating Helm templates ==="
-        cd cost-onprem
+        cd ros-ocp
 
         # Template validation without cluster connection
         echo "Running template validation..."
-        helm template cost-onprem-test . --debug --dry-run
+        helm template ros-ocp-test . --debug --dry-run
         echo "✓ Helm template validation completed successfully"
 
 

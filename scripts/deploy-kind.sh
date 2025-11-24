@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Cost Management On-Premise KIND Cluster Setup Script
-# This script sets up a KIND cluster for Cost Management On-Premise deployment
+# ROS-OCP KIND Cluster Setup Script
+# This script sets up a KIND cluster for ROS-OCP deployment
 # For Helm chart deployment, use ./install-helm-chart.sh
 # Container Runtime: Configurable via CONTAINER_RUNTIME variable (default: podman)
 #
@@ -9,7 +9,7 @@
 # - Container Runtime: Minimum 6GB memory allocation required
 # - KIND node: Fixed 6GB memory limit for deterministic deployment
 # - Allocatable: ~5.2GB after system reservations
-# - Full deployment: ~4.5GB for all Cost Management On-Premise services
+# - Full deployment: ~4.5GB for all ROS-OCP services
 
 set -e  # Exit on any error
 
@@ -31,7 +31,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME:-cost-onprem-cluster}
+KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME:-ros-ocp-cluster}
 CONTAINER_RUNTIME=${CONTAINER_RUNTIME:-podman}
 INGRESS_DEBUG_LEVEL=${INGRESS_DEBUG_LEVEL:-0}
 
@@ -496,7 +496,7 @@ show_status() {
     echo_info "  - Ingress Entry Point: http://localhost:$http_port"
     echo_info "    All services are accessible through path-based routing:"
     echo_info "    - Ingress API: http://localhost:$http_port/api/ingress/v1/version"
-    echo_info "    - ROS API: http://localhost:$http_port/status"
+    echo_info "    - ROS-OCP API: http://localhost:$http_port/status"
     echo_info "    - Kruize API: http://localhost:$http_port/api/kruize/listPerformanceProfiles"
     echo_info "    - MinIO Console: http://localhost:$http_port/minio (Web UI - minioaccesskey/miniosecretkey)"
     echo_info "Ingress Controller:"
@@ -542,14 +542,14 @@ run_health_checks() {
         failed_checks=$((failed_checks + 1))
     fi
 
-    # Note about ROS services
+    # Note about ROS-OCP services
     echo_info "ℹ This health check only validates KIND cluster infrastructure"
-    echo_info "  To deploy Cost Management On-Premise services: ./install-helm-chart.sh"
-    echo_info "  To test Cost Management On-Premise services: ./install-helm-chart.sh health"
+    echo_info "  To deploy ROS-OCP services: ./install-helm-chart.sh"
+    echo_info "  To test ROS-OCP services: ./install-helm-chart.sh health"
 
     # Summary
     if [ $failed_checks -eq 0 ]; then
-        echo_success "✓ KIND cluster infrastructure is healthy and ready for Cost Management On-Premise deployment!"
+        echo_success "✓ KIND cluster infrastructure is healthy and ready for ROS-OCP deployment!"
     else
         echo_error "✗ $failed_checks infrastructure health check(s) failed"
         echo_info "Check ingress controller status: kubectl get pods -n ingress-nginx"
@@ -575,7 +575,7 @@ cleanup() {
 # Main function
 main() {
     echo "=== MAIN FUNCTION START ==="
-    echo_info "Starting KIND cluster setup for Cost Management On-Premise..."
+    echo_info "Starting KIND cluster setup for ROS-OCP..."
 
     # Check prerequisites (includes container runtime detection and PID limit warnings)
     echo "Calling check_prerequisites..."
@@ -602,7 +602,7 @@ main() {
 
 
     echo_success "KIND cluster setup completed successfully!"
-    echo_info "Next step: Run ./install-helm-chart.sh to deploy Cost Management On-Premise"
+    echo_info "Next step: Run ./install-helm-chart.sh to deploy ROS-OCP"
     echo "=== MAIN FUNCTION END ==="
 }
 
@@ -624,14 +624,14 @@ case "${1:-}" in
         echo "Usage: $0 [command]"
         echo ""
         echo "Commands:"
-        echo "  (none)          - Setup KIND cluster for Cost Management On-Premise"
+        echo "  (none)          - Setup KIND cluster for ROS-OCP"
         echo "  cleanup --all   - Delete entire KIND cluster"
         echo "  status          - Show cluster status"
         echo "  health          - Run health checks on existing cluster"
         echo "  help            - Show this help message"
         echo ""
         echo "Environment Variables:"
-        echo "  KIND_CLUSTER_NAME     - Name of KIND cluster (default: cost-onprem-cluster)"
+        echo "  KIND_CLUSTER_NAME     - Name of KIND cluster (default: ros-ocp-cluster)"
         echo "  CONTAINER_RUNTIME     - Container runtime to use (default: podman, supports: podman, docker, auto)"
         echo "  INGRESS_DEBUG_LEVEL   - NGINX ingress debug verbosity level (default: 0=disabled, 1-4=debug levels)"
         echo ""
@@ -651,10 +651,10 @@ case "${1:-}" in
         echo ""
         echo "Two-Step Deployment:"
         echo "  1. ./deploy-kind.sh       - Setup KIND cluster"
-        echo "  2. ./install-helm-chart.sh - Deploy Cost Management On-Premise Helm chart"
+        echo "  2. ./install-helm-chart.sh - Deploy ROS-OCP Helm chart"
         echo ""
         echo "Next Steps:"
-        echo "  After successful setup, run ./install-helm-chart.sh to deploy Cost Management On-Premise"
+        echo "  After successful setup, run ./install-helm-chart.sh to deploy ROS-OCP"
         exit 0
         ;;
     *)

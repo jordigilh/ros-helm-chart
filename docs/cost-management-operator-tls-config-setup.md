@@ -23,7 +23,7 @@ ERROR: Get "https://keycloak-keycloak.apps.cluster.local/realms/kubernetes/proto
 x509: certificate signed by unknown authority
 
 # Upload to ROS Ingress
-ERROR: Post "https://cost-onprem-ingress-cost-onprem.apps.cluster.local/api/ingress/v1/upload":
+ERROR: Post "https://ros-ocp-ingress-ros-ocp.apps.cluster.local/api/ingress/v1/upload":
 tls: failed to verify certificate: x509: certificate signed by unknown authority
 
 # Prometheus Metrics Collection
@@ -166,7 +166,7 @@ spec:
     validate_cert: true  # Keep certificate validation enabled
     ingress_path: "/api/ingress/v1/upload"
     # Use internal service URL to avoid external certificate issues
-    ingress_url: "http://cost-onprem-ingress.cost-onprem.svc.cluster.local:8080"
+    ingress_url: "http://ros-ocp-ingress.ros-ocp.svc.cluster.local:8080"
 
   # Prometheus configuration
   prometheus_config:
@@ -356,7 +356,7 @@ spec:
     validate_cert: true  # Certificate validation enabled with custom CA bundle
     ingress_path: "/api/ingress/v1/upload"
     # Use external route for JWT authentication flow
-    ingress_url: "https://cost-onprem-ingress-cost-onprem.apps.cluster.local"
+    ingress_url: "https://ros-ocp-ingress-ros-ocp.apps.cluster.local"
 
   prometheus_config:
     service_address: "https://thanos-querier.openshift-monitoring.svc:9091"
