@@ -51,9 +51,9 @@ check_prerequisites() {
     command -v curl >/dev/null 2>&1 || missing_deps+=("curl")
     command -v tar >/dev/null 2>&1 || missing_deps+=("tar")
 
-    # Check for JSON parser (prefer jq, fallback to python3)
-    if ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
-        missing_deps+=("jq or python3")
+    # Check for JSON parser (jq required)
+    if ! command -v jq >/dev/null 2>&1; then
+        missing_deps+=("jq")
     fi
 
     if [ ${#missing_deps[@]} -gt 0 ]; then
@@ -80,31 +80,19 @@ echo_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# JSON parsing helper function (works with jq or python3)
+# JSON parsing helper function (uses jq)
 parse_json() {
     local json_data="$1"
     local json_path="$2"
 
-    if command -v jq >/dev/null 2>&1; then
-        echo "$json_data" | jq -r "$json_path" 2>/dev/null || echo ""
-    elif command -v python3 >/dev/null 2>&1; then
-        echo "$json_data" | python3 -c "import sys, json; data=json.load(sys.stdin); print($json_path)" 2>/dev/null || echo ""
-    else
-        echo ""
-    fi
+    echo "$json_data" | jq -r "$json_path" 2>/dev/null || echo ""
 }
 
 # JSON array length helper
 json_array_length() {
     local json_data="$1"
 
-    if command -v jq >/dev/null 2>&1; then
-        echo "$json_data" | jq 'length' 2>/dev/null || echo "0"
-    elif command -v python3 >/dev/null 2>&1; then
-        echo "$json_data" | python3 -c "import sys, json; data=json.load(sys.stdin); print(len(data))" 2>/dev/null || echo "0"
-    else
-        echo "0"
-    fi
+    echo "$json_data" | jq 'length' 2>/dev/null || echo "0"
 }
 
 # Function to detect Keycloak configuration
@@ -274,14 +262,9 @@ get_jwt_token() {
         return 1
     fi
 
-    # Extract access token from response using helper function
-    if command -v jq >/dev/null 2>&1; then
-        JWT_TOKEN=$(echo "$token_response" | jq -r '.access_token // empty' 2>/dev/null)
-        local expires_in=$(echo "$token_response" | jq -r '.expires_in // 0' 2>/dev/null)
-    elif command -v python3 >/dev/null 2>&1; then
-        JWT_TOKEN=$(echo "$token_response" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('access_token', ''))" 2>/dev/null)
-        local expires_in=$(echo "$token_response" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('expires_in', 0))" 2>/dev/null)
-    fi
+    # Extract access token from response using jq
+    JWT_TOKEN=$(echo "$token_response" | jq -r '.access_token // empty' 2>/dev/null)
+    local expires_in=$(echo "$token_response" | jq -r '.expires_in // 0' 2>/dev/null)
 
     if [ -z "$JWT_TOKEN" ] || [ "$JWT_TOKEN" = "null" ]; then
         echo_error "Failed to extract JWT token from response"
@@ -444,11 +427,7 @@ query_backend_api() {
 
     if [ "$QUERY_HTTP_CODE" = "200" ]; then
         echo_success "  ✓ HTTP $QUERY_HTTP_CODE"
-        if command -v jq >/dev/null 2>&1; then
-            echo "$QUERY_RESPONSE_BODY" | jq '.' 2>/dev/null || echo "$QUERY_RESPONSE_BODY"
-        else
-            echo "$QUERY_RESPONSE_BODY"
-        fi
+        echo "$QUERY_RESPONSE_BODY" | jq '.' 2>/dev/null || echo "$QUERY_RESPONSE_BODY"
         return 0
     else
         echo_error "  ✗ HTTP $QUERY_HTTP_CODE"
@@ -467,23 +446,7 @@ check_recommendations_has_data() {
 
     # Count items in the response (supports both {data: [...]} and direct array formats)
     local rec_count=0
-    if command -v jq >/dev/null 2>&1; then
-        rec_count=$(echo "$response_body" | jq 'if type == "object" and has("data") then (.data | length) elif type == "array" then length else 0 end' 2>/dev/null || echo "0")
-    elif command -v python3 >/dev/null 2>&1; then
-        rec_count=$(echo "$response_body" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    if isinstance(data, dict) and 'data' in data and isinstance(data['data'], list):
-        print(len(data['data']))
-    elif isinstance(data, list):
-        print(len(data))
-    else:
-        print(0)
-except:
-    print(0)
-" 2>/dev/null || echo "0")
-    fi
+    rec_count=$(echo "$response_body" | jq 'if type == "object" and has("data") then (.data | length) elif type == "array" then length else 0 end' 2>/dev/null || echo "0")
 
     # Return success if count > 0
     [ "$rec_count" -gt 0 ]
