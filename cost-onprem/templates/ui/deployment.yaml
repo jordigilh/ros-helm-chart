@@ -27,20 +27,32 @@ spec:
         ports:
         - name: https
           containerPort: 8443
+        env:
+        - name: OAUTH2_PROXY_COOKIE_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "cost-onprem.fullname" . }}-ui-cookie-secret
+              key: session-secret
         args:
         - --https-address=:8443
-        - --openshift-service-account={{ include "cost-onprem.fullname" . }}-ui
-        - --cookie-secret-file=/etc/proxy/secrets/session-secret
-        - --tls-cert=/etc/tls/private/tls.crt
-        - --tls-key=/etc/tls/private/tls.key
+        - --provider=keycloak-oidc
+        - --client-id={{ .Values.ui.keycloak.client.id }}
+        - --client-secret-file=/etc/proxy/secrets/client-secret
+        - --oidc-issuer-url=https://keycloak-keycloak.apps.cluster-v99kw.dynamic.redhatworkshops.io/realms/kubernetes
+        - --redirect-url=https://{{ include "cost-onprem.fullname" . }}-ui-{{ .Release.Namespace }}.{{ include "cost-onprem.platform.clusterDomain" . }}/oauth2/callback
+        - --tls-cert-file=/etc/tls/private/tls.crt
+        - --tls-key-file=/etc/tls/private/tls.key
         - --upstream=http://localhost:{{ .Values.ui.app.port }}
         - --pass-host-header=false
         - --skip-provider-button
         - --skip-auth-preflight
         - --pass-access-token
+        - --code-challenge-method=S256
+        - --email-domain=*
+        - --scope=openid
         livenessProbe:
           httpGet:
-            path: /oauth/healthz
+            path: /ping
             port: https
             scheme: HTTPS
           initialDelaySeconds: {{ .Values.probes.initialDelaySeconds }}
@@ -49,7 +61,7 @@ spec:
           failureThreshold: {{ .Values.probes.failureThreshold }}
         readinessProbe:
           httpGet:
-            path: /oauth/healthz
+            path: /ping
             port: https
             scheme: HTTPS
           initialDelaySeconds: {{ .Values.probes.initialDelaySeconds }}
@@ -63,7 +75,12 @@ spec:
           mountPath: /etc/tls/private
           readOnly: true
         - name: cookie-secret
-          mountPath: /etc/proxy/secrets
+          mountPath: /etc/proxy/secrets/session-secret
+          subPath: session-secret
+          readOnly: true
+        - name: client-secret
+          mountPath: /etc/proxy/secrets/client-secret
+          subPath: client-secret
           readOnly: true
       - name: app
         image: "{{ .Values.ui.app.image.repository }}:{{ .Values.ui.app.image.tag }}"
@@ -99,6 +116,9 @@ spec:
       - name: cookie-secret
         secret:
           secretName: {{ include "cost-onprem.fullname" . }}-ui-cookie-secret
+      - name: client-secret
+        secret:
+          secretName: {{ include "cost-onprem.fullname" . }}-ui-oauth-client-secret
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

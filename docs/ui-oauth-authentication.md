@@ -2,25 +2,25 @@
 
 ## Overview
 
-The UI for ROS OCP uses OpenShift's native OAuth proxy as a sidecar container to provide authentication. This allows users to authenticate using their OpenShift credentials without requiring additional identity providers.
+The UI for ROS OCP uses OAuth2 Proxy with Keycloak OIDC as a sidecar container to provide authentication. This allows users to authenticate using Keycloak credentials.
 
 ### Quick Reference
 
 | Component | Purpose | Location | Port |
 |-----------|---------|----------|------|
-| **OAuth Proxy** | Authentication proxy with OpenShift OAuth | Sidecar in ui pod | 8443 (HTTPS) |
+| **OAuth2 Proxy** | Authentication proxy with Keycloak OIDC | Sidecar in ui pod | 8443 (HTTPS) |
 | **Nginx** | Web server and API proxy | Inside UI app container | 8080 (HTTP) |
 | **UI App** | Frontend application | Main container in pod | 8080 (HTTP) |
 | **ROS API** | Backend API service | Separate service | 8000 (HTTP) |
-| **OpenShift OAuth Server** | Token validation and user authentication | Cluster control plane | 443 (HTTPS) |
+| **Keycloak** | OIDC provider for user authentication | External/separate service | 443 (HTTPS) |
 | **OpenShift Route** | External access with TLS reencrypt | Route resource | 443 (HTTPS) |
 | **Service CA Operator** | Auto-generates TLS certificates | Cluster-wide operator | N/A |
 
 ### Authentication Chain
 
 ```
-User → OpenShift Route → OAuth Proxy → OpenShift OAuth → Validate
-                              ↓                              ↓
+User → OpenShift Route → OAuth2 Proxy → Keycloak OIDC → Validate
+                              ↓                            ↓
                          localhost:8080 ← Session Cookie ← Success
                               ↓
                            Nginx
@@ -179,28 +179,28 @@ sequenceDiagram
 
 ### Components
 
-- **OAuth Proxy**: Sidecar container (`registry.redhat.io/openshift4/ose-oauth-proxy-rhel9`) handling authentication
+- **OAuth2 Proxy**: Sidecar container (`quay.io/oauth2-proxy/oauth2-proxy`) handling authentication with Keycloak OIDC
 - **Nginx**: Web server running inside the UI app container that serves static files and proxies API requests to ROS API
 - **UI App**: Frontend application container serving the web interface with embedded Nginx
 - **ROS API**: Backend API service that receives authenticated requests with Bearer tokens
-- **OpenShift OAuth Server**: Cluster's built-in OAuth provider for user authentication
+- **Keycloak**: External OIDC provider for user authentication
 - **OpenShift Route**: Exposes the service with TLS reencrypt termination
 - **Service CA Operator**: Automatically generates and rotates TLS certificates
-- **ServiceAccount**: Configured with OAuth redirect annotation for callback URL
+- **ServiceAccount**: Service account for the UI pods
 
 ## Configuration
 
 ### Helm Values
 
 ```yaml
-# UI (OpenShift only - OAuth protected frontend)
+# UI (OpenShift only - Keycloak OIDC protected frontend)
 ui:
   replicaCount: 1
   oauthProxy:
     image:
-      repository: registry.redhat.io/openshift4/ose-oauth-proxy-rhel9
+      repository: quay.io/oauth2-proxy/oauth2-proxy
       pullPolicy: IfNotPresent
-      tag: "latest"
+      tag: "v7.7.1"
     resources:
       limits:
         cpu: "100m"
@@ -208,6 +208,21 @@ ui:
       requests:
         cpu: "50m"
         memory: "64Mi"
+
+    keycloak:
+      # Keycloak issuer URL
+      issuerUrl: "https://keycloak.example.com/realms/master"
+      # OAuth2 client ID
+      clientId: "cost-management-ui"
+      # OAuth2 client secret (provide via --set or external secret)
+      clientSecretValue: ""
+      # Optional: Email domain restriction
+      emailDomain: ""
+      # Optional: Allowed roles
+      allowedRoles: []
+      # Optional: Allowed groups
+      allowedGroups: []
+
   app:
     image:
       repository: quay.io/insights-onprem/koku-ui-mfe-on-prem
@@ -223,49 +238,53 @@ ui:
         memory: "64Mi"
 ```
 
-### OAuth Proxy Arguments
+### OAuth2 Proxy Arguments
 
-The OAuth proxy is configured with the following arguments:
+The OAuth2 Proxy is configured with the following arguments:
 
 ```yaml
 args:
 - --https-address=:8443                    # Listen on HTTPS port 8443
-- --provider=openshift                     # Use OpenShift OAuth
-- --openshift-service-account=<name>-ui    # ServiceAccount name for OAuth callbacks
+- --provider=keycloak-oidc                 # Use Keycloak OIDC provider
+- --client-id=<client-id>                  # Keycloak client ID
+- --client-secret-file=/etc/proxy/secrets/client-secret  # Client secret
 - --cookie-secret-file=/etc/proxy/secrets/session-secret  # Session encryption key
+- --oidc-issuer-url=<keycloak-url>/realms/<realm>  # Keycloak issuer URL
+- --redirect-url=https://<route>/oauth2/callback  # OAuth callback URL
 - --tls-cert=/etc/tls/private/tls.crt     # TLS certificate (auto-generated)
 - --tls-key=/etc/tls/private/tls.key      # TLS private key (auto-generated)
 - --upstream=http://localhost:8080         # Forward to UI app on localhost
 - --pass-host-header=false                 # Don't forward original Host header
-- --skip-provider-button                   # Skip "Log in with OpenShift" button
+- --skip-provider-button                   # Skip provider button
 - --skip-auth-preflight                    # Skip OAuth consent screen
+- --pass-access-token                      # Pass access token to upstream
+- --code-challenge-method=S256             # Use PKCE for enhanced security
 ```
 
-### ServiceAccount Annotation
-
-The ServiceAccount requires a special annotation to enable OAuth redirects:
-
+Optional authorization arguments:
 ```yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: <fullname>-ui
-  annotations:
-    serviceaccounts.openshift.io/oauth-redirectreference.primary: |
-      {
-        "kind": "OAuthRedirectReference",
-        "apiVersion": "v1",
-        "reference": {
-          "kind": "Route",
-          "name": "<fullname>-ui"
-        }
-      }
+- --email-domain=<domain>                  # Restrict to specific email domain
+- --allowed-role=<role>                    # Allow specific Keycloak role
+- --allowed-group=<group>                  # Allow specific Keycloak group
 ```
 
-This annotation:
-- Tells OpenShift OAuth where to redirect after authentication
-- References the Route resource by name
-- Enables the OAuth callback URL pattern: `https://<route-host>/oauth/callback`
+### Keycloak Client Setup
+
+You need to create an OIDC client in Keycloak with the following configuration:
+
+1. **Client Type**: OpenID Connect
+2. **Client ID**: `cost-management-ui` (or your custom value)
+3. **Client Authentication**: Enabled (confidential client)
+4. **Valid Redirect URIs**: `https://<ui-route-host>/oauth2/callback`
+5. **Web Origins**: `https://<ui-route-host>`
+
+**Required Mappers**:
+- Create an audience mapper to include the client ID in the `aud` claim
+
+**Optional Configuration**:
+- Configure role mappings if using `--allowed-role`
+- Configure group mappings if using `--allowed-group`
+- Set email domain requirements in Keycloak if needed
 
 ### TLS Certificate Auto-Generation
 
@@ -777,32 +796,75 @@ oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
    - Required for Kubernetes liveness/readiness probes
    - Only accessible from within the cluster
 
+## Deployment
+
+### Installation with Helm
+
+When deploying the chart, you must provide the Keycloak configuration:
+
+```bash
+helm install cost-onprem ./cost-onprem \
+  --set ui.oauthProxy.keycloak.issuerUrl="https://keycloak.example.com/realms/master" \
+  --set ui.oauthProxy.keycloak.clientId="cost-management-ui" \
+  --set ui.oauthProxy.keycloak.clientSecretValue="<your-client-secret>"
+```
+
+### Optional: Using an External Secret
+
+Instead of passing the client secret via `--set`, you can create a secret manually:
+
+```bash
+kubectl create secret generic <fullname>-ui-oauth-client-secret \
+  --from-literal=client-secret=<your-client-secret> \
+  -n <namespace>
+```
+
+Then deploy without the `clientSecretValue`:
+
+```bash
+helm install cost-onprem ./cost-onprem \
+  --set ui.oauthProxy.keycloak.issuerUrl="https://keycloak.example.com/realms/master" \
+  --set ui.oauthProxy.keycloak.clientId="cost-management-ui"
+```
+
+### Optional Authorization Configuration
+
+Restrict access by roles or groups:
+
+```bash
+helm install cost-onprem ./cost-onprem \
+  --set ui.oauthProxy.keycloak.issuerUrl="https://keycloak.example.com/realms/master" \
+  --set ui.oauthProxy.keycloak.clientId="cost-management-ui" \
+  --set ui.oauthProxy.keycloak.clientSecretValue="<secret>" \
+  --set ui.oauthProxy.keycloak.allowedRoles[0]="cost-admin" \
+  --set ui.oauthProxy.keycloak.emailDomain="example.com"
+```
+
 ## Platform Requirements
 
 **OpenShift Only**: This UI authentication method is exclusively for OpenShift clusters because it depends on:
 
-- ✅ OpenShift OAuth Server (`authentication.k8s.io`)
 - ✅ OpenShift Routes with TLS reencrypt
 - ✅ Service CA Operator for automatic certificate generation
-- ✅ ServiceAccount OAuth redirect annotations
+- ✅ Keycloak instance (RHBK or community Keycloak)
 
 **Automatic Detection**: The UI is only deployed when the chart detects an OpenShift cluster:
 
 ```yaml
-{{- if eq (include "ros-ocp.isOpenShift" .) "true" }}
+{{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
 # UI resources deployed here
 {{- end }}
 ```
 
-**Kubernetes/KIND**: For non-OpenShift platforms, alternative authentication methods would be required (e.g., OAuth2 Proxy with external provider).
+**Kubernetes/KIND**: For non-OpenShift platforms, alternative ingress and TLS configurations would be required.
 
 ## References
 
-- [OpenShift OAuth Proxy](https://github.com/openshift/oauth-proxy)
-- [OpenShift OAuth Server](https://docs.openshift.com/container-platform/latest/authentication/understanding-authentication.html)
+- [OAuth2 Proxy](https://oauth2-proxy.github.io/oauth2-proxy/)
+- [OAuth2 Proxy Keycloak OIDC Provider](https://oauth2-proxy.github.io/oauth2-proxy/configuration/providers/keycloak_oidc)
+- [Keycloak Documentation](https://www.keycloak.org/documentation)
 - [Service CA Operator](https://docs.openshift.com/container-platform/latest/security/certificates/service-serving-certificate.html)
 - [OpenShift Routes](https://docs.openshift.com/container-platform/latest/networking/routes/route-configuration.html)
-- [OAuth Redirect Reference](https://docs.openshift.com/container-platform/latest/authentication/using-service-accounts-as-oauth-client.html)
 
 ## Related Documentation
 

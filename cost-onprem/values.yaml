@@ -482,18 +482,18 @@ jwtAuth:
       # caCert: ""  # Path to CA certificate
 
 # -----------------------------------------------------------------------------
-# UI Configuration (OpenShift OAuth Proxy with Application Container)
+# UI Configuration (Keycloak OAuth Proxy with Application Container)
 # -----------------------------------------------------------------------------
-# UI component with OAuth proxy sidecar for OpenShift authentication
+# UI component with OAuth2 Proxy sidecar for Keycloak OIDC authentication
 # Only available on OpenShift
 ui:
   replicaCount: 1
 
   oauthProxy:
     image:
-      repository: registry.redhat.io/openshift4/ose-oauth-proxy-rhel9
+      repository: quay.io/oauth2-proxy/oauth2-proxy
       pullPolicy: IfNotPresent
-      tag: "latest"
+      tag: "v7.7.1"
     resources:
       limits:
         cpu: "100m"
@@ -515,6 +515,11 @@ ui:
       requests:
         cpu: "50m"
         memory: "64Mi"
+    
+  keycloak:
+    client:
+      id: "cost-management-ui"
+      secret: "RIoCVziX19cIBfvCE6B2ErFqL2jAr956"
 
 # -----------------------------------------------------------------------------
 # Network Configuration
