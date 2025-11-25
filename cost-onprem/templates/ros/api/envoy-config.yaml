@@ -142,7 +142,7 @@ data:
                         -- Build rh-identity JSON structure
                         local identity_json = string.format([[{
                           "identity": {
-                            "org_id": "1",
+                            "org_id": "12345",
                             "account_number": "1",
                             "type": "User",
                             "user": {
@@ -156,7 +156,7 @@ data:
                               "locale": "en_US"
                             },
                             "internal": {
-                              "org_id": "1",
+                              "org_id": "12345",
                               "auth_type": "kubernetes-tokenreview",
                               "auth_time": 0
                             }

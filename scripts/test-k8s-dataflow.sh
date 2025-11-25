@@ -233,20 +233,40 @@ wait_for_services() {
     echo_info "Ingress connectivity has already been validated by install-helm-chart.sh"
 }
 
+# Cross-platform date function
+cross_platform_date_ago() {
+    local minutes_ago="$1"
+    local format="${2:-+%Y-%m-%d %H:%M:%S -0000 UTC}"
+    local seconds_ago=$((minutes_ago * 60))
+    local target_epoch=$(($(date +%s) - seconds_ago))
+
+    # Try BSD date format first (macOS)
+    if TZ=UTC date -r "$target_epoch" "$format" 2>/dev/null; then
+        return 0
+    # Try GNU date format (Linux)
+    elif TZ=UTC date -d "@$target_epoch" "$format" 2>/dev/null; then
+        return 0
+    else
+        # Fallback: use epoch time directly
+        echo "$target_epoch"
+        return 1
+    fi
+}
+
 # Function to create test data
 create_test_data() {
     echo_info "Creating test data with current timestamps..." >&2
 
     # Generate dynamic timestamps for current data (multiple intervals for better recommendations)
     local now_date=$(date -u +%Y-%m-%d)
-    local interval_start_1=$(date -u -d '75 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
-    local interval_end_1=$(date -u -d '60 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
-    local interval_start_2=$(date -u -d '60 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
-    local interval_end_2=$(date -u -d '45 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
-    local interval_start_3=$(date -u -d '45 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
-    local interval_end_3=$(date -u -d '30 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
-    local interval_start_4=$(date -u -d '30 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
-    local interval_end_4=$(date -u -d '15 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
+    local interval_start_1=$(cross_platform_date_ago 75)  # 75 minutes ago
+    local interval_end_1=$(cross_platform_date_ago 60)    # 60 minutes ago
+    local interval_start_2=$(cross_platform_date_ago 60)  # 60 minutes ago
+    local interval_end_2=$(cross_platform_date_ago 45)    # 45 minutes ago
+    local interval_start_3=$(cross_platform_date_ago 45)  # 45 minutes ago
+    local interval_end_3=$(cross_platform_date_ago 30)    # 30 minutes ago
+    local interval_start_4=$(cross_platform_date_ago 30)  # 30 minutes ago
+    local interval_end_4=$(cross_platform_date_ago 15)    # 15 minutes ago
 
     echo_info "Using timestamps:" >&2
     echo_info "  Report date: $now_date" >&2
@@ -287,7 +307,7 @@ upload_test_data() {
         file_uuid=$(uuidgen | tr '[:upper:]' '[:lower:]')
     else
         # Fallback UUID generation
-        file_uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || python3 -c "import uuid; print(str(uuid.uuid4()))" 2>/dev/null || echo "$(date +%s)-test-uuid")
+        file_uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "$(date +%s)-$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')-test-uuid")
     fi
 
     local csv_filename="${file_uuid}_openshift_usage_report.0.csv"
@@ -495,7 +515,7 @@ verify_ros_ingress_processing() {
         file_uuid=$(uuidgen | tr '[:upper:]' '[:lower:]')
     else
         # Fallback UUID generation
-        file_uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || python3 -c "import uuid; print(str(uuid.uuid4()))" 2>/dev/null || echo "$(date +%s)-test-uuid")
+        file_uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "$(date +%s)-$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')-test-uuid")
     fi
 
     local csv_filename="${file_uuid}_openshift_usage_report.0.csv"
@@ -505,12 +525,12 @@ verify_ros_ingress_processing() {
 
     # Create test CSV content with current timestamps (multiple data points)
     local now_date=$(date -u +%Y-%m-%d)
-    local interval_start_1=$(date -u -d '60 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
-    local interval_end_1=$(date -u -d '45 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
-    local interval_start_2=$(date -u -d '45 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
-    local interval_end_2=$(date -u -d '30 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
-    local interval_start_3=$(date -u -d '30 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
-    local interval_end_3=$(date -u -d '15 minutes ago' '+%Y-%m-%d %H:%M:%S -0000 UTC')
+    local interval_start_1=$(cross_platform_date_ago 60)  # 60 minutes ago
+    local interval_end_1=$(cross_platform_date_ago 45)    # 45 minutes ago
+    local interval_start_2=$(cross_platform_date_ago 45)  # 45 minutes ago
+    local interval_end_2=$(cross_platform_date_ago 30)    # 30 minutes ago
+    local interval_start_3=$(cross_platform_date_ago 30)  # 30 minutes ago
+    local interval_end_3=$(cross_platform_date_ago 15)    # 15 minutes ago
 
     echo_info "Creating CSV with current timestamps:" >&2
     echo_info "  Report date: $now_date" >&2
@@ -870,18 +890,7 @@ verify_recommendations() {
 
         if [ -f /tmp/recommendations_list.json ]; then
             # Check if we have actual recommendations
-            local rec_count=$(python3 -c "
-import json, sys
-try:
-    with open('/tmp/recommendations_list.json', 'r') as f:
-        data = json.load(f)
-    if 'data' in data and isinstance(data['data'], list):
-        print(len(data['data']))
-    else:
-        print(0)
-except:
-    print(0)
-" 2>/dev/null || echo "0")
+            local rec_count=$(jq 'if type == "object" and has("data") then (.data | length) elif type == "array" then length else 0 end' /tmp/recommendations_list.json 2>/dev/null || echo "0")
 
             echo_info "Found $rec_count recommendation(s) in the response"
 
@@ -890,33 +899,10 @@ except:
 
                 # Show summary of first recommendation
                 echo_info "Sample recommendation summary:"
-                python3 -c "
-import json
-try:
-    with open('/tmp/recommendations_list.json', 'r') as f:
-        data = json.load(f)
-    if 'data' in data and len(data['data']) > 0:
-        rec = data['data'][0]
-        print(f'  ID: {rec.get(\"id\", \"N/A\")}')
-        print(f'  Cluster: {rec.get(\"cluster_alias\", \"N/A\")}')
-        print(f'  Workload: {rec.get(\"workload\", \"N/A\")}')
-        print(f'  Container: {rec.get(\"container\", \"N/A\")}')
-        print(f'  Namespace: {rec.get(\"project\", \"N/A\")}')
-except Exception as e:
-    print(f'  Error parsing response: {e}')
-" 2>/dev/null || echo "  Unable to parse recommendation details"
+                jq -r '.data[0] | "  ID: \(.id // "N/A")\n  Cluster: \(.cluster_alias // "N/A")\n  Workload: \(.workload // "N/A")\n  Container: \(.container // "N/A")\n  Namespace: \(.project // "N/A")"' /tmp/recommendations_list.json 2>/dev/null || echo "  Unable to parse recommendation details"
 
                 # Test individual recommendation endpoint
-                local rec_id=$(python3 -c "
-import json
-try:
-    with open('/tmp/recommendations_list.json', 'r') as f:
-        data = json.load(f)
-    if 'data' in data and len(data['data']) > 0:
-        print(data['data'][0].get('id', ''))
-except:
-    pass
-" 2>/dev/null)
+                local rec_id=$(jq -r '.data[0].id // empty' /tmp/recommendations_list.json 2>/dev/null)
 
                 if [ -n "$rec_id" ]; then
                     echo_info "Testing individual recommendation endpoint for ID: $rec_id"
@@ -933,23 +919,14 @@ except:
 
                         # Show recommendation details
                         echo_info "Recommendation details available:"
-                        python3 -c "
-import json
-try:
-    with open('/tmp/recommendation_detail.json', 'r') as f:
-        data = json.load(f)
-    if 'recommendations' in data and 'data' in data['recommendations']:
-        rec_data = data['recommendations']['data']
-        if rec_data:
-            print(f'  Current CPU request: {rec_data.get(\"requests\", {}).get(\"cpu\", {}).get(\"amount\", \"N/A\")}')
-            print(f'  Recommended CPU request: {rec_data.get(\"requests\", {}).get(\"cpu\", {}).get(\"recommendation\", {}).get(\"amount\", \"N/A\")}')
-            print(f'  Current Memory request: {rec_data.get(\"requests\", {}).get(\"memory\", {}).get(\"amount\", \"N/A\")}')
-            print(f'  Recommended Memory request: {rec_data.get(\"requests\", {}).get(\"memory\", {}).get(\"recommendation\", {}).get(\"amount\", \"N/A\")}')
-        else:
-            print('  No recommendation data available')
-except Exception as e:
-    print(f'  Error parsing recommendation: {e}')
-" 2>/dev/null || echo "  Unable to parse recommendation details"
+                        local rec_data=$(jq -r '.recommendations.data // empty' /tmp/recommendation_detail.json 2>/dev/null)
+                        if [ -n "$rec_data" ] && [ "$rec_data" != "null" ] && [ "$rec_data" != "" ]; then
+                            jq -r '.recommendations.data | 
+                                "  Current CPU request: \(.requests.cpu.amount // "N/A")\n  Recommended CPU request: \(.requests.cpu.recommendation.amount // "N/A")\n  Current Memory request: \(.requests.memory.amount // "N/A")\n  Recommended Memory request: \(.requests.memory.recommendation.amount // "N/A")"' \
+                                /tmp/recommendation_detail.json 2>/dev/null || echo "  Unable to parse recommendation details"
+                        else
+                            echo "  No recommendation data available"
+                        fi
 
                         rm -f /tmp/recommendation_detail.json
                     else

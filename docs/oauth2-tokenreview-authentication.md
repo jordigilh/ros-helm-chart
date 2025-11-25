@@ -197,7 +197,7 @@ The generated rh-identity header contains:
 ```json
 {
   "identity": {
-    "org_id": "1",
+    "org_id": "12345",
     "account_number": "1",
     "type": "User"
   }
