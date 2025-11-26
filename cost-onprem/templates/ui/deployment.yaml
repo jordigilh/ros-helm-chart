@@ -33,11 +33,15 @@ spec:
             secretKeyRef:
               name: {{ include "cost-onprem.fullname" . }}-ui-cookie-secret
               key: session-secret
+        - name: OAUTH2_PROXY_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "cost-onprem.fullname" . }}-ui-oauth-client-secret
+              key: client-secret
         args:
         - --https-address=:8443
         - --provider=keycloak-oidc
         - --client-id={{ .Values.ui.keycloak.client.id }}
-        - --client-secret-file=/etc/proxy/secrets/client-secret
         - --oidc-issuer-url=https://keycloak-keycloak.apps.cluster-v99kw.dynamic.redhatworkshops.io/realms/kubernetes
         - --redirect-url=https://{{ include "cost-onprem.fullname" . }}-ui-{{ .Release.Namespace }}.{{ include "cost-onprem.platform.clusterDomain" . }}/oauth2/callback
         - --tls-cert-file=/etc/tls/private/tls.crt
@@ -46,10 +50,10 @@ spec:
         - --pass-host-header=false
         - --skip-provider-button
         - --skip-auth-preflight
-        - --pass-access-token
+        - --pass-authorization-header
         - --code-challenge-method=S256
         - --email-domain=*
-        - --scope=openid
+        - --cookie-secure=true
         livenessProbe:
           httpGet:
             path: /ping
@@ -74,23 +78,16 @@ spec:
         - name: proxy-tls
           mountPath: /etc/tls/private
           readOnly: true
-        - name: cookie-secret
-          mountPath: /etc/proxy/secrets/session-secret
-          subPath: session-secret
-          readOnly: true
-        - name: client-secret
-          mountPath: /etc/proxy/secrets/client-secret
-          subPath: client-secret
-          readOnly: true
       - name: app
         image: "{{ .Values.ui.app.image.repository }}:{{ .Values.ui.app.image.tag }}"
         imagePullPolicy: {{ .Values.ui.app.image.pullPolicy | default .Values.global.pullPolicy }}
+        command: ["nginx", "-g", "daemon off;"]
         ports:
         - name: http
           containerPort: {{ .Values.ui.app.port }}
         env:
         - name: API_PROXY_URL
-          value: {{ printf "http://%s-ros-api:%v" (include "cost-onprem.fullname" .) .Values.ros.api.port }}
+          value: http://localhost:8081
         livenessProbe:
           httpGet:
             path: /
@@ -109,16 +106,33 @@ spec:
           failureThreshold: {{ .Values.probes.failureThreshold }}
         resources:
           {{- toYaml .Values.ui.app.resources | nindent 12 }}
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /opt/app-root/etc/nginx.default.d/nginx.conf
+          subPath: nginx.conf
+      - name: api-echo-server
+        image: ealen/echo-server:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: echo-http
+          containerPort: 8081
+        env:
+        - name: PORT
+          value: "8081"
+        resources:
+          limits:
+            cpu: "50m"
+            memory: "64Mi"
+          requests:
+            cpu: "25m"
+            memory: "32Mi"
       volumes:
       - name: proxy-tls
         secret:
           secretName: {{ include "cost-onprem.fullname" . }}-ui-tls
-      - name: cookie-secret
-        secret:
-          secretName: {{ include "cost-onprem.fullname" . }}-ui-cookie-secret
-      - name: client-secret
-        secret:
-          secretName: {{ include "cost-onprem.fullname" . }}-ui-oauth-client-secret
+      - name: nginx-config
+        configMap:
+          name: {{ include "cost-onprem.fullname" . }}-ui-nginx-config
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
