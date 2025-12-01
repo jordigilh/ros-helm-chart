@@ -338,7 +338,7 @@ serviceRoute:
 
 **Architecture:**
 The UI component consists of two containers in a single pod:
-- **OAuth2 Proxy**: Handles Keycloak OIDC authentication flow (port 8443)
+- **OAuth2 Proxy**: Handles Keycloak OIDC authentication flow
 - **Application**: Serves the Koku UI micro-frontend (port 8080, internal)
 
 **Access:**

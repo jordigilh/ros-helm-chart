@@ -11,7 +11,7 @@ metadata:
     service.beta.openshift.io/serving-cert-secret-name: {{ include "cost-onprem.fullname" . }}-ui-tls
 spec:
   ports:
-    - port: 8443
+    - port: 443
       targetPort: https
       name: https
       protocol: TCP
