@@ -459,6 +459,7 @@ jwtAuth:
     # Tokens from both the operator and UI OAuth proxy will be accepted
     audiences:
       - cost-management-operator
+      - cost-management-ui
 
     # TLS configuration for Keycloak communication
     tls:

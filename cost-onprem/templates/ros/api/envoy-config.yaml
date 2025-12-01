@@ -96,7 +96,9 @@ data:
                     keycloak:
                       issuer: {{ $issuerUrl }}
                       audiences:
-                        - {{ .Values.ui.oauthProxy.client.id }}
+                      {{- range .Values.jwtAuth.keycloak.audiences }}
+                        - {{ . }}
+                      {{- end }}
                       remote_jwks:
                         http_uri:
                           uri: {{ $jwksUrl }}
