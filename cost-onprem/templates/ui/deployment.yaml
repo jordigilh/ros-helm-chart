@@ -40,7 +40,7 @@ spec:
         args:
         - --https-address=:8443
         - --provider=keycloak-oidc
-        - --client-id={{ .Values.ui.keycloak.client.id }}
+        - --client-id={{ .Values.ui.oauthProxy.client.id }}
         - --oidc-issuer-url={{ include "cost-onprem.keycloak.issuerUrl" . }}
         - --redirect-url=https://{{ include "cost-onprem.fullname" . }}-ui-{{ .Release.Namespace }}.{{ include "cost-onprem.platform.clusterDomain" . }}/oauth2/callback
         - --tls-cert-file=/etc/tls/private/tls.crt

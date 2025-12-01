@@ -472,7 +472,7 @@ jwtAuth:
 
     # JWT audience claims that will be validated
     # Must match the 'aud' claim in incoming JWT tokens
-    # Only tokens issued for the cost-management-operator client will be accepted
+    # Tokens from both the operator and UI OAuth proxy will be accepted
     audiences:
       - cost-management-operator
 
@@ -501,6 +501,9 @@ ui:
       requests:
         cpu: "50m"
         memory: "64Mi"
+    client:
+      id: "cost-management-ui"
+      secret: "MqhFXXwd1pXPyhljPHaqBveHwkb13kY5"
 
   app:
     image:
@@ -515,11 +518,6 @@ ui:
       requests:
         cpu: "50m"
         memory: "64Mi"
-  
-  keycloak:
-    client:
-      id: "cost-management-ui"
-      secret: "MqhFXXwd1pXPyhljPHaqBveHwkb13kY5"
 
 # -----------------------------------------------------------------------------
 # Network Configuration
