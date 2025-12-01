@@ -55,7 +55,7 @@ flowchart LR
             N["<b>Nginx</b><br/>Port: 8080<br/>• Serves static files<br/>• Proxies /api to ROS API<br/>• Adds Bearer token"]
         end
 
-        P -->|7. localhost:8080<br/>X-Forwarded-Access-Token: <token>| N
+        P -->|7. localhost:8080<br/>Authorization: Bearer <token>| N
         N -->|8. /api requests<br/>Authorization: Bearer <token>| ROSAPI
     end
 
@@ -63,8 +63,8 @@ flowchart LR
         API["<b>ROS API</b><br/>Port: 8000<br/>Backend API"]
     end
 
-    subgraph OAuth["OpenShift OAuth"]
-        O["<b>OAuth Server</b><br/>authentication.k8s.io"]
+    subgraph OAuth["Keycloak OIDC"]
+        O["<b>Keycloak</b><br/>OIDC Provider"]
     end
 
     U -->|1. HTTPS Request| R
@@ -94,7 +94,7 @@ sequenceDiagram
     participant User as User Browser
     participant Route as OpenShift Route
     participant Proxy as OAuth Proxy<br/>(Sidecar)
-    participant OAuth as OpenShift OAuth
+    participant OAuth as Keycloak OIDC
     participant Nginx as Nginx<br/>(in UI App)
     participant ROSAPI as ROS API
 
@@ -108,7 +108,7 @@ sequenceDiagram
 
     Proxy-->>User: 302 Redirect<br/>Location: /oauth/authorize?...
 
-    User->>OAuth: GET /oauth/authorize
+    User->>OAuth: GET /oauth2/authorize
 
     OAuth->>User: Present login page
 
@@ -116,13 +116,13 @@ sequenceDiagram
 
     OAuth->>OAuth: Validate credentials
 
-    OAuth-->>User: 302 Redirect<br/>Location: /oauth/callback?code=...
+    OAuth-->>User: 302 Redirect<br/>Location: /oauth2/callback?code=...
 
-    User->>Route: GET /oauth/callback?code=...
+    User->>Route: GET /oauth2/callback?code=...
 
     Route->>Proxy: Forward callback
 
-    Proxy->>OAuth: Exchange code for token<br/>POST /oauth/token
+    Proxy->>OAuth: Exchange code for token<br/>POST /oauth2/token
 
     OAuth-->>Proxy: Access token + user info
 
@@ -152,9 +152,9 @@ sequenceDiagram
 
     Proxy->>Proxy: Validate session cookie<br/>Session valid<br/>Extract access token
 
-    Proxy->>Nginx: GET /api/recommendations<br/>X-Forwarded-Access-Token: <token>
+    Proxy->>Nginx: GET /api/recommendations<br/>Authorization: Bearer <token>
 
-    Nginx->>Nginx: Match /api location<br/>Extract token from header
+    Nginx->>Nginx: Match /api location<br/>Forward Authorization header
 
     Nginx->>ROSAPI: GET /api/recommendations<br/>Authorization: Bearer <token>
 
@@ -174,7 +174,7 @@ sequenceDiagram
 
     Proxy->>Proxy: Validate session cookie<br/>Session expired
 
-    Proxy-->>User: 302 Redirect<br/>Location: /oauth/authorize?...<br/>(repeat login flow)
+    Proxy-->>User: 302 Redirect<br/>Location: /oauth2/authorize?...<br/>(repeat login flow)
 ```
 
 ### Components
@@ -257,7 +257,7 @@ args:
 - --pass-host-header=false                 # Don't forward original Host header
 - --skip-provider-button                   # Skip provider button
 - --skip-auth-preflight                    # Skip OAuth consent screen
-- --pass-access-token                      # Pass access token to upstream
+- --pass-authorization-header               # Pass Authorization header with Bearer token to upstream
 - --code-challenge-method=S256             # Use PKCE for enhanced security
 ```
 
@@ -345,8 +345,9 @@ The Nginx configuration is embedded in the UI application container. Key configu
 location /api {
     proxy_pass ${API_PROXY_URL};
     
-    # Extract access token from OAuth proxy header and add as Bearer token
-    proxy_set_header Authorization "Bearer $http_x_forwarded_access_token";
+    # OAuth2 proxy passes Authorization header with Bearer token via --pass-authorization-header
+    # Nginx forwards the Authorization header directly to ROS API
+    proxy_set_header Authorization $http_authorization;
     
     # Standard proxy headers
     proxy_set_header Host $host;
@@ -372,9 +373,9 @@ location / {
    - Configured in Helm values: `ui.app.env.API_PROXY_URL`
 
 2. **Token Passing**:
-   - OAuth proxy sets `X-Forwarded-Access-Token` header with the user's access token
-   - Nginx extracts this header: `$http_x_forwarded_access_token`
-   - Nginx adds it as `Authorization: Bearer <token>` header to ROS API requests
+   - OAuth2 proxy uses `--pass-authorization-header` flag to pass the `Authorization` header with Bearer token
+   - OAuth2 proxy sets `Authorization: Bearer <token>` header when forwarding requests to upstream (Nginx)
+   - Nginx explicitly forwards the `Authorization` header to ROS API using `proxy_set_header Authorization $http_authorization`
    - ROS API validates the Bearer token for authentication
 
 3. **Static File Serving**:
@@ -391,8 +392,8 @@ User → Route → OAuth Proxy → Nginx → Serve /index.html → Response
 
 **API Request:**
 ```
-User → Route → OAuth Proxy (adds X-Forwarded-Access-Token) 
-  → Nginx (extracts token, adds Authorization header) 
+User → Route → OAuth2 Proxy (adds Authorization: Bearer <token> via --pass-authorization-header) 
+  → Nginx (forwards Authorization header) 
   → ROS API (validates Bearer token) 
   → Response
 ```
@@ -414,8 +415,8 @@ This ensures Nginx knows where to proxy API requests.
 ### Prerequisites
 
 1. Deployed on OpenShift cluster (UI is OpenShift-only)
-2. OpenShift OAuth server is accessible
-3. User has valid OpenShift credentials
+2. Keycloak OIDC server is accessible and configured
+3. User has valid Keycloak credentials
 
 ### Access the UI
 
@@ -429,7 +430,7 @@ echo "https://$UI_ROUTE"
 # Or test with curl (will get redirect)
 curl -v "https://$UI_ROUTE"
 
-# Expected: 302 redirect to /oauth/authorize
+# Expected: 302 redirect to /oauth2/authorize
 ```
 
 ### Verify Route Configuration
@@ -501,7 +502,7 @@ oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
 # Test Nginx API proxy (requires authenticated session)
 # First, get a valid session cookie, then:
 oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
-  curl -H "X-Forwarded-Access-Token: <test-token>" \
+  curl -H "Authorization: Bearer <test-token>" \
        http://localhost:8080/api/status
 
 # Check Nginx logs (if available in container)
@@ -517,8 +518,8 @@ oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
 ```bash
 # 1. Open browser in private/incognito mode
 # 2. Navigate to https://<ui-route>
-# 3. Should redirect to OpenShift login
-# 4. Enter OpenShift credentials
+# 3. Should redirect to Keycloak login
+# 4. Enter Keycloak credentials
 # 5. Should redirect back to UI
 # 6. UI should load successfully
 
@@ -533,7 +534,7 @@ oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
 
 ### OAuth Redirect Loop
 
-**Symptom**: Continuously redirected between UI and OpenShift OAuth
+**Symptom**: Continuously redirected between UI and Keycloak OAuth
 
 **Diagnosis**:
 ```bash
@@ -696,8 +697,8 @@ oc get svc -n ros-ocp -l app.kubernetes.io/component=ros-api
 oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
   curl http://<fullname>-ros-api:8000/status
 
-# Check if OAuth proxy is setting X-Forwarded-Access-Token header
-oc logs -n ros-ocp -l app.kubernetes.io/component=ui -c oauth-proxy | grep -i "forwarded-access-token"
+# Check if OAuth2 proxy is passing Authorization header
+oc logs -n ros-ocp -l app.kubernetes.io/component=ui -c oauth-proxy | grep -i "authorization\|pass-authorization"
 ```
 
 **Solution**:
@@ -707,15 +708,15 @@ oc logs -n ros-ocp -l app.kubernetes.io/component=ui -c oauth-proxy | grep -i "f
 oc get deployment -n ros-ocp -l app.kubernetes.io/component=ui -o yaml | \
   grep -A 2 API_PROXY_URL
 
-# Ensure OAuth proxy is configured with --pass-access-token flag
-# This flag enables X-Forwarded-Access-Token header
+# Ensure OAuth2 proxy is configured with --pass-authorization-header flag
+# This flag enables Authorization header to be passed to upstream
 oc get deployment -n ros-ocp -l app.kubernetes.io/component=ui -o yaml | \
-  grep -i "pass-access-token"
+  grep -i "pass-authorization-header"
 
 # If missing, update Helm values to include:
-# ui.oauthProxy.args: ["--pass-access-token"]
+# ui.oauthProxy.args: ["--pass-authorization-header"]
 helm upgrade ros-ocp ./ros-ocp -n ros-ocp \
-  --set ui.oauthProxy.passAccessToken=true
+  --set ui.oauthProxy.passAuthorizationHeader=true
 ```
 
 ### Nginx Proxy Errors
@@ -769,10 +770,10 @@ oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
    - Sessions have TTL and expire after inactivity
 
 3. **Authentication**
-   - Uses OpenShift's native OAuth server
-   - No external identity provider required
+   - Uses Keycloak OIDC provider
+   - Keycloak handles user authentication and authorization
    - User credentials never touch the OAuth proxy
-   - OAuth proxy only receives validated tokens from OAuth server
+   - OAuth proxy only receives validated tokens from Keycloak
 
 4. **Network Isolation**
    - UI app only accessible via OAuth proxy (no direct external access)
@@ -846,7 +847,7 @@ helm install cost-onprem ./cost-onprem \
 
 - ✅ OpenShift Routes with TLS reencrypt
 - ✅ Service CA Operator for automatic certificate generation
-- ✅ Keycloak instance (RHBK or community Keycloak)
+- ✅ Keycloak OIDC instance (RHBK or community Keycloak) for user authentication
 
 **Automatic Detection**: The UI is only deployed when the chart detects an OpenShift cluster:
 

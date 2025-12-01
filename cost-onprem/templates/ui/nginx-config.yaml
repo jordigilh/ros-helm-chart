@@ -13,6 +13,13 @@ data:
         proxy_pass http://{{ include "cost-onprem.fullname" . }}-ros-api:{{ .Values.ros.api.port }};
         proxy_http_version 1.1;
         proxy_set_header Connection "";
+        # OAuth2 proxy passes Authorization header with Bearer token via --pass-authorization-header
+        # Explicitly forward the Authorization header to ROS API
+        proxy_set_header Authorization $http_authorization;
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 
     location / {

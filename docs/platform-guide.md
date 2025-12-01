@@ -333,12 +333,12 @@ serviceRoute:
 ### UI Component (OpenShift Only)
 
 **Availability:**
-- ✅ **OpenShift**: Fully supported with OAuth proxy authentication
-- ❌ **Kubernetes/KIND**: Not available (requires OpenShift OAuth infrastructure)
+- ✅ **OpenShift**: Fully supported with Keycloak OAuth proxy authentication
+- ❌ **Kubernetes/KIND**: Not available (requires Keycloak OIDC infrastructure)
 
 **Architecture:**
 The UI component consists of two containers in a single pod:
-- **OAuth Proxy**: Handles OpenShift OAuth authentication flow (port 8443)
+- **OAuth2 Proxy**: Handles Keycloak OIDC authentication flow (port 8443)
 - **Application**: Serves the Koku UI micro-frontend (port 8080, internal)
 
 **Access:**
@@ -346,8 +346,8 @@ The UI component consists of two containers in a single pod:
 # Get UI route
 oc get route cost-onprem-ui -n cost-onprem -o jsonpath='{.spec.host}'
 
-# Access UI (requires OpenShift authentication)
-# Browser will redirect to OpenShift login, then back to UI
+# Access UI (requires Keycloak authentication)
+# Browser will redirect to Keycloak login, then back to UI
 https://cost-onprem-ui-cost-onprem.apps.cluster.example.com
 ```
 
@@ -357,8 +357,12 @@ ui:
   replicaCount: 1
   oauthProxy:
     image:
-      repository: registry.redhat.io/openshift4/ose-oauth-proxy-rhel9
-      tag: "latest"
+      repository: quay.io/oauth2-proxy/oauth2-proxy
+      tag: "v7.7.1"
+  keycloak:
+    client:
+      id: "cost-management-ui"
+      secret: "<client-secret>"
   app:
     image:
       repository: quay.io/insights-onprem/koku-ui-mfe-on-prem
@@ -369,7 +373,7 @@ ui:
 **Features:**
 - Automatic TLS certificate management via OpenShift service serving certificates
 - Cookie-based session management
-- Seamless OpenShift authentication integration
+- Seamless Keycloak OIDC authentication integration
 - Connects to ROS API backend for data
 
 **Documentation:**
