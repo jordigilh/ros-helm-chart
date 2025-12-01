@@ -8,7 +8,7 @@ The UI for ROS OCP uses OAuth2 Proxy with Keycloak OIDC as a sidecar container t
 
 | Component | Purpose | Location | Port |
 |-----------|---------|----------|------|
-| **OAuth2 Proxy** | Authentication proxy with Keycloak OIDC | Sidecar in ui pod | 443 (HTTPS) |
+| **OAuth2 Proxy** | Authentication proxy with Keycloak OIDC | Sidecar in ui pod | 8443 (HTTPS) |
 | **Nginx** | Web server and API proxy | Inside UI app container | 8080 (HTTP) |
 | **UI App** | Frontend application | Main container in pod | 8080 (HTTP) |
 | **ROS API** | Backend API service | Separate service | 8000 (HTTP) |
@@ -48,7 +48,7 @@ flowchart LR
 
     subgraph Pod["Pod: ui"]
         subgraph Proxy["OAuth Proxy Container"]
-            P["<b>OAuth Proxy</b><br/>Port: 443"]
+            P["<b>OAuth Proxy</b><br/>Port: 8443"]
         end
 
         subgraph App["UI App Container"]
@@ -102,7 +102,7 @@ sequenceDiagram
 
     User->>Route: HTTPS GET /<br/>(no cookie)
 
-    Route->>Proxy: Forward to port 443
+    Route->>Proxy: Forward to port 8443
 
     Proxy->>Proxy: Check for session cookie<br/>Cookie not found
 
@@ -244,8 +244,8 @@ The OAuth2 Proxy is configured with the following arguments:
 
 ```yaml
 args:
+- --https-address=:8443                    # Listen on HTTPS port 8443
 - --provider=keycloak-oidc                 # Use Keycloak OIDC provider
-# Note: --https-address defaults to :443 when TLS certificates are provided
 - --client-id=<client-id>                  # Keycloak client ID
 - --client-secret-file=/etc/proxy/secrets/client-secret  # Client secret
 - --cookie-secret-file=/etc/proxy/secrets/session-secret  # Session encryption key
@@ -298,10 +298,10 @@ metadata:
   annotations:
     service.beta.openshift.io/serving-cert-secret-name: <fullname>-ui-tls
 spec:
-    ports:
-      - port: 443
-        targetPort: https
-        name: https
+  ports:
+    - port: 8443
+      targetPort: https
+      name: https
 ```
 
 The operator:
@@ -465,7 +465,7 @@ oc get secret <fullname>-ui-tls -n ros-ocp -o jsonpath='{.data.tls\.crt}' | base
 ```bash
 # Check OAuth proxy health endpoint
 oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c oauth-proxy -- \
-  curl -k https://localhost:443/ping
+  curl -k https://localhost:8443/oauth/healthz
 
 # Expected: "OK"
 
@@ -473,8 +473,8 @@ oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c oauth-proxy -- \
 oc logs -n ros-ocp -l app.kubernetes.io/component=ui -c oauth-proxy --tail=50
 
 # Look for:
-# - "Listening on :443"
-# - "HTTP: serving on :443"
+# - "Listening on :8443"
+# - "HTTP: serving on :8443"
 ```
 
 ### Verify UI App Health

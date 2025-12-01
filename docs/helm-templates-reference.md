@@ -272,14 +272,14 @@ The UI component provides a web-based user interface for Cost Management On-Prem
 graph TB
     subgraph Pod["UI Pod"]
         direction TB
-        OAuthProxy["OAuth2 Proxy Container<br/>(Port 443)<br/><br/>• Keycloak OIDC<br/>• Session management<br/>• TLS termination"]
+        OAuthProxy["OAuth2 Proxy Container<br/>(Port 8443)<br/><br/>• Keycloak OIDC<br/>• Session management<br/>• TLS termination"]
         App["App Container<br/>(Port 8080)<br/><br/>• Koku UI MFE<br/>• React application<br/>• API proxy"]
         
         OAuthProxy -->|"http://localhost:8080"| App
     end
     
     Route["OpenShift Route<br/>(reencrypt TLS)"]
-    Service["UI Service<br/>(Port 443)"]
+    Service["UI Service<br/>(Port 8443)"]
     
     Route -->|"HTTPS"| Service
     Service -->|"HTTPS"| OAuthProxy
@@ -294,11 +294,12 @@ graph TB
 
 #### OAuth2 Proxy Container
 - **Image**: `quay.io/oauth2-proxy/oauth2-proxy:v7.7.1`
-- **Port**: `443` (HTTPS)
+- **Port**: `8443` (HTTPS)
 - **Purpose**: Handles Keycloak OIDC authentication flow
 
 **Key Arguments**:
 ```yaml
+- --https-address=:8443
 - --provider=keycloak-oidc
 - --client-id={{ .Values.ui.keycloak.client.id }}
 - --oidc-issuer-url={{ include "cost-onprem.keycloak.issuerUrl" . }}
@@ -314,8 +315,8 @@ graph TB
 ```
 
 **Health Probes**:
-- **Liveness**: `GET /ping` on port `443` (HTTPS)
-- **Readiness**: `GET /ping` on port `443` (HTTPS)
+- **Liveness**: `GET /ping` on port `8443` (HTTPS)
+- **Readiness**: `GET /ping` on port `8443` (HTTPS)
 
 **Volume Mounts**:
 - `proxy-tls`: TLS certificate and key from OpenShift service serving certificate secret
@@ -359,7 +360,7 @@ resources:
 **Port Configuration**:
 ```yaml
 ports:
-  - port: 443
+  - port: 8443
     targetPort: https
     name: https
     protocol: TCP

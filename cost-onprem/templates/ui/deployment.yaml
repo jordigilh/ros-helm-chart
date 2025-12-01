@@ -25,7 +25,7 @@ spec:
         imagePullPolicy: {{ .Values.ui.oauthProxy.image.pullPolicy | default .Values.global.pullPolicy }}
         ports:
         - name: https
-          containerPort: 443
+          containerPort: 8443
         env:
         - name: OAUTH2_PROXY_COOKIE_SECRET
           valueFrom:
@@ -38,6 +38,7 @@ spec:
               name: {{ include "cost-onprem.fullname" . }}-ui-oauth-client-secret
               key: client-secret
         args:
+        - --https-address=:8443
         - --provider=keycloak-oidc
         - --client-id={{ .Values.ui.keycloak.client.id }}
         - --oidc-issuer-url={{ include "cost-onprem.keycloak.issuerUrl" . }}
