@@ -41,7 +41,7 @@ spec:
         - --https-address=:8443
         - --provider=keycloak-oidc
         - --client-id={{ .Values.ui.keycloak.client.id }}
-        - --oidc-issuer-url=https://keycloak-keycloak.apps.cluster-v99kw.dynamic.redhatworkshops.io/realms/kubernetes
+        - --oidc-issuer-url={{ include "cost-onprem.keycloak.issuerUrl" . }}
         - --redirect-url=https://{{ include "cost-onprem.fullname" . }}-ui-{{ .Release.Namespace }}.{{ include "cost-onprem.platform.clusterDomain" . }}/oauth2/callback
         - --tls-cert-file=/etc/tls/private/tls.crt
         - --tls-key-file=/etc/tls/private/tls.key
