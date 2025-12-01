@@ -488,7 +488,7 @@ ui:
         memory: "64Mi"
     client:
       id: "cost-management-ui"
-      secret: "MqhFXXwd1pXPyhljPHaqBveHwkb13kY5"
+      secret: "6lA0U2g9NHplz4o0XfuSR4LUpK5Sr8FL"
 
   app:
     image:
