@@ -22,8 +22,8 @@ STORAGE_CLASS=${STORAGE_CLASS:-}  # Auto-detect if empty
 REALM_NAME=${REALM_NAME:-kubernetes}
 COST_MGMT_OPERATOR_CLIENT_ID=${COST_MGMT_OPERATOR_CLIENT_ID:-cost-management-operator}
 COST_MGMT_UI_CLIENT_ID=${COST_MGMT_UI_CLIENT_ID:-cost-management-ui}
-COST_MGMT_UI_NAMESPACE=${COST_MGMT_UI_NAMESPACE:-cost-onprem}
-COST_MGMT_UI_RELEASE_NAME=${COST_MGMT_UI_RELEASE_NAME:-cost-onprem}
+COST_MGMT_NAMESPACE=${COST_MGMT_NAMESPACE:-cost-onprem}
+COST_MGMT_RELEASE_NAME=${COST_MGMT_RELEASE_NAME:-cost-onprem}
 KEYCLOAK_INSTANCES=${KEYCLOAK_INSTANCES:-1}
 
 # OpenShift cluster-specific configuration (auto-detected)
@@ -91,13 +91,13 @@ check_prerequisites() {
         # Auto-detect UI base URL if not explicitly set
         if [ -z "$UI_BASE_URL" ]; then
             # Try to detect from existing route
-            local ui_route=$(oc get route -n "$COST_MGMT_UI_NAMESPACE" -l app.kubernetes.io/component=ui -o jsonpath='{.items[0].spec.host}' 2>/dev/null || echo "")
+            local ui_route=$(oc get route -n "$COST_MGMT_NAMESPACE" -l app.kubernetes.io/component=ui -o jsonpath='{.items[0].spec.host}' 2>/dev/null || echo "")
             if [ -n "$ui_route" ]; then
                 UI_BASE_URL="https://$ui_route"
                 echo_success "✓ Auto-detected UI URL from existing route: $UI_BASE_URL"
             else
                 # Construct expected URL pattern: {release-name}-ui-{namespace}.{clusterDomain}
-                UI_BASE_URL="https://${COST_MGMT_UI_RELEASE_NAME}-ui-${COST_MGMT_UI_NAMESPACE}.${CLUSTER_DOMAIN}"
+                UI_BASE_URL="https://${COST_MGMT_RELEASE_NAME}-ui-${COST_MGMT_NAMESPACE}.${CLUSTER_DOMAIN}"
                 echo_info "Using constructed UI URL: $UI_BASE_URL (set COST_MGMT_UI_BASE_URL to override)"
             fi
         else
@@ -1317,8 +1317,8 @@ case "${1:-}" in
         echo "  REALM_NAME                Realm name (default: kubernetes)"
         echo "  COST_MGMT_OPERATOR_CLIENT_ID  Operator client ID (default: cost-management-operator)"
         echo "  COST_MGMT_UI_CLIENT_ID    UI client ID (default: cost-management-ui)"
-        echo "  COST_MGMT_UI_NAMESPACE    UI namespace for URL construction (default: cost-onprem)"
-        echo "  COST_MGMT_UI_RELEASE_NAME UI release name for URL construction (default: cost-onprem)"
+        echo "  COST_MGMT_NAMESPACE    UI namespace for URL construction (default: cost-onprem)"
+        echo "  COST_MGMT_RELEASE_NAME UI release name for URL construction (default: cost-onprem)"
         echo "  COST_MGMT_UI_BASE_URL     UI base URL (auto-detected if not set)"
         echo "  KEYCLOAK_INSTANCES        Number of instances (default: 1)"
         echo ""

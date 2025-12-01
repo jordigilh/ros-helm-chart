@@ -1215,6 +1215,69 @@ verify_keycloak_client_secret() {
     fi
 }
 
+# Function to verify Keycloak UI client secret exists
+verify_keycloak_ui_client_secret() {
+    local client_id="${1:-cost-management-ui}"
+
+    if [ -z "$KEYCLOAK_NAMESPACE" ]; then
+        echo_warning "Keycloak namespace not set, skipping UI client secret verification"
+        return 1
+    fi
+
+    # Check if secret exists
+    local secret_name="keycloak-client-secret-$client_id"
+    if kubectl get secret "$secret_name" -n "$KEYCLOAK_NAMESPACE" >/dev/null 2>&1; then
+        echo_success "✓ UI client secret exists: $secret_name"
+        return 0
+    else
+        echo_warning "UI client secret not found: $secret_name"
+        echo_info "  Run deploy-rhbk.sh to automatically create the UI client secret"
+        return 1
+    fi
+}
+
+# Function to extract UI OAuth client credentials from Keycloak and add to Helm values
+create_ui_oauth_client_secret() {
+    echo_info "Extracting UI OAuth client credentials from Keycloak..."
+
+    if [ -z "$KEYCLOAK_NAMESPACE" ]; then
+        echo_warning "Keycloak namespace not set, skipping UI OAuth client credentials extraction"
+        return 0
+    fi
+
+    # Check if Keycloak UI client secret exists
+    local keycloak_ui_secret_name="keycloak-client-secret-cost-management-ui"
+    if ! kubectl get secret "$keycloak_ui_secret_name" -n "$KEYCLOAK_NAMESPACE" >/dev/null 2>&1; then
+        echo_warning "Keycloak UI client secret '$keycloak_ui_secret_name' not found in namespace '$KEYCLOAK_NAMESPACE'"
+        echo_info "  Run deploy-rhbk.sh to create the Keycloak UI client secret first"
+        return 1
+    fi
+
+    # Extract client ID and client secret from Keycloak secret
+    echo_info "Extracting client ID and client secret from Keycloak secret..."
+    local client_id=$(kubectl get secret "$keycloak_ui_secret_name" -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.data.CLIENT_ID}' 2>/dev/null | base64 -d)
+    local client_secret=$(kubectl get secret "$keycloak_ui_secret_name" -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.data.CLIENT_SECRET}' 2>/dev/null | base64 -d)
+
+    if [ -z "$client_id" ]; then
+        echo_error "Failed to extract CLIENT_ID from '$keycloak_ui_secret_name'"
+        echo_error "  The secret may not have the expected structure"
+        return 1
+    fi
+
+    if [ -z "$client_secret" ]; then
+        echo_error "Failed to extract CLIENT_SECRET from '$keycloak_ui_secret_name'"
+        echo_error "  The secret may not have the expected structure"
+        return 1
+    fi
+
+    # Add to Helm arguments to override values.yaml
+    # The Helm chart will create the secret using these values
+    echo_info "Adding UI OAuth client credentials to Helm values..."
+    HELM_EXTRA_ARGS+=("--set" "ui.oauthProxy.client.id=$client_id")
+    HELM_EXTRA_ARGS+=("--set" "ui.oauthProxy.client.secret=$client_secret")
+    echo_success "UI OAuth client credentials will be passed to Helm chart via --set arguments"
+}
+
 # Function to setup JWT authentication based on platform
 setup_jwt_authentication() {
     echo_info "Configuring JWT authentication based on platform..."
@@ -1231,10 +1294,15 @@ setup_jwt_authentication() {
             echo_info "  RHBK Namespace: $KEYCLOAK_NAMESPACE"
             echo_info "  RHBK API: $KEYCLOAK_API_VERSION"
 
-            # Verify client secret exists (created by deploy-rhbk.sh)
-            echo_info "Verifying Keycloak client secret exists..."
+            # Verify operator client secret exists (created by deploy-rhbk.sh)
+            echo_info "Verifying Keycloak operator client secret exists..."
             verify_keycloak_client_secret "cost-management-operator" || \
-                echo_warning "Client secret not found. Run ./deploy-rhbk.sh to create it."
+                echo_warning "Operator client secret not found. Run ./deploy-rhbk.sh to create it."
+
+            # Verify UI client secret exists (created by deploy-rhbk.sh)
+            echo_info "Verifying Keycloak UI client secret exists..."
+            verify_keycloak_ui_client_secret "cost-management-ui" || \
+                echo_warning "UI client secret not found. Run ./deploy-rhbk.sh to create it."
         else
             echo_warning "RHBK not detected - ensure it's deployed before using JWT authentication"
         fi
@@ -1361,6 +1429,14 @@ main() {
     # Create storage credentials secret
     if ! create_storage_credentials_secret; then
         exit 1
+    fi
+
+    # Create UI OAuth client secret (if Keycloak is available)
+    if [ "$JWT_AUTH_ENABLED" = "true" ] && [ -n "$KEYCLOAK_NAMESPACE" ]; then
+        if ! create_ui_oauth_client_secret; then
+            echo_warning "Failed to create UI OAuth client secret. UI OAuth may not work correctly."
+            echo_info "  Ensure deploy-rhbk.sh has been run to create the Keycloak UI client secret"
+        fi
     fi
 
     # Verify Strimzi operator and Kafka cluster are available
