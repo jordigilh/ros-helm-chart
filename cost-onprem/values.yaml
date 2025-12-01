@@ -487,8 +487,8 @@ ui:
         cpu: "50m"
         memory: "64Mi"
     client:
-      id: "cost-management-ui"
-      secret: "6lA0U2g9NHplz4o0XfuSR4LUpK5Sr8FL"
+      id: ""
+      secret: ""
 
   app:
     image:
