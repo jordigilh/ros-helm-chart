@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# ROS OpenShift Data Flow Test Script with OAuth2 TokenReview Authentication
-# This script tests the complete data flow using the user's session token
+# ROS OpenShift Data Flow Test Script with Keycloak JWT Authentication
+# This script tests the complete data flow using Keycloak JWT tokens
 # Ingress: Uses Keycloak JWT (external uploads from Cost Management Operator)
-# Backend API: Uses OAuth2 TokenReview (user access from OpenShift Console UI)
+# Backend API: Uses Keycloak JWT (for API access)
 
 set -e  # Exit on any error
 
@@ -39,8 +39,7 @@ KEYCLOAK_URL=""
 CLIENT_ID=""
 CLIENT_SECRET=""
 
-# OAuth2 for backend API (cluster-internal access via user's session token)
-OAUTH2_TOKEN=""
+# JWT token is used for both ingress and backend API
 PORT_FORWARD_PID=""
 
 # Check prerequisites
@@ -286,50 +285,14 @@ get_jwt_token() {
     return 0
 }
 
-# Function to get OAuth2 token for backend API access (from user's session)
-get_oauth2_token() {
-    echo_info "=== Getting OAuth2 Token from User Session ==="
+# Note: JWT token is obtained via get_jwt_token() and used for both ingress and backend API
 
-    # Use the current user's session token (from 'oc whoami -t')
-    # This simulates how the OpenShift Console UI will authenticate
-    echo_info "Using token from current user session (oc whoami -t)..."
-    OAUTH2_TOKEN=$(oc whoami -t 2>/dev/null)
+# Function to test JWT authentication against backend API
+test_jwt_backend_auth() {
+    echo_info "=== Testing JWT Authentication on Backend API ==="
 
-    if [ -z "$OAUTH2_TOKEN" ]; then
-        echo_error "Failed to get user session token"
-        echo_error "Make sure you are logged into OpenShift with 'oc login'"
-        return 1
-    fi
-
-    # Get current user info
-    local current_user=$(oc whoami 2>/dev/null || echo "unknown")
-    local token_type="user session token"
-
-    # Check if this is a service account token (format: system:serviceaccount:namespace:name)
-    if echo "$current_user" | grep -q "^system:serviceaccount:"; then
-        token_type="service account token"
-    fi
-
-    echo_success "OAuth2 token obtained successfully"
-    echo_info "User: $current_user"
-    echo_info "Token type: $token_type"
-    echo_info "Token length: ${#OAUTH2_TOKEN} characters"
-    echo_info "Token preview: ${OAUTH2_TOKEN:0:50}..."
-    echo_info ""
-    echo_info "Note: This token is from your current OpenShift session."
-    echo_info "      This simulates how the OpenShift Console UI will authenticate."
-    echo_info "      The backend validates tokens via Kubernetes TokenReview API."
-    echo_info "      Accepted tokens: user tokens with audience 'https://kubernetes.default.svc'"
-
-    return 0
-}
-
-# Function to test OAuth2 authentication against backend API
-test_oauth2_backend_auth() {
-    echo_info "=== Testing OAuth2 Authentication on Backend API ==="
-
-    if [ -z "$OAUTH2_TOKEN" ]; then
-        echo_error "OAuth2 token not available. Run get_oauth2_token first."
+    if [ -z "$JWT_TOKEN" ]; then
+        echo_error "JWT token not available. Run get_jwt_token first."
         return 1
     fi
 
@@ -340,8 +303,8 @@ test_oauth2_backend_auth() {
     local test_passed=0
     local test_failed=0
 
-    # Test 1: Request without OAuth2 token (should be rejected)
-    echo_info "Test 1: Request without OAuth2 token"
+    # Test 1: Request without JWT token (should be rejected)
+    echo_info "Test 1: Request without JWT token"
     local recommendations_endpoint="$backend_url/api/cost-management/v1/recommendations/openshift"
     local http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$recommendations_endpoint" 2>/dev/null || echo "000")
     if [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
@@ -356,10 +319,10 @@ test_oauth2_backend_auth() {
         echo_warning "  ⚠ Got HTTP $http_code (may indicate routing issue)"
     fi
 
-    # Test 2: Request with invalid OAuth2 token
-    echo_info "Test 2: Request with invalid OAuth2 token"
+    # Test 2: Request with invalid JWT token
+    echo_info "Test 2: Request with invalid JWT token"
     http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
-        -H "Authorization: Bearer invalid.oauth2.token" \
+        -H "Authorization: Bearer invalid.jwt.token" \
         "$recommendations_endpoint" 2>/dev/null || echo "000")
     if [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
         echo_success "  ✓ Correctly rejected invalid token ($http_code)"
@@ -368,17 +331,17 @@ test_oauth2_backend_auth() {
         echo_warning "  ⚠ Expected 401/403, got $http_code"
     fi
 
-    # Test 3: Request with valid OAuth2 user token (should succeed)
-    echo_info "Test 3: Request with valid OAuth2 user session token"
+    # Test 3: Request with valid JWT token (should succeed)
+    echo_info "Test 3: Request with valid Keycloak JWT token"
     local response=$(curl -s -w "\n%{http_code}" --max-time 10 \
-        -H "Authorization: Bearer $OAUTH2_TOKEN" \
+        -H "Authorization: Bearer $JWT_TOKEN" \
         "$recommendations_endpoint" 2>/dev/null)
 
     http_code=$(echo "$response" | tail -n 1)
     local response_body=$(echo "$response" | sed '$d')
 
     if [ "$http_code" = "200" ] || [ "$http_code" = "404" ]; then
-        echo_success "  ✓ Successfully authenticated with OAuth2 token (HTTP $http_code)"
+        echo_success "  ✓ Successfully authenticated with JWT token (HTTP $http_code)"
         echo_info "  Response: $response_body"
         test_passed=$((test_passed + 1))
     else
@@ -389,15 +352,15 @@ test_oauth2_backend_auth() {
 
     echo ""
     if [ $test_passed -ge 2 ]; then
-        echo_success "OAuth2 backend authentication tests passed ($test_passed tests)"
+        echo_success "JWT backend authentication tests passed ($test_passed tests)"
         return 0
     else
-        echo_error "OAuth2 backend authentication tests failed ($test_failed failures)"
+        echo_error "JWT backend authentication tests failed ($test_failed failures)"
         return 1
     fi
 }
 
-# Function to query backend API with OAuth2 token
+# Function to query backend API with JWT token
 # Returns: Sets global variables QUERY_HTTP_CODE and QUERY_RESPONSE_BODY
 query_backend_api() {
     local endpoint="$1"
@@ -406,8 +369,8 @@ query_backend_api() {
     QUERY_HTTP_CODE=""
     QUERY_RESPONSE_BODY=""
 
-    if [ -z "$OAUTH2_TOKEN" ]; then
-        echo_error "OAuth2 token not available"
+    if [ -z "$JWT_TOKEN" ]; then
+        echo_error "JWT token not available"
         return 1
     fi
 
@@ -418,7 +381,7 @@ query_backend_api() {
     echo_info "  URL: $full_url"
 
     local response=$(curl -s -w "\n%{http_code}" --max-time 10 \
-        -H "Authorization: Bearer $OAUTH2_TOKEN" \
+        -H "Authorization: Bearer $JWT_TOKEN" \
         -H "Accept: application/json" \
         "$full_url" 2>/dev/null)
 
@@ -851,10 +814,10 @@ check_recommendations_with_retry() {
 
 # Main execution
 main() {
-    echo_info "ROS Hybrid Authentication Data Flow Test"
+    echo_info "ROS JWT Authentication Data Flow Test"
     echo_info "============================================"
     echo_info "Ingress: Keycloak JWT (external uploads from Cost Management Operator)"
-    echo_info "Backend API: OAuth2 TokenReview (user access from OpenShift Console UI)"
+    echo_info "Backend API: Keycloak JWT (for API access)"
     echo ""
 
     # Check prerequisites first
@@ -870,39 +833,32 @@ main() {
     echo_info "  Keycloak Namespace: $KEYCLOAK_NAMESPACE"
     echo ""
 
-    # Step 1: Get OAuth2 user token for backend API access
-    if ! get_oauth2_token; then
-        echo_error "Failed to obtain OAuth2 user session token"
-        exit 1
-    fi
-    echo ""
-
-    # Step 2: Test OAuth2 authentication on backend API
-    echo_info "Testing OAuth2 TokenReview authentication..."
-    if test_oauth2_backend_auth; then
-        echo_success "✓ OAuth2 backend authentication validated"
-    else
-        echo_warning "OAuth2 backend auth tests incomplete - may need route/firewall config"
-        echo_info "Main functionality will be tested during API queries..."
-    fi
-    echo ""
-
-    # Step 3: Detect Keycloak configuration for ingress
+    # Step 1: Detect Keycloak configuration
     if ! detect_keycloak_config; then
         echo_error "Failed to detect Keycloak configuration"
         exit 1
     fi
     echo ""
 
-    # Step 4: Get JWT token for ingress
+    # Step 2: Get JWT token (used for both ingress and backend API)
     if ! get_jwt_token; then
         echo_error "Failed to obtain JWT token"
         exit 1
     fi
     echo ""
 
-    # Step 4.5: Validate JWT authentication is working (preflight smoke test)
+    # Step 3: Validate JWT authentication is working (preflight smoke test)
     validate_jwt_authentication
+    echo ""
+
+    # Step 4: Test JWT authentication on backend API
+    echo_info "Testing JWT authentication on backend API..."
+    if test_jwt_backend_auth; then
+        echo_success "✓ JWT backend authentication validated"
+    else
+        echo_warning "JWT backend auth tests incomplete - may need route/firewall config"
+        echo_info "Main functionality will be tested during API queries..."
+    fi
     echo ""
 
     # Step 5: Upload test data with JWT authentication
@@ -916,17 +872,16 @@ main() {
     verify_upload_processing
     echo ""
 
-    # Step 7: Query backend API with OAuth2 user token to verify authenticated access
-    echo_info "=== Querying Backend API with OAuth2 User Token ==="
-    echo_info "Testing API access using user session token from OpenShift..."
-    echo_info "This simulates how the OpenShift Console UI accesses the backend."
+    # Step 7: Query backend API with JWT token to verify authenticated access
+    echo_info "=== Querying Backend API with Keycloak JWT Token ==="
+    echo_info "Testing API access using Keycloak JWT token..."
     echo ""
 
-    local backend_url=$(get_service_url "rosocp-api" "")
+    local backend_url=$(get_service_url "ros-api" "")
     local backend_queries_passed=0
     local backend_queries_failed=0
 
-    # Test: Status endpoint (health check - verifies OAuth2 auth works)
+    # Test: Status endpoint (health check - verifies JWT auth works)
     echo_info "Query: Health Status Check"
     if query_backend_api "/status" "API Status"; then
         echo_success "  ✓ Status endpoint accessible"
@@ -968,9 +923,8 @@ main() {
     echo ""
 
     if [ $backend_queries_passed -gt 0 ]; then
-        echo_success "✓ OAuth2 user token authentication successful on backend API!"
-        echo_info "  The user token was validated via JWT authentication"
-        echo_info "  The username was transformed into rh-identity header"
+        echo_success "✓ JWT token authentication successful on backend API!"
+        echo_info "  The Keycloak JWT token was validated"
         echo_info "  The backend API accepted the authenticated requests"
     else
         echo_warning "Backend API queries had issues - authentication may work but endpoints may be unavailable"
@@ -985,7 +939,7 @@ main() {
 
     if ! check_recommendations_with_retry "$UPLOAD_CLUSTER_ID"; then
         echo ""
-        echo_error "❌ Hybrid Authentication Data Flow Test FAILED!"
+        echo_error "❌ JWT Authentication Data Flow Test FAILED!"
         echo_error "The upload was successful but no recommendations were generated for cluster: $UPLOAD_CLUSTER_ID"
         echo_info ""
         echo_info "Troubleshooting steps:"
@@ -1001,23 +955,21 @@ main() {
     fi
 
     echo ""
-    echo_success "✅ Hybrid Authentication Data Flow Test completed successfully!"
+    echo_success "✅ JWT Authentication Data Flow Test completed successfully!"
     echo_success "Test cluster ID: $UPLOAD_CLUSTER_ID"
     echo_info ""
     echo_info "The test demonstrated:"
-    echo_info "  ✓ User session token authentication (oc whoami -t)"
-    echo_info "  ✓ OAuth2 TokenReview validation on backend API"
     echo_info "  ✓ Keycloak JWT token generation"
     echo_info "  ✓ Authenticated file upload using JWT Bearer token (ingress)"
     echo_info "  ✓ Ingress processing with JWT authentication"
-    echo_info "  ✓ Backend API queries with user token (simulates Console UI)"
+    echo_info "  ✓ Backend API queries with Keycloak JWT token"
     echo_info "  ✓ Backend processing and data aggregation"
     echo_info "  ✓ Kruize recommendation generation for uploaded data"
     echo_info "  ✓ End-to-end data flow with optimization recommendations"
     echo_info ""
-    echo_info "🎉 This confirms both authentication methods are working:"
+    echo_info "🎉 This confirms JWT authentication is working for both:"
     echo_info "   - Ingress: Keycloak JWT (for external Cost Management Operator)"
-    echo_info "   - Backend API: OAuth2 TokenReview (for OpenShift Console UI users)"
+    echo_info "   - Backend API: Keycloak JWT (for API access)"
     echo_info ""
     echo_info "To query recommendations for this specific upload later:"
     echo_info "  ./query-kruize.sh --cluster $UPLOAD_CLUSTER_ID"
@@ -1029,7 +981,7 @@ case "${1:-}" in
         echo "Usage: $0 [command]"
         echo ""
         echo "Commands:"
-        echo "  (no command)    Run complete hybrid authentication test"
+        echo "  (no command)    Run complete JWT authentication test"
         echo "  help            Show this help message"
         echo ""
         echo "Environment Variables:"
@@ -1037,18 +989,19 @@ case "${1:-}" in
         echo "  HELM_RELEASE_NAME      Helm release name (default: cost-onprem)"
         echo "  KEYCLOAK_NAMESPACE     Keycloak namespace (default: keycloak)"
         echo ""
-        echo "This script tests both authentication mechanisms:"
+        echo "This script tests JWT authentication for both ingress and backend API:"
         echo ""
         echo "Keycloak JWT Authentication:"
         echo "  1. Detects Keycloak configuration automatically"
         echo "  2. Obtains JWT token using client credentials flow"
-        echo "  3. Uploads sample data using JWT Bearer authentication"
-        echo "  4. Verifies the upload was processed successfully"
-        echo "  5. Validates recommendations were generated"
+        echo "  3. Uploads sample data using JWT Bearer authentication (ingress)"
+        echo "  4. Queries backend API using JWT Bearer authentication"
+        echo "  5. Verifies the upload was processed successfully"
+        echo "  6. Validates recommendations were generated"
         echo ""
-        echo "Note: The script validates the complete end-to-end flow including:"
-        echo "      - Keycloak JWT for external Cost Management Operator uploads"
-        echo "      - JWT authentication for backend API access"
+        echo "Note: The script validates the complete end-to-end flow using:"
+        echo "      - Keycloak JWT for external Cost Management Operator uploads (ingress)"
+        echo "      - Keycloak JWT for backend API access"
         echo ""
         echo "Requirements:"
         echo "  - Active OpenShift session (oc login completed)"
