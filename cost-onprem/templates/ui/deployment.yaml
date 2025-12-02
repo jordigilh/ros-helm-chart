@@ -90,9 +90,6 @@ spec:
         ports:
         - name: http
           containerPort: {{ .Values.ui.app.port }}
-        env:
-        - name: API_PROXY_URL
-          value: http://localhost:8081
         livenessProbe:
           httpGet:
             path: /
