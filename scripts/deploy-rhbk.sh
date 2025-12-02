@@ -1157,6 +1157,204 @@ extract_client_secret() {
     echo ""
 }
 
+# Function to create test group and user
+create_test_group_and_user() {
+    echo_header "CREATING TEST GROUP AND USER"
+
+    # Get Keycloak URL from Route
+    local KEYCLOAK_URL=$(oc get route keycloak -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+    if [ -z "$KEYCLOAK_URL" ]; then
+        echo_warning "Could not determine Keycloak URL, skipping test group/user creation"
+        return 1
+    fi
+
+    KEYCLOAK_URL="https://$KEYCLOAK_URL"
+    echo_info "Keycloak URL: $KEYCLOAK_URL"
+
+    # Get the admin password from the secret created by RHBK operator
+    local ADMIN_PASSWORD=$(oc get secret keycloak-initial-admin -n "$NAMESPACE" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d)
+
+    if [ -z "$ADMIN_PASSWORD" ]; then
+        echo_error "Could not retrieve auto-generated admin password from keycloak-initial-admin secret"
+        return 1
+    fi
+
+    # Get admin token
+    echo_info "Obtaining admin access token..."
+    local TOKEN_RESPONSE=$(curl -sk -X POST "$KEYCLOAK_URL/realms/master/protocol/openid-connect/token" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -d "username=admin" \
+        -d "password=$ADMIN_PASSWORD" \
+        -d "grant_type=password" \
+        -d "client_id=admin-cli" 2>/dev/null)
+
+    local ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
+
+    if [ -z "$ACCESS_TOKEN" ]; then
+        echo_warning "Could not obtain admin token, skipping test group/user creation"
+        return 1
+    fi
+
+    echo_success "Admin token obtained"
+
+    # Create test-group with org_id attribute
+    echo_info "Creating group 'test-group'..."
+    local GROUP_HTTP_CODE=$(curl -sk -o /tmp/group_response.txt -w "%{http_code}" -X POST "$KEYCLOAK_URL/admin/realms/$REALM_NAME/groups" \
+        -H "Authorization: Bearer $ACCESS_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "name": "test-group",
+            "attributes": {
+                "org_id": ["12345"]
+            }
+        }' 2>/dev/null)
+    
+    local GROUP_RESPONSE=$(cat /tmp/group_response.txt 2>/dev/null || echo "")
+    rm -f /tmp/group_response.txt
+
+    # Check if group was created or already exists
+    local GROUP_ID=""
+    if [ "$GROUP_HTTP_CODE" = "409" ] || echo "$GROUP_RESPONSE" | grep -q "already exists\|Conflict"; then
+        echo_warning "Group 'test-group' may already exist, attempting to find it..."
+        # Get existing group
+        local GROUPS_RESPONSE=$(curl -sk -X GET "$KEYCLOAK_URL/admin/realms/$REALM_NAME/groups" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" 2>/dev/null)
+        GROUP_ID=$(echo "$GROUPS_RESPONSE" | grep -o '"id":"[^"]*"[^}]*"name":"test-group"' | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | head -1)
+        
+        if [ -n "$GROUP_ID" ]; then
+            echo_info "Found existing group 'test-group', updating attributes..."
+            # Update group attributes
+            curl -sk -X PUT "$KEYCLOAK_URL/admin/realms/$REALM_NAME/groups/$GROUP_ID" \
+                -H "Authorization: Bearer $ACCESS_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{
+                    "name": "test-group",
+                    "attributes": {
+                        "org_id": ["12345"]
+                    }
+                }' >/dev/null 2>&1
+            echo_success "✓ Group 'test-group' updated with org_id attribute"
+        fi
+    elif [ "$GROUP_HTTP_CODE" = "201" ] || [ "$GROUP_HTTP_CODE" = "200" ]; then
+        # Group created successfully, extract ID from Location header or response
+        # Try to get it from the groups list (most reliable)
+        sleep 2
+        local GROUPS_RESPONSE=$(curl -sk -X GET "$KEYCLOAK_URL/admin/realms/$REALM_NAME/groups" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" 2>/dev/null)
+        GROUP_ID=$(echo "$GROUPS_RESPONSE" | grep -o '"id":"[^"]*"[^}]*"name":"test-group"' | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | head -1)
+        echo_success "✓ Group 'test-group' created"
+    fi
+
+    if [ -z "$GROUP_ID" ]; then
+        echo_warning "Could not determine group ID for 'test-group'"
+        return 1
+    fi
+
+    echo_info "Group ID: $GROUP_ID"
+
+    # Create test user
+    echo_info "Creating user 'test'..."
+    local USER_HTTP_CODE=$(curl -sk -o /tmp/user_response.txt -w "%{http_code}" -X POST "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users" \
+        -H "Authorization: Bearer $ACCESS_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "username": "test",
+            "email": "test@test.com",
+            "emailVerified": true,
+            "enabled": true,
+            "firstName": "Test",
+            "lastName": "User"
+        }' 2>/dev/null)
+    
+    local USER_RESPONSE=$(cat /tmp/user_response.txt 2>/dev/null || echo "")
+    rm -f /tmp/user_response.txt
+
+    local USER_ID=""
+    if [ "$USER_HTTP_CODE" = "409" ] || echo "$USER_RESPONSE" | grep -q "already exists\|Conflict"; then
+        echo_warning "User 'test' may already exist, attempting to find it..."
+        # Get existing user
+        local USERS_RESPONSE=$(curl -sk -X GET "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users?username=test" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" 2>/dev/null)
+        USER_ID=$(echo "$USERS_RESPONSE" | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | head -1)
+        
+        if [ -n "$USER_ID" ]; then
+            echo_info "Found existing user 'test', updating..."
+            # Update user
+            curl -sk -X PUT "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users/$USER_ID" \
+                -H "Authorization: Bearer $ACCESS_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{
+                    "username": "test",
+                    "email": "test@test.com",
+                    "emailVerified": true,
+                    "enabled": true,
+                    "firstName": "Test",
+                    "lastName": "User"
+                }' >/dev/null 2>&1
+            echo_success "✓ User 'test' updated"
+        fi
+    elif [ "$USER_HTTP_CODE" = "201" ] || [ "$USER_HTTP_CODE" = "200" ]; then
+        # User created successfully, get ID from users list
+        sleep 2
+        local USERS_RESPONSE=$(curl -sk -X GET "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users?username=test" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" 2>/dev/null)
+        USER_ID=$(echo "$USERS_RESPONSE" | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | head -1)
+        echo_success "✓ User 'test' created"
+    fi
+
+    if [ -z "$USER_ID" ]; then
+        echo_warning "Could not determine user ID for 'test'"
+        return 1
+    fi
+
+    echo_info "User ID: $USER_ID"
+
+    # Set user password
+    echo_info "Setting password for user 'test'..."
+    local PASSWORD_RESPONSE=$(curl -sk -X PUT "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users/$USER_ID/reset-password" \
+        -H "Authorization: Bearer $ACCESS_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "type": "password",
+            "value": "test",
+            "temporary": false
+        }' 2>/dev/null)
+
+    if [ $? -eq 0 ]; then
+        echo_success "✓ Password set for user 'test'"
+    else
+        echo_warning "Could not set password for user 'test' (may already be set)"
+    fi
+
+    # Add user to group
+    echo_info "Adding user 'test' to group 'test-group'..."
+    local MEMBERSHIP_RESPONSE=$(curl -sk -X PUT "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users/$USER_ID/groups/$GROUP_ID" \
+        -H "Authorization: Bearer $ACCESS_TOKEN" \
+        -H "Content-Type: application/json" 2>/dev/null)
+
+    if [ $? -eq 0 ]; then
+        echo_success "✓ User 'test' added to group 'test-group'"
+    else
+        # Check if user is already in the group
+        local USER_GROUPS=$(curl -sk -X GET "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users/$USER_ID/groups" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" 2>/dev/null)
+        
+        if echo "$USER_GROUPS" | grep -q "\"id\":\"$GROUP_ID\""; then
+            echo_success "✓ User 'test' is already in group 'test-group'"
+        else
+            echo_warning "Could not add user 'test' to group 'test-group'"
+        fi
+    fi
+
+    echo_success "✓ Test group and user creation complete"
+    echo ""
+}
+
 # Function to display deployment summary
 display_summary() {
     echo_header "DEPLOYMENT SUMMARY"
@@ -1199,6 +1397,15 @@ display_summary() {
     echo_info "  Default Scopes: api.console, profile, email"
     echo_info "  Optional Scopes: offline_access"
     echo_info "  Secret stored in: keycloak-client-secret-cost-management-ui"
+    echo ""
+
+    echo_info "Test User and Group Information:"
+    echo_info "  Group: test-group"
+    echo_info "    Attribute: org_id = 12345"
+    echo_info "  User: test"
+    echo_info "    Password: test"
+    echo_info "    Email: test@test.com (verified)"
+    echo_info "    Group Membership: test-group"
     echo ""
 
     # Display admin credential retrieval
@@ -1282,6 +1489,7 @@ main() {
     create_kubernetes_realm
     configure_admin_console
     extract_client_secret
+    create_test_group_and_user
 
     # Validate and summarize
     if validate_deployment; then
