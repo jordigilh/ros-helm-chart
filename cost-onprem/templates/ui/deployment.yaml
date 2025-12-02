@@ -112,22 +112,6 @@ spec:
         - name: nginx-config
           mountPath: /opt/app-root/etc/nginx.default.d/nginx.conf
           subPath: nginx.conf
-      - name: api-echo-server
-        image: ealen/echo-server:latest
-        imagePullPolicy: IfNotPresent
-        ports:
-        - name: echo-http
-          containerPort: 8081
-        env:
-        - name: PORT
-          value: "8081"
-        resources:
-          limits:
-            cpu: "50m"
-            memory: "64Mi"
-          requests:
-            cpu: "25m"
-            memory: "32Mi"
       volumes:
       - name: proxy-tls
         secret:
