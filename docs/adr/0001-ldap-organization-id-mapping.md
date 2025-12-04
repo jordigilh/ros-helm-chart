@@ -17,7 +17,9 @@ Cost Management on-premises requires extracting organization IDs (`org_id`) for 
 3. Keycloak federates users from LDAP
 4. API requests go through Envoy → Authorino
 5. Authorino validates tokens using Kubernetes TokenReview API
-6. Authorino must extract `org_id` and inject it as `x-auth-request-org-id` header
+6. Authorino extracts `org_id` and `account_number` from groups, returns as headers to Envoy
+7. **Envoy Lua filter** constructs `X-Rh-Identity` header from Authorino's headers
+8. Backend receives `X-Rh-Identity` with `org_id` and `account_number` for multi-tenant isolation
 
 ### Technical Constraint
 
@@ -159,10 +161,10 @@ spec:
   response:
     success:
       headers:
-        "x-auth-request-org-id":
+        "X-Auth-Org-Id":
           json:
             selector: "auth.metadata.parse-org-claims.org_id"
-        "x-auth-request-account-number":
+        "X-Auth-Account-Number":
           json:
             selector: "auth.metadata.parse-org-claims.account_number"
 ```
@@ -428,6 +430,88 @@ uid=test                Event Listener:            Group: "org_1234567"
 6. **Zero Credentials in Data Plane**: Authorino has no Keycloak or LDAP credentials
 7. **Performance**: No additional HTTP calls or parsing logic
 
+### Complete Request Flow (End-to-End)
+
+This section explains how `org_id` and `account_number` flow from LDAP to the backend, with special emphasis on **Envoy's critical role** in constructing the `X-Rh-Identity` header.
+
+#### 1. User Login (One-Time)
+- User logs in via OpenShift Console
+- OpenShift redirects to Keycloak (OIDC provider)
+- Keycloak authenticates user against LDAP
+- Keycloak reads user's group memberships (e.g., `/organizations/1234567`, `/accounts/7890123`)
+- OpenShift creates User object with groups array
+
+#### 2. API Request with Token
+- Client makes request with `Authorization: Bearer <opaque-token>` header
+- Request hits Envoy proxy (sidecar)
+
+#### 3. Envoy → Authorino (External Authorization)
+- Envoy calls Authorino's gRPC authorization service
+- Passes the Bearer token and request headers
+
+#### 4. Authorino Processing
+- Calls Kubernetes TokenReview API to validate token
+- Receives back: `username`, `uid`, `groups` (e.g., `["/organizations/1234567", "/accounts/7890123"]`)
+- Runs OPA/Rego policy to parse groups:
+  - Extracts `org_id: "1234567"` from `/organizations/1234567`
+  - Extracts `account_number: "7890123"` from `/accounts/7890123`
+- Returns authorization decision with headers:
+  - `X-Auth-Username: test`
+  - `X-Auth-Uid: <uuid>`
+  - `X-Auth-Org-Id: 1234567`
+  - `X-Auth-Account-Number: 7890123`
+
+#### 5. Envoy Lua Filter (CRITICAL STEP)
+This is where the `X-Rh-Identity` header is constructed:
+
+```lua
+-- 1. Read headers from Authorino
+local username = request_handle:headers():get("x-auth-username")
+local org_id = request_handle:headers():get("x-auth-org-id")
+local account_number = request_handle:headers():get("x-auth-account-number")
+
+-- 2. Validate ALL required claims (401 if any missing)
+if not username or username == "" then return 401 end
+if not org_id or org_id == "" then return 401 end
+if not account_number or account_number == "" then return 401 end
+
+-- 3. Build X-Rh-Identity JSON
+local identity_json = {
+  "identity": {
+    "org_id": org_id,
+    "account_number": account_number,
+    "type": "User",
+    "user": {"username": username, ...},
+    "internal": {"org_id": org_id, "auth_type": "kubernetes-tokenreview", ...}
+  }
+}
+
+-- 4. Base64 encode the JSON
+local b64_identity = request_handle:base64Escape(identity_json)
+
+-- 5. Set the X-Rh-Identity header
+request_handle:headers():add("x-rh-identity", b64_identity)
+
+-- 6. Remove temporary Authorino headers (cleanup)
+request_handle:headers():remove("x-auth-username")
+request_handle:headers():remove("x-auth-org-id")
+request_handle:headers():remove("x-auth-account-number")
+```
+
+**Why Envoy and not Authorino?**
+- Authorino returns headers, but the backend expects `X-Rh-Identity` (base64-encoded JSON)
+- Envoy's Lua filter transforms Authorino's simple headers into the complex structure
+- This separation keeps Authorino generic and Envoy handles backend-specific formats
+
+#### 6. Backend Processing
+- Backend receives request with `X-Rh-Identity` header
+- Decodes base64 → parses JSON
+- Extracts `identity.org_id` and `identity.account_number`
+- Uses both for database queries: `WHERE org_id = '1234567' AND account_number = '7890123'`
+- Returns filtered data (multi-tenant isolation enforced)
+
+**Key Insight**: Both `org_id` and `account_number` are **REQUIRED** and must be **different** values. The backend uses them together for proper data isolation.
+
 ### Implementation Plan
 
 #### Phase 1: LDAP Schema Extension (Week 1)
@@ -459,7 +543,7 @@ uid=test                Event Listener:            Group: "org_1234567"
 #### Phase 5: Authorino Configuration (Week 3)
 - [ ] Deploy AuthConfig for cost-management-auth
 - [ ] Configure direct group-to-header mapping
-- [ ] Test header injection: `x-auth-request-org-id`
+- [ ] Test header injection: `X-Auth-Org-Id` and `X-Auth-Account-Number`
 - [ ] Validate end-to-end flow
 
 #### Phase 6: Documentation and Monitoring (Week 3)

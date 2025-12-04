@@ -68,7 +68,62 @@ Authorino currently returns only:
 2. **Keycloak**: Imports LDAP groups, maps `organizationId` → Keycloak group name
 3. **OpenShift OAuth**: Returns groups in TokenReview API response
 4. **Authorino**: Parses groups to extract `org_id` and `account_number`, returns as headers
-5. **Envoy Lua Filter**: Reads headers from Authorino, builds `X-Rh-Identity`
+5. **Envoy Lua Filter**: **[CRITICAL]** Reads headers from Authorino, constructs `X-Rh-Identity` with base64-encoded JSON
+
+### Envoy's Role in the Flow (Critical Component)
+
+**Envoy is the bridge between Authorino's authentication and the backend's authorization.** Here's what it does:
+
+1. **Receives headers from Authorino** (after successful authentication):
+   - `X-Auth-Username`: username from TokenReview
+   - `X-Auth-Org-Id`: parsed from LDAP groups (e.g., "1234567")
+   - `X-Auth-Account-Number`: parsed from LDAP groups (e.g., "7890123")
+
+2. **Validates all required claims** (returns 401 if any are missing):
+   - Username must be present
+   - `org_id` must be present (user must have organization group)
+   - `account_number` must be present (user must have account group)
+   - **NOTE**: Both `org_id` and `account_number` are **REQUIRED** and must be **different** values
+
+3. **Constructs the `X-Rh-Identity` JSON structure**:
+   ```json
+   {
+     "identity": {
+       "org_id": "1234567",
+       "account_number": "7890123",
+       "type": "User",
+       "user": {
+         "username": "test",
+         "email": "",
+         "first_name": "",
+         "last_name": "",
+         "is_active": true,
+         "is_org_admin": false,
+         "is_internal": false,
+         "locale": "en_US"
+       },
+       "internal": {
+         "org_id": "1234567",
+         "auth_type": "kubernetes-tokenreview",
+         "auth_time": 0
+       }
+     }
+   }
+   ```
+
+4. **Base64 encodes the JSON** using `request_handle:base64Escape(identity_json)`
+
+5. **Sets the `X-Rh-Identity` header** with the base64-encoded value
+
+6. **Removes temporary Authorino headers** (cleanup):
+   - Removes `X-Auth-Username`
+   - Removes `X-Auth-Uid`
+   - Removes `X-Auth-Org-Id`
+   - Removes `X-Auth-Account-Number`
+
+7. **Forwards the request to the backend** with the `X-Rh-Identity` header
+
+**Implementation Reference**: See `cost-onprem/templates/ros/api/envoy-config.yaml` lines 136-220 for the complete Lua filter code.
 
 ### Integration Points
 
@@ -419,10 +474,16 @@ Replace the existing Lua filter (lines 114-176) with:
                         return
                       end
 
-                      -- Fallback: Use org_id if account_number is missing
+                      -- Validate account_number is present
+                      -- Backend requires BOTH org_id AND account_number for database queries
+                      -- See: internal/api/middleware/identity.go - WHERE org_id = '...' AND account_number = '...'
                       if account_number == nil or account_number == "" then
-                        account_number = org_id
-                        request_handle:logInfo("Using org_id as account_number (no separate account group)")
+                        request_handle:logWarn("Missing x-auth-account-number from Authorino - user may not have account group")
+                        request_handle:respond(
+                          {[":status"] = "401"},
+                          "Unauthorized: Missing account number"
+                        )
+                        return
                       end
 
                       -- Escape values for safe JSON embedding
