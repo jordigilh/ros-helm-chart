@@ -128,7 +128,7 @@ DC=company,DC=com
 
 **Key Characteristics of Large Enterprise LDAP (10k+ employees):**
 
-1. **Geographic + Departmental Hierarchy**: 
+1. **Geographic + Departmental Hierarchy**:
    - User DN: `CN=John Doe,OU=Cloud-Platform,OU=Engineering,OU=USA,OU=Americas,OU=Users,DC=company,DC=com`
    - 3-5 levels deep minimum
    - Location (continent → country → city) + Department + Team
@@ -250,7 +250,87 @@ memberOf: CN=Kubernetes-Developers,OU=Groups,DC=company,DC=com
 
 **Problem**: Keycloak can't map user attributes to group names that OpenShift will import.
 
-**Solution**: Create **dynamic groups** or use **attribute-based automation**:
+**Solutions**: You have three options:
+
+#### Option B0: Keycloak Protocol Mapper (SIMPLEST - Recommended!)
+
+**Use Keycloak's protocol mapper to inject user attributes as groups in the OIDC token.**
+
+This is a **2-minute configuration change** in Keycloak - no scripts, no sync jobs, no additional LDAP groups!
+
+**How It Works:**
+```
+1. User logs in → Keycloak reads LDAP user attributes (costCenter, division)
+2. Protocol Mapper transforms: costCenter=1001 → groups=["/organizations/1001"]
+3. OpenShift creates User object with those groups
+4. TokenReview returns those groups → Authorino parses them
+```
+
+**Configuration:**
+
+1. In Keycloak Admin Console: **Clients → "openshift" → Client Scopes → Add client scope → Create new**
+   - Name: `cost-management-groups`
+   - Protocol: `openid-connect`
+
+2. **Add Mapper → Create Protocol Mapper → Script Mapper**:
+   - Name: `user-attrs-to-groups`
+   - Mapper Type: `Script Mapper`  
+   - Script:
+     ```javascript
+     // Read user LDAP attributes
+     var costCenter = user.getAttribute("costCenter");
+     var division = user.getAttribute("division");
+     
+     // Get existing groups
+     var groups = token.getOtherClaims().get("groups");
+     if (groups == null) {
+         groups = new java.util.ArrayList();
+     }
+     
+     // Add org_id and account_number as groups
+     if (costCenter != null && costCenter.size() > 0) {
+         groups.add("/organizations/" + costCenter.get(0));
+     }
+     if (division != null && division.size() > 0) {
+         groups.add("/accounts/" + division.get(0));
+     }
+     
+     token.getOtherClaims().put("groups", groups);
+     "OK";
+     ```
+   - Token Claim Name: `groups`
+   - Add to ID token: **ON**
+   - Add to access token: **ON**
+   - Add to userinfo: **ON**
+
+3. **Assign scope to client**: Clients → "openshift" → Client Scopes → Add client scope → `cost-management-groups` → Default
+
+**Verification:**
+```bash
+# User logs out and back in
+oc get user test -o yaml
+# Should show:
+# groups:
+# - /organizations/1001
+# - /accounts/CloudServices
+```
+
+**Pros:**
+- ✅ **Simple**: 2-minute Keycloak UI configuration
+- ✅ **No LDAP changes**: Uses existing user attributes
+- ✅ **No sync scripts**: Real-time, works on login
+- ✅ **Standard feature**: Built into Keycloak
+
+**Cons:**
+- ⚠️ Requires JavaScript mapper (must be enabled in Keycloak)
+- ⚠️ Groups update on next login (not immediate)
+- ⚠️ Some Keycloak distributions disable Script Mappers for security
+
+**When to use this:** If you control Keycloak and script mappers are enabled, **use this approach**. It's by far the simplest.
+
+---
+
+#### Option B1: Dynamic Groups (if LDAP supports it)
 
 ```ldif
 # Option B1: Dynamic Groups (if your LDAP supports it)
@@ -275,7 +355,7 @@ member: CN=John Doe,OU=Cloud-Platform,OU=Engineering,OU=USA,OU=Americas,OU=Users
    for each unique costCenter in LDAP:
      create/update group "CN=cost-org-${costCenter},OU=CostMgmt,OU=Groups"
      add all users with that costCenter as members
-   
+
    for each unique division in LDAP:
      create/update group "CN=cost-account-${division},OU=CostMgmt,OU=Groups"
      add all users with that division as members
@@ -290,6 +370,13 @@ member: CN=John Doe,OU=Cloud-Platform,OU=Engineering,OU=USA,OU=Americas,OU=Users
 - Single source of truth (HR system → LDAP attributes → Groups → Keycloak)
 
 **Recommendation for 10k+ Employee Enterprises:** 
+
+**Priority 1: Try Keycloak Protocol Mapper (Option B0)**
+- ✅ Simplest solution (2-minute config)
+- ✅ No LDAP changes or sync scripts
+- ✅ Check if Script Mappers are enabled in your Keycloak
+
+**Priority 2: If Protocol Mappers are disabled, use Automated Groups (Option B1/B2)**
 - **DO NOT** create manual groups for each user
 - **DO** use existing LDAP attributes (`costCenter`, `division`, `department`)
 - **AUTOMATE** group creation/membership based on those attributes
