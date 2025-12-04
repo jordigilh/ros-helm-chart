@@ -60,7 +60,7 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 ```
 LDAP Groups                         Keycloak                    OpenShift          Authorino
 ─────────────                       ────────                    ─────────          ─────────
-                                                                                   
+
 Organization Group:                 Group: "/organizations/     TokenReview:       org_id: "1234567"
 cn=engineering                              1234567"           groups:            account_number: "9876543"
 ou=organizations                    ↑                           - "/organizations/ (parsed from groups)
@@ -82,6 +82,47 @@ ou=accounts             │           ↑
 2. Member of `cn=account-9876543,ou=accounts` → gets `accountNumber: 9876543`
 
 Keycloak imports both groups, and the user inherits membership in both, which appear in OpenShift's TokenReview response.
+
+### Why Flat Group Membership Instead of Hierarchical Structure?
+
+**We chose flat group membership (users are members of separate org and account groups) over hierarchical organization structure (users live inside org/account OUs). Here's why:**
+
+#### Alternative: Hierarchical Structure (Not Chosen)
+```
+ou=organizations
+  └── ou=1234567 (org as OU)
+      └── ou=accounts
+          └── ou=9876543 (account as OU)
+              └── uid=test (user DN includes org/account path)
+```
+
+User DN: `uid=test,ou=9876543,ou=accounts,ou=1234567,ou=organizations,dc=example,dc=com`
+
+**Why We Didn't Use This:**
+1. **Keycloak Limitation**: Keycloak's LDAP User Federation doesn't easily extract attributes from parent OUs in the user's DN path
+2. **User Mobility**: Moving a user between organizations requires changing their DN (destructive operation)
+3. **Multi-org Membership**: A user can't belong to multiple organizations (DN is unique)
+4. **Query Complexity**: Finding all users in an org requires recursive subtree searches
+5. **Maintenance**: Requires custom LDAP parsing to extract org_id/account_number from DN
+
+#### Chosen Approach: Flat Group Membership
+```
+Users:
+  uid=test,ou=users,dc=example,dc=com  ← user DN is independent
+
+Groups:
+  cn=engineering,ou=organizations,dc=...  (has organizationId: 1234567, member: uid=test)
+  cn=account-9876543,ou=accounts,dc=...  (has accountNumber: 9876543, member: uid=test)
+```
+
+**Benefits:**
+1. **Keycloak Compatibility**: Standard LDAP group mapper works out of the box
+2. **User Mobility**: Change group memberships without touching user DN
+3. **Multi-org Support**: User can be member of multiple org/account groups
+4. **Simple Queries**: Standard LDAP memberOf queries work
+5. **Clear Semantics**: Group attributes (organizationId, accountNumber) are explicit, not derived from paths
+
+**Trade-off:** Requires explicit group membership management instead of automatic DN-based inheritance. However, this is standard LDAP practice and aligns with how Keycloak expects to consume group data.
 
 **LDAP Schema Extension:**
 ```ldif
