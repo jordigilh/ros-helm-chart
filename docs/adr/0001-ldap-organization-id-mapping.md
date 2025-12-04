@@ -66,10 +66,17 @@ cn=engineering                 Group: "1234567"       TokenReview:       org_id:
 
 **LDAP Schema Extension:**
 ```ldif
-# Define custom attribute
+# Define custom attributes for clean numeric values
 attributeTypes: ( 1.3.6.1.4.1.99999.1.1
   NAME 'organizationId'
-  DESC 'Organization ID for cost management'
+  DESC 'Organization ID - clean numeric value'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE )
+
+attributeTypes: ( 1.3.6.1.4.1.99999.1.2
+  NAME 'accountNumber'
+  DESC 'Account number - clean numeric value'
   EQUALITY caseIgnoreMatch
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
   SINGLE-VALUE )
@@ -80,32 +87,50 @@ objectClasses: ( 1.3.6.1.4.1.99999.2.1
   DESC 'Group with cost management attributes'
   SUP groupOfNames
   STRUCTURAL
-  MAY ( organizationId $ accountPrefix ) )
+  MAY ( organizationId $ accountNumber ) )
 ```
 
-**LDAP Group Structure:**
+**LDAP Group Structure (Separate OUs for Semantic Distinction):**
 ```ldif
-dn: cn=engineering,ou=groups,dc=example,dc=com
+# Organization groups (under ou=organizations)
+dn: cn=engineering,ou=organizations,ou=groups,dc=example,dc=com
 objectClass: costManagementGroup
-cn: engineering                    # Display name
-organizationId: 1234567           # Org ID for Keycloak mapping
-accountPrefix: 789                # Additional metadata (optional)
+cn: engineering                    # Display name (preserved)
+organizationId: 1234567           # Clean numeric value
 description: Engineering Team
+member: uid=test,ou=users,dc=example,dc=com
+
+# Account groups (under ou=accounts)
+dn: cn=account-9876543,ou=accounts,ou=groups,dc=example,dc=com
+objectClass: costManagementGroup
+cn: account-9876543               # Display name
+accountNumber: 9876543            # Clean numeric value
+description: Account 9876543
 member: uid=test,ou=users,dc=example,dc=com
 ```
 
-**Keycloak LDAP Group Mapper:**
+**Keycloak LDAP Group Mappers (2 Mappers for Path Distinction):**
 ```yaml
-Group Mapper Configuration:
-  Name: Organization ID Mapper
-  LDAP Groups DN: ou=groups,dc=example,dc=com
-  Group Name LDAP Attribute: organizationId  # Key setting
+Mapper 1: Organizations
+  Name: organization-groups-mapper
+  LDAP Groups DN: ou=organizations,ou=groups,dc=example,dc=com
+  Group Name LDAP Attribute: organizationId  # Reads this field
+  Preserve Group Inheritance: true           # Creates /organizations/ path
   Member Attribute: member
-  Membership LDAP Attribute: member
   Mode: READ_ONLY
+  Result: Keycloak group "/organizations/1234567"
+
+Mapper 2: Accounts
+  Name: account-groups-mapper
+  LDAP Groups DN: ou=accounts,ou=groups,dc=example,dc=com
+  Group Name LDAP Attribute: accountNumber   # Reads this field
+  Preserve Group Inheritance: true           # Creates /accounts/ path
+  Member Attribute: member
+  Mode: READ_ONLY
+  Result: Keycloak group "/accounts/9876543"
 ```
 
-**Authorino Configuration:**
+**Authorino Configuration (Parse Group Paths):**
 ```yaml
 apiVersion: authorino.kuadrant.io/v1beta2
 kind: AuthConfig
@@ -116,26 +141,47 @@ spec:
     "k8s-tokenreview":
       kubernetesTokenReview:
         audiences: ["https://kubernetes.default.svc"]
+  metadata:
+    "parse-org-claims":
+      opa:
+        inlineRego: |
+          package authz
+          # Extract org_id from /organizations/ path
+          org_id := substring(group, 16, -1) if {
+            some group in input.auth.identity.groups
+            startswith(group, "/organizations/")
+          }
+          # Extract account_number from /accounts/ path
+          account_number := substring(group, 10, -1) if {
+            some group in input.auth.identity.groups
+            startswith(group, "/accounts/")
+          }
   response:
     success:
       headers:
         "x-auth-request-org-id":
           json:
-            selector: "auth.identity.user.groups[0]"  # Direct use, no parsing
+            selector: "auth.metadata.parse-org-claims.org_id"
+        "x-auth-request-account-number":
+          json:
+            selector: "auth.metadata.parse-org-claims.account_number"
 ```
 
 **Pros:**
-- ✅ Clean separation: `cn` for display name, `organizationId` for technical mapping
-- ✅ No parsing required in Authorino (direct value mapping)
-- ✅ Supports multiple metadata fields (accountPrefix, etc.)
-- ✅ Groups remain human-readable in Keycloak UI
+- ✅ Clean separation: `cn` preserved for display name, custom attributes for IDs
+- ✅ Simple LDAP management: Just 2 extra fields with clean numeric values
+- ✅ No prefixes in values: Store "1234567" not "organization_id_1234567"
+- ✅ Semantic from structure: OU paths distinguish org_id vs account_number
+- ✅ Supports multiple metadata fields: Easy to add more custom attributes
+- ✅ Groups remain human-readable in Keycloak UI (path-based)
 - ✅ Standard LDAP schema extension (well-supported)
-- ✅ Future-proof: Easy to add more custom attributes
+- ✅ Always different values: Two separate fields enforce org_id ≠ account_number
 - ✅ Zero credentials in data plane
 
 **Cons:**
 - ⚠️ Requires LDAP schema extension (acceptable for greenfield)
 - ⚠️ Initial schema setup complexity (one-time cost)
+- ⚠️ Requires separate OUs for organizations vs accounts
 
 ---
 

@@ -5,20 +5,31 @@ This guide provides step-by-step instructions to deploy and test the complete LD
 ## Overview
 
 ```
-┌──────────┐   Federation   ┌──────────┐   OAuth Login   ┌──────────┐   TokenReview   ┌───────────┐
-│   LDAP   │───────────────>│ Keycloak │────────────────>│ OpenShift│────────────────>│ Authorino │
-│          │                 │          │                 │   OAuth  │                 │           │
-│ org-1234567               │ Group:    │                 │ groups:   │                 │ Parses:   │
-│ └─test   │                 │ "1234567"│                 │ [1234567] │                 │ org_id    │
-└──────────┘                 └──────────┘                 └──────────┘                 └───────────┘
+┌─────────────────────────────┐   Federation   ┌────────────────────────┐   OAuth    ┌────────────┐
+│   LDAP (Clean Values)       │───────────────>│  Keycloak (Adds Paths) │───────────>│ OpenShift  │
+│                             │                 │                        │            │   OAuth    │
+│ cn=engineering              │                 │ Group:                 │            │ groups:    │
+│ organizationId: 1234567 ────┼────────────────>│ /organizations/1234567 │───────────>│ - /org.../│
+│ accountNumber: 9876543 ─────┼────────────────>│ /accounts/9876543      │            │ - /acc.../│
+│ member: test                │                 │                        │            │            │
+└─────────────────────────────┘                 └────────────────────────┘            └────────────┘
                                                                                               │
-                                                                                              ↓
-                                                                                        ┌───────────┐
-                                                                                        │   Envoy   │
-                                                                                        │   Builds  │
-                                                                                        │X-Rh-Identity
-                                                                                        └───────────┘
+                                                           TokenReview                        │
+                                                                ↓                             ↓
+                                                         ┌───────────┐              ┌─────────────┐
+                                                         │ Authorino │              │    Envoy    │
+                                                         │  Parses:  │─────────────>│   Builds    │
+                                                         │  org_id   │   Headers    │X-Rh-Identity│
+                                                         │  account  │              │             │
+                                                         └───────────┘              └─────────────┘
 ```
+
+**Key Points:**
+- LDAP stores **clean numeric values** (just "1234567", not "org_1234567")
+- OU structure provides semantic meaning (ou=organizations vs ou=accounts)
+- Keycloak adds path context ("/organizations/" and "/accounts/")
+- Authorino parses paths to extract values
+- Backend gets separate org_id and account_number
 
 ## Prerequisites
 
