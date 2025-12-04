@@ -28,8 +28,47 @@ spec:
         audiences:
           - "https://kubernetes.default.svc"  # Default Kubernetes API audience
 
-  # Response: Inject the authenticated username as a custom header
-  # This will be consumed by Envoy's Lua filter to build rh-identity
+  # Metadata: Extract org_id and account_number from user groups
+  # Uses OPA/Rego to parse LDAP-mapped groups from Keycloak
+  # Groups structure:
+  #   - Numeric groups (e.g., "1234567") are organization IDs
+  #   - Groups with "account_" prefix (e.g., "account_7890123") are account numbers
+  # See docs/adr/0001-ldap-organization-id-mapping.md for details
+  metadata:
+    "parse-org-claims":
+      opa:
+        inlineRego: |
+          package authz
+
+          import future.keywords.if
+          import future.keywords.in
+
+          # Extract org_id from groups
+          # Looks for first group that matches numeric pattern (7-10 digits)
+          org_id := group if {
+            some group in input.auth.identity.groups
+            # Numeric group names are org IDs (7-10 digits for validation)
+            regex.match(`^[0-9]{7,10}$`, group)
+          }
+
+          # Default org_id if no numeric group found
+          default org_id := ""
+
+          # Extract account_number from groups
+          # Looks for groups with pattern "account_<number>"
+          account_number := substring(group, 8, -1) if {
+            some group in input.auth.identity.groups
+            startswith(group, "account_")
+            # Validate the account number is numeric
+            regex.match(`^account_[0-9]{7,10}$`, group)
+          }
+
+          # Fallback: Use org_id as account_number if no specific account group
+          # This is common when org_id and account_number are the same
+          default account_number := org_id
+
+  # Response: Inject extracted claims and username as custom headers
+  # These will be consumed by Envoy's Lua filter to build rh-identity
   response:
     success:
       headers:
@@ -39,5 +78,11 @@ spec:
         "X-Auth-Uid":
           plain:
             selector: auth.identity.uid
+        "X-Auth-Org-Id":
+          json:
+            selector: auth.metadata.parse-org-claims.org_id
+        "X-Auth-Account-Number":
+          json:
+            selector: auth.metadata.parse-org-claims.account_number
 {{- end }}
 

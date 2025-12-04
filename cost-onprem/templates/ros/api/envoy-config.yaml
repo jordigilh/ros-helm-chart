@@ -110,7 +110,9 @@ data:
                   status_on_error:
                     code: 503
 
-              # Lua filter to transform username into rh-identity header
+              # Lua filter to build rh-identity header from Authorino claims
+              # Extracts org_id and account_number from LDAP-mapped groups
+              # See docs/authorino-ldap-integration.md for details
               - name: envoy.filters.http.lua
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
@@ -132,47 +134,83 @@ data:
                     end
 
                     function envoy_on_request(request_handle)
-                      -- Get the authenticated username from Authorino
+                      -- Get claims from Authorino headers
                       local username = request_handle:headers():get("x-auth-username")
+                      local org_id = request_handle:headers():get("x-auth-org-id")
+                      local account_number = request_handle:headers():get("x-auth-account-number")
 
-                      if username ~= nil and username ~= "" then
-                        -- Escape username for safe JSON embedding
-                        local username_escaped = escape_json(username)
-
-                        -- Build rh-identity JSON structure
-                        local identity_json = string.format([[{
-                          "identity": {
-                            "org_id": "12345",
-                            "account_number": "1",
-                            "type": "User",
-                            "user": {
-                              "username": "%s",
-                              "email": "",
-                              "first_name": "",
-                              "last_name": "",
-                              "is_active": true,
-                              "is_org_admin": false,
-                              "is_internal": false,
-                              "locale": "en_US"
-                            },
-                            "internal": {
-                              "org_id": "12345",
-                              "auth_type": "kubernetes-tokenreview",
-                              "auth_time": 0
-                            }
-                          }
-                        }]], username_escaped)
-
-                        -- Base64 encode the JSON
-                        local b64_identity = request_handle:base64Escape(identity_json)
-
-                        -- Set the X-Rh-Identity header
-                        request_handle:headers():add("x-rh-identity", b64_identity)
-
-                        -- Remove the temporary header from Authorino
-                        request_handle:headers():remove("x-auth-username")
-                        request_handle:headers():remove("x-auth-uid")
+                      -- Validation: Ensure required claims are present
+                      if username == nil or username == "" then
+                        request_handle:logWarn("Missing x-auth-username from Authorino")
+                        request_handle:respond(
+                          {[":status"] = "401"},
+                          "Unauthorized: Missing username"
+                        )
+                        return
                       end
+
+                      if org_id == nil or org_id == "" then
+                        request_handle:logWarn("Missing x-auth-org-id from Authorino - user may not have organization group")
+                        request_handle:respond(
+                          {[":status"] = "401"},
+                          "Unauthorized: Missing organization ID"
+                        )
+                        return
+                      end
+
+                      -- Fallback: Use org_id if account_number is missing
+                      if account_number == nil or account_number == "" then
+                        account_number = org_id
+                        request_handle:logInfo("Using org_id as account_number (no separate account group)")
+                      end
+
+                      -- Escape values for safe JSON embedding
+                      local username_escaped = escape_json(username)
+                      local org_id_escaped = escape_json(org_id)
+                      local account_number_escaped = escape_json(account_number)
+
+                      -- Build rh-identity JSON structure
+                      local identity_json = string.format([[{
+                        "identity": {
+                          "org_id": "%s",
+                          "account_number": "%s",
+                          "type": "User",
+                          "user": {
+                            "username": "%s",
+                            "email": "",
+                            "first_name": "",
+                            "last_name": "",
+                            "is_active": true,
+                            "is_org_admin": false,
+                            "is_internal": false,
+                            "locale": "en_US"
+                          },
+                          "internal": {
+                            "org_id": "%s",
+                            "auth_type": "kubernetes-tokenreview",
+                            "auth_time": 0
+                          }
+                        }
+                      }]], org_id_escaped, account_number_escaped, username_escaped, org_id_escaped)
+
+                      -- Base64 encode the JSON
+                      local b64_identity = request_handle:base64Escape(identity_json)
+
+                      -- Set the X-Rh-Identity header
+                      request_handle:headers():add("x-rh-identity", b64_identity)
+
+                      -- Remove temporary Authorino headers (cleanup)
+                      request_handle:headers():remove("x-auth-username")
+                      request_handle:headers():remove("x-auth-uid")
+                      request_handle:headers():remove("x-auth-org-id")
+                      request_handle:headers():remove("x-auth-account-number")
+
+                      -- Log for debugging (redact sensitive data)
+                      local masked_org = string.sub(org_id, 1, 4) .. "***"
+                      request_handle:logInfo(string.format(
+                        "Built X-Rh-Identity for user=%s, org_id=%s",
+                        username, masked_org
+                      ))
                     end
 
               # Compression filter for response optimization
