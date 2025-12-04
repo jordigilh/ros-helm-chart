@@ -58,19 +58,30 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 
 **Architecture:**
 ```
-LDAP Groups                    Keycloak                    OpenShift          Authorino
-─────────────                  ────────                    ─────────          ─────────
-cn=engineering                 Group: "/organizations/     TokenReview:       org_id: "1234567"
-├── cn: engineering                    1234567"           groups:            account_number: "7890123"
-├── organizationId: 1234567 ───────────┘                  - "/organizations/ (parsed from groups)
-├── accountNumber: 7890123                                   1234567"
-└── member: uid=test                                      - "/accounts/
-                                                             7890123"
-cn=account-7890123             Group: "/accounts/
-├── cn: account-7890123                7890123"
-├── accountNumber: 7890123 ────────────┘
-└── member: uid=test
+LDAP Groups                         Keycloak                    OpenShift          Authorino
+─────────────                       ────────                    ─────────          ─────────
+                                                                                   
+Organization Group:                 Group: "/organizations/     TokenReview:       org_id: "1234567"
+cn=engineering                              1234567"           groups:            account_number: "9876543"
+ou=organizations                    ↑                           - "/organizations/ (parsed from groups)
+├── cn: engineering                 │                             1234567"
+├── organizationId: 1234567 ────────┘                          - "/accounts/
+└── member: uid=test ───┐                                         9876543"
+                        │
+Account Group:          │           Group: "/accounts/
+cn=account-9876543      │                   9876543"
+ou=accounts             │           ↑
+├── cn: account-9876543 │           │
+├── accountNumber: 9876543 ─────────┘
+└── member: uid=test ───┘
+      (same user in both groups)
 ```
+
+**Key Point**: The user `uid=test` is a **member of BOTH groups**:
+1. Member of `cn=engineering,ou=organizations` → gets `organizationId: 1234567`
+2. Member of `cn=account-9876543,ou=accounts` → gets `accountNumber: 9876543`
+
+Keycloak imports both groups, and the user inherits membership in both, which appear in OpenShift's TokenReview response.
 
 **LDAP Schema Extension:**
 ```ldif
@@ -155,15 +166,25 @@ spec:
         inlineRego: |
           package authz
           # Extract org_id from /organizations/ path
-          org_id := substring(group, 16, -1) if {
+          # Use array comprehension to collect all matches, then take first
+          # This ensures a single result even if user has multiple org groups
+          org_ids := [substring(group, 16, -1) |
             some group in input.auth.identity.groups
             startswith(group, "/organizations/")
-          }
+            regex.match(`^/organizations/[0-9]{7,10}$`, group)
+          ]
+          org_id := org_ids[0] if { count(org_ids) > 0 }
+          default org_id := ""
+
           # Extract account_number from /accounts/ path
-          account_number := substring(group, 10, -1) if {
+          # Use array comprehension to collect all matches, then take first
+          account_numbers := [substring(group, 10, -1) |
             some group in input.auth.identity.groups
             startswith(group, "/accounts/")
-          }
+            regex.match(`^/accounts/[0-9]{7,10}$`, group)
+          ]
+          account_number := account_numbers[0] if { count(account_numbers) > 0 }
+          default account_number := ""
   response:
     success:
       headers:

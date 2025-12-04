@@ -46,13 +46,17 @@ spec:
 
           # Extract org_id from groups with "/organizations/" path
           # Example: "/organizations/1234567" → org_id: "1234567"
-          org_id := substring(group, 16, -1) if {
+          # Use array comprehension to ensure single result even if user has multiple org groups
+          org_ids := [substring(group, 16, -1) |
             some group in input.auth.identity.groups
             startswith(group, "/organizations/")
             # Validate the org_id portion is numeric (7-10 digits)
             regex.match(`^/organizations/[0-9]{7,10}$`, group)
-          }
-
+          ]
+          
+          # Take first matching org_id (users should have exactly one, but this handles edge cases)
+          org_id := org_ids[0] if { count(org_ids) > 0 }
+          
           # Default org_id if no /organizations/ group found
           default org_id := ""
 
@@ -60,12 +64,16 @@ spec:
           # Example: "/accounts/9876543" → account_number: "9876543"
           # Backend requires BOTH org_id AND account_number for multi-tenant data isolation
           # They must be different identifiers (org_id != account_number)
-          account_number := substring(group, 10, -1) if {
+          # Use array comprehension to ensure single result
+          account_numbers := [substring(group, 10, -1) |
             some group in input.auth.identity.groups
             startswith(group, "/accounts/")
             # Validate the account number is numeric (7-10 digits)
             regex.match(`^/accounts/[0-9]{7,10}$`, group)
-          }
+          ]
+          
+          # Take first matching account_number
+          account_number := account_numbers[0] if { count(account_numbers) > 0 }
 
           # Default: Empty string if no /accounts/ group found (will trigger auth error)
           # Both org_id and account_number are REQUIRED for backend database queries
