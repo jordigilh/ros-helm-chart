@@ -350,7 +350,7 @@ Red Hat Build of Keycloak **disables script uploading through the admin console*
 
 **Verdict for RHBK:** Script mappers work, but require JAR deployment instead of copy-paste in UI. This adds operational complexity.
 
-**When to use this approach:** 
+**When to use this approach:**
 - ✅ If using **upstream Keycloak** (scripts enabled by default)
 - ⚠️ If using **RHBK** and comfortable with JAR packaging + pod restarts
 - ❌ If using **RHBK** and want simple configuration → Use Option B1 or B2 instead (automated groups)
@@ -396,7 +396,7 @@ member: CN=John Doe,OU=Cloud-Platform,OU=Engineering,OU=USA,OU=Americas,OU=Users
 - Standard enterprise LDAP practice (dynamic/automated groups)
 - Single source of truth (HR system → LDAP attributes → Groups → Keycloak)
 
-**Recommendation for 10k+ Employee Enterprises:** 
+**Recommendation for 10k+ Employee Enterprises:**
 
 **For Upstream Keycloak:**
 - **Priority 1**: Use Protocol Mapper (Option B0) - simplest, 2-minute config
@@ -773,6 +773,113 @@ uid=test                Event Listener:            Group: "org_1234567"
 - ❌ Not supported by Red Hat Build of Keycloak
 - ❌ Violates simplicity principle
 - ❌ Harder to test and deploy
+
+---
+
+### Summary: Enterprise LDAP Integration Options
+
+For customers with existing enterprise LDAP where users have `costCenter` and `division` attributes, here are all available options:
+
+| Option | Description | Complexity | RHBK Compatible | Best For |
+|--------|-------------|------------|-----------------|----------|
+| **B0: Protocol Mapper** | Keycloak script mapper reads user attrs, injects as groups in token | Low (upstream)<br>High (RHBK) | ⚠️ Yes, but requires JAR packaging | Upstream Keycloak |
+| **B1: Dynamic Groups** | LDAP server auto-creates groups from user attrs | Low | ✅ Yes | LDAP with dynamic group support |
+| **B2: Sync Script** | CronJob reads user attrs, creates/updates LDAP groups | Medium | ✅ Yes | **RHBK deployments (Recommended)** |
+
+#### Detailed Comparison
+
+**Option B0: Keycloak Protocol Mapper (Script Mapper)**
+- **Upstream Keycloak**: ✅ Simple (2-minute config, paste JavaScript in UI)
+- **RHBK**: ⚠️ Complex (requires JAR packaging, pod restarts, custom builds)
+- **Pros**: No LDAP changes, real-time on login
+- **Cons**: RHBK requires JAR deployment (CVE-2022-2668 mitigation)
+- **When to use**: Upstream Keycloak deployments only
+
+**Option B1: LDAP Dynamic Groups**
+- **Prerequisites**: LDAP server supports `memberQueryURL` (e.g., OpenLDAP with dynlist overlay)
+- **Pros**: No external scripts, native LDAP feature, automatic updates
+- **Cons**: Not supported by all LDAP servers (Active Directory doesn't support it)
+- **When to use**: If your LDAP server supports dynamic groups
+
+**Option B2: Automated Group Sync Script** ⭐ **RECOMMENDED for RHBK**
+- **Implementation**: Kubernetes CronJob runs daily, queries LDAP, creates/updates groups
+- **Pros**: 
+  - Works with any LDAP server (AD, OpenLDAP, etc.)
+  - Standard LDAP operations
+  - No Keycloak customization
+  - Auditable (groups visible in LDAP)
+  - Simple to maintain
+- **Cons**: Groups update daily (not real-time)
+- **When to use**: RHBK deployments, enterprise LDAP with standard features
+
+#### Implementation Resources
+
+**For Option B2 (Automated Sync Script):**
+1. **Script**: `scripts/ldap-user-attrs-to-groups-sync.sh`
+   - Production-ready bash script
+   - Reads `costCenter` and `division` from users
+   - Creates `CN=org-{value}` and `CN=account-{value}` groups
+   - Configurable via environment variables
+   - Full logging and error handling
+
+2. **Deployment**: `scripts/ldap-sync-cronjob.yaml`
+   - Kubernetes CronJob (runs daily at 2 AM)
+   - Secret for LDAP credentials
+   - ConfigMap for script
+   - Resource limits and security context
+   - Network policy template
+
+3. **Configuration**:
+   ```bash
+   # Edit ldap-sync-cronjob.yaml
+   # Update Secret with your LDAP settings:
+   LDAP_HOST: "ldap://ldap.company.com:389"
+   LDAP_BIND_DN: "CN=svc-keycloak,OU=ServiceAccounts,DC=company,DC=com"
+   LDAP_BIND_PASSWORD: "your-password"
+   ORG_ID_ATTR: "costCenter"      # Your org_id attribute
+   ACCOUNT_ATTR: "division"       # Your account_number attribute
+   
+   # Deploy
+   kubectl apply -f scripts/ldap-sync-cronjob.yaml
+   
+   # Manual run for testing
+   kubectl create job --from=cronjob/ldap-user-attrs-sync test-sync-1 -n keycloak
+   ```
+
+4. **Monitoring**:
+   ```bash
+   # Check CronJob status
+   kubectl get cronjob ldap-user-attrs-sync -n keycloak
+   
+   # View last job logs
+   kubectl logs -n keycloak -l app=ldap-sync --tail=100
+   
+   # Check created groups in LDAP
+   ldapsearch -x -H ldap://ldap.company.com \
+     -b "OU=CostMgmt,OU=Groups,DC=company,DC=com" "(cn=org-*)"
+   ```
+
+#### Decision Guide for Customers
+
+**Choose Option B0 (Protocol Mapper) if:**
+- ✅ Using upstream Keycloak (not RHBK)
+- ✅ Want real-time updates on login
+- ✅ Don't want to manage LDAP groups
+- ❌ Using RHBK (too complex with JAR packaging)
+
+**Choose Option B1 (Dynamic Groups) if:**
+- ✅ LDAP server supports dynamic groups (OpenLDAP with dynlist)
+- ✅ Want native LDAP solution
+- ✅ Can't run external sync scripts
+- ❌ Using Active Directory (doesn't support memberQueryURL)
+
+**Choose Option B2 (Sync Script) if:** ⭐
+- ✅ Using RHBK (Red Hat Build of Keycloak)
+- ✅ Using Active Directory or standard LDAP
+- ✅ Want simple, maintainable solution
+- ✅ Can run Kubernetes CronJobs
+- ✅ Daily sync frequency is acceptable
+- ✅ This is **recommended for production RHBK deployments**
 
 ---
 
