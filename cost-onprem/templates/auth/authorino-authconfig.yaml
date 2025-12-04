@@ -30,10 +30,10 @@ spec:
 
   # Metadata: Extract org_id and account_number from user groups
   # Uses OPA/Rego to parse LDAP-mapped groups from Keycloak
-  # Groups structure:
-  #   - Groups with "organization_id_" prefix (e.g., "organization_id_1234567")
-  #   - Groups with "account_" prefix (e.g., "account_9876543")
-  # Both are stored as custom LDAP attributes in costManagementGroup objectClass
+  # Groups structure (Keycloak group hierarchy from LDAP paths):
+  #   - Groups under "/organizations/" path (e.g., "/organizations/1234567")
+  #   - Groups under "/accounts/" path (e.g., "/accounts/9876543")
+  # LDAP stores clean numeric values in separate organizational units
   # See docs/adr/0001-ldap-organization-id-mapping.md for details
   metadata:
     "parse-org-claims":
@@ -44,30 +44,30 @@ spec:
           import future.keywords.if
           import future.keywords.in
 
-          # Extract org_id from groups with "organization_id_" prefix
-          # Example: "organization_id_1234567" → org_id: "1234567"
+          # Extract org_id from groups with "/organizations/" path
+          # Example: "/organizations/1234567" → org_id: "1234567"
           org_id := substring(group, 16, -1) if {
             some group in input.auth.identity.groups
-            startswith(group, "organization_id_")
+            startswith(group, "/organizations/")
             # Validate the org_id portion is numeric (7-10 digits)
-            regex.match(`^organization_id_[0-9]{7,10}$`, group)
+            regex.match(`^/organizations/[0-9]{7,10}$`, group)
           }
 
-          # Default org_id if no organization_id group found
+          # Default org_id if no /organizations/ group found
           default org_id := ""
 
-          # Extract account_number from groups with "account_" prefix
-          # Example: "account_9876543" → account_number: "9876543"
+          # Extract account_number from groups with "/accounts/" path
+          # Example: "/accounts/9876543" → account_number: "9876543"
           # Backend requires BOTH org_id AND account_number for multi-tenant data isolation
           # They must be different identifiers (org_id != account_number)
-          account_number := substring(group, 8, -1) if {
+          account_number := substring(group, 10, -1) if {
             some group in input.auth.identity.groups
-            startswith(group, "account_")
+            startswith(group, "/accounts/")
             # Validate the account number is numeric (7-10 digits)
-            regex.match(`^account_[0-9]{7,10}$`, group)
+            regex.match(`^/accounts/[0-9]{7,10}$`, group)
           }
 
-          # Default: Empty string if no account group found (will trigger auth error)
+          # Default: Empty string if no /accounts/ group found (will trigger auth error)
           # Both org_id and account_number are REQUIRED for backend database queries
           default account_number := ""
 

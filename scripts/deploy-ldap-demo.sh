@@ -104,7 +104,18 @@ data:
     dn: ou=groups,${LDAP_BASE_DN}
     objectClass: organizationalUnit
     ou: groups
-    description: Groups for Cost Management (includes organization groups)
+    description: Groups for Cost Management
+
+    # Separate OUs for organizations and accounts
+    dn: ou=organizations,ou=groups,${LDAP_BASE_DN}
+    objectClass: organizationalUnit
+    ou: organizations
+    description: Organization groups (org_id)
+
+    dn: ou=accounts,ou=groups,${LDAP_BASE_DN}
+    objectClass: organizationalUnit
+    ou: accounts
+    description: Account groups (account_number)
 
   02-users.ldif: |
     # Test User 1
@@ -143,52 +154,34 @@ data:
     loginShell: /bin/bash
     description: Admin user for Cost Management demo
 
-  03-custom-schema.ldif: |
-    # Custom schema for Cost Management
-    # Defines organizationId and accountNumber attributes
-    dn: cn=cost-management-schema,cn=schema,cn=config
-    objectClass: olcSchemaConfig
-    cn: cost-management-schema
-    olcAttributeTypes: ( 1.3.6.1.4.1.99999.1.1
-      NAME 'organizationId'
-      DESC 'Organization ID for cost management'
-      EQUALITY caseIgnoreMatch
-      SUBSTR caseIgnoreSubstringsMatch
-      SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
-      SINGLE-VALUE )
-    olcAttributeTypes: ( 1.3.6.1.4.1.99999.1.2
-      NAME 'accountNumber'
-      DESC 'Account number for cost management'
-      EQUALITY caseIgnoreMatch
-      SUBSTR caseIgnoreSubstringsMatch
-      SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
-      SINGLE-VALUE )
-    olcObjectClasses: ( 1.3.6.1.4.1.99999.2.1
-      NAME 'costManagementGroup'
-      DESC 'Group with cost management attributes'
-      SUP groupOfNames
-      STRUCTURAL
-      MAY ( organizationId $ accountNumber ) )
-
-  04-organizations.ldif: |
-    # Organization for test user (Engineering team)
-    # organizationId and accountNumber use prefixes for clarity
-    # Keycloak will import these as group names
-    dn: cn=engineering,ou=groups,${LDAP_BASE_DN}
-    objectClass: costManagementGroup
-    cn: engineering
-    description: Engineering Team - Organization 1234567
-    organizationId: organization_id_1234567
-    accountNumber: account_9876543
+  03-organizations.ldif: |
+    # Organizations - store just the numeric ID
+    # Keycloak will map these under /organizations/ path
+    dn: cn=1234567,ou=organizations,ou=groups,${LDAP_BASE_DN}
+    objectClass: groupOfNames
+    cn: 1234567
+    description: Organization 1234567 (Engineering Team)
     member: uid=test,ou=users,${LDAP_BASE_DN}
 
-    # Organization for admin user (Finance team)
-    dn: cn=finance,ou=groups,${LDAP_BASE_DN}
-    objectClass: costManagementGroup
-    cn: finance
-    description: Finance Team - Organization 7890123
-    organizationId: organization_id_7890123
-    accountNumber: account_5555555
+    dn: cn=7890123,ou=organizations,ou=groups,${LDAP_BASE_DN}
+    objectClass: groupOfNames
+    cn: 7890123
+    description: Organization 7890123 (Finance Team)
+    member: uid=admin,ou=users,${LDAP_BASE_DN}
+
+  04-accounts.ldif: |
+    # Accounts - store just the numeric ID
+    # Keycloak will map these under /accounts/ path
+    dn: cn=9876543,ou=accounts,ou=groups,${LDAP_BASE_DN}
+    objectClass: groupOfNames
+    cn: 9876543
+    description: Account 9876543
+    member: uid=test,ou=users,${LDAP_BASE_DN}
+
+    dn: cn=5555555,ou=accounts,ou=groups,${LDAP_BASE_DN}
+    objectClass: groupOfNames
+    cn: 5555555
+    description: Account 5555555
     member: uid=admin,ou=users,${LDAP_BASE_DN}
 
 ---
@@ -328,17 +321,9 @@ function import_ldif_data() {
   fi
 
   echo_info "Using pod: $pod_name"
-  
-  # Import custom schema first (using ldapmodify for cn=config)
-  echo_info "Importing custom schema (03-custom-schema.ldif)..."
-  oc exec -n "$NAMESPACE" "$pod_name" -- \
-    ldapadd -Y EXTERNAL -H ldapi:/// \
-    -f "/ldifs/03-custom-schema.ldif" || {
-      echo_warn "Warning: Schema may already exist (continuing)"
-    }
-  
-  # Import data LDIF files
-  for ldif in 01-base.ldif 02-users.ldif 04-organizations.ldif; do
+
+  # Import data LDIF files (using standard groupOfNames)
+  for ldif in 01-base.ldif 02-users.ldif 03-organizations.ldif 04-accounts.ldif; do
     echo_info "Importing $ldif..."
     oc exec -n "$NAMESPACE" "$pod_name" -- \
       ldapadd -x -H ldap://localhost:1389 \
@@ -376,13 +361,22 @@ function verify_ldap() {
     "(uid=test)" dn cn mail
 
   echo ""
-  echo_info "Verifying organization groups with custom attributes..."
+  echo_info "Verifying organization groups..."
   oc exec -n "$NAMESPACE" "$pod_name" -- \
     ldapsearch -x -H ldap://localhost:1389 \
     -D "cn=admin,${LDAP_BASE_DN}" \
     -w "${LDAP_ADMIN_PASSWORD}" \
-    -b "ou=groups,${LDAP_BASE_DN}" \
-    "(objectClass=costManagementGroup)" dn cn organizationId accountNumber member
+    -b "ou=organizations,ou=groups,${LDAP_BASE_DN}" \
+    "(objectClass=groupOfNames)" dn cn member
+
+  echo ""
+  echo_info "Verifying account groups..."
+  oc exec -n "$NAMESPACE" "$pod_name" -- \
+    ldapsearch -x -H ldap://localhost:1389 \
+    -D "cn=admin,${LDAP_BASE_DN}" \
+    -w "${LDAP_ADMIN_PASSWORD}" \
+    -b "ou=accounts,ou=groups,${LDAP_BASE_DN}" \
+    "(objectClass=groupOfNames)" dn cn member
 }
 
 function display_summary() {
@@ -408,19 +402,19 @@ Directory Structure:
   │   ├── uid=test         (password: test)
   │   └── uid=admin        (password: admin)
   └── ou=groups
-      ├── cn=engineering   (costManagementGroup)
-      │   ├── organizationId: organization_id_1234567
-      │   └── accountNumber: account_9876543
-      └── cn=finance       (costManagementGroup)
-          ├── organizationId: organization_id_7890123
-          └── accountNumber: account_5555555
+      ├── ou=organizations  (Organization IDs)
+      │   ├── cn=1234567   (Engineering team)
+      │   └── cn=7890123   (Finance team)
+      └── ou=accounts      (Account Numbers)
+          ├── cn=9876543
+          └── cn=5555555
 
-Custom LDAP Schema:
+Clean Numeric Values:
 ─────────────────────────────────────────────────────────
-  objectClass: costManagementGroup (extends groupOfNames)
-  Attributes:
-    - organizationId (SINGLE-VALUE, string)
-    - accountNumber  (SINGLE-VALUE, string)
+  LDAP stores just numbers (no prefixes)
+  Group paths distinguish org_id vs account_number:
+    - ou=organizations → org_id
+    - ou=accounts → account_number
 
 Test Users:
 ─────────────────────────────────────────────────────────
@@ -429,26 +423,30 @@ Test Users:
     Password: test
     Email:    cost@mgmt.net
     Full Name: cost mgmt test
-    Groups:   engineering
+    LDAP Groups:
+      - cn=1234567,ou=organizations (numeric org ID)
+      - cn=9876543,ou=accounts      (numeric account number)
     Expected Keycloak Groups:
-      - "organization_id_1234567" (from organizationId attribute)
-      - "account_9876543"         (from accountNumber attribute)
+      - "/organizations/1234567" (group path)
+      - "/accounts/9876543"      (group path)
     Expected Authorino Extraction:
-      org_id: 1234567        (extracted from "organization_id_" prefix)
-      account_number: 9876543 (extracted from "account_" prefix)
+      org_id: 1234567         (from /organizations/ path)
+      account_number: 9876543 (from /accounts/ path)
 
   User: admin
     Username: admin
     Password: admin
     Email:    admin@mgmt.net
     Full Name: Admin User
-    Groups:   finance
+    LDAP Groups:
+      - cn=7890123,ou=organizations
+      - cn=5555555,ou=accounts
     Expected Keycloak Groups:
-      - "organization_id_7890123" (from organizationId attribute)
-      - "account_5555555"         (from accountNumber attribute)
+      - "/organizations/7890123"
+      - "/accounts/5555555"
     Expected Authorino Extraction:
-      org_id: 7890123        (extracted from "organization_id_" prefix)
-      account_number: 5555555 (extracted from "account_" prefix)
+      org_id: 7890123
+      account_number: 5555555
 
 Next Steps:
 ─────────────────────────────────────────────────────────
@@ -458,10 +456,10 @@ Next Steps:
   2. Verify integration:
      - Login to OpenShift Console as "test" user
      - Check: oc get user test -o yaml
-     - Expected groups: ["organization_id_1234567", "account_9876543"]
+     - Expected groups: ["/organizations/1234567", "/accounts/9876543"]
      - Authorino will extract:
-       * org_id: "1234567" (from "organization_id_" prefix)
-       * account_number: "9876543" (from "account_" prefix)
+       * org_id: "1234567" (from /organizations/ path)
+       * account_number: "9876543" (from /accounts/ path)
 
   3. Test end-to-end flow:
      - Make API request with test user token

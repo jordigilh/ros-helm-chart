@@ -219,20 +219,20 @@ function create_orgid_group_mapper() {
   existing_id=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" | \
-    jq -r '.[] | select(.name == "organization-id-mapper" and .providerId == "group-ldap-mapper") | .id' | head -1)
+    jq -r '.[] | select(.name == "organization-groups-mapper" and .providerId == "group-ldap-mapper") | .id' | head -1)
   
   if [ -n "$existing_id" ] && [ "$existing_id" != "null" ]; then
-    echo_warn "Org ID mapper 'organization-id-mapper' already exists (ID: $existing_id)"
+    echo_warn "Org groups mapper already exists (ID: $existing_id)"
     return 0
   fi
   
-  # Create group mapper using organizationId attribute
+  # Create group mapper for organizations (imports as /organizations/1234567)
   local response
   response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{
-      "name": "organization-id-mapper",
+      "name": "organization-groups-mapper",
       "providerId": "group-ldap-mapper",
       "providerType": "org.keycloak.storage.ldap.mappers.LDAPStorageMapper",
       "parentId": "'"${LDAP_COMPONENT_ID}"'",
@@ -240,12 +240,12 @@ function create_orgid_group_mapper() {
         "mode": ["READ_ONLY"],
         "membership.attribute.type": ["DN"],
         "user.roles.retrieve.strategy": ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"],
-        "group.name.ldap.attribute": ["organizationId"],
+        "group.name.ldap.attribute": ["cn"],
         "membership.ldap.attribute": ["member"],
         "membership.user.ldap.attribute": ["uid"],
-        "groups.dn": ["ou=groups,'"${LDAP_BASE_DN}"'"],
-        "group.object.classes": ["costManagementGroup"],
-        "preserve.group.inheritance": ["false"],
+        "groups.dn": ["ou=organizations,ou=groups,'"${LDAP_BASE_DN}"'"],
+        "group.object.classes": ["groupOfNames"],
+        "preserve.group.inheritance": ["true"],
         "ignore.missing.groups": ["false"],
         "memberof.ldap.attribute": ["memberOf"],
         "drop.non.existing.groups.during.sync": ["false"]
@@ -256,12 +256,12 @@ function create_orgid_group_mapper() {
   http_code=$(echo "$response" | tail -n1)
   
   if [ "$http_code" != "201" ]; then
-    echo_error "Failed to create org ID mapper (HTTP $http_code)"
+    echo_error "Failed to create org groups mapper (HTTP $http_code)"
     echo "Response: $(echo "$response" | head -n-1)"
     exit 1
   fi
   
-  echo_info "Org ID mapper created (maps organizationId → Keycloak group)"
+  echo_info "Org groups mapper created (ou=organizations → /organizations/ID)"
 }
 
 function create_account_group_mapper() {
@@ -277,20 +277,20 @@ function create_account_group_mapper() {
   existing_id=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" | \
-    jq -r '.[] | select(.name == "account-number-mapper" and .providerId == "group-ldap-mapper") | .id' | head -1)
+    jq -r '.[] | select(.name == "account-groups-mapper" and .providerId == "group-ldap-mapper") | .id' | head -1)
   
   if [ -n "$existing_id" ] && [ "$existing_id" != "null" ]; then
-    echo_warn "Account mapper 'account-number-mapper' already exists (ID: $existing_id)"
+    echo_warn "Account groups mapper already exists (ID: $existing_id)"
     return 0
   fi
   
-  # Create account mapper using accountNumber attribute
+  # Create group mapper for accounts (imports as /accounts/9876543)
   local response
   response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{
-      "name": "account-number-mapper",
+      "name": "account-groups-mapper",
       "providerId": "group-ldap-mapper",
       "providerType": "org.keycloak.storage.ldap.mappers.LDAPStorageMapper",
       "parentId": "'"${LDAP_COMPONENT_ID}"'",
@@ -298,12 +298,12 @@ function create_account_group_mapper() {
         "mode": ["READ_ONLY"],
         "membership.attribute.type": ["DN"],
         "user.roles.retrieve.strategy": ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"],
-        "group.name.ldap.attribute": ["accountNumber"],
+        "group.name.ldap.attribute": ["cn"],
         "membership.ldap.attribute": ["member"],
         "membership.user.ldap.attribute": ["uid"],
-        "groups.dn": ["ou=groups,'"${LDAP_BASE_DN}"'"],
-        "group.object.classes": ["costManagementGroup"],
-        "preserve.group.inheritance": ["false"],
+        "groups.dn": ["ou=accounts,ou=groups,'"${LDAP_BASE_DN}"'"],
+        "group.object.classes": ["groupOfNames"],
+        "preserve.group.inheritance": ["true"],
         "ignore.missing.groups": ["false"],
         "memberof.ldap.attribute": ["memberOf"],
         "drop.non.existing.groups.during.sync": ["false"]
@@ -314,12 +314,12 @@ function create_account_group_mapper() {
   http_code=$(echo "$response" | tail -n1)
   
   if [ "$http_code" != "201" ]; then
-    echo_error "Failed to create account mapper (HTTP $http_code)"
+    echo_error "Failed to create account groups mapper (HTTP $http_code)"
     echo "Response: $(echo "$response" | head -n-1)"
     exit 1
   fi
   
-  echo_info "Account mapper created (maps accountNumber → Keycloak group)"
+  echo_info "Account groups mapper created (ou=accounts → /accounts/ID)"
 }
 
 function sync_users() {
@@ -372,17 +372,17 @@ function verify_configuration() {
     echo "  - $group"
   done
 
-  # Check for expected groups
-  if echo "$groups" | grep -q "^organization_id_1234567$"; then
-    echo_info "✓ Organization group found: organization_id_1234567"
+  # Check for expected groups (with hierarchy paths)
+  if echo "$groups" | grep -q "^/organizations/1234567$"; then
+    echo_info "✓ Organization group found: /organizations/1234567"
   else
-    echo_warn "⚠ Organization group organization_id_1234567 not found"
+    echo_warn "⚠ Organization group /organizations/1234567 not found"
   fi
   
-  if echo "$groups" | grep -q "^account_9876543$"; then
-    echo_info "✓ Account group found: account_9876543"
+  if echo "$groups" | grep -q "^/accounts/9876543$"; then
+    echo_info "✓ Account group found: /accounts/9876543"
   else
-    echo_warn "⚠ Account group account_9876543 not found"
+    echo_warn "⚠ Account group /accounts/9876543 not found"
   fi
 }
 
@@ -403,25 +403,30 @@ Configuration Details:
 
 LDAP Mappers:
 ─────────────────────────────────────────────────────────
-  1. Organization ID Mapper
-     - Maps LDAP attribute: organizationId → Keycloak group name
-     - Object class: costManagementGroup
-     - Example: organizationId=organization_id_1234567 → Group "organization_id_1234567"
+  1. Organizations Mapper
+     - Maps LDAP path: ou=organizations → Keycloak group hierarchy
+     - Preserves hierarchy: true
+     - Example: cn=1234567,ou=organizations → "/organizations/1234567"
 
-  2. Account Number Mapper
-     - Maps LDAP attribute: accountNumber → Keycloak group name
-     - Object class: costManagementGroup
-     - Example: accountNumber=account_9876543 → Group "account_9876543"
+  2. Accounts Mapper
+     - Maps LDAP path: ou=accounts → Keycloak group hierarchy
+     - Preserves hierarchy: true
+     - Example: cn=9876543,ou=accounts → "/accounts/9876543"
 
 Expected Mappings:
 ─────────────────────────────────────────────────────────
   User "test" should have groups:
-    - organization_id_1234567 (from organizationId attribute)
-    - account_9876543 (from accountNumber attribute)
+    - /organizations/1234567 (numeric org ID with path)
+    - /accounts/9876543      (numeric account with path)
 
   Authorino will extract:
-    - org_id: "1234567" (removes "organization_id_" prefix)
-    - account_number: "9876543" (removes "account_" prefix)
+    - org_id: "1234567" (parses /organizations/ path)
+    - account_number: "9876543" (parses /accounts/ path)
+
+Benefits:
+  ✓ Clean numeric values in LDAP (no prefixes)
+  ✓ Group paths provide semantic meaning
+  ✓ Standard LDAP structure (ou-based hierarchy)
 
 Next Steps:
 ─────────────────────────────────────────────────────────
@@ -444,12 +449,19 @@ Troubleshooting:
       -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \\
       -b "ou=users,$LDAP_BASE_DN" "(uid=test)" dn cn mail
 
-  View LDAP groups:
+  View LDAP organization groups:
     oc exec -n $NAMESPACE deployment/openldap-demo -- \\
       ldapsearch -x -H ldap://localhost:1389 \\
       -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \\
-      -b "ou=groups,$LDAP_BASE_DN" \\
-      "(objectClass=costManagementGroup)" dn cn organizationId accountNumber member
+      -b "ou=organizations,ou=groups,$LDAP_BASE_DN" \\
+      "(objectClass=groupOfNames)" dn cn member
+
+  View LDAP account groups:
+    oc exec -n $NAMESPACE deployment/openldap-demo -- \\
+      ldapsearch -x -H ldap://localhost:1389 \\
+      -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \\
+      -b "ou=accounts,ou=groups,$LDAP_BASE_DN" \\
+      "(objectClass=groupOfNames)" dn cn member
 
   Resync users from LDAP:
     curl -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/user-storage/${LDAP_COMPONENT_ID}/sync?action=triggerFullSync" \\
