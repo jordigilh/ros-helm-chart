@@ -274,19 +274,19 @@ This is a **2-minute configuration change** in Keycloak - no scripts, no sync jo
 
 2. **Add Mapper → Create Protocol Mapper → Script Mapper**:
    - Name: `user-attrs-to-groups`
-   - Mapper Type: `Script Mapper`  
+   - Mapper Type: `Script Mapper`
    - Script:
      ```javascript
      // Read user LDAP attributes
      var costCenter = user.getAttribute("costCenter");
      var division = user.getAttribute("division");
-     
+
      // Get existing groups
      var groups = token.getOtherClaims().get("groups");
      if (groups == null) {
          groups = new java.util.ArrayList();
      }
-     
+
      // Add org_id and account_number as groups
      if (costCenter != null && costCenter.size() > 0) {
          groups.add("/organizations/" + costCenter.get(0));
@@ -294,7 +294,7 @@ This is a **2-minute configuration change** in Keycloak - no scripts, no sync jo
      if (division != null && division.size() > 0) {
          groups.add("/accounts/" + division.get(0));
      }
-     
+
      token.getOtherClaims().put("groups", groups);
      "OK";
      ```
@@ -322,11 +322,38 @@ oc get user test -o yaml
 - ✅ **Standard feature**: Built into Keycloak
 
 **Cons:**
-- ⚠️ Requires JavaScript mapper (must be enabled in Keycloak)
+- ⚠️ **RHBK (Red Hat Build of Keycloak) disables script uploading by default** for security (CVE-2022-2668)
 - ⚠️ Groups update on next login (not immediate)
-- ⚠️ Some Keycloak distributions disable Script Mappers for security
+- ⚠️ Requires packaging scripts as JAR file for RHBK (see below)
 
-**When to use this:** If you control Keycloak and script mappers are enabled, **use this approach**. It's by far the simplest.
+**IMPORTANT for RHBK Users:**
+
+Red Hat Build of Keycloak **disables script uploading through the admin console** by default. To use script mappers with RHBK, you must:
+
+1. **Package the script as a JAR file**:
+   ```
+   my-scripts/
+   ├── META-INF/
+   │   └── keycloak-scripts.json
+   └── mappers/
+       └── user-attrs-to-groups.js
+   ```
+
+2. **Deploy JAR to Keycloak server**:
+   - Add JAR to Keycloak `providers/` directory
+   - Rebuild Keycloak: `kc.sh build`
+   - Restart Keycloak pods
+
+3. **Reference in mapper**: Use the script name from `keycloak-scripts.json`
+
+**Documentation**: [RHBK 22.0 Server Developer Guide - Deploying Scripts](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/22.0/html-single/server_developer_guide/index#con-as-a-deployment_server_development)
+
+**Verdict for RHBK:** Script mappers work, but require JAR deployment instead of copy-paste in UI. This adds operational complexity.
+
+**When to use this approach:** 
+- ✅ If using **upstream Keycloak** (scripts enabled by default)
+- ⚠️ If using **RHBK** and comfortable with JAR packaging + pod restarts
+- ❌ If using **RHBK** and want simple configuration → Use Option B1 or B2 instead (automated groups)
 
 ---
 
@@ -371,12 +398,19 @@ member: CN=John Doe,OU=Cloud-Platform,OU=Engineering,OU=USA,OU=Americas,OU=Users
 
 **Recommendation for 10k+ Employee Enterprises:** 
 
-**Priority 1: Try Keycloak Protocol Mapper (Option B0)**
-- ✅ Simplest solution (2-minute config)
-- ✅ No LDAP changes or sync scripts
-- ✅ Check if Script Mappers are enabled in your Keycloak
+**For Upstream Keycloak:**
+- **Priority 1**: Use Protocol Mapper (Option B0) - simplest, 2-minute config
 
-**Priority 2: If Protocol Mappers are disabled, use Automated Groups (Option B1/B2)**
+**For RHBK (Red Hat Build of Keycloak) - What We're Using:**
+- **Priority 1**: Use Automated Group Sync (Option B1/B2) - simpler than JAR packaging
+- **Priority 2**: If you have DevOps resources, use Protocol Mapper with JAR deployment (Option B0)
+
+**Why?** RHBK disables script uploading via UI by default. While you CAN use script mappers by packaging as JAR + deploying to pods, **automated group sync is actually simpler** for RHBK deployments:
+- No pod restarts or custom JAR builds
+- Standard LDAP operations
+- Easier to audit and maintain
+
+**If Protocol Mappers are disabled or you're using RHBK, use Automated Groups (Option B1/B2)**
 - **DO NOT** create manual groups for each user
 - **DO** use existing LDAP attributes (`costCenter`, `division`, `department`)
 - **AUTOMATE** group creation/membership based on those attributes
