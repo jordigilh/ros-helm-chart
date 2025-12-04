@@ -158,10 +158,16 @@ data:
                         return
                       end
 
-                      -- Fallback: Use org_id if account_number is missing
+                      -- Validate account_number is present
+                      -- Backend requires BOTH org_id AND account_number for database queries
+                      -- See: internal/api/middleware/identity.go - WHERE org_id = '...' AND account_number = '...'
                       if account_number == nil or account_number == "" then
-                        account_number = org_id
-                        request_handle:logInfo("Using org_id as account_number (no separate account group)")
+                        request_handle:logWarn("Missing x-auth-account-number from Authorino - user may not have account group")
+                        request_handle:respond(
+                          {[":status"] = "401"},
+                          "Unauthorized: Missing account number"
+                        )
+                        return
                       end
 
                       -- Escape values for safe JSON embedding

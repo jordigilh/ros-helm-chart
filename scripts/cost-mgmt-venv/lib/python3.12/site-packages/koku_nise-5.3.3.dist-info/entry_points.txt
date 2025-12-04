@@ -1,0 +1,2 @@
+[console_scripts]
+nise = nise.__main__:main

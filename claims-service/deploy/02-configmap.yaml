@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: claims-service-config
+  namespace: claims-service
+  labels:
+    app.kubernetes.io/name: claims-service
+data:
+  KEYCLOAK_URL: "https://keycloak-keycloak.apps.stress.parodos.dev"
+  REALM: "kubernetes"
+

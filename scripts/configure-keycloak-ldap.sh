@@ -54,25 +54,25 @@ function echo_error() {
 
 function check_prerequisites() {
   echo_header "Checking Prerequisites"
-  
+
   if ! command -v oc &> /dev/null; then
     echo_error "oc CLI not found"
     exit 1
   fi
   echo_info "oc CLI found"
-  
+
   if ! command -v curl &> /dev/null; then
     echo_error "curl not found"
     exit 1
   fi
   echo_info "curl found"
-  
+
   if ! command -v jq &> /dev/null; then
     echo_error "jq not found. Please install jq for JSON processing"
     exit 1
   fi
   echo_info "jq found"
-  
+
   if ! oc whoami &> /dev/null; then
     echo_error "Not logged into OpenShift"
     exit 1
@@ -82,32 +82,32 @@ function check_prerequisites() {
 
 function get_keycloak_url() {
   echo_header "Getting Keycloak URL"
-  
+
   local route_name="keycloak"
   KEYCLOAK_URL=$(oc get route "$route_name" -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
-  
+
   if [ -z "$KEYCLOAK_URL" ]; then
     echo_error "Keycloak route not found in namespace $NAMESPACE"
     exit 1
   fi
-  
+
   KEYCLOAK_URL="https://${KEYCLOAK_URL}"
   echo_info "Keycloak URL: $KEYCLOAK_URL"
 }
 
 function get_admin_token() {
   echo_header "Getting Admin Token"
-  
+
   # Get admin credentials from secret
   local admin_user admin_password
   admin_user=$(oc get secret keycloak-initial-admin -n "$NAMESPACE" -o jsonpath='{.data.username}' | base64 -d)
   admin_password=$(oc get secret keycloak-initial-admin -n "$NAMESPACE" -o jsonpath='{.data.password}' | base64 -d)
-  
+
   if [ -z "$admin_user" ] || [ -z "$admin_password" ]; then
     echo_error "Failed to get admin credentials"
     exit 1
   fi
-  
+
   # Get access token
   local token_response
   token_response=$(curl -sk -X POST "${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" \
@@ -115,34 +115,34 @@ function get_admin_token() {
     -d "username=${admin_user}" \
     -d "password=${admin_password}" \
     -d "grant_type=password" 2>/dev/null)
-  
+
   ACCESS_TOKEN=$(echo "$token_response" | jq -r '.access_token')
-  
+
   if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
     echo_error "Failed to get access token"
     echo "Response: $token_response"
     exit 1
   fi
-  
+
   echo_info "Access token obtained"
 }
 
 function create_ldap_federation() {
   echo_header "Creating LDAP User Federation"
-  
+
   # Check if LDAP federation already exists
   local existing_id
   existing_id=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" | \
     jq -r '.[] | select(.name == "openldap-demo" and .providerId == "ldap") | .id' | head -1)
-  
+
   if [ -n "$existing_id" ] && [ "$existing_id" != "null" ]; then
     echo_warn "LDAP federation 'openldap-demo' already exists (ID: $existing_id)"
     LDAP_COMPONENT_ID="$existing_id"
     return 0
   fi
-  
+
   # Create LDAP federation
   local response
   response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
@@ -185,54 +185,54 @@ function create_ldap_federation() {
         "useKerberosForPasswordAuthentication": ["false"]
       }
     }' -w "\n%{http_code}" 2>/dev/null)
-  
+
   local http_code
   http_code=$(echo "$response" | tail -n1)
-  
+
   if [ "$http_code" != "201" ]; then
     echo_error "Failed to create LDAP federation (HTTP $http_code)"
     echo "Response: $(echo "$response" | head -n-1)"
     exit 1
   fi
-  
+
   echo_info "LDAP user federation created"
-  
+
   # Get the created component ID
   LDAP_COMPONENT_ID=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" | \
     jq -r '.[] | select(.name == "openldap-demo" and .providerId == "ldap") | .id' | head -1)
-  
+
   echo_info "LDAP Component ID: $LDAP_COMPONENT_ID"
 }
 
-function create_group_mapper() {
-  echo_header "Creating LDAP Group Mapper"
+function create_orgid_group_mapper() {
+  echo_header "Creating LDAP Organization ID Group Mapper"
   
   if [ -z "$LDAP_COMPONENT_ID" ]; then
     echo_error "LDAP Component ID not found"
     exit 1
   fi
   
-  # Check if group mapper already exists
+  # Check if mapper already exists
   local existing_id
   existing_id=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" | \
-    jq -r '.[] | select(.name == "organization-groups" and .providerId == "group-ldap-mapper") | .id' | head -1)
+    jq -r '.[] | select(.name == "organization-id-mapper" and .providerId == "group-ldap-mapper") | .id' | head -1)
   
   if [ -n "$existing_id" ] && [ "$existing_id" != "null" ]; then
-    echo_warn "Group mapper 'organization-groups' already exists (ID: $existing_id)"
+    echo_warn "Org ID mapper 'organization-id-mapper' already exists (ID: $existing_id)"
     return 0
   fi
   
-  # Create group mapper using businessCategory as group name
+  # Create group mapper using organizationId attribute
   local response
   response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{
-      "name": "organization-groups",
+      "name": "organization-id-mapper",
       "providerId": "group-ldap-mapper",
       "providerType": "org.keycloak.storage.ldap.mappers.LDAPStorageMapper",
       "parentId": "'"${LDAP_COMPONENT_ID}"'",
@@ -240,15 +240,14 @@ function create_group_mapper() {
         "mode": ["READ_ONLY"],
         "membership.attribute.type": ["DN"],
         "user.roles.retrieve.strategy": ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"],
-        "group.name.ldap.attribute": ["businessCategory"],
+        "group.name.ldap.attribute": ["organizationId"],
         "membership.ldap.attribute": ["member"],
         "membership.user.ldap.attribute": ["uid"],
         "groups.dn": ["ou=groups,'"${LDAP_BASE_DN}"'"],
-        "group.object.classes": ["groupOfNames"],
+        "group.object.classes": ["costManagementGroup"],
         "preserve.group.inheritance": ["false"],
         "ignore.missing.groups": ["false"],
         "memberof.ldap.attribute": ["memberOf"],
-        "groups.ldap.filter": ["(cn=org-*)"],
         "drop.non.existing.groups.during.sync": ["false"]
       }
     }' -w "\n%{http_code}" 2>/dev/null)
@@ -257,41 +256,41 @@ function create_group_mapper() {
   http_code=$(echo "$response" | tail -n1)
   
   if [ "$http_code" != "201" ]; then
-    echo_error "Failed to create group mapper (HTTP $http_code)"
+    echo_error "Failed to create org ID mapper (HTTP $http_code)"
     echo "Response: $(echo "$response" | head -n-1)"
     exit 1
   fi
   
-  echo_info "Group mapper created (maps businessCategory → Keycloak group)"
+  echo_info "Org ID mapper created (maps organizationId → Keycloak group)"
 }
 
 function create_account_group_mapper() {
-  echo_header "Creating LDAP Account Group Mapper"
+  echo_header "Creating LDAP Account Number Group Mapper"
   
   if [ -z "$LDAP_COMPONENT_ID" ]; then
     echo_error "LDAP Component ID not found"
     exit 1
   fi
   
-  # Check if account group mapper already exists
+  # Check if account mapper already exists
   local existing_id
   existing_id=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" | \
-    jq -r '.[] | select(.name == "account-groups" and .providerId == "group-ldap-mapper") | .id' | head -1)
+    jq -r '.[] | select(.name == "account-number-mapper" and .providerId == "group-ldap-mapper") | .id' | head -1)
   
   if [ -n "$existing_id" ] && [ "$existing_id" != "null" ]; then
-    echo_warn "Account group mapper already exists (ID: $existing_id)"
+    echo_warn "Account mapper 'account-number-mapper' already exists (ID: $existing_id)"
     return 0
   fi
   
-  # Create account group mapper using cn as group name
+  # Create account mapper using accountNumber attribute
   local response
   response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{
-      "name": "account-groups",
+      "name": "account-number-mapper",
       "providerId": "group-ldap-mapper",
       "providerType": "org.keycloak.storage.ldap.mappers.LDAPStorageMapper",
       "parentId": "'"${LDAP_COMPONENT_ID}"'",
@@ -299,15 +298,14 @@ function create_account_group_mapper() {
         "mode": ["READ_ONLY"],
         "membership.attribute.type": ["DN"],
         "user.roles.retrieve.strategy": ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"],
-        "group.name.ldap.attribute": ["cn"],
+        "group.name.ldap.attribute": ["accountNumber"],
         "membership.ldap.attribute": ["member"],
         "membership.user.ldap.attribute": ["uid"],
         "groups.dn": ["ou=groups,'"${LDAP_BASE_DN}"'"],
-        "group.object.classes": ["groupOfNames"],
+        "group.object.classes": ["costManagementGroup"],
         "preserve.group.inheritance": ["false"],
         "ignore.missing.groups": ["false"],
         "memberof.ldap.attribute": ["memberOf"],
-        "groups.ldap.filter": ["(cn=account_*)"],
         "drop.non.existing.groups.during.sync": ["false"]
       }
     }' -w "\n%{http_code}" 2>/dev/null)
@@ -316,69 +314,69 @@ function create_account_group_mapper() {
   http_code=$(echo "$response" | tail -n1)
   
   if [ "$http_code" != "201" ]; then
-    echo_error "Failed to create account group mapper (HTTP $http_code)"
+    echo_error "Failed to create account mapper (HTTP $http_code)"
     echo "Response: $(echo "$response" | head -n-1)"
     exit 1
   fi
   
-  echo_info "Account group mapper created (maps cn → Keycloak group for account_ groups)"
+  echo_info "Account mapper created (maps accountNumber → Keycloak group)"
 }
 
 function sync_users() {
   echo_header "Synchronizing Users from LDAP"
-  
+
   if [ -z "$LDAP_COMPONENT_ID" ]; then
     echo_error "LDAP Component ID not found"
     exit 1
   fi
-  
+
   # Trigger full sync
   local response
   response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/user-storage/${LDAP_COMPONENT_ID}/sync?action=triggerFullSync" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" 2>/dev/null)
-  
+
   echo_info "User sync triggered"
   echo "Response: $response"
-  
+
   # Wait a bit for sync to complete
   sleep 5
 }
 
 function verify_configuration() {
   echo_header "Verifying Configuration"
-  
+
   # Check if test user was imported
   local user_id
   user_id=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/users?username=test&exact=true" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" | \
     jq -r '.[0].id' 2>/dev/null)
-  
+
   if [ -z "$user_id" ] || [ "$user_id" = "null" ]; then
     echo_error "Test user not found in Keycloak"
     return 1
   fi
-  
+
   echo_info "Test user found (ID: $user_id)"
-  
+
   # Get user's groups
   local groups
   groups=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/users/${user_id}/groups" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" | \
     jq -r '.[].name' 2>/dev/null)
-  
+
   echo_info "User's groups:"
   echo "$groups" | while read -r group; do
     echo "  - $group"
   done
-  
+
   # Check for expected groups
-  if echo "$groups" | grep -q "^1234567$"; then
-    echo_info "✓ Organization group found: 1234567"
+  if echo "$groups" | grep -q "^organization_id_1234567$"; then
+    echo_info "✓ Organization group found: organization_id_1234567"
   else
-    echo_warn "⚠ Organization group 1234567 not found"
+    echo_warn "⚠ Organization group organization_id_1234567 not found"
   fi
   
   if echo "$groups" | grep -q "^account_9876543$"; then
@@ -390,7 +388,7 @@ function verify_configuration() {
 
 function display_summary() {
   echo_header "Keycloak LDAP Configuration Summary"
-  
+
   cat <<EOF
 
 ${GREEN}✓ Keycloak LDAP Federation Configured Successfully${NC}
@@ -405,25 +403,25 @@ Configuration Details:
 
 LDAP Mappers:
 ─────────────────────────────────────────────────────────
-  1. Organization Groups Mapper
-     - Maps LDAP attribute: businessCategory → Keycloak group name
-     - Filter: (cn=org-*)
-     - Example: businessCategory=1234567 → Group "1234567"
+  1. Organization ID Mapper
+     - Maps LDAP attribute: organizationId → Keycloak group name
+     - Object class: costManagementGroup
+     - Example: organizationId=organization_id_1234567 → Group "organization_id_1234567"
 
-  2. Account Groups Mapper
-     - Maps LDAP attribute: cn → Keycloak group name
-     - Filter: (cn=account_*)
-     - Example: cn=account_9876543 → Group "account_9876543"
+  2. Account Number Mapper
+     - Maps LDAP attribute: accountNumber → Keycloak group name
+     - Object class: costManagementGroup
+     - Example: accountNumber=account_9876543 → Group "account_9876543"
 
 Expected Mappings:
 ─────────────────────────────────────────────────────────
   User "test" should have groups:
-    - 1234567 (from businessCategory)
-    - account_9876543 (from cn)
+    - organization_id_1234567 (from organizationId attribute)
+    - account_9876543 (from accountNumber attribute)
 
   Authorino will extract:
-    - org_id: "1234567"
-    - account_number: "9876543"
+    - org_id: "1234567" (removes "organization_id_" prefix)
+    - account_number: "9876543" (removes "account_" prefix)
 
 Next Steps:
 ─────────────────────────────────────────────────────────
@@ -450,7 +448,8 @@ Troubleshooting:
     oc exec -n $NAMESPACE deployment/openldap-demo -- \\
       ldapsearch -x -H ldap://localhost:1389 \\
       -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \\
-      -b "ou=groups,$LDAP_BASE_DN" "(cn=org-*)" dn businessCategory member
+      -b "ou=groups,$LDAP_BASE_DN" \\
+      "(objectClass=costManagementGroup)" dn cn organizationId accountNumber member
 
   Resync users from LDAP:
     curl -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/user-storage/${LDAP_COMPONENT_ID}/sync?action=triggerFullSync" \\
@@ -469,12 +468,12 @@ main() {
   echo_header "Keycloak LDAP Configuration Script"
   echo "Configuring LDAP federation in realm: $REALM"
   echo ""
-  
+
   check_prerequisites
   get_keycloak_url
   get_admin_token
   create_ldap_federation
-  create_group_mapper
+  create_orgid_group_mapper
   create_account_group_mapper
   sync_users
   verify_configuration
