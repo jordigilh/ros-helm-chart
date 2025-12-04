@@ -58,11 +58,17 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 
 **Architecture:**
 ```
-LDAP Groups                    Keycloak               OpenShift          Authorino
-─────────────                  ────────               ─────────          ─────────
-cn=engineering                 Group: "1234567"       TokenReview:       org_id: "1234567"
-├── cn: engineering            ↑                      groups:            (direct use)
-├── organizationId: 1234567 ───┘                      - "1234567"
+LDAP Groups                    Keycloak                    OpenShift          Authorino
+─────────────                  ────────                    ─────────          ─────────
+cn=engineering                 Group: "/organizations/     TokenReview:       org_id: "1234567"
+├── cn: engineering                    1234567"           groups:            account_number: "7890123"
+├── organizationId: 1234567 ───────────┘                  - "/organizations/ (parsed from groups)
+├── accountNumber: 7890123                                   1234567"
+└── member: uid=test                                      - "/accounts/
+                                                             7890123"
+cn=account-7890123             Group: "/accounts/
+├── cn: account-7890123                7890123"
+├── accountNumber: 7890123 ────────────┘
 └── member: uid=test
 ```
 
@@ -608,7 +614,7 @@ If requirements change significantly (e.g., need for 10+ custom claims), conside
 
 ---
 
-**Decision made by:** Engineering Team  
-**Last updated:** 2025-12-04  
+**Decision made by:** Engineering Team
+**Last updated:** 2025-12-04
 **Review date:** 2026-03-04 (3 months)
 
