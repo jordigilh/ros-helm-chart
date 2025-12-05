@@ -17,7 +17,7 @@ set -euo pipefail
 
 # Configuration
 NAMESPACE="${1:-keycloak}"
-LDAP_ADMIN_PASSWORD="admin123"
+LDAP_ADMIN_PASSWORD="admin"
 LDAP_DOMAIN="cost-mgmt.local"
 LDAP_BASE_DN="dc=cost-mgmt,dc=local"
 
@@ -255,40 +255,36 @@ spec:
     spec:
       containers:
       - name: openldap
-        image: docker.io/bitnami/openldap:2.6
+        # osixia/openldap - well-maintained, works with OpenShift
+        # Requires anyuid SCC: oc adm policy add-scc-to-user anyuid -z default -n \$NAMESPACE
+        image: osixia/openldap:1.5.0
         ports:
         - name: ldap
-          containerPort: 1389
+          containerPort: 389
+          protocol: TCP
+        - name: ldaps
+          containerPort: 636
           protocol: TCP
         env:
-        - name: LDAP_ROOT
-          value: "${LDAP_BASE_DN}"
-        - name: LDAP_ADMIN_USERNAME
-          value: "admin"
+        - name: LDAP_ORGANISATION
+          value: "Cost Management"
+        - name: LDAP_DOMAIN
+          value: "cost-mgmt.local"
         - name: LDAP_ADMIN_PASSWORD
           valueFrom:
             secretKeyRef:
               name: ldap-admin-password
               key: LDAP_ADMIN_PASSWORD
-        - name: LDAP_USERS
-          value: "test,admin"
-        - name: LDAP_PASSWORDS
-          value: "test,admin"
-        - name: LDAP_PORT_NUMBER
-          value: "1389"
-        - name: LDAP_LOGLEVEL
+        - name: LDAP_TLS
+          value: "false"
+        - name: LDAP_LOG_LEVEL
           value: "256"
-        - name: LDAP_ENABLE_TLS
-          value: "no"
-        volumeMounts:
-        - name: ldap-init-data
-          mountPath: /ldifs
         resources:
           requests:
-            memory: "256Mi"
+            memory: "128Mi"
             cpu: "100m"
           limits:
-            memory: "512Mi"
+            memory: "256Mi"
             cpu: "500m"
         livenessProbe:
           tcpSocket:
@@ -302,10 +298,6 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 5
           timeoutSeconds: 3
-      volumes:
-      - name: ldap-init-data
-        configMap:
-          name: ldap-init-data
 
 ---
 apiVersion: v1
@@ -320,8 +312,12 @@ spec:
   type: ClusterIP
   ports:
   - name: ldap
-    port: 1389
+    port: 389
     targetPort: ldap
+    protocol: TCP
+  - name: ldaps
+    port: 636
+    targetPort: ldaps
     protocol: TCP
   selector:
     app: openldap-demo
@@ -329,6 +325,14 @@ spec:
 EOF
 
   echo_info "OpenLDAP resources deployed"
+}
+
+function add_security_context() {
+  echo_header "Adding Security Context for OpenLDAP"
+  
+  # osixia/openldap requires running as specific user
+  oc adm policy add-scc-to-user anyuid -z default -n "$NAMESPACE" 2>/dev/null || true
+  echo_info "Added anyuid SCC to default service account"
 }
 
 function wait_for_ldap() {
@@ -369,7 +373,7 @@ function import_ldif_data() {
   for ldif in 01-base.ldif 02-users.ldif 04-organizations.ldif 05-accounts.ldif; do
     echo_info "Importing $ldif..."
     oc exec -n "$NAMESPACE" "$pod_name" -- \
-      ldapadd -x -H ldap://localhost:1389 \
+      ldapadd -x -H ldap://localhost \
       -D "cn=admin,${LDAP_BASE_DN}" \
       -w "${LDAP_ADMIN_PASSWORD}" \
       -f "/ldifs/$ldif" || {
@@ -388,7 +392,7 @@ function verify_ldap() {
 
   echo_info "Testing LDAP search..."
   oc exec -n "$NAMESPACE" "$pod_name" -- \
-    ldapsearch -x -H ldap://localhost:1389 \
+    ldapsearch -x -H ldap://localhost \
     -D "cn=admin,${LDAP_BASE_DN}" \
     -w "${LDAP_ADMIN_PASSWORD}" \
     -b "${LDAP_BASE_DN}" \
@@ -397,7 +401,7 @@ function verify_ldap() {
   echo ""
   echo_info "Verifying test user..."
   oc exec -n "$NAMESPACE" "$pod_name" -- \
-    ldapsearch -x -H ldap://localhost:1389 \
+    ldapsearch -x -H ldap://localhost \
     -D "cn=admin,${LDAP_BASE_DN}" \
     -w "${LDAP_ADMIN_PASSWORD}" \
     -b "ou=users,${LDAP_BASE_DN}" \
@@ -406,7 +410,7 @@ function verify_ldap() {
   echo ""
   echo_info "Verifying organization groups with custom attributes..."
   oc exec -n "$NAMESPACE" "$pod_name" -- \
-    ldapsearch -x -H ldap://localhost:1389 \
+    ldapsearch -x -H ldap://localhost \
     -D "cn=admin,${LDAP_BASE_DN}" \
     -w "${LDAP_ADMIN_PASSWORD}" \
     -b "ou=organizations,ou=groups,${LDAP_BASE_DN}" \
@@ -415,7 +419,7 @@ function verify_ldap() {
   echo ""
   echo_info "Verifying account groups with custom attributes..."
   oc exec -n "$NAMESPACE" "$pod_name" -- \
-    ldapsearch -x -H ldap://localhost:1389 \
+    ldapsearch -x -H ldap://localhost \
     -D "cn=admin,${LDAP_BASE_DN}" \
     -w "${LDAP_ADMIN_PASSWORD}" \
     -b "ou=accounts,ou=groups,${LDAP_BASE_DN}" \
@@ -644,7 +648,7 @@ data:
       TYPE=$(ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
         -b "$GROUP_DN" -s base "(objectClass=*)" costManagementType 2>/dev/null | \
         grep "^costManagementType:" | cut -d: -f2 | tr -d ' ')
-      
+
       if [ -z "$TYPE" ]; then
         # Group doesn't exist, create it with marker
         ldapadd -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" &>/dev/null <<EOF
@@ -681,7 +685,7 @@ data:
       TYPE=$(ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
         -b "$GROUP_DN" -s base "(objectClass=*)" costManagementType 2>/dev/null | \
         grep "^costManagementType:" | cut -d: -f2 | tr -d ' ')
-      
+
       if [ -z "$TYPE" ]; then
         # Group doesn't exist, create it with marker
         ldapadd -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" &>/dev/null <<EOF
@@ -797,6 +801,7 @@ main() {
 
   check_prerequisites
   create_namespace
+  add_security_context
   deploy_ldap
   wait_for_ldap
   import_ldif_data

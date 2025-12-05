@@ -22,10 +22,11 @@ set -euo pipefail
 # Configuration
 NAMESPACE="${1:-keycloak}"
 REALM="${2:-kubernetes}"
-LDAP_URL="ldap://openldap-demo.${NAMESPACE}.svc.cluster.local:1389"
+# Port 389 for osixia/openldap (standard LDAP port)
+LDAP_URL="ldap://openldap-demo.${NAMESPACE}.svc.cluster.local:389"
 LDAP_BASE_DN="dc=cost-mgmt,dc=local"
 LDAP_BIND_DN="cn=admin,${LDAP_BASE_DN}"
-LDAP_BIND_PASSWORD="admin123"
+LDAP_BIND_PASSWORD="admin"
 
 # Colors for output
 RED='\033[0;31m'
@@ -206,8 +207,8 @@ function create_ldap_federation() {
   echo_info "LDAP Component ID: $LDAP_COMPONENT_ID"
 }
 
-function create_orgid_group_mapper() {
-  echo_header "Creating LDAP Organization ID Group Mapper (Sync-Generated Groups)"
+function create_cost_mgmt_group_mapper() {
+  echo_header "Creating Cost Management Group Mapper"
 
   if [ -z "$LDAP_COMPONENT_ID" ]; then
     echo_error "LDAP Component ID not found"
@@ -219,41 +220,52 @@ function create_orgid_group_mapper() {
   existing_id=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" | \
-    jq -r '.[] | select(.name == "organization-groups-mapper" and .providerId == "group-ldap-mapper") | .id' | head -1)
+    jq -r '.[] | select(.name == "cost-mgmt-groups" and .providerId == "group-ldap-mapper") | .id' | head -1)
 
   if [ -n "$existing_id" ] && [ "$existing_id" != "null" ]; then
-    echo_warn "Org groups mapper already exists (ID: $existing_id), deleting..."
+    echo_warn "Cost Management groups mapper already exists (ID: $existing_id), deleting..."
     curl -sk -X DELETE "${KEYCLOAK_URL}/admin/realms/${REALM}/components/${existing_id}" \
       -H "Authorization: Bearer ${ACCESS_TOKEN}"
   fi
 
-  # Create group mapper for sync-generated org groups
-  # These groups are created by ldap-user-attrs-to-groups-sync.sh
-  # Pattern: CN=cost-mgmt-org-{costCenter} (e.g., CN=cost-mgmt-org-1234567)
-  # Will be imported as groups by Keycloak
+  # Also clean up old org/account mappers if they exist
+  for mapper_name in "organization-groups-mapper" "account-groups-mapper"; do
+    local old_mapper_id
+    old_mapper_id=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
+      -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+      -H "Content-Type: application/json" | \
+      jq -r '.[] | select(.name == "'"${mapper_name}"'" and .providerId == "group-ldap-mapper") | .id' | head -1)
+    if [ -n "$old_mapper_id" ] && [ "$old_mapper_id" != "null" ]; then
+      echo_warn "Removing old mapper: $mapper_name"
+      curl -sk -X DELETE "${KEYCLOAK_URL}/admin/realms/${REALM}/components/${old_mapper_id}" \
+        -H "Authorization: Bearer ${ACCESS_TOKEN}"
+    fi
+  done
+
+  # Create single group mapper for all Cost Management groups in ou=CostMgmt
+  # Groups: cost-mgmt-org-{orgId}, cost-mgmt-account-{accountNumber}
   local response
   response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{
-      "name": "organization-groups-mapper",
+      "name": "cost-mgmt-groups",
       "providerId": "group-ldap-mapper",
       "providerType": "org.keycloak.storage.ldap.mappers.LDAPStorageMapper",
       "parentId": "'"${LDAP_COMPONENT_ID}"'",
       "config": {
-        "mode": ["READ_ONLY"],
-        "membership.attribute.type": ["DN"],
-        "user.roles.retrieve.strategy": ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"],
-        "group.name.ldap.attribute": ["cn"],
-        "membership.ldap.attribute": ["member"],
-        "membership.user.ldap.attribute": ["uid"],
         "groups.dn": ["ou=CostMgmt,ou=groups,'"${LDAP_BASE_DN}"'"],
-        "group.object.classes": ["costManagementGroup"],
-        "groups.ldap.filter": ["(&(cn=cost-mgmt-org-*)(costManagementType=organization))"],
+        "group.name.ldap.attribute": ["cn"],
+        "group.object.classes": ["groupOfNames"],
         "preserve.group.inheritance": ["false"],
-        "ignore.missing.groups": ["false"],
+        "membership.ldap.attribute": ["member"],
+        "membership.attribute.type": ["DN"],
+        "membership.user.ldap.attribute": ["uid"],
+        "groups.ldap.filter": [""],
+        "mode": ["READ_ONLY"],
+        "user.roles.retrieve.strategy": ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"],
         "memberof.ldap.attribute": ["memberOf"],
-        "mapped.group.attributes": ["cn"],
+        "ignore.missing.groups": ["false"],
         "drop.non.existing.groups.during.sync": ["false"]
       }
     }' -w "\n%{http_code}" 2>/dev/null)
@@ -262,80 +274,49 @@ function create_orgid_group_mapper() {
   http_code=$(echo "$response" | tail -n1)
 
   if [ "$http_code" != "201" ]; then
-    echo_error "Failed to create org groups mapper (HTTP $http_code)"
+    echo_error "Failed to create cost-mgmt groups mapper (HTTP $http_code)"
     echo "Response: $(echo "$response" | head -n-1)"
     exit 1
   fi
 
-  echo_info "✓ Org groups mapper created"
-  echo_info "  Pattern: CN=cost-mgmt-org-* → groups"
-  echo_info "  Sync script creates these from user.costCenter attributes"
+  echo_info "✓ Cost Management groups mapper created"
+  echo_info "  Groups DN: ou=CostMgmt,ou=groups,$LDAP_BASE_DN"
+  echo_info "  Imports: cost-mgmt-org-*, cost-mgmt-account-*"
 }
 
-function create_account_group_mapper() {
-  echo_header "Creating LDAP Account Number Group Mapper (Sync-Generated Groups)"
+function sync_groups() {
+  echo_header "Synchronizing Groups from LDAP"
 
   if [ -z "$LDAP_COMPONENT_ID" ]; then
     echo_error "LDAP Component ID not found"
     exit 1
   fi
 
-  # Check if account mapper already exists
-  local existing_id
-  existing_id=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
+  # Get the group mapper ID
+  local mapper_id
+  mapper_id=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/components?parent=${LDAP_COMPONENT_ID}" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" | \
-    jq -r '.[] | select(.name == "account-groups-mapper" and .providerId == "group-ldap-mapper") | .id' | head -1)
+    jq -r '.[] | select(.name == "cost-mgmt-groups") | .id' | head -1)
 
-  if [ -n "$existing_id" ] && [ "$existing_id" != "null" ]; then
-    echo_warn "Account groups mapper already exists (ID: $existing_id), deleting..."
-    curl -sk -X DELETE "${KEYCLOAK_URL}/admin/realms/${REALM}/components/${existing_id}" \
-      -H "Authorization: Bearer ${ACCESS_TOKEN}"
+  if [ -z "$mapper_id" ] || [ "$mapper_id" = "null" ]; then
+    echo_warn "Group mapper not found, skipping group sync"
+    return 0
   fi
 
-  # Create group mapper for sync-generated account groups
-  # These groups are created by ldap-user-attrs-to-groups-sync.sh
-  # Pattern: CN=cost-mgmt-account-{accountNumber} (e.g., CN=cost-mgmt-account-9876543)
-  # Will be imported as groups by Keycloak
+  echo_info "Group mapper ID: $mapper_id"
+
+  # Trigger group sync (fedToKeycloak direction)
   local response
-  response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
+  response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/user-storage/${LDAP_COMPONENT_ID}/mappers/${mapper_id}/sync?direction=fedToKeycloak" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d '{
-      "name": "account-groups-mapper",
-      "providerId": "group-ldap-mapper",
-      "providerType": "org.keycloak.storage.ldap.mappers.LDAPStorageMapper",
-      "parentId": "'"${LDAP_COMPONENT_ID}"'",
-      "config": {
-        "mode": ["READ_ONLY"],
-        "membership.attribute.type": ["DN"],
-        "user.roles.retrieve.strategy": ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"],
-        "group.name.ldap.attribute": ["cn"],
-        "membership.ldap.attribute": ["member"],
-        "membership.user.ldap.attribute": ["uid"],
-        "groups.dn": ["ou=CostMgmt,ou=groups,'"${LDAP_BASE_DN}"'"],
-        "group.object.classes": ["costManagementGroup"],
-        "groups.ldap.filter": ["(&(cn=cost-mgmt-account-*)(costManagementType=account))"],
-        "preserve.group.inheritance": ["false"],
-        "ignore.missing.groups": ["false"],
-        "memberof.ldap.attribute": ["memberOf"],
-        "mapped.group.attributes": ["cn"],
-        "drop.non.existing.groups.during.sync": ["false"]
-      }
-    }' -w "\n%{http_code}" 2>/dev/null)
+    -H "Content-Type: application/json" 2>/dev/null)
 
-  local http_code
-  http_code=$(echo "$response" | tail -n1)
+  echo_info "Group sync triggered"
+  echo "Response: $response"
 
-  if [ "$http_code" != "201" ]; then
-    echo_error "Failed to create account groups mapper (HTTP $http_code)"
-    echo "Response: $(echo "$response" | head -n-1)"
-    exit 1
-  fi
-
-  echo_info "✓ Account groups mapper created"
-  echo_info "  Pattern: CN=cost-mgmt-account-* → groups"
-  echo_info "  Sync script creates these from user.accountNumber attributes"
+  # Wait for sync
+  sleep 3
 }
 
 function sync_users() {
@@ -376,29 +357,43 @@ function verify_configuration() {
 
   echo_info "Test user found (ID: $user_id)"
 
+  # List all groups in Keycloak
+  echo ""
+  echo_info "Groups in Keycloak:"
+  local all_groups
+  all_groups=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/groups" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" | \
+    jq -r '.[].name' 2>/dev/null)
+  
+  echo "$all_groups" | while read -r group; do
+    [ -n "$group" ] && echo "  - $group"
+  done
+
   # Get user's groups
+  echo ""
+  echo_info "Test user's group memberships:"
   local groups
   groups=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/users/${user_id}/groups" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" | \
     jq -r '.[].name' 2>/dev/null)
 
-  echo_info "User's groups:"
   echo "$groups" | while read -r group; do
-    echo "  - $group"
+    [ -n "$group" ] && echo "  - $group"
   done
 
-  # Check for expected groups (with hierarchy paths)
-  if echo "$groups" | grep -q "^/organizations/1234567$"; then
-    echo_info "✓ Organization group found: /organizations/1234567"
+  # Check for expected groups (cost-mgmt-org-* and cost-mgmt-account-*)
+  if echo "$groups" | grep -q "cost-mgmt-org-1234567"; then
+    echo_info "✓ Organization group found: cost-mgmt-org-1234567"
   else
-    echo_warn "⚠ Organization group /organizations/1234567 not found"
+    echo_warn "⚠ Organization group cost-mgmt-org-1234567 not found"
   fi
 
-  if echo "$groups" | grep -q "^/accounts/9876543$"; then
-    echo_info "✓ Account group found: /accounts/9876543"
+  if echo "$groups" | grep -q "cost-mgmt-account-9876543"; then
+    echo_info "✓ Account group found: cost-mgmt-account-9876543"
   else
-    echo_warn "⚠ Account group /accounts/9876543 not found"
+    echo_warn "⚠ Account group cost-mgmt-account-9876543 not found"
   fi
 }
 
@@ -417,71 +412,65 @@ Configuration Details:
   LDAP Base DN:     $LDAP_BASE_DN
   LDAP Bind DN:     $LDAP_BIND_DN
 
-LDAP Mappers:
+LDAP Group Mapper:
 ─────────────────────────────────────────────────────────
-  1. Organizations Mapper
-     - Maps LDAP path: ou=organizations → Keycloak group hierarchy
-     - Preserves hierarchy: true
-     - Example: cn=1234567,ou=organizations → "/organizations/1234567"
-
-  2. Accounts Mapper
-     - Maps LDAP path: ou=accounts → Keycloak group hierarchy
-     - Preserves hierarchy: true
-     - Example: cn=9876543,ou=accounts → "/accounts/9876543"
+  Cost Management Groups Mapper:
+     - Groups DN: ou=CostMgmt,ou=groups,$LDAP_BASE_DN
+     - Imports all groups in the CostMgmt OU
+     - Pattern: cost-mgmt-org-{orgId}, cost-mgmt-account-{accountNumber}
 
 Expected Mappings:
 ─────────────────────────────────────────────────────────
   User "test" should have groups:
-    - /organizations/1234567 (numeric org ID with path)
-    - /accounts/9876543      (numeric account with path)
+    - cost-mgmt-org-1234567     (organization ID)
+    - cost-mgmt-account-9876543 (account number)
 
-  Authorino will extract:
-    - org_id: "1234567" (parses /organizations/ path)
-    - account_number: "9876543" (parses /accounts/ path)
+  User "admin" should have groups:
+    - cost-mgmt-org-7890123     (organization ID)
+    - cost-mgmt-account-5555555 (account number)
+
+  Authorino OPA/Rego will extract:
+    - org_id: "1234567" (parses cost-mgmt-org- prefix)
+    - account_number: "9876543" (parses cost-mgmt-account- prefix)
 
 Benefits:
-  ✓ Clean numeric values in LDAP (no prefixes)
-  ✓ Group paths provide semantic meaning
-  ✓ Standard LDAP structure (ou-based hierarchy)
+  ✓ Clean numeric values extracted from group names
+  ✓ Namespaced prefixes prevent collisions (cost-mgmt-*)
+  ✓ OU isolation (ou=CostMgmt) for managed groups
 
 Next Steps:
 ─────────────────────────────────────────────────────────
   1. Verify user import in Keycloak Admin Console:
      ${KEYCLOAK_URL}/admin/master/console/#/${REALM}/users
 
-  2. Check OpenShift User object after login:
-     oc get user test -o yaml
+  2. Verify groups in Keycloak Admin Console:
+     ${KEYCLOAK_URL}/admin/master/console/#/${REALM}/groups
 
-  3. Test end-to-end authentication:
-     - Login to OpenShift Console as "test" user
-     - Make API request with user token
-     - Verify X-Rh-Identity header contains correct org_id
+  3. Test end-to-end flow with demo script:
+     ./scripts/demo-ldap-to-authorino.sh
 
 Troubleshooting:
 ─────────────────────────────────────────────────────────
   View LDAP users:
     oc exec -n $NAMESPACE deployment/openldap-demo -- \\
-      ldapsearch -x -H ldap://localhost:1389 \\
+      ldapsearch -x -H ldap://localhost \\
       -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \\
-      -b "ou=users,$LDAP_BASE_DN" "(uid=test)" dn cn mail
+      -b "ou=users,$LDAP_BASE_DN" "(uid=*)" dn cn mail
 
-  View LDAP organization groups:
+  View Cost Management groups:
     oc exec -n $NAMESPACE deployment/openldap-demo -- \\
-      ldapsearch -x -H ldap://localhost:1389 \\
+      ldapsearch -x -H ldap://localhost \\
       -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \\
-      -b "ou=organizations,ou=groups,$LDAP_BASE_DN" \\
-      "(objectClass=groupOfNames)" dn cn member
+      -b "ou=CostMgmt,ou=groups,$LDAP_BASE_DN" \\
+      "(objectClass=groupOfNames)" cn member
 
-  View LDAP account groups:
-    oc exec -n $NAMESPACE deployment/openldap-demo -- \\
-      ldapsearch -x -H ldap://localhost:1389 \\
-      -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \\
-      -b "ou=accounts,ou=groups,$LDAP_BASE_DN" \\
-      "(objectClass=groupOfNames)" dn cn member
-
-  Resync users from LDAP:
-    curl -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/user-storage/${LDAP_COMPONENT_ID}/sync?action=triggerFullSync" \\
-      -H "Authorization: Bearer ${ACCESS_TOKEN}"
+  Resync from LDAP:
+    # Users
+    curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/user-storage/${LDAP_COMPONENT_ID}/sync?action=triggerFullSync" \\
+      -H "Authorization: Bearer \$TOKEN"
+    # Groups (get mapper ID first)
+    curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/user-storage/${LDAP_COMPONENT_ID}/mappers/\$MAPPER_ID/sync?direction=fedToKeycloak" \\
+      -H "Authorization: Bearer \$TOKEN"
 
 Documentation:
 ─────────────────────────────────────────────────────────
@@ -501,9 +490,9 @@ main() {
   get_keycloak_url
   get_admin_token
   create_ldap_federation
-  create_orgid_group_mapper
-  create_account_group_mapper
+  create_cost_mgmt_group_mapper
   sync_users
+  sync_groups
   verify_configuration
   display_summary
 }

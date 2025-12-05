@@ -133,7 +133,7 @@ sync_attribute_to_groups() {
   local attr_name="$1"
   local group_prefix="$2"
   local path_prefix="$3"  # e.g., "/organizations/" or "/accounts/"
-  
+
   # Determine type marker based on path prefix
   local type_marker
   if [[ "$path_prefix" == "/organizations/" ]]; then
@@ -144,7 +144,7 @@ sync_attribute_to_groups() {
     log_error "Unknown path prefix: $path_prefix"
     return 1
   fi
-  
+
   log_info "Syncing ${attr_name} → ${group_prefix}* groups (type: ${type_marker})..."
 
   # Get all unique attribute values
@@ -192,7 +192,7 @@ sync_attribute_to_groups() {
     existing_type=$(ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
       -b "$group_dn" -s base "(objectClass=*)" costManagementType 2>/dev/null | \
       grep "^costManagementType:" | cut -d: -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    
+
     if [ -n "$existing_type" ]; then
       # Group exists - verify it's the correct type
       if [ "$existing_type" != "$type_marker" ]; then
@@ -201,17 +201,17 @@ sync_attribute_to_groups() {
         ((failed++))
         continue
       fi
-      
+
       # Safe to update - it's ours and correct type
       log_debug "  Updating managed group: $group_dn ($user_count members, type: $existing_type)"
-      
+
       # Clear existing members
       ldapmodify -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" &>/dev/null <<EOF || true
 dn: $group_dn
 changetype: modify
 delete: member
 EOF
-      
+
       # Add current members
       while IFS= read -r user_dn; do
         [ -z "$user_dn" ] && continue
@@ -227,11 +227,11 @@ EOF
     else
       # Create new group with type marker
       log_debug "  Creating new managed group: $group_dn ($user_count members, type: $type_marker)"
-      
+
       # Need at least one member to create group (groupOfNames/costManagementGroup requirement)
       local first_user
       first_user=$(echo "$users" | head -1)
-      
+
       if ! ldapadd -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" &>/dev/null <<EOF; then
 dn: $group_dn
 objectClass: costManagementGroup
