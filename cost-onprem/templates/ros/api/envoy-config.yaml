@@ -171,43 +171,43 @@ data:
                       end
 
                       -- Escape values for safe JSON embedding
-                      local username_escaped = escape_json(username)
+                        local username_escaped = escape_json(username)
                       local org_id_escaped = escape_json(org_id)
                       local account_number_escaped = escape_json(account_number)
 
-                      -- Build rh-identity JSON structure
-                      local identity_json = string.format([[{
-                        "identity": {
+                        -- Build rh-identity JSON structure
+                        local identity_json = string.format([[{
+                          "identity": {
                           "org_id": "%s",
                           "account_number": "%s",
-                          "type": "User",
-                          "user": {
-                            "username": "%s",
-                            "email": "",
-                            "first_name": "",
-                            "last_name": "",
-                            "is_active": true,
-                            "is_org_admin": false,
-                            "is_internal": false,
-                            "locale": "en_US"
-                          },
-                          "internal": {
+                            "type": "User",
+                            "user": {
+                              "username": "%s",
+                              "email": "",
+                              "first_name": "",
+                              "last_name": "",
+                              "is_active": true,
+                              "is_org_admin": false,
+                              "is_internal": false,
+                              "locale": "en_US"
+                            },
+                            "internal": {
                             "org_id": "%s",
-                            "auth_type": "kubernetes-tokenreview",
-                            "auth_time": 0
+                              "auth_type": "kubernetes-tokenreview",
+                              "auth_time": 0
+                            }
                           }
-                        }
                       }]], org_id_escaped, account_number_escaped, username_escaped, org_id_escaped)
 
-                      -- Base64 encode the JSON
-                      local b64_identity = request_handle:base64Escape(identity_json)
+                        -- Base64 encode the JSON
+                        local b64_identity = request_handle:base64Escape(identity_json)
 
-                      -- Set the X-Rh-Identity header
-                      request_handle:headers():add("x-rh-identity", b64_identity)
+                        -- Set the X-Rh-Identity header
+                        request_handle:headers():add("x-rh-identity", b64_identity)
 
                       -- Remove temporary Authorino headers (cleanup)
-                      request_handle:headers():remove("x-auth-username")
-                      request_handle:headers():remove("x-auth-uid")
+                        request_handle:headers():remove("x-auth-username")
+                        request_handle:headers():remove("x-auth-uid")
                       request_handle:headers():remove("x-auth-org-id")
                       request_handle:headers():remove("x-auth-account-number")
 

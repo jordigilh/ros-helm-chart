@@ -329,7 +329,7 @@ EOF
 
 function add_security_context() {
   echo_header "Adding Security Context for OpenLDAP"
-  
+
   # osixia/openldap requires running as specific user
   oc adm policy add-scc-to-user anyuid -z default -n "$NAMESPACE" 2>/dev/null || true
   echo_info "Added anyuid SCC to default service account"

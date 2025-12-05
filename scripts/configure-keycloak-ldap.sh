@@ -365,7 +365,7 @@ function verify_configuration() {
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" | \
     jq -r '.[].name' 2>/dev/null)
-  
+
   echo "$all_groups" | while read -r group; do
     [ -n "$group" ] && echo "  - $group"
   done
