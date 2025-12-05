@@ -386,19 +386,19 @@ function create_client_scopes() {
 
   # Required scopes for OpenShift OAuth
   local scopes=("openid" "profile" "email" "groups")
-  
+
   for scope in "${scopes[@]}"; do
     # Check if scope exists
     local existing
     existing=$(curl -sk "${KEYCLOAK_URL}/admin/realms/${REALM}/client-scopes" \
       -H "Authorization: Bearer ${ACCESS_TOKEN}" | \
       jq -r ".[] | select(.name==\"$scope\") | .id" 2>/dev/null)
-    
+
     if [ -n "$existing" ] && [ "$existing" != "null" ]; then
       echo_info "Scope '$scope' already exists"
       continue
     fi
-    
+
     # Create the scope
     local response
     response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/client-scopes" \
@@ -409,23 +409,23 @@ function create_client_scopes() {
         "protocol": "openid-connect",
         "attributes": {"include.in.token.scope": "true"}
       }' -w "\n%{http_code}" 2>/dev/null)
-    
+
     local http_code
     http_code=$(echo "$response" | tail -n1)
-    
+
     if [ "$http_code" = "201" ]; then
       echo_info "Created scope: $scope"
     else
       echo_warn "Failed to create scope '$scope' (HTTP $http_code)"
     fi
   done
-  
+
   # Add groups mapper to the groups scope
   local groups_scope_id
   groups_scope_id=$(curl -sk "${KEYCLOAK_URL}/admin/realms/${REALM}/client-scopes" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" | \
     jq -r '.[] | select(.name=="groups") | .id' 2>/dev/null)
-  
+
   if [ -n "$groups_scope_id" ] && [ "$groups_scope_id" != "null" ]; then
     curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/client-scopes/${groups_scope_id}/protocol-mappers/models" \
       -H "Authorization: Bearer ${ACCESS_TOKEN}" \
@@ -455,13 +455,13 @@ function assign_scopes_to_client() {
   fi
 
   local scopes=("openid" "profile" "email" "groups")
-  
+
   for scope in "${scopes[@]}"; do
     local scope_id
     scope_id=$(curl -sk "${KEYCLOAK_URL}/admin/realms/${REALM}/client-scopes" \
       -H "Authorization: Bearer ${ACCESS_TOKEN}" | \
       jq -r ".[] | select(.name==\"$scope\") | .id" 2>/dev/null)
-    
+
     if [ -n "$scope_id" ] && [ "$scope_id" != "null" ]; then
       curl -sk -X PUT "${KEYCLOAK_URL}/admin/realms/${REALM}/clients/${OPENSHIFT_CLIENT_ID}/default-client-scopes/${scope_id}" \
         -H "Authorization: Bearer ${ACCESS_TOKEN}" -w "" 2>/dev/null

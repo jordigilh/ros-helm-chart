@@ -4,61 +4,91 @@
 
 This document explains how to extract `org_id` and `account_number` from LDAP-mapped Keycloak groups using Authorino and inject them into the request flow via Envoy.
 
+> **Status: ✅ VERIFIED** - This flow has been tested end-to-end with actual LDAP users, Keycloak IDP, and OpenShift OAuth tokens.
+
 **Architecture Flow:**
 ```
-LDAP Groups                Keycloak              OpenShift OAuth        Authorino              Envoy                Backend
-─────────────              ────────              ───────────────        ─────────              ─────                ───────
-organizationId: 1234567 →  Group: "1234567"  →  TokenReview:      →  Parse groups:     →  Lua filter:     →  X-Rh-Identity:
-accountNumber: 7890123                           groups: ["1234567"]   org_id: 1234567      Use headers         org_id: 1234567
-                                                                       account: 7890123                         account: 7890123
+LDAP Groups                    Keycloak                   OpenShift OAuth           Authorino               Envoy                Backend
+─────────────                  ────────                   ───────────────           ─────────               ─────                ───────
+cost-mgmt-org-1234567     →    Group sync to         →    TokenReview:        →    CEL extracts:      →   Lua filter:     →   X-Rh-Identity:
+cost-mgmt-account-9876543      Keycloak groups            groups: [...]            org_id: 1234567        Constructs          org_id: 1234567
+                                                                                    account: 9876543       JSON header         account: 9876543
 ```
 
-## Current Implementation (Hardcoded)
+## Current Implementation (Dynamic - VERIFIED ✅)
 
-### Current Authorino Configuration
+### Authorino AuthConfig
 
-```yaml:36:42:cost-onprem/templates/auth/authorino-authconfig.yaml
-        "X-Auth-Username":
-          plain:
-            selector: auth.identity.username
-        "X-Auth-Uid":
-          plain:
-            selector: auth.identity.uid
+The AuthConfig uses CEL expressions to extract `org_id` and `account_number` from TokenReview groups:
+
+```yaml
+# cost-onprem/templates/auth/authorino-authconfig.yaml
+response:
+  success:
+    headers:
+      "X-Auth-Username":
+        plain:
+          selector: auth.identity.user.username
+      "X-Auth-Uid":
+        plain:
+          selector: auth.identity.user.uid
+      "X-Auth-Org-Id":
+        plain:
+          expression: |
+            auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-org-")).size() > 0
+              ? auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-org-"))[0].substring(14)
+              : ""
+      "X-Auth-Account-Number":
+        plain:
+          expression: |
+            auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-account-")).size() > 0
+              ? auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-account-"))[0].substring(18)
+              : ""
 ```
 
-Authorino currently returns only:
-- `X-Auth-Username` (e.g., "test")
-- `X-Auth-Uid` (e.g., "17b8bf47-cb05-44fc-a3cc-93eb9a89180a")
+**Key Points:**
+- Uses `auth.identity.user.groups` (not `auth.identity.groups`) because TokenReview returns groups under `user`
+- `substring(14)` for org_id because "cost-mgmt-org-" is 14 characters
+- `substring(18)` for account_number because "cost-mgmt-account-" is 18 characters
 
-### Current Envoy Lua Filter (Hardcoded)
+### Verified Test Output
 
-```yaml:142:164:cost-onprem/templates/ros/api/envoy-config.yaml
-                        -- Build rh-identity JSON structure
-                        local identity_json = string.format([[{
-                          "identity": {
-                            "org_id": "1",
-                            "account_number": "1",
-                            "type": "User",
-                            "user": {
-                              "username": "%s",
-                              "email": "",
-                              "first_name": "",
-                              "last_name": "",
-                              "is_active": true,
-                              "is_org_admin": false,
-                              "is_internal": false,
-                              "locale": "en_US"
-                            },
-                            "internal": {
-                              "org_id": "1",
-                              "auth_type": "kubernetes-tokenreview",
-                              "auth_time": 0
-                            }
-                          }
-                        }]], username_escaped)
+```json
+// Authorino debug logs showing successful extraction:
+{"msg":"dynamic response built","config":{"Name":"X-Auth-Username"},"object":"test"}
+{"msg":"dynamic response built","config":{"Name":"X-Auth-Org-Id"},"object":"1234567"}
+{"msg":"dynamic response built","config":{"Name":"X-Auth-Account-Number"},"object":"9876543"}
 ```
 
-**Problem:** `org_id` and `account_number` are hardcoded to `"1"`.
+### Envoy Lua Filter (Dynamic)
+
+The Envoy Lua filter reads headers from Authorino and constructs the `X-Rh-Identity` JSON:
+
+```lua
+-- Read org_id and account_number from Authorino headers
+local org_id = request_handle:headers():get("x-auth-org-id")
+local account_number = request_handle:headers():get("x-auth-account-number")
+
+-- Validate required claims
+if not org_id or org_id == "" then
+  request_handle:respond({[":status"] = "401"}, "Unauthorized: Missing organization ID")
+  return
+end
+if not account_number or account_number == "" then
+  request_handle:respond({[":status"] = "401"}, "Unauthorized: Missing account number")
+  return
+end
+
+-- Construct X-Rh-Identity with actual values
+local identity_json = string.format([[{
+  "identity": {
+    "org_id": "%s",
+    "account_number": "%s",
+    "type": "User",
+    ...
+  }
+}]], org_id, account_number)
+```
 
 ## Solution Architecture
 

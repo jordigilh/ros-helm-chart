@@ -280,10 +280,59 @@ The script creates an `openshift` client for OAuth integration:
 # Client Protocol: openid-connect
 # Access Type: confidential
 # Direct Access Grants: ON
-# Valid Redirect URIs: https://*.apps.your-cluster.com/*
+# Valid Redirect URIs: 
+#   - https://oauth-openshift.apps.your-cluster.com/oauth2callback/keycloak
+#   - https://oauth-openshift.apps.your-cluster.com/*
+#   - https://console-openshift-console.apps.your-cluster.com/*
+#   - https://*.apps.your-cluster.com/*
 ```
 
-### Step 4: Add Groups Protocol Mapper
+### Step 4: Create Required Client Scopes
+
+OpenShift OAuth requires specific scopes. Create these client scopes:
+
+| Scope | Purpose |
+|-------|---------|
+| `openid` | Required for OIDC |
+| `profile` | User profile information |
+| `email` | Email address |
+| `groups` | Group membership (with groups mapper) |
+
+```bash
+# The configure-keycloak-ldap.sh script creates these automatically
+# Manual creation: Realm Settings → Client Scopes → Create
+
+# After creating, assign to the 'openshift' client:
+# Clients → openshift → Client Scopes → Add default scopes
+```
+
+### Step 5: Add Protocol Mappers
+
+**Groups Mapper** (required for group membership in tokens):
+
+| Setting | Value |
+|---------|-------|
+| Name | `groups` |
+| Mapper Type | `Group Membership` |
+| Token Claim Name | `groups` |
+| Full group path | OFF |
+| Add to ID token | ON |
+| Add to access token | ON |
+
+**Preferred Username Mapper** (required for OpenShift to use username instead of UUID):
+
+| Setting | Value |
+|---------|-------|
+| Name | `preferred_username` |
+| Mapper Type | `User Property` |
+| Property | `username` |
+| Token Claim Name | `preferred_username` |
+| Add to ID token | ON |
+| Add to access token | ON |
+
+> **Important:** Without the `preferred_username` mapper, OpenShift will create users with UUID names instead of actual usernames.
+
+### Step 6: Add Groups Protocol Mapper
 
 Ensure groups are included in tokens:
 
@@ -504,16 +553,16 @@ oc logs -n cost-mgmt -l app.kubernetes.io/name=ros-api -c envoy-proxy | \
    ```bash
    oc get authconfig -n your-namespace
    ```
-2. Verify CEL expressions match your group naming:
+2. Verify CEL expressions match your group naming (note: TokenReview returns groups at `auth.identity.user.groups`):
    ```yaml
    expression: |
-     auth.identity.groups.filter(g, g.startsWith("cost-mgmt-org-")).size() > 0
-       ? auth.identity.groups.filter(g, g.startsWith("cost-mgmt-org-"))[0].substring(13)
+     auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-org-")).size() > 0
+       ? auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-org-"))[0].substring(14)
        : ""
    ```
-3. Check Authorino logs:
+3. Check Authorino logs for debug output:
    ```bash
-   oc logs -l app.kubernetes.io/component=authorino
+   oc logs -n ros-demo deployment/ros-demo-cost-onprem-authorino --tail=50 | grep "response built"
    ```
 
 ### Issue: OpenShift OAuth Not Showing Keycloak Option
@@ -534,6 +583,64 @@ oc logs -n cost-mgmt -l app.kubernetes.io/name=ros-api -c envoy-proxy | \
    curl -sk https://keycloak-url/realms/kubernetes/.well-known/openid-configuration
    ```
 
+### Issue: "Invalid parameter: redirect_uri" Error
+
+**Symptoms:** Keycloak rejects OAuth redirect
+
+**Solutions:**
+1. Add exact OAuth callback URL to Keycloak client:
+   ```
+   https://oauth-openshift.apps.your-cluster.com/oauth2callback/keycloak
+   ```
+2. Update the openshift client redirect URIs in Keycloak Admin Console
+
+### Issue: "Invalid parameter value for: scope" Error
+
+**Symptoms:** Keycloak rejects OAuth request with scope error
+
+**Solutions:**
+1. Create missing client scopes (openid, profile, email, groups)
+2. Assign scopes to the openshift client as default scopes
+3. Verify scopes are assigned:
+   ```bash
+   # Using Keycloak Admin API
+   curl -sk "${KEYCLOAK_URL}/admin/realms/kubernetes/clients/${CLIENT_ID}/default-client-scopes" \
+     -H "Authorization: Bearer $ADMIN_TOKEN" | jq '.[].name'
+   ```
+
+### Issue: "Could not create user" Error on Login
+
+**Symptoms:** Keycloak login succeeds but OpenShift fails to create user
+
+**Solutions:**
+1. Delete orphaned user/identity objects:
+   ```bash
+   oc delete user <username>
+   oc delete identity keycloak:<keycloak-user-id>
+   ```
+2. Ensure `preferred_username` mapper is configured in Keycloak
+3. Try logging in again
+
+### Issue: Client Secret Mismatch
+
+**Symptoms:** "An authentication error occurred" after Keycloak login
+
+**Solutions:**
+1. Verify secrets match:
+   ```bash
+   # OpenShift secret
+   oc get secret keycloak-client-secret -n openshift-config -o jsonpath='{.data.clientSecret}' | base64 -d
+   
+   # Keycloak client secret (via Admin API)
+   curl -sk "${KEYCLOAK_URL}/admin/realms/kubernetes/clients?clientId=openshift" \
+     -H "Authorization: Bearer $ADMIN_TOKEN" | jq -r '.[0].secret'
+   ```
+2. Update Keycloak client secret to match OpenShift, or vice versa
+3. Restart OAuth server pods:
+   ```bash
+   oc delete pods -n openshift-authentication -l app=oauth-openshift
+   ```
+
 ---
 
 ## Quick Reference
@@ -548,11 +655,25 @@ oc logs -n cost-mgmt -l app.kubernetes.io/name=ros-api -c envoy-proxy | \
 ### CEL Extraction Logic
 
 ```cel
-# Extract org_id (13 = length of "cost-mgmt-org-")
-auth.identity.groups.filter(g, g.startsWith("cost-mgmt-org-"))[0].substring(13)
+# Extract org_id (14 = length of "cost-mgmt-org-")
+# Note: TokenReview returns groups at auth.identity.user.groups
+auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-org-"))[0].substring(14)
 
-# Extract account_number (17 = length of "cost-mgmt-account-")
-auth.identity.groups.filter(g, g.startsWith("cost-mgmt-account-"))[0].substring(17)
+# Extract account_number (18 = length of "cost-mgmt-account-")
+auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-account-"))[0].substring(18)
+```
+
+### Verified End-to-End Flow
+
+The following flow has been tested and verified:
+
+```
+1. User 'test' logs in via Keycloak IDP
+2. OpenShift creates user with groups from JWT claims
+3. TokenReview returns: ["cost-mgmt-org-1234567", "cost-mgmt-account-9876543", ...]
+4. CEL extracts: org_id="1234567", account_number="9876543"
+5. Envoy Lua constructs X-Rh-Identity header
+6. Backend receives authenticated request (404 = no data, not auth failure)
 ```
 
 ### X-Rh-Identity Structure
