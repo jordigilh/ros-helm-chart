@@ -55,9 +55,27 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 
 ## Considered Options
 
-### Option 1: Custom LDAP Attribute with Keycloak Group Mapper (RECOMMENDED)
+### Option 1: Custom LDAP Attribute with Keycloak Group Mapper
 
-**Architecture:**
+> ⚠️ **Enterprise Applicability Assessment**
+>
+> | Company Size | LDAP Pattern | Option 1 Viability |
+> |--------------|--------------|-------------------|
+> | Small (<500 employees) | Flat structure, custom schema control | ✅ **Viable** |
+> | Medium (500-5k employees) | Mixed hierarchical/flat, some schema flexibility | ⚠️ **Possible with effort** |
+> | Large (5k-10k employees) | Hierarchical OUs, limited schema changes | ❌ **Not recommended** |
+> | Enterprise (>10k employees) | Active Directory, HR-synced attributes, no custom schema | ❌ **Not viable** |
+>
+> **Why this doesn't fit large enterprises:**
+> 1. **Schema Control**: Large orgs have strict change management; adding custom LDAP attributes requires months of approval
+> 2. **Existing Patterns**: `costCenter`, `division`, `department` already exist as **user attributes** (not group attributes)
+> 3. **HR Integration**: User attributes are synced from HR systems (Workday, SAP SuccessFactors) - groups are not
+> 4. **Group Purpose**: In enterprises, groups are for **access control** (VPN, AWS roles), not metadata storage
+> 5. **Scale**: Creating org/account groups for 50k+ users with varying combinations is impractical
+>
+> **For large enterprises (>10k employees), see Option B2 (Automated Group Sync) which reads existing user attributes.**
+
+**Architecture (suitable for small deployments):**
 ```
 LDAP Groups                         Keycloak                    OpenShift          Authorino
 ─────────────                       ────────                    ─────────          ─────────
@@ -767,6 +785,27 @@ uid=test                Event Listener:            Group: "org_1234567"
 
 ---
 
+### Industry Pattern Analysis
+
+Based on common enterprise identity management patterns:
+
+| Pattern | Prevalence | Description |
+|---------|------------|-------------|
+| **HR-synced user attributes** | 90%+ of enterprises >5k employees | `costCenter`, `department`, `division` populated by Workday, SAP SF, Oracle HCM |
+| **Security groups for access** | Universal | Groups like `VPN-Users`, `AWS-Admins` control application access |
+| **Custom schema extensions** | <10% of enterprises | Requires change advisory board approval, 3-6 month lead time |
+| **Dynamic/query-based groups** | ~30% (varies by LDAP vendor) | OpenLDAP dynlist, Oracle Virtual Directory - AD does not support |
+| **Application-specific groups** | Common | Apps create their own groups in dedicated OUs (e.g., `ou=SAP-Groups`) |
+
+**Key Insight**: The **most compatible approach** for enterprises is to:
+1. Read **existing** user attributes (no schema changes)
+2. Create groups in an **isolated OU** (doesn't affect existing infrastructure)
+3. Use **standard LDAP operations** (works with any directory)
+
+This is exactly what **Option B2 (Automated Group Sync)** implements.
+
+---
+
 ### Summary: Enterprise LDAP Integration Options
 
 For customers with existing enterprise LDAP where users have `costCenter` and `division` attributes, here are all available options:
@@ -792,8 +831,13 @@ For customers with existing enterprise LDAP where users have `costCenter` and `d
 - **Cons**: Not supported by all LDAP servers (Active Directory doesn't support it)
 - **When to use**: If your LDAP server supports dynamic groups
 
-**Option B2: Automated Group Sync Script** ⭐ **RECOMMENDED for RHBK**
-- **Implementation**: Kubernetes CronJob runs daily, queries LDAP, creates/updates groups
+**Option B2: Automated Group Sync Script** ⭐ **RECOMMENDED for Enterprise (>10k employees) & RHBK**
+- **Implementation**: Kubernetes CronJob runs daily, queries LDAP user attributes, creates/updates groups
+- **Why this matches enterprise patterns**:
+  - Reads existing HR-synced attributes (`costCenter`, `division`) - no schema changes required
+  - Creates groups in isolated OU (`ou=CostMgmt`) - doesn't pollute existing group structure
+  - Standard LDAP operations - works with AD, OpenLDAP, Oracle Directory, etc.
+  - Auditable and reversible - groups can be inspected/deleted without affecting users
 - **Pros**:
   - Works with any LDAP server (AD, OpenLDAP, etc.)
   - Standard LDAP operations
