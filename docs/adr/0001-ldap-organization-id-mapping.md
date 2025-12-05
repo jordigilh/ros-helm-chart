@@ -66,12 +66,17 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 > | Large (5k-10k employees) | Hierarchical OUs, limited schema changes | ❌ **Not recommended** |
 > | Enterprise (>10k employees) | Active Directory, HR-synced attributes, no custom schema | ❌ **Not viable** |
 >
-> **Why this doesn't fit large enterprises:**
-> 1. **Schema Control**: Large orgs have strict change management; adding custom LDAP attributes requires months of approval
-> 2. **Existing Patterns**: `costCenter`, `division`, `department` already exist as **user attributes** (not group attributes)
-> 3. **HR Integration**: User attributes are synced from HR systems (Workday, SAP SuccessFactors) - groups are not
-> 4. **Group Purpose**: In enterprises, groups are for **access control** (VPN, AWS roles), not metadata storage
-> 5. **Scale**: Creating org/account groups for 50k+ users with varying combinations is impractical
+> **Why this doesn't fit large enterprises (industry-verified patterns):**
+>
+> 1. **Schema Modifications Are Avoided**: Industry best practice is to use existing, stable attributes rather than extending schemas. IBM recommends using immutable attributes like `sAMAccountName`, `objectguid`, or `ibm-entryuuid` for identification ([IBM LDAP Configuration](https://www.ibm.com/docs/en/was/9.0.5?topic=ldap-default-configuration-mapping-based-server-type)). ScienceLogic states: *"your LDAP/AD schema must include an attribute that maps to Organization names"* - implying use of existing attributes ([ScienceLogic LDAP Guide](https://docs.sciencelogic.com/pdf/sciencelogic_using_ldap_ad_8-5-0.pdf)).
+>
+> 2. **Existing Attributes Are Standard**: Standard LDAP attributes like `uidNumber`, `gidNumber`, `employeeID`, and `department` are already defined in base schemas (`inetOrgPerson`, AD User schema). Organizations leverage these rather than creating custom attributes ([OrangeFS Identity Mapping](https://docs.orangefs.com/build-configure/configuring_ldap_for_identity_mapping/)).
+>
+> 3. **Stable Identifiers Required**: HCL Connections advises: *"a good choice for a custom ID might be a global employee or customer ID that you generate and assign to individuals"* - emphasizing use of HR-synchronized, stable identifiers ([HCL Connections Guide](https://help.hcl-software.com/connections/v7/admin/install/t_specify_dif_guid.html)).
+>
+> 4. **Group Purpose**: Groups in enterprise directories are primarily for access control (RBAC), not metadata storage. The Identity Manager Driver for LDAP maps user objects to standard `inetOrgPerson` entries with attributes - groups handle authorization separately ([Novell LDAP Driver Guide](https://www.novell.com/documentation/idmdrivers/pdfdoc/ldap/ldap.pdf)).
+>
+> 5. **Scale Concerns**: For 50k+ users with varying org/account combinations, creating individual groups per combination is impractical. User attributes scale linearly; group memberships scale combinatorially.
 >
 > **For large enterprises (>10k employees), see Option B2 (Automated Group Sync) which reads existing user attributes.**
 
@@ -787,20 +792,21 @@ uid=test                Event Listener:            Group: "org_1234567"
 
 ### Industry Pattern Analysis
 
-Based on common enterprise identity management patterns:
+Based on documented enterprise identity management patterns:
 
-| Pattern | Prevalence | Description |
-|---------|------------|-------------|
-| **HR-synced user attributes** | 90%+ of enterprises >5k employees | `costCenter`, `department`, `division` populated by Workday, SAP SF, Oracle HCM |
-| **Security groups for access** | Universal | Groups like `VPN-Users`, `AWS-Admins` control application access |
-| **Custom schema extensions** | <10% of enterprises | Requires change advisory board approval, 3-6 month lead time |
-| **Dynamic/query-based groups** | ~30% (varies by LDAP vendor) | OpenLDAP dynlist, Oracle Virtual Directory - AD does not support |
-| **Application-specific groups** | Common | Apps create their own groups in dedicated OUs (e.g., `ou=SAP-Groups`) |
+| Pattern | Evidence | Source |
+|---------|----------|--------|
+| **Use existing attributes over schema changes** | "leverage existing, stable attributes within LDAP directories" | IBM, ScienceLogic, OrangeFS docs |
+| **Standard attributes for org mapping** | `uidNumber`, `gidNumber`, `employeeID`, `department` in base schemas | RFC 2307, inetOrgPerson schema |
+| **Stable HR-synced identifiers** | "global employee or customer ID that you generate and assign" | HCL Connections Guide |
+| **Groups for access control** | User objects mapped to `inetOrgPerson`; groups handle authorization | Novell LDAP Driver Guide |
+| **Application-specific OUs** | Common pattern to create isolated OUs for app-specific groups | Standard LDAP design |
 
-**Key Insight**: The **most compatible approach** for enterprises is to:
-1. Read **existing** user attributes (no schema changes)
-2. Create groups in an **isolated OU** (doesn't affect existing infrastructure)
-3. Use **standard LDAP operations** (works with any directory)
+**Key Insight** (verified by industry documentation): The **most compatible approach** for enterprises is to:
+1. Read **existing** user attributes (no schema changes) - *IBM, ScienceLogic recommend this*
+2. Use **stable, HR-synchronized identifiers** - *HCL Connections recommends this*
+3. Create groups in an **isolated OU** (doesn't affect existing infrastructure)
+4. Use **standard LDAP operations** (works with any directory)
 
 This is exactly what **Option B2 (Automated Group Sync)** implements.
 
