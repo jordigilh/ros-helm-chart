@@ -16,20 +16,20 @@ stringData:
   LDAP_BIND_DN: "CN=svc-keycloak-sync,OU=ServiceAccounts,DC=company,DC=com"
   LDAP_BIND_PASSWORD: "CHANGE_ME"  # Service account password
   LDAP_BASE_DN: "DC=company,DC=com"
-  
+
   # LDAP Structure
   LDAP_USER_BASE: "OU=Users,DC=company,DC=com"
   LDAP_GROUP_BASE: "OU=CostMgmt,OU=Groups,DC=company,DC=com"
-  
+
   # Attribute Mapping
   # These should match the attributes in your LDAP that contain org_id and account_number
   ORG_ID_ATTR: "costCenter"      # LDAP attribute for organization ID
   ACCOUNT_ATTR: "division"       # LDAP attribute for account number
-  
+
   # Group Naming (optional)
   ORG_GROUP_PREFIX: "org-"
   ACCOUNT_GROUP_PREFIX: "account-"
-  
+
   # Logging
   LOG_LEVEL: "INFO"  # DEBUG, INFO, WARN, ERROR
 
@@ -50,7 +50,7 @@ data:
     # Copy the contents from scripts/ldap-user-attrs-to-groups-sync.sh
     #
     # OR mount the script from a volume if you have it in a repository
-    
+
     echo "ERROR: Script not configured!"
     echo "Please update this ConfigMap with the sync script from:"
     echo "  scripts/ldap-user-attrs-to-groups-sync.sh"
@@ -69,17 +69,17 @@ metadata:
 spec:
   # Run daily at 2 AM
   schedule: "0 2 * * *"
-  
+
   # Keep last 3 successful and 3 failed jobs for debugging
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
-  
+
   # Don't allow concurrent runs (prevent conflicts)
   concurrencyPolicy: Forbid
-  
+
   # Start new job if scheduled time is missed by less than 100 seconds
   startingDeadlineSeconds: 100
-  
+
   jobTemplate:
     metadata:
       labels:
@@ -88,10 +88,10 @@ spec:
     spec:
       # Retry once if job fails
       backoffLimit: 1
-      
+
       # Job timeout: 30 minutes
       activeDeadlineSeconds: 1800
-      
+
       template:
         metadata:
           labels:
@@ -99,37 +99,37 @@ spec:
             component: pod
         spec:
           restartPolicy: OnFailure
-          
+
           # Use service account with LDAP network access
           serviceAccountName: default
-          
+
           containers:
           - name: ldap-sync
             # Use alpine with ldap-utils
             image: alpine:3.18
-            
+
             command:
             - /bin/sh
             - -c
             - |
               # Install ldap-utils
               apk add --no-cache openldap-clients bash
-              
+
               # Run sync script
               chmod +x /scripts/sync.sh
               /scripts/sync.sh
-            
+
             # Load environment from secret
             envFrom:
             - secretRef:
                 name: ldap-sync-credentials
-            
+
             # Mount sync script
             volumeMounts:
             - name: script
               mountPath: /scripts
               readOnly: true
-            
+
             # Resource limits
             resources:
               requests:
@@ -138,7 +138,7 @@ spec:
               limits:
                 cpu: 500m
                 memory: 256Mi
-            
+
             # Security context
             securityContext:
               allowPrivilegeEscalation: false
@@ -148,7 +148,7 @@ spec:
                 drop:
                 - ALL
               readOnlyRootFilesystem: false  # Need to install packages
-          
+
           volumes:
           - name: script
             configMap:

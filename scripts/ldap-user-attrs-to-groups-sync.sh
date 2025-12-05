@@ -78,7 +78,7 @@ log_debug() { [ "$LOG_LEVEL" = "DEBUG" ] && log "DEBUG" "$@" || true; }
 
 check_prerequisites() {
   log_info "Checking prerequisites..."
-  
+
   # Check required commands
   for cmd in ldapsearch ldapadd ldapmodify; do
     if ! command -v "$cmd" &>/dev/null; then
@@ -86,37 +86,37 @@ check_prerequisites() {
       exit 1
     fi
   done
-  
+
   # Check required environment variables
   if [ -z "$LDAP_BIND_PASSWORD" ]; then
     log_error "LDAP_BIND_PASSWORD environment variable is required"
     exit 1
   fi
-  
+
   # Test LDAP connection
   if ! ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
        -b "$LDAP_BASE_DN" -s base "(objectClass=*)" dn &>/dev/null; then
     log_error "Failed to connect to LDAP server at $LDAP_HOST"
     exit 1
   fi
-  
+
   log_info "✓ Prerequisites check passed"
 }
 
 ensure_group_ou() {
   log_info "Ensuring group OU exists: $LDAP_GROUP_BASE"
-  
+
   # Check if OU exists
   if ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
      -b "$LDAP_GROUP_BASE" -s base "(objectClass=*)" dn &>/dev/null; then
     log_debug "Group OU already exists"
     return 0
   fi
-  
+
   # Create OU
   local ou_rdn
   ou_rdn=$(echo "$LDAP_GROUP_BASE" | cut -d',' -f1 | cut -d'=' -f2)
-  
+
   ldapadd -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" <<EOF 2>/dev/null || {
     log_warn "Could not create group OU (may already exist)"
   }
@@ -125,7 +125,7 @@ objectClass: organizationalUnit
 ou: $ou_rdn
 description: Auto-generated groups for Cost Management (synced from user attributes)
 EOF
-  
+
   log_info "✓ Group OU ready"
 }
 
@@ -133,62 +133,62 @@ sync_attribute_to_groups() {
   local attr_name="$1"
   local group_prefix="$2"
   local path_prefix="$3"  # e.g., "/organizations/" or "/accounts/"
-  
+
   log_info "Syncing ${attr_name} → ${group_prefix}* groups..."
-  
+
   # Get all unique attribute values
   local values
   values=$(ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
     -b "$LDAP_USER_BASE" "(${attr_name}=*)" "$attr_name" 2>/dev/null | \
     grep "^${attr_name}:" | cut -d: -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort -u)
-  
+
   if [ -z "$values" ]; then
     log_warn "No users found with ${attr_name} attribute"
     return 0
   fi
-  
+
   local value_count
   value_count=$(echo "$values" | wc -l | tr -d ' ')
   log_info "Found $value_count unique ${attr_name} values"
-  
+
   local synced=0
   local failed=0
-  
+
   while IFS= read -r value; do
     [ -z "$value" ] && continue
-    
+
     local group_name="${group_prefix}${value}"
     local group_dn="CN=${group_name},${LDAP_GROUP_BASE}"
-    
+
     log_debug "Processing: $attr_name=$value → $group_name"
-    
+
     # Get all users with this attribute value
     local users
     users=$(ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
       -b "$LDAP_USER_BASE" "(${attr_name}=${value})" dn 2>/dev/null | \
       grep "^dn:" | cut -d: -f2- | sed 's/^[[:space:]]*//')
-    
+
     if [ -z "$users" ]; then
       log_warn "No users found for $attr_name=$value, skipping"
       continue
     fi
-    
+
     local user_count
     user_count=$(echo "$users" | wc -l | tr -d ' ')
-    
+
     # Check if group exists
     if ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
        -b "$group_dn" -s base "(objectClass=*)" dn &>/dev/null; then
       # Update existing group
       log_debug "  Updating existing group: $group_dn ($user_count members)"
-      
+
       # Clear existing members
       ldapmodify -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" &>/dev/null <<EOF || true
 dn: $group_dn
 changetype: modify
 delete: member
 EOF
-      
+
       # Add current members
       while IFS= read -r user_dn; do
         [ -z "$user_dn" ] && continue
@@ -204,11 +204,11 @@ EOF
     else
       # Create new group
       log_debug "  Creating new group: $group_dn ($user_count members)"
-      
+
       # Need at least one member to create group (groupOfNames requirement)
       local first_user
       first_user=$(echo "$users" | head -1)
-      
+
       if ! ldapadd -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" &>/dev/null <<EOF; then
 dn: $group_dn
 objectClass: group
@@ -220,7 +220,7 @@ EOF
         ((failed++))
         continue
       fi
-      
+
       # Add remaining members
       echo "$users" | tail -n +2 | while IFS= read -r user_dn; do
         [ -z "$user_dn" ] && continue
@@ -234,11 +234,11 @@ member: $user_dn
 EOF
       done
     fi
-    
+
     log_info "  ✓ ${group_name}: $user_count members"
     ((synced++))
   done <<< "$values"
-  
+
   log_info "✓ Synced $synced ${attr_name} groups ($failed failed)"
 }
 
@@ -256,16 +256,16 @@ main() {
   log_info "Org ID Attribute: $ORG_ID_ATTR → ${ORG_GROUP_PREFIX}*"
   log_info "Account Attribute: $ACCOUNT_ATTR → ${ACCOUNT_GROUP_PREFIX}*"
   log_info "═══════════════════════════════════════════════════════════"
-  
+
   check_prerequisites
   ensure_group_ou
-  
+
   # Sync organization IDs (costCenter → /organizations/X)
   sync_attribute_to_groups "$ORG_ID_ATTR" "$ORG_GROUP_PREFIX" "/organizations/"
-  
+
   # Sync account numbers (division → /accounts/X)
   sync_attribute_to_groups "$ACCOUNT_ATTR" "$ACCOUNT_GROUP_PREFIX" "/accounts/"
-  
+
   log_info "═══════════════════════════════════════════════════════════"
   log_info "Sync completed successfully"
   log_info "═══════════════════════════════════════════════════════════"

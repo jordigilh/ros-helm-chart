@@ -207,7 +207,7 @@ function create_ldap_federation() {
 }
 
 function create_orgid_group_mapper() {
-  echo_header "Creating LDAP Organization ID Group Mapper"
+  echo_header "Creating LDAP Organization ID Group Mapper (Sync-Generated Groups)"
 
   if [ -z "$LDAP_COMPONENT_ID" ]; then
     echo_error "LDAP Component ID not found"
@@ -222,11 +222,15 @@ function create_orgid_group_mapper() {
     jq -r '.[] | select(.name == "organization-groups-mapper" and .providerId == "group-ldap-mapper") | .id' | head -1)
 
   if [ -n "$existing_id" ] && [ "$existing_id" != "null" ]; then
-    echo_warn "Org groups mapper already exists (ID: $existing_id)"
-    return 0
+    echo_warn "Org groups mapper already exists (ID: $existing_id), deleting..."
+    curl -sk -X DELETE "${KEYCLOAK_URL}/admin/realms/${REALM}/components/${existing_id}" \
+      -H "Authorization: Bearer ${ACCESS_TOKEN}"
   fi
 
-  # Create group mapper for organizations (imports as /organizations/1234567)
+  # Create group mapper for sync-generated org groups
+  # These groups are created by ldap-user-attrs-to-groups-sync.sh
+  # Pattern: CN=org-{costCenter} (e.g., CN=org-1234567)
+  # Will be imported as: /organizations/1234567
   local response
   response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
@@ -243,11 +247,13 @@ function create_orgid_group_mapper() {
         "group.name.ldap.attribute": ["cn"],
         "membership.ldap.attribute": ["member"],
         "membership.user.ldap.attribute": ["uid"],
-        "groups.dn": ["ou=organizations,ou=groups,'"${LDAP_BASE_DN}"'"],
+        "groups.dn": ["ou=CostMgmt,ou=groups,'"${LDAP_BASE_DN}"'"],
         "group.object.classes": ["groupOfNames"],
-        "preserve.group.inheritance": ["true"],
+        "groups.ldap.filter": ["(cn=org-*)"],
+        "preserve.group.inheritance": ["false"],
         "ignore.missing.groups": ["false"],
         "memberof.ldap.attribute": ["memberOf"],
+        "mapped.group.attributes": ["cn"],
         "drop.non.existing.groups.during.sync": ["false"]
       }
     }' -w "\n%{http_code}" 2>/dev/null)
@@ -261,11 +267,13 @@ function create_orgid_group_mapper() {
     exit 1
   fi
 
-  echo_info "Org groups mapper created (ou=organizations → /organizations/ID)"
+  echo_info "✓ Org groups mapper created"
+  echo_info "  Pattern: CN=org-* → groups"
+  echo_info "  Sync script creates these from user.costCenter attributes"
 }
 
 function create_account_group_mapper() {
-  echo_header "Creating LDAP Account Number Group Mapper"
+  echo_header "Creating LDAP Account Number Group Mapper (Sync-Generated Groups)"
 
   if [ -z "$LDAP_COMPONENT_ID" ]; then
     echo_error "LDAP Component ID not found"
@@ -280,11 +288,15 @@ function create_account_group_mapper() {
     jq -r '.[] | select(.name == "account-groups-mapper" and .providerId == "group-ldap-mapper") | .id' | head -1)
 
   if [ -n "$existing_id" ] && [ "$existing_id" != "null" ]; then
-    echo_warn "Account groups mapper already exists (ID: $existing_id)"
-    return 0
+    echo_warn "Account groups mapper already exists (ID: $existing_id), deleting..."
+    curl -sk -X DELETE "${KEYCLOAK_URL}/admin/realms/${REALM}/components/${existing_id}" \
+      -H "Authorization: Bearer ${ACCESS_TOKEN}"
   fi
 
-  # Create group mapper for accounts (imports as /accounts/9876543)
+  # Create group mapper for sync-generated account groups
+  # These groups are created by ldap-user-attrs-to-groups-sync.sh
+  # Pattern: CN=account-{accountNumber} (e.g., CN=account-9876543)
+  # Will be imported as: /accounts/9876543
   local response
   response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
@@ -301,11 +313,13 @@ function create_account_group_mapper() {
         "group.name.ldap.attribute": ["cn"],
         "membership.ldap.attribute": ["member"],
         "membership.user.ldap.attribute": ["uid"],
-        "groups.dn": ["ou=accounts,ou=groups,'"${LDAP_BASE_DN}"'"],
+        "groups.dn": ["ou=CostMgmt,ou=groups,'"${LDAP_BASE_DN}"'"],
         "group.object.classes": ["groupOfNames"],
-        "preserve.group.inheritance": ["true"],
+        "groups.ldap.filter": ["(cn=account-*)"],
+        "preserve.group.inheritance": ["false"],
         "ignore.missing.groups": ["false"],
         "memberof.ldap.attribute": ["memberOf"],
+        "mapped.group.attributes": ["cn"],
         "drop.non.existing.groups.during.sync": ["false"]
       }
     }' -w "\n%{http_code}" 2>/dev/null)
@@ -319,7 +333,9 @@ function create_account_group_mapper() {
     exit 1
   fi
 
-  echo_info "Account groups mapper created (ou=accounts → /accounts/ID)"
+  echo_info "✓ Account groups mapper created"
+  echo_info "  Pattern: CN=account-* → groups"
+  echo_info "  Sync script creates these from user.accountNumber attributes"
 }
 
 function sync_users() {

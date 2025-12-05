@@ -803,7 +803,7 @@ For customers with existing enterprise LDAP where users have `costCenter` and `d
 
 **Option B2: Automated Group Sync Script** ⭐ **RECOMMENDED for RHBK**
 - **Implementation**: Kubernetes CronJob runs daily, queries LDAP, creates/updates groups
-- **Pros**: 
+- **Pros**:
   - Works with any LDAP server (AD, OpenLDAP, etc.)
   - Standard LDAP operations
   - No Keycloak customization
@@ -838,10 +838,10 @@ For customers with existing enterprise LDAP where users have `costCenter` and `d
    LDAP_BIND_PASSWORD: "your-password"
    ORG_ID_ATTR: "costCenter"      # Your org_id attribute
    ACCOUNT_ATTR: "division"       # Your account_number attribute
-   
+
    # Deploy
    kubectl apply -f scripts/ldap-sync-cronjob.yaml
-   
+
    # Manual run for testing
    kubectl create job --from=cronjob/ldap-user-attrs-sync test-sync-1 -n keycloak
    ```
@@ -850,10 +850,10 @@ For customers with existing enterprise LDAP where users have `costCenter` and `d
    ```bash
    # Check CronJob status
    kubectl get cronjob ldap-user-attrs-sync -n keycloak
-   
+
    # View last job logs
    kubectl logs -n keycloak -l app=ldap-sync --tail=100
-   
+
    # Check created groups in LDAP
    ldapsearch -x -H ldap://ldap.company.com \
      -b "OU=CostMgmt,OU=Groups,DC=company,DC=com" "(cn=org-*)"
