@@ -145,50 +145,31 @@ Keycloak uses **pull-based synchronization** (queries LDAP), not push:
 | **WRITABLE** | Imports users | Auto-sync changes to LDAP | Bi-directional sync |
 | **UNSYNCED** | Imports users | Manual sync required | Local overrides without LDAP impact |
 
-#### READ_ONLY Mode and Our Implementation
+#### Passing org_id Through the OAuth Flow
 
-**Concern:** In READ_ONLY mode, Keycloak doesn't write to LDAP. How do we map user attributes (`costCenter`) to groups?
+**Challenge:** OpenShift TokenReview only returns `groups`, not user attributes. How do we get `costCenter` and `accountNumber` to Authorino?
 
-**Solution:** Our sync script creates groups **in LDAP**, not in Keycloak:
+**Available Solutions:**
 
+| Approach | How It Works | LDAP Impact | Keycloak Impact | RHBK Compatible |
+|----------|--------------|-------------|-----------------|-----------------|
+| **Protocol Mapper** | Keycloak reads user attrs, injects as group claims in JWT | None | Script mapper config | ⚠️ Requires JAR |
+| **Dynamic Groups** | LDAP auto-creates groups from user attrs | Requires support | None | ✅ Yes |
+| **Sync Script** | External job creates groups in LDAP | Creates groups | None | ✅ Yes |
+| **Claims Service** | Separate service Authorino queries | None | None | ✅ Yes |
+
+**Industry-aligned approach (Protocol Mapper):**
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                           LDAP                                  │
-│                                                                 │
-│  User: uid=test                  Groups (created by sync):      │
-│  └── costCenter: 1234567   ───►  └── cn=cost-mgmt-org-1234567  │
-│                            sync      └── member: uid=test      │
-│                            script                               │
-│                                                                 │
-│  Mapping happens HERE (in LDAP), not in Keycloak               │
-└─────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼ Keycloak queries LDAP (READ_ONLY)
-┌─────────────────────────────────────────────────────────────────┐
-│                        Keycloak                                 │
-│                                                                 │
-│  On login (even in READ_ONLY mode):                            │
-│  1. Query LDAP for user ✓                                      │
-│  2. Query LDAP for user's group memberships ✓                  │
-│  3. Include groups in JWT token ✓                              │
-│                                                                 │
-│  Result: groups=["cost-mgmt-org-1234567", ...]                 │
-└─────────────────────────────────────────────────────────────────┘
+LDAP                          Keycloak                      OpenShift
+────                          ────────                      ─────────
+User: uid=test                Protocol Mapper:              TokenReview:
+└── costCenter: 1234567  ───► "Add costCenter to groups" ─► groups: ["org-1234567"]
+                              (No LDAP modification)
 ```
 
-**Why this works:**
-- Sync script writes to LDAP (not Keycloak) → READ_ONLY mode irrelevant
-- Group memberships exist in LDAP → Keycloak reads them on login
-- No Keycloak customization required → Works with RHBK
+This keeps metadata in user attributes (per [Role of Groups](#role-of-groups)) and transforms at the Keycloak layer.
 
-#### If Sync Script Cannot Run in Customer Environment
-
-| Constraint | Alternative Solution |
-|------------|---------------------|
-| Cannot run CronJobs in LDAP namespace | Option B1: LDAP Dynamic Groups (if supported) |
-| Using upstream Keycloak | Option B0: Protocol Mapper (JavaScript in UI) |
-| RHBK only, no external scripts | Option B0 with JAR packaging (complex) |
-| Cannot modify LDAP at all | Option 4: Claims Service (additional infrastructure) |
+**RHBK Constraint:** Protocol Mappers require JAR packaging in RHBK (see [Option B0](#option-b0-keycloak-protocol-mapper-simplest---recommended)).
 
 ### Key Insight
 
