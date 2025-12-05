@@ -551,16 +551,61 @@ token.getOtherClaims().put("groups", groups);
 "OK";
 ```
 
-**Custom RHBK Dockerfile:**
+**RHBK Deployment Options:**
+
+Keycloak requires `kc.sh build` after adding providers. Three deployment approaches:
+
+| Option | Pros | Cons | Best For |
+|--------|------|------|----------|
+| **A: Custom Image** | Fast startup, production recommended | Maintain custom image | Production |
+| **B: Volume + Init Container** | No custom image | Slower startup (builds every pod) | Dev/Test |
+| **C: Volume + Dev Mode** | Simplest config | Slowest startup | Quick testing |
+
+**Option A: Custom Image (Production Recommended)**
 ```dockerfile
 FROM registry.redhat.io/rhbk/keycloak-rhel9:24
-
-# Copy the protocol mapper JAR
 COPY cost-mgmt-mappers.jar /opt/keycloak/providers/
-
-# Rebuild Keycloak with the new provider
 RUN /opt/keycloak/bin/kc.sh build
 ```
+
+**Option B: Volume Mount with Init Container (No Custom Image)**
+```yaml
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: Keycloak
+spec:
+  unsupported:
+    podTemplate:
+      spec:
+        initContainers:
+          - name: install-providers
+            image: registry.redhat.io/rhbk/keycloak-rhel9:24
+            command: ["/bin/sh", "-c"]
+            args:
+              - |
+                cp /providers/*.jar /opt/keycloak/providers/
+                /opt/keycloak/bin/kc.sh build
+            volumeMounts:
+              - name: provider-jar
+                mountPath: /providers
+              - name: keycloak-providers
+                mountPath: /opt/keycloak/providers
+        containers:
+          - name: keycloak
+            volumeMounts:
+              - name: keycloak-providers
+                mountPath: /opt/keycloak/providers
+        volumes:
+          - name: provider-jar
+            configMap:
+              name: cost-mgmt-mapper-jar  # JAR stored in ConfigMap
+          - name: keycloak-providers
+            emptyDir: {}
+```
+
+**Option C: Volume Mount with Dev Mode (Simplest)**
+- Mount JAR to `/opt/keycloak/providers/`
+- Use default image (not optimized) - auto-rebuilds on every start
+- ⚠️ Not recommended for production (slow startup)
 
 **Per-Customer Configuration (No JAR Rebuild):**
 
