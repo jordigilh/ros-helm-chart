@@ -50,7 +50,7 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 - Keycloak acts as OIDC Identity Provider and LDAP federation layer
 - OpenShift OAuth TokenReview API only returns groups
 - Authorino needs `org_id` without querying external services with credentials
-- LDAP schema is under our control (greenfield deployment)
+- **LDAP Schema Influence**: We can request that 2 fields (`costCenter`/`org_id` and `accountNumber`) be populated as user attributes, but we cannot enforce whether they are implemented as user attributes or as group memberships - that decision lies with the customer's LDAP administrators
 
 ## Considered Options
 
@@ -541,7 +541,7 @@ spec:
 - ✅ Zero credentials in data plane
 
 **Cons:**
-- ⚠️ Requires LDAP schema extension (acceptable for greenfield)
+- ⚠️ Requires specific LDAP fields to be populated (requires coordination with customer's LDAP administrators)
 - ⚠️ Initial schema setup complexity (one-time cost)
 - ⚠️ Requires separate OUs for organizations vs accounts
 
