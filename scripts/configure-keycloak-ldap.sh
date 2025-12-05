@@ -350,7 +350,12 @@ function create_openshift_client() {
       "directAccessGrantsEnabled": true,
       "publicClient": false,
       "secret": "openshift-secret",
-      "redirectUris": ["https://*.'${cluster_domain}'/*", "https://oauth-openshift.'${cluster_domain}'/*"],
+      "redirectUris": [
+        "https://oauth-openshift.'${cluster_domain}'/oauth2callback/keycloak",
+        "https://oauth-openshift.'${cluster_domain}'/*",
+        "https://console-openshift-console.'${cluster_domain}'/*",
+        "https://*.'${cluster_domain}'/*"
+      ],
       "webOrigins": ["*"],
       "standardFlowEnabled": true,
       "protocol": "openid-connect"
