@@ -507,7 +507,7 @@ oc logs -n cost-mgmt -l app.kubernetes.io/name=ros-api -c envoy-proxy | \
 2. Verify CEL expressions match your group naming:
    ```yaml
    expression: |
-     auth.identity.groups.filter(g, g.startsWith("cost-mgmt-org-")).size() > 0 
+     auth.identity.groups.filter(g, g.startsWith("cost-mgmt-org-")).size() > 0
        ? auth.identity.groups.filter(g, g.startsWith("cost-mgmt-org-"))[0].substring(13)
        : ""
    ```

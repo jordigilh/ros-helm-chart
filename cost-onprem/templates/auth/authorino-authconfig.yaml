@@ -34,29 +34,32 @@ spec:
   response:
     success:
       headers:
-        # Username from TokenReview
+        # Username from TokenReview (path: auth.identity.user.username)
         "X-Auth-Username":
           plain:
-            selector: auth.identity.username
-        # UID from TokenReview
+            selector: auth.identity.user.username
+        # UID from TokenReview (path: auth.identity.user.uid)
         "X-Auth-Uid":
           plain:
-            selector: auth.identity.uid
+            selector: auth.identity.user.uid
         # Extract org_id: filter groups starting with "cost-mgmt-org-", take first, strip prefix
         # Example: ["cost-mgmt-org-1234567", "other-group"] → "1234567"
+        # Note: TokenReview returns groups at auth.identity.user.groups
+        # "cost-mgmt-org-" is 14 characters (0-indexed)
         "X-Auth-Org-Id":
           plain:
             expression: |
-              auth.identity.groups.filter(g, g.startsWith("cost-mgmt-org-")).size() > 0
-                ? auth.identity.groups.filter(g, g.startsWith("cost-mgmt-org-"))[0].substring(13)
+              auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-org-")).size() > 0
+                ? auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-org-"))[0].substring(14)
                 : ""
         # Extract account_number: filter groups starting with "cost-mgmt-account-", take first, strip prefix
         # Example: ["cost-mgmt-account-9876543", "other-group"] → "9876543"
+        # "cost-mgmt-account-" is 18 characters (0-indexed)
         "X-Auth-Account-Number":
           plain:
             expression: |
-              auth.identity.groups.filter(g, g.startsWith("cost-mgmt-account-")).size() > 0
-                ? auth.identity.groups.filter(g, g.startsWith("cost-mgmt-account-"))[0].substring(17)
+              auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-account-")).size() > 0
+                ? auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-account-"))[0].substring(18)
                 : ""
 {{- end }}
 
