@@ -354,3 +354,58 @@ main() {
 
 main "$@"
 
+
+#──────────────────────────────────────────────────────────────────────────────
+# Step 6: Live Test (Manual - Requires User Login)
+#──────────────────────────────────────────────────────────────────────────────
+function show_live_test_instructions() {
+  banner "STEP 6: Live Test Instructions"
+  
+  cat << 'INSTRUCTIONS'
+  To complete the end-to-end test with actual LDAP users:
+
+  1. Configure OpenShift OAuth to use Keycloak:
+     oc patch oauth/cluster --type=merge -p '{
+       "spec": {
+         "identityProviders": [{
+           "name": "keycloak",
+           "type": "OpenIDConnect",
+           "openID": {
+             "clientID": "cost-management-operator",
+             "clientSecret": {"name": "keycloak-client-secret"},
+             "issuer": "https://keycloak-keycloak.apps.stress.parodos.dev/realms/kubernetes",
+             "claims": {"preferredUsername": ["preferred_username"], "groups": ["groups"]}
+           }
+         }]
+       }
+     }'
+
+  2. Login as LDAP user "test" via OpenShift Console
+     - URL: https://console-openshift-console.apps.stress.parodos.dev
+     - Select "keycloak" identity provider
+     - Username: test
+     - Password: test
+
+  3. Get the user's token:
+     oc login --token=$(oc whoami -t)
+     TOKEN=$(oc whoami -t)
+
+  4. Test the ROS API:
+     curl -s http://localhost:8000/api/ros/v1/recommendations \
+       -H "Authorization: Bearer $TOKEN"
+
+  Expected Result for user "test":
+  ─────────────────────────────────────────
+  - TokenReview returns groups: [cost-mgmt-org-1234567, cost-mgmt-account-9876543]
+  - CEL extracts: org_id=1234567, account_number=9876543
+  - Envoy builds X-Rh-Identity with these values
+  - Backend receives authenticated request
+
+  Expected Result for user "admin":
+  ─────────────────────────────────────────
+  - TokenReview returns groups: [cost-mgmt-org-7890123, cost-mgmt-account-5555555]
+  - CEL extracts: org_id=7890123, account_number=5555555
+  - Different org_id proves dynamic extraction works!
+
+INSTRUCTIONS
+}
