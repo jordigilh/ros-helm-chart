@@ -523,7 +523,7 @@ function verify_configuration() {
   if [ -n "$access_token" ] && [ "$access_token" != "null" ]; then
     local token_groups
     token_groups=$(echo "$access_token" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq -r '.groups[]' 2>/dev/null)
-    
+
     if [ -n "$token_groups" ]; then
       echo_info "✓ Groups found in JWT token:"
       echo "$token_groups" | while read -r g; do
