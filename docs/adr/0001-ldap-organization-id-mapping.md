@@ -68,20 +68,61 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 >
 > **Why this doesn't fit large enterprises (industry-verified patterns):**
 >
-> 1. **Schema Modifications Are Avoided**: Industry best practice is to use existing, stable attributes rather than extending schemas. IBM recommends using immutable attributes like `sAMAccountName`, `objectguid`, or `ibm-entryuuid` for identification ([IBM LDAP Configuration](https://www.ibm.com/docs/en/was/9.0.5?topic=ldap-default-configuration-mapping-based-server-type)). ScienceLogic states: *"your LDAP/AD schema must include an attribute that maps to Organization names"* - implying use of existing attributes ([ScienceLogic LDAP Guide](https://docs.sciencelogic.com/pdf/sciencelogic_using_ldap_ad_8-5-0.pdf)).
->
-> 2. **Existing Attributes Are Standard**: Standard LDAP attributes like `uidNumber`, `gidNumber`, `employeeID`, and `department` are already defined in base schemas (`inetOrgPerson`, AD User schema). Organizations leverage these rather than creating custom attributes ([OrangeFS Identity Mapping](https://docs.orangefs.com/build-configure/configuring_ldap_for_identity_mapping/)).
->
-> 3. **Stable Identifiers Required**: HCL Connections advises: *"a good choice for a custom ID might be a global employee or customer ID that you generate and assign to individuals"* - emphasizing use of HR-synchronized, stable identifiers ([HCL Connections Guide](https://help.hcl-software.com/connections/v7/admin/install/t_specify_dif_guid.html)).
->
-> 4. **Group Purpose**: Groups in enterprise directories are primarily for access control (RBAC), not metadata storage. The Identity Manager Driver for LDAP maps user objects to standard `inetOrgPerson` entries with attributes - groups handle authorization separately ([Novell LDAP Driver Guide](https://www.novell.com/documentation/idmdrivers/pdfdoc/ldap/ldap.pdf)).
->
-> 5. **Scale Concerns** (documented limitations):
->    - **Microsoft AD limits**: Maximum recommended group members is 5,000 in Windows 2000 AD; exceeding causes timeouts ([Microsoft AD Limits](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/active-directory-domain-services-maximum-limits))
->    - **IBM z/OS LDAP**: "The cost of determining a user's groups increases roughly in proportion to the number of groups containing the user" ([IBM LDAP Tuning](https://www.ibm.com/docs/en/zos/3.2.0?topic=tuning-user-groups-considerations-in-large-directories))
->    - **Atlassian**: Environments with 100k+ users experience "slow permission checks and login processes" due to group membership queries ([Atlassian LDAP Performance](https://support.atlassian.com/confluence/kb/performance-issues-with-large-ldap-repository-100-000-users-or-more/))
->    - **Evolveum LDAP Guide**: "Managing large groups can be problematic... frequent reading of group entries with vast number of members can severely impact performance" ([LDAP Survival Guide](https://docs.evolveum.com/iam/ldap/ldap-survival-guide/))
->    - **Recommendation**: Use user attributes or dynamic groups based on attributes to "reduce administrative overhead and improving scalability" ([Imanami](https://www.imanami.com/managing-ldap-groups-enterprise/))
+## LDAP Design Practices for Large Enterprises
+
+### 1. Schema changes
+
+Large directory vendors treat schema extension as a normal, supported activity, but recommend that changes be controlled and that built‑in or standard schema elements not be modified once deployed.[1][2]  
+The usual guidance is to reuse existing, well‑known attributes when they fit the requirement and create new attributes or objectClasses only when necessary, placing them in clearly separated “custom” schema definitions.[1][2]  
+
+References:  
+- [1] Oracle: Extending Directory Server Schema – https://docs.oracle.com/cd/E20295_01/html/821-1220/bcasz.html  
+- [2] Red Hat Directory Server – Designing the Directory Schema – https://docs.redhat.com/en/documentation/red_hat_directory_server/11/html/deployment_guide/designing_the_directory_schema  
+
+---
+
+### 2. Use of standard attributes
+
+Enterprise directories typically expose standard or widely adopted attributes such as POSIX identifiers, employee identifiers, and organizational fields, and integration documentation encourages mapping applications to these before defining new attributes.[3][4]  
+Using shared, standard attributes improves interoperability across systems (e.g., Unix identity mapping, storage and file services, or SaaS integrations) and keeps the schema simpler and easier to maintain.[3][4]  
+
+References:  
+- [3] Red Hat Directory Server – Schema design and standard attributes – https://docs.redhat.com/en/documentation/red_hat_directory_server/11/html/deployment_guide/designing_the_directory_schema  
+- [4] Microsoft / Azure NetApp Files – Understanding LDAP schemas – https://learn.microsoft.com/en-us/azure/azure-netapp-files/lightweight-directory-access-protocol-schemas  
+
+---
+
+### 3. Stable identifiers
+
+Directory and identity‑management design guidance recommends using a stable, immutable identifier as the canonical key for user entries, separate from mutable data such as usernames or email addresses.[5][6]  
+A common pattern is to base this identifier on an HR‑assigned employee or customer ID, or on a system‑generated UUID, so that references remain valid even when visible account attributes change.[5][6]  
+
+References:  
+- [5] Oracle: Extending Directory Server Schema – identifier design considerations – https://docs.oracle.com/cd/E20295_01/html/821-1220/bcasz.html  
+- [6] Microsoft / Azure NetApp Files – LDAP schema and identity fields – https://learn.microsoft.com/en-us/azure/azure-netapp-files/lightweight-directory-access-protocol-schemas  
+
+---
+
+### 4. Role of groups
+
+Best‑practice documents describe LDAP groups primarily as authorization or role constructs that express which users are granted particular permissions or belong to specific roles.[7][8]  
+Descriptive information about users—such as department, location, or job function—is expected to be represented as attributes on user entries or related objects rather than encoded indirectly through group membership.[7][8]  
+
+References:  
+- [7] UC Berkeley CalNet – LDAP Best Practices – https://calnet.berkeley.edu/calnet-technologists/ldap-directory-service/ldap-best-practices  
+- [8] ZyTrax – LDAP Schemas, ObjectClasses and Attributes – https://www.zytrax.com/books/ldap/ch3/  
+
+---
+
+### 5. Scale and large groups
+
+Operational guidance for large directories notes that very large, static groups with many members can become a performance risk because membership evaluation and related searches grow more expensive as the member list increases.[7][9][10]  
+To mitigate this, recommendations include using proper indexing and paging, relying more on user‑centric attributes, and adopting dynamic or attribute‑based groups so that massive static group membership lists are avoided and scalability is improved.[7][9][10]  
+
+References:  
+- [9] Ping Identity – LDAP schema and performance considerations – https://docs.pingidentity.com/pingds/8/use-cases/schema.html  
+- [10] Oracle: Extending Directory Server Schema – performance and design – https://docs.oracle.com/cd/E20295_01/html/821-1220/bcasz.html  
+
 >
 > **For large enterprises (>10k employees), see Option B2 (Automated Group Sync) which reads existing user attributes.**
 
