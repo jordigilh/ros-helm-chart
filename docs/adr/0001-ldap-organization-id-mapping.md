@@ -7,6 +7,22 @@
 Date: 2025-12-04
 POC Verified: 2025-12-05 (End-to-end flow tested successfully)
 
+---
+
+## Table of Contents
+
+1. [Context](#context) - Problem statement and architecture
+2. [Decision Drivers](#decision-drivers) - Key constraints
+3. [Background: Enterprise LDAP Patterns](#background-enterprise-ldap-patterns) - Industry practices (verified references)
+4. [Considered Options](#considered-options) - All evaluated approaches
+5. [Decision Outcome](#decision-outcome) - Chosen solution and rationale
+6. [Verified POC Implementation](#verified-poc-implementation-2025-12-05) - Test results
+7. [Implementation Plan](#implementation-plan) - Deployment phases
+8. [Consequences](#consequences) - Trade-offs
+9. [References](#references) - External documentation
+
+---
+
 ## Context
 
 Cost Management on-premises requires extracting organization IDs (`org_id`) for users authenticating through OpenShift OAuth integrated with Keycloak and LDAP.
@@ -53,6 +69,65 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 - Authorino needs `org_id` without querying external services with credentials
 - **LDAP Schema Influence**: We can request that 2 fields (`costCenter`/`org_id` and `accountNumber`) be populated as user attributes, but we cannot enforce whether they are implemented as user attributes or as group memberships - that decision lies with the customer's LDAP administrators
 
+---
+
+## Background: Enterprise LDAP Patterns
+
+> **References verified:** 2025-12-05 (All URLs return HTTP 200 with content matching claims)
+
+Understanding how large enterprises structure their LDAP directories informs our solution design. The following patterns are documented in industry literature:
+
+### Schema Changes
+
+Large directory vendors treat schema extension as a normal, supported activity, but recommend that changes be controlled and that built-in or standard schema elements not be modified once deployed.
+
+*"Interoperability of Directory Server with existing LDAP clients relies on the standard LDAP schema. If you change the standard schema, you will also have difficulties when upgrading your server."* – Oracle Directory Server
+
+**Reference:** [Oracle: Managing Directory Schema](https://docs.oracle.com/cd/E49437_01/admin.111220/e22648/schema.htm)
+
+### Standard Attributes
+
+Enterprise directories typically expose standard or widely adopted attributes such as POSIX identifiers (`uidNumber`, `gidNumber`), employee identifiers, and organizational fields. Integration documentation like Azure NetApp Files explicitly uses RFC 2307bis schema with these POSIX attributes for identity mapping rather than custom definitions.
+
+**Reference:** [Microsoft Azure NetApp Files: LDAP schemas](https://learn.microsoft.com/en-us/azure/azure-netapp-files/lightweight-directory-access-protocol-schemas)
+
+### Stable Identifiers
+
+Directory design requires stable, immutable identifiers as the canonical key for user entries to maintain referential integrity when mutable attributes like usernames or email addresses change. Common practice uses HR-assigned employee IDs, `objectGUID`, or `entryUUID` as the permanent identifier.
+
+**References:**
+- [Microsoft: objectGUID as immutable identifier](https://learn.microsoft.com/en-us/windows/win32/adschema/a-objectguid)
+- [IBM WebSphere: LDAP mapping with stable identifiers](https://www.ibm.com/docs/en/was/9.0.5?topic=SS7K4U_9.0.5/com.ibm.websphere.base.doc/ae/rsec_ldapmapping.html)
+
+### Role of Groups
+
+LDAP groups serve primarily as authorization constructs for role-based access control (RBAC), expressing which users have specific permissions. User descriptive metadata (department, location, job title) belongs in user object attributes like `departmentNumber`, `l`, `title` per `inetOrgPerson` schema, not group membership.
+
+**References:**
+- [Microsoft: Security groups for authorization](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-security-groups)
+- [RFC 2798: inetOrgPerson schema](https://datatracker.ietf.org/doc/html/rfc2798)
+
+### Scale and Large Groups
+
+Very large static groups create performance risks: Microsoft AD recommends maximum 5,000 members per group to avoid timeouts. IBM z/OS LDAP notes group evaluation cost grows proportionally with group count.
+
+**References:**
+- [Microsoft AD: Maximum limits](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/active-directory-domain-services-maximum-limits)
+- [IBM z/OS: LDAP tuning for large directories](https://www.ibm.com/docs/en/zos/3.2.0?topic=tuning-user-groups-considerations-in-large-directories)
+- [Atlassian: Performance with large LDAP](https://support.atlassian.com/confluence/kb/performance-issues-with-large-ldap-repository-100-000-users-or-more/)
+
+### Key Insight
+
+The **most compatible approach** for enterprises is to:
+1. Read **existing** user attributes (no schema changes)
+2. Use **stable, HR-synchronized identifiers**
+3. Create groups in an **isolated OU** (doesn't affect existing infrastructure)
+4. Use **standard LDAP operations** (works with any directory)
+
+This is exactly what **[Option B2 (Automated Group Sync)](#option-b2-automated-group-sync-script--recommended-for-enterprise-10k-employees--rhbk)** implements.
+
+---
+
 ## Considered Options
 
 ### Option 1: Custom Attributes on LDAP Groups with Keycloak Group Mapper
@@ -69,63 +144,7 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 > | **Existing attributes** | Enterprises typically have `costCenter`, `department`, `employeeID` already populated - prefer using these |
 > | **Groups purpose** | Best practice: groups for authorization, user attributes for metadata ([Microsoft](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-security-groups)) |
 >
-> **If the organization has strict schema governance or prefers using existing attributes, see Option B2 (Automated Group Sync).**
->
-## LDAP Design Practices for Large Enterprises
-
-> **References verified:** 2025-12-05 (All URLs return HTTP 200 with content matching claims)
-
-### 1. Schema changes
-
-Large directory vendors treat schema extension as a normal, supported activity, but recommend that changes be controlled and that built-in or standard schema elements not be modified once deployed.
-
-*"Interoperability of Directory Server with existing LDAP clients relies on the standard LDAP schema. If you change the standard schema, you will also have difficulties when upgrading your server."* – Oracle Directory Server
-
-**References:**
-- [1] [Oracle: Managing Directory Schema](https://docs.oracle.com/cd/E49437_01/admin.111220/e22648/schema.htm)
-
----
-
-### 2. Use of standard attributes
-
-Enterprise directories typically expose standard or widely adopted attributes such as POSIX identifiers (`uidNumber`, `gidNumber`), employee identifiers, and organizational fields. Integration documentation like Azure NetApp Files explicitly uses RFC 2307bis schema with these POSIX attributes for identity mapping rather than custom definitions.
-
-**References:**
-- [2] [Microsoft Azure NetApp Files: LDAP schemas (RFC 2307bis, POSIX attributes)](https://learn.microsoft.com/en-us/azure/azure-netapp-files/lightweight-directory-access-protocol-schemas)
-
----
-
-### 3. Stable identifiers
-
-Directory design requires stable, immutable identifiers as the canonical key for user entries to maintain referential integrity when mutable attributes like usernames or email addresses change. Common practice uses HR-assigned employee IDs, `objectGUID`, or `entryUUID` as the permanent identifier separate from display names or login attributes.
-
-**References:**
-- [3] [Microsoft: objectGUID as immutable identifier](https://learn.microsoft.com/en-us/windows/win32/adschema/a-objectguid) – *"The unique identifier for an object"*
-- [4] [IBM WebSphere: LDAP mapping with stable identifiers](https://www.ibm.com/docs/en/was/9.0.5?topic=SS7K4U_9.0.5/com.ibm.websphere.base.doc/ae/rsec_ldapmapping.html)
-
----
-
-### 4. Role of groups
-
-LDAP groups serve primarily as authorization constructs for role-based access control (RBAC), expressing which users have specific permissions. User descriptive metadata (department, location, job title) belongs in user object attributes like `departmentNumber`, `l`, `title` per `inetOrgPerson` schema, not group membership.
-
-**References:**
-- [5] [Microsoft: Security groups for authorization](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-security-groups) – *"Security groups: Used to assign permissions to shared resources"*
-- [6] [RFC 2798: inetOrgPerson schema (user attributes)](https://datatracker.ietf.org/doc/html/rfc2798)
-
----
-
-### 5. Scale and large groups
-
-Very large static groups create performance risks: Microsoft AD recommends maximum 5,000 members per group to avoid timeouts. IBM z/OS LDAP notes group evaluation cost grows proportionally with group count; Atlassian reports slow logins at 100k+ users due to group queries.
-
-**References:**
-- [7] [Microsoft AD: Maximum limits (5,000 members/group recommended)](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/active-directory-domain-services-maximum-limits)
-- [8] [IBM z/OS: LDAP tuning for large directories](https://www.ibm.com/docs/en/zos/3.2.0?topic=tuning-user-groups-considerations-in-large-directories) – *"Cost of determining a user's groups increases proportionally"*
-- [9] [Atlassian: Performance with large LDAP (100k+ users)](https://support.atlassian.com/confluence/kb/performance-issues-with-large-ldap-repository-100-000-users-or-more/)
-
->
-> **For large enterprises (>10k employees), see Option B2 (Automated Group Sync) which reads existing user attributes.**
+> **If the organization has strict schema governance or prefers using existing attributes, see [Automated Group Sync](#option-b2-automated-group-sync-script--recommended-for-enterprise-10k-employees--rhbk).**
 
 **Architecture (suitable for small deployments):**
 ```
@@ -834,28 +853,6 @@ uid=test                Event Listener:            Group: "org_1234567"
 - ❌ Not supported by Red Hat Build of Keycloak
 - ❌ Violates simplicity principle
 - ❌ Harder to test and deploy
-
----
-
-### Industry Pattern Analysis
-
-Based on documented enterprise identity management patterns:
-
-| Pattern | Evidence | Source |
-|---------|----------|--------|
-| **Use existing attributes over schema changes** | "leverage existing, stable attributes within LDAP directories" | IBM, ScienceLogic, OrangeFS docs |
-| **Standard attributes for org mapping** | `uidNumber`, `gidNumber`, `employeeID`, `department` in base schemas | RFC 2307, inetOrgPerson schema |
-| **Stable HR-synced identifiers** | "global employee or customer ID that you generate and assign" | HCL Connections Guide |
-| **Groups for access control** | User objects mapped to `inetOrgPerson`; groups handle authorization | Novell LDAP Driver Guide |
-| **Application-specific OUs** | Common pattern to create isolated OUs for app-specific groups | Standard LDAP design |
-
-**Key Insight** (verified by industry documentation): The **most compatible approach** for enterprises is to:
-1. Read **existing** user attributes (no schema changes) - *IBM, ScienceLogic recommend this*
-2. Use **stable, HR-synchronized identifiers** - *HCL Connections recommends this*
-3. Create groups in an **isolated OU** (doesn't affect existing infrastructure)
-4. Use **standard LDAP operations** (works with any directory)
-
-This is exactly what **Option B2 (Automated Group Sync)** implements.
 
 ---
 
