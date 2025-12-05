@@ -13,7 +13,10 @@ POC Verified: 2025-12-05 (End-to-end flow tested successfully)
 
 1. [Context](#context) - Problem statement and architecture
 2. [Decision Drivers](#decision-drivers) - Key constraints
-3. [Background: Enterprise LDAP Patterns](#background-enterprise-ldap-patterns) - Industry practices (verified references)
+3. [Background: Enterprise LDAP Patterns](#background-enterprise-ldap-patterns) - Industry practices
+   - [Schema Changes](#schema-changes)
+   - [Standard Attributes](#standard-attributes)
+   - [Keycloak LDAP Synchronization](#keycloak-ldap-synchronization) - Sync modes, READ_ONLY considerations
 4. [Considered Options](#considered-options) - All evaluated approaches
 5. [Decision Outcome](#decision-outcome) - Chosen solution and rationale
 6. [Verified POC Implementation](#verified-poc-implementation-2025-12-05) - Test results
@@ -115,6 +118,77 @@ Very large static groups create performance risks: Microsoft AD recommends maxim
 - [Microsoft AD: Maximum limits](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/active-directory-domain-services-maximum-limits)
 - [IBM z/OS: LDAP tuning for large directories](https://www.ibm.com/docs/en/zos/3.2.0?topic=tuning-user-groups-considerations-in-large-directories)
 - [Atlassian: Performance with large LDAP](https://support.atlassian.com/confluence/kb/performance-issues-with-large-ldap-repository-100-000-users-or-more/)
+
+### Keycloak LDAP Synchronization
+
+Understanding how Keycloak synchronizes with LDAP is critical for large enterprise deployments.
+
+**Reference:** [Keycloak Server Administration Guide - LDAP User Federation](https://www.keycloak.org/docs/latest/server_admin/index.html#_ldap)
+
+#### Sync Mechanisms
+
+Keycloak uses **pull-based synchronization** (queries LDAP), not push:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **Periodic Full Sync** | Scans all LDAP users, updates local database | Initial sync, low-frequency updates |
+| **Periodic Changed Users Sync** | Only pulls users created/modified since last sync | Large enterprises - reduces LDAP load |
+| **On-Demand (Login)** | Imports user on first login, validates password against LDAP | Minimal storage, real-time validation |
+
+> *"Keycloak imports users from LDAP into the local Keycloak user database. This copy of the user database synchronizes on-demand or through a periodic background task. An exception exists for synchronizing passwords. Keycloak never imports passwords."* – Keycloak Docs
+
+#### Edit Modes
+
+| Mode | Local Storage | LDAP Write-Back | Best For |
+|------|---------------|-----------------|----------|
+| **READ_ONLY** | Imports users | No writes to LDAP | Most enterprises (LDAP is authoritative) |
+| **WRITABLE** | Imports users | Auto-sync changes to LDAP | Bi-directional sync |
+| **UNSYNCED** | Imports users | Manual sync required | Local overrides without LDAP impact |
+
+#### READ_ONLY Mode and Our Implementation
+
+**Concern:** In READ_ONLY mode, Keycloak doesn't write to LDAP. How do we map user attributes (`costCenter`) to groups?
+
+**Solution:** Our sync script creates groups **in LDAP**, not in Keycloak:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                           LDAP                                  │
+│                                                                 │
+│  User: uid=test                  Groups (created by sync):      │
+│  └── costCenter: 1234567   ───►  └── cn=cost-mgmt-org-1234567  │
+│                            sync      └── member: uid=test      │
+│                            script                               │
+│                                                                 │
+│  Mapping happens HERE (in LDAP), not in Keycloak               │
+└─────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼ Keycloak queries LDAP (READ_ONLY)
+┌─────────────────────────────────────────────────────────────────┐
+│                        Keycloak                                 │
+│                                                                 │
+│  On login (even in READ_ONLY mode):                            │
+│  1. Query LDAP for user ✓                                      │
+│  2. Query LDAP for user's group memberships ✓                  │
+│  3. Include groups in JWT token ✓                              │
+│                                                                 │
+│  Result: groups=["cost-mgmt-org-1234567", ...]                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Why this works:**
+- Sync script writes to LDAP (not Keycloak) → READ_ONLY mode irrelevant
+- Group memberships exist in LDAP → Keycloak reads them on login
+- No Keycloak customization required → Works with RHBK
+
+#### If Sync Script Cannot Run in Customer Environment
+
+| Constraint | Alternative Solution |
+|------------|---------------------|
+| Cannot run CronJobs in LDAP namespace | Option B1: LDAP Dynamic Groups (if supported) |
+| Using upstream Keycloak | Option B0: Protocol Mapper (JavaScript in UI) |
+| RHBK only, no external scripts | Option B0 with JAR packaging (complex) |
+| Cannot modify LDAP at all | Option 4: Claims Service (additional infrastructure) |
 
 ### Key Insight
 
