@@ -2,9 +2,10 @@
 
 ## Status
 
-**Accepted**
+**Proposed** - POC Verified ✅, Pending Tech Lead Approval
 
 Date: 2025-12-04
+POC Verified: 2025-12-05 (End-to-end flow tested successfully)
 
 ## Context
 
@@ -482,52 +483,57 @@ Mapper 2: Accounts
   Result: Keycloak group "/accounts/9876543"
 ```
 
-**Authorino Configuration (Parse Group Paths):**
+**Authorino Configuration (CEL Expressions - VERIFIED ✅):**
+
+> **Note**: We use CEL instead of OPA/Rego because Rego is being deprecated in Authorino.
+
 ```yaml
-apiVersion: authorino.kuadrant.io/v1beta2
+apiVersion: authorino.kuadrant.io/v1beta3
 kind: AuthConfig
 metadata:
   name: cost-management-auth
 spec:
+  hosts:
+    - "*"
   authentication:
-    "k8s-tokenreview":
+    "kubernetes-tokens":
       kubernetesTokenReview:
-        audiences: ["https://kubernetes.default.svc"]
-  metadata:
-    "parse-org-claims":
-      opa:
-        inlineRego: |
-          package authz
-          # Extract org_id from /organizations/ path
-          # Use array comprehension to collect all matches, then take first
-          # This ensures a single result even if user has multiple org groups
-          org_ids := [substring(group, 16, -1) |
-            some group in input.auth.identity.groups
-            startswith(group, "/organizations/")
-            regex.match(`^/organizations/[0-9]{7,10}$`, group)
-          ]
-          org_id := org_ids[0] if { count(org_ids) > 0 }
-          default org_id := ""
-
-          # Extract account_number from /accounts/ path
-          # Use array comprehension to collect all matches, then take first
-          account_numbers := [substring(group, 10, -1) |
-            some group in input.auth.identity.groups
-            startswith(group, "/accounts/")
-            regex.match(`^/accounts/[0-9]{7,10}$`, group)
-          ]
-          account_number := account_numbers[0] if { count(account_numbers) > 0 }
-          default account_number := ""
+        audiences:
+          - "https://kubernetes.default.svc"
   response:
     success:
       headers:
+        # Username from TokenReview (path: auth.identity.user.username)
+        "X-Auth-Username":
+          plain:
+            selector: auth.identity.user.username
+        # UID from TokenReview
+        "X-Auth-Uid":
+          plain:
+            selector: auth.identity.user.uid
+        # Extract org_id from cost-mgmt-org-{id} groups
+        # "cost-mgmt-org-" is 14 characters (0-indexed)
         "X-Auth-Org-Id":
-          json:
-            selector: "auth.metadata.parse-org-claims.org_id"
+          plain:
+            expression: |
+              auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-org-")).size() > 0
+                ? auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-org-"))[0].substring(14)
+                : ""
+        # Extract account_number from cost-mgmt-account-{id} groups
+        # "cost-mgmt-account-" is 18 characters (0-indexed)
         "X-Auth-Account-Number":
-          json:
-            selector: "auth.metadata.parse-org-claims.account_number"
+          plain:
+            expression: |
+              auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-account-")).size() > 0
+                ? auth.identity.user.groups.filter(g, g.startsWith("cost-mgmt-account-"))[0].substring(18)
+                : ""
 ```
+
+**Key Implementation Details:**
+- Uses `auth.identity.user.groups` (not `auth.identity.groups`) because TokenReview returns groups under `user`
+- CEL `substring(14)` for org_id because "cost-mgmt-org-" is 14 characters
+- CEL `substring(18)` for account_number because "cost-mgmt-account-" is 18 characters
+- Returns empty string if no matching group found (Envoy Lua will reject with 401)
 
 **Pros:**
 - ✅ Clean separation: `cn` preserved for display name, custom attributes for IDs
@@ -573,24 +579,17 @@ member: uid=test,ou=users,dc=example,dc=com
 Group Name LDAP Attribute: businessCategory
 ```
 
-**Authorino Configuration:**
+**Authorino Configuration (CEL):**
 ```yaml
-metadata:
-  "parse-org-id":
-    opa:
-      inlineRego: |
-        package authz
-        org_id := substring(group, 4, -1) if {  # Remove "org_" prefix
-          some i
-          group := input.auth.identity.user.groups[i]
-          startswith(group, "org_")
-        }
 response:
   success:
     headers:
-      "x-auth-request-org-id":
-        json:
-          selector: "auth.metadata.parse-org-id.org_id"
+      "X-Auth-Org-Id":
+        plain:
+          expression: |
+            auth.identity.user.groups.filter(g, g.startsWith("org_")).size() > 0
+              ? auth.identity.user.groups.filter(g, g.startsWith("org_"))[0].substring(4)
+              : ""
 ```
 
 **Alternative standard attributes:**
@@ -638,25 +637,17 @@ member: uid=test,ou=users,dc=example,dc=com
 Group Name LDAP Attribute: cn  # Default
 ```
 
-**Authorino Configuration:**
+**Authorino Configuration (CEL):**
 ```yaml
-metadata:
-  "parse-org-id":
-    opa:
-      inlineRego: |
-        package authz
-        org_id := split(group, "_")[1] if {
-          some i
-          group := input.auth.identity.user.groups[i]
-          startswith(group, "org_")
-          count(split(group, "_")) >= 2
-        }
 response:
   success:
     headers:
-      "x-auth-request-org-id":
-        json:
-          selector: "auth.metadata.parse-org-id.org_id"
+      "X-Auth-Org-Id":
+        plain:
+          expression: |
+            auth.identity.user.groups.filter(g, g.startsWith("org_")).size() > 0
+              ? auth.identity.user.groups.filter(g, g.startsWith("org_"))[0].split("_")[1]
+              : ""
 ```
 
 **Pros:**
@@ -885,27 +876,36 @@ For customers with existing enterprise LDAP where users have `costCenter` and `d
 
 ## Decision Outcome
 
-**Chosen Option: Option 1 - Custom LDAP Attribute with Keycloak Group Mapper**
+**Chosen Option: Automated Group Sync with CEL-based Extraction (Option B2 variant)**
+
+### Actual Implementation (POC Verified)
+
+We implemented a variant that combines:
+- **LDAP user attributes** (`costCenter`, `accountNumber`) as the source of truth
+- **Sync script** that creates `cost-mgmt-org-{id}` and `cost-mgmt-account-{id}` groups
+- **Keycloak Group Mapper** to sync groups to JWT tokens
+- **CEL expressions** in Authorino to extract values from group names
 
 ### Rationale
 
-1. **Clean Architecture**: Clear separation between display names (`cn`) and technical identifiers (`organizationId`)
-2. **No Parsing Overhead**: Authorino can use group values directly without string manipulation
-3. **Extensibility**: Easy to add more custom attributes (e.g., `accountPrefix`, `customerType`) in the future
-4. **Standard Approach**: LDAP schema extensions are well-supported and documented
-5. **Maintainability**: Explicit schema makes intent clear to operators
-6. **Zero Credentials in Data Plane**: Authorino has no Keycloak or LDAP credentials
-7. **Performance**: No additional HTTP calls or parsing logic
+1. **CEL over Rego**: Rego is being deprecated in Authorino; CEL is the recommended approach
+2. **Flat Group Names**: `cost-mgmt-org-1234567` is simpler than hierarchical paths like `/organizations/1234567`
+3. **User Attributes as Source**: Enterprise LDAPs typically have `costCenter`/`division` as user attributes, not group attributes
+4. **Sync Script Flexibility**: Works with any LDAP (AD, OpenLDAP) without requiring dynamic group support
+5. **Zero Credentials in Data Plane**: Authorino has no Keycloak or LDAP credentials
+6. **RHBK Compatible**: No script mappers required (avoids JAR packaging complexity)
 
-### Complete Request Flow (End-to-End)
+### Complete Request Flow (End-to-End) - VERIFIED ✅
 
 This section explains how `org_id` and `account_number` flow from LDAP to the backend, with special emphasis on **Envoy's critical role** in constructing the `X-Rh-Identity` header.
+
+> **Verified**: This flow was tested end-to-end on 2025-12-05 with user `test`, org_id `1234567`, and account_number `9876543`.
 
 #### 1. User Login (One-Time)
 - User logs in via OpenShift Console
 - OpenShift redirects to Keycloak (OIDC provider)
 - Keycloak authenticates user against LDAP
-- Keycloak reads user's group memberships (e.g., `/organizations/1234567`, `/accounts/7890123`)
+- Keycloak reads user's group memberships (e.g., `cost-mgmt-org-1234567`, `cost-mgmt-account-9876543`)
 - OpenShift creates User object with groups array
 
 #### 2. API Request with Token
@@ -918,15 +918,15 @@ This section explains how `org_id` and `account_number` flow from LDAP to the ba
 
 #### 4. Authorino Processing
 - Calls Kubernetes TokenReview API to validate token
-- Receives back: `username`, `uid`, `groups` (e.g., `["/organizations/1234567", "/accounts/7890123"]`)
-- Runs OPA/Rego policy to parse groups:
-  - Extracts `org_id: "1234567"` from `/organizations/1234567`
-  - Extracts `account_number: "7890123"` from `/accounts/7890123`
+- Receives back: `username`, `uid`, `groups` (e.g., `["cost-mgmt-org-1234567", "cost-mgmt-account-9876543", "system:authenticated"]`)
+- Runs **CEL expressions** to parse groups:
+  - Extracts `org_id: "1234567"` from `cost-mgmt-org-1234567`
+  - Extracts `account_number: "9876543"` from `cost-mgmt-account-9876543`
 - Returns authorization decision with headers:
   - `X-Auth-Username: test`
-  - `X-Auth-Uid: <uuid>`
+  - `X-Auth-Uid: 8a86aea7-021d-4de2-a376-c6892e1503dd`
   - `X-Auth-Org-Id: 1234567`
-  - `X-Auth-Account-Number: 7890123`
+  - `X-Auth-Account-Number: 9876543`
 
 #### 5. Envoy Lua Filter (CRITICAL STEP)
 This is where the `X-Rh-Identity` header is constructed:
@@ -1029,6 +1029,51 @@ If we need more claims than can fit in group names, we can migrate to **Option 4
 4. Gradually migrate clients to use new headers
 
 This provides a clear upgrade path if requirements evolve.
+
+## Verified POC Implementation (2025-12-05)
+
+The following configuration was tested end-to-end and verified working:
+
+### Group Naming Convention (Actual)
+| Type | Pattern | Example |
+|------|---------|---------|
+| Organization | `cost-mgmt-org-{id}` | `cost-mgmt-org-1234567` |
+| Account | `cost-mgmt-account-{id}` | `cost-mgmt-account-9876543` |
+
+### CEL Expression Indices (Verified)
+| Prefix | Length | substring() |
+|--------|--------|-------------|
+| `cost-mgmt-org-` | 14 chars | `substring(14)` |
+| `cost-mgmt-account-` | 18 chars | `substring(18)` |
+
+### Test Results
+```
+User: test
+TokenReview groups: ["cost-mgmt-org-1234567", "cost-mgmt-account-9876543", "system:authenticated:oauth", "system:authenticated"]
+
+Authorino extracted:
+  X-Auth-Username: test
+  X-Auth-Org-Id: 1234567
+  X-Auth-Account-Number: 9876543
+
+API Response: 404 Not Found (authentication passed, no data in DB)
+```
+
+### Key Learnings from POC
+
+1. **TokenReview path**: Groups are at `auth.identity.user.groups`, not `auth.identity.groups`
+2. **CEL over Rego**: Rego is being deprecated in Authorino; CEL is preferred
+3. **Keycloak client scopes**: Must create `openid`, `profile`, `email`, `groups` scopes
+4. **preferred_username mapper**: Required for OpenShift to use username instead of UUID
+5. **RBAC protection**: Groups are cluster-scoped; regular users cannot list/read them
+
+### Files Implementing This ADR
+- `cost-onprem/templates/auth/authorino-authconfig.yaml` - CEL expressions
+- `scripts/configure-keycloak-ldap.sh` - Keycloak configuration
+- `scripts/deploy-ldap-demo.sh` - Demo LDAP with test users
+- `docs/ldap-rhbk-configuration-guide.md` - Configuration guide
+
+---
 
 ## Consequences
 
