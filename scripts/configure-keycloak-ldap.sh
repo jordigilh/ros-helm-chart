@@ -319,6 +319,116 @@ function sync_groups() {
   sleep 3
 }
 
+function create_openshift_client() {
+  echo_header "Creating OpenShift OAuth Client"
+
+  # Check if client already exists
+  local existing_id
+  existing_id=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/clients?clientId=openshift" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" | \
+    jq -r '.[0].id' 2>/dev/null)
+
+  if [ -n "$existing_id" ] && [ "$existing_id" != "null" ]; then
+    echo_warn "OpenShift client already exists (ID: $existing_id)"
+    OPENSHIFT_CLIENT_ID="$existing_id"
+    return 0
+  fi
+
+  # Get cluster domain for redirect URIs
+  local cluster_domain
+  cluster_domain=$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}' 2>/dev/null || echo "apps.example.com")
+
+  # Create the openshift client for OAuth integration
+  local response
+  response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/clients" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "clientId": "openshift",
+      "enabled": true,
+      "directAccessGrantsEnabled": true,
+      "publicClient": false,
+      "secret": "openshift-secret",
+      "redirectUris": ["https://*.'${cluster_domain}'/*", "https://oauth-openshift.'${cluster_domain}'/*"],
+      "webOrigins": ["*"],
+      "standardFlowEnabled": true,
+      "protocol": "openid-connect"
+    }' -w "\n%{http_code}" 2>/dev/null)
+
+  local http_code
+  http_code=$(echo "$response" | tail -n1)
+
+  if [ "$http_code" != "201" ]; then
+    echo_error "Failed to create OpenShift client (HTTP $http_code)"
+    echo "Response: $(echo "$response" | head -n-1)"
+    return 1
+  fi
+
+  echo_info "OpenShift OAuth client created"
+
+  # Get the client ID
+  OPENSHIFT_CLIENT_ID=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/clients?clientId=openshift" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" | \
+    jq -r '.[0].id' 2>/dev/null)
+
+  echo_info "Client UUID: $OPENSHIFT_CLIENT_ID"
+}
+
+function add_groups_protocol_mapper() {
+  echo_header "Adding Groups Protocol Mapper to OpenShift Client"
+
+  if [ -z "$OPENSHIFT_CLIENT_ID" ]; then
+    echo_error "OpenShift client ID not found"
+    return 1
+  fi
+
+  # Check if groups mapper already exists
+  local existing_mapper
+  existing_mapper=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/clients/${OPENSHIFT_CLIENT_ID}/protocol-mappers/models" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" | \
+    jq -r '.[] | select(.name == "groups") | .id' 2>/dev/null)
+
+  if [ -n "$existing_mapper" ] && [ "$existing_mapper" != "null" ]; then
+    echo_warn "Groups mapper already exists"
+    return 0
+  fi
+
+  # Add groups protocol mapper to include LDAP groups in tokens
+  local response
+  response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/clients/${OPENSHIFT_CLIENT_ID}/protocol-mappers/models" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "groups",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-group-membership-mapper",
+      "config": {
+        "full.path": "false",
+        "id.token.claim": "true",
+        "access.token.claim": "true",
+        "claim.name": "groups",
+        "userinfo.token.claim": "true"
+      }
+    }' -w "\n%{http_code}" 2>/dev/null)
+
+  local http_code
+  http_code=$(echo "$response" | tail -n1)
+
+  if [ "$http_code" != "201" ]; then
+    echo_error "Failed to create groups mapper (HTTP $http_code)"
+    echo "Response: $(echo "$response" | head -n-1)"
+    return 1
+  fi
+
+  echo_info "Groups protocol mapper added"
+  echo_info "  - Groups will be included in access tokens"
+  echo_info "  - Groups will be included in ID tokens"
+  echo_info "  - Claim name: 'groups'"
+}
+
 function sync_users() {
   echo_header "Synchronizing Users from LDAP"
 
@@ -395,6 +505,36 @@ function verify_configuration() {
   else
     echo_warn "⚠ Account group cost-mgmt-account-9876543 not found"
   fi
+
+  # Verify groups are in token
+  echo ""
+  echo_info "Verifying groups in JWT token..."
+  local token_response
+  token_response=$(curl -sk "${KEYCLOAK_URL}/realms/${REALM}/protocol/openid-connect/token" \
+    -d "client_id=openshift" \
+    -d "client_secret=openshift-secret" \
+    -d "username=test" \
+    -d "password=test" \
+    -d "grant_type=password" 2>/dev/null)
+
+  local access_token
+  access_token=$(echo "$token_response" | jq -r '.access_token' 2>/dev/null)
+
+  if [ -n "$access_token" ] && [ "$access_token" != "null" ]; then
+    local token_groups
+    token_groups=$(echo "$access_token" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq -r '.groups[]' 2>/dev/null)
+    
+    if [ -n "$token_groups" ]; then
+      echo_info "✓ Groups found in JWT token:"
+      echo "$token_groups" | while read -r g; do
+        echo "    - $g"
+      done
+    else
+      echo_warn "⚠ No groups found in JWT token - check groups protocol mapper"
+    fi
+  else
+    echo_warn "⚠ Could not get token for test user"
+  fi
 }
 
 function display_summary() {
@@ -418,6 +558,13 @@ LDAP Group Mapper:
      - Groups DN: ou=CostMgmt,ou=groups,$LDAP_BASE_DN
      - Imports all groups in the CostMgmt OU
      - Pattern: cost-mgmt-org-{orgId}, cost-mgmt-account-{accountNumber}
+
+OpenShift OAuth Client:
+─────────────────────────────────────────────────────────
+  Client ID: openshift
+  Client Secret: openshift-secret
+  Groups Mapper: Enabled (groups claim in access/ID tokens)
+  Direct Grant: Enabled (for testing with password flow)
 
 Expected Mappings:
 ─────────────────────────────────────────────────────────
@@ -493,6 +640,8 @@ main() {
   create_cost_mgmt_group_mapper
   sync_users
   sync_groups
+  create_openshift_client
+  add_groups_protocol_mapper
   verify_configuration
   display_summary
 }
