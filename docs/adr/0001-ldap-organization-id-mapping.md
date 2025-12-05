@@ -551,61 +551,81 @@ token.getOtherClaims().put("groups", groups);
 "OK";
 ```
 
-**RHBK Deployment Options:**
+**RHBK Operator Deployment Options:**
 
-Keycloak requires `kc.sh build` after adding providers. Three deployment approaches:
+The RHBK Operator manages the Keycloak Deployment - you cannot modify it directly. Use `spec.unsupported.podTemplate` to inject custom configurations. Keycloak requires `kc.sh build` after adding providers.
 
-| Option | Pros | Cons | Best For |
-|--------|------|------|----------|
-| **A: Custom Image** | Fast startup, production recommended | Maintain custom image | Production |
-| **B: Volume + Init Container** | No custom image | Slower startup (builds every pod) | Dev/Test |
-| **C: Volume + Dev Mode** | Simplest config | Slowest startup | Quick testing |
+| Option | Custom Image? | Startup Speed | How |
+|--------|--------------|---------------|-----|
+| **A: Custom Image** | ✅ Yes | Fast (pre-built) | `spec.image` in Keycloak CR |
+| **B: Volume + Init Container** | ❌ No | Slower (builds each start) | `spec.unsupported.podTemplate` |
 
-**Option A: Custom Image (Production Recommended)**
+**Option A: Custom Image (Fastest Startup)**
 ```dockerfile
 FROM registry.redhat.io/rhbk/keycloak-rhel9:24
 COPY cost-mgmt-mappers.jar /opt/keycloak/providers/
 RUN /opt/keycloak/bin/kc.sh build
 ```
 
-**Option B: Volume Mount with Init Container (No Custom Image)**
+Then reference in Keycloak CR:
 ```yaml
 apiVersion: k8s.keycloak.org/v2alpha1
 kind: Keycloak
 spec:
+  image: quay.io/my-company/my-rhbk:24-custom
+```
+
+**Option B: Volume Mount via Operator (No Custom Image)** ⭐ **RECOMMENDED**
+
+Use `spec.unsupported.podTemplate` - the Operator merges this with its managed Deployment:
+
+```yaml
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: Keycloak
+metadata:
+  name: example-kc
+spec:
+  instances: 1
+  # ... database, hostname, tls config ...
+  
   unsupported:
     podTemplate:
       spec:
+        # Init container runs kc.sh build with the JAR
         initContainers:
           - name: install-providers
             image: registry.redhat.io/rhbk/keycloak-rhel9:24
             command: ["/bin/sh", "-c"]
             args:
               - |
-                cp /providers/*.jar /opt/keycloak/providers/
+                cp /mounted-providers/*.jar /opt/keycloak/providers/
                 /opt/keycloak/bin/kc.sh build
             volumeMounts:
               - name: provider-jar
-                mountPath: /providers
+                mountPath: /mounted-providers
               - name: keycloak-providers
                 mountPath: /opt/keycloak/providers
+        # Main container uses the built providers
         containers:
-          - name: keycloak
-            volumeMounts:
+          - volumeMounts:
               - name: keycloak-providers
                 mountPath: /opt/keycloak/providers
         volumes:
+          # JAR stored in ConfigMap (< 1MB) or mounted from PVC
           - name: provider-jar
             configMap:
-              name: cost-mgmt-mapper-jar  # JAR stored in ConfigMap
+              name: cost-mgmt-mapper-jar
+          # Shared volume for built providers
           - name: keycloak-providers
             emptyDir: {}
 ```
 
-**Option C: Volume Mount with Dev Mode (Simplest)**
-- Mount JAR to `/opt/keycloak/providers/`
-- Use default image (not optimized) - auto-rebuilds on every start
-- ⚠️ Not recommended for production (slow startup)
+**Why Option B is recommended:**
+- ✅ No custom image to maintain
+- ✅ Uses stock RHBK image (easier upgrades)
+- ✅ JAR managed separately (ConfigMap/Secret/PVC)
+- ✅ Operator-supported approach (`unsupported` is a misnomer - it means "advanced")
+- ⚠️ Trade-off: ~30-60s added to pod startup for `kc.sh build`
 
 **Per-Customer Configuration (No JAR Rebuild):**
 
@@ -1407,4 +1427,5 @@ If requirements change significantly (e.g., need for 10+ custom claims), conside
 **Decision made by:** Engineering Team
 **Last updated:** 2025-12-04
 **Review date:** 2026-03-04 (3 months)
+
 
