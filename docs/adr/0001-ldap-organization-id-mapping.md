@@ -57,16 +57,17 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 
 ### Option 1: Custom LDAP Attribute with Keycloak Group Mapper
 
-> ⚠️ **Enterprise Applicability Assessment**
+> ⚠️ **Enterprise Applicability Note**
 >
-> | Company Size | LDAP Pattern | Option 1 Viability |
-> |--------------|--------------|-------------------|
-> | Small (<500 employees) | Flat structure, custom schema control | ✅ **Viable** |
-> | Medium (500-5k employees) | Mixed hierarchical/flat, some schema flexibility | ⚠️ **Possible with effort** |
-> | Large (5k-10k employees) | Hierarchical OUs, limited schema changes | ❌ **Not recommended** |
-> | Enterprise (>10k employees) | Active Directory, HR-synced attributes, no custom schema | ❌ **Not viable** |
+> This option requires adding custom LDAP attributes to groups. Before choosing this approach, consider your organization's LDAP governance:
 >
-> **Why this doesn't fit large enterprises (industry-verified patterns):**
+> | Factor | Implication |
+> |--------|-------------|
+> | **Schema change process** | Vendors support schema extension, but recommend changes be "controlled" ([Oracle](https://docs.oracle.com/cd/E49437_01/admin.111220/e22648/schema.htm)) |
+> | **Existing attributes** | Enterprises typically have `costCenter`, `department`, `employeeID` already populated - prefer using these |
+> | **Groups purpose** | Best practice: groups for authorization, user attributes for metadata ([Microsoft](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-security-groups)) |
+>
+> **If your organization has strict schema governance or prefers using existing attributes, see Option B2 (Automated Group Sync).**
 >
 ## LDAP Design Practices for Large Enterprises
 
