@@ -55,11 +55,13 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 
 ## Considered Options
 
-### Option 1: Custom LDAP Attribute with Keycloak Group Mapper
+### Option 1: Custom Attributes on LDAP Groups with Keycloak Group Mapper
 
 > ⚠️ **Enterprise Applicability Note**
 >
-> This option requires adding custom LDAP attributes to groups. Before choosing this approach, consider your organization's LDAP governance:
+> This option requires adding custom attributes (`organizationId`, `accountNumber`) to **LDAP group objects** - not user profiles. Users are then added as members of these groups, and Keycloak reads the group's custom attribute as the group name.
+>
+> Before choosing this approach, consider the organization's LDAP governance:
 >
 > | Factor | Implication |
 > |--------|-------------|
@@ -67,7 +69,7 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 > | **Existing attributes** | Enterprises typically have `costCenter`, `department`, `employeeID` already populated - prefer using these |
 > | **Groups purpose** | Best practice: groups for authorization, user attributes for metadata ([Microsoft](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-security-groups)) |
 >
-> **If your organization has strict schema governance or prefers using existing attributes, see Option B2 (Automated Group Sync).**
+> **If the organization has strict schema governance or prefers using existing attributes, see Option B2 (Automated Group Sync).**
 >
 ## LDAP Design Practices for Large Enterprises
 
