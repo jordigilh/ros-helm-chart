@@ -381,8 +381,97 @@ function create_openshift_client() {
   echo_info "Client UUID: $OPENSHIFT_CLIENT_ID"
 }
 
+function create_client_scopes() {
+  echo_header "Creating Required Client Scopes"
+
+  # Required scopes for OpenShift OAuth
+  local scopes=("openid" "profile" "email" "groups")
+  
+  for scope in "${scopes[@]}"; do
+    # Check if scope exists
+    local existing
+    existing=$(curl -sk "${KEYCLOAK_URL}/admin/realms/${REALM}/client-scopes" \
+      -H "Authorization: Bearer ${ACCESS_TOKEN}" | \
+      jq -r ".[] | select(.name==\"$scope\") | .id" 2>/dev/null)
+    
+    if [ -n "$existing" ] && [ "$existing" != "null" ]; then
+      echo_info "Scope '$scope' already exists"
+      continue
+    fi
+    
+    # Create the scope
+    local response
+    response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/client-scopes" \
+      -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "name": "'"$scope"'",
+        "protocol": "openid-connect",
+        "attributes": {"include.in.token.scope": "true"}
+      }' -w "\n%{http_code}" 2>/dev/null)
+    
+    local http_code
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "201" ]; then
+      echo_info "Created scope: $scope"
+    else
+      echo_warn "Failed to create scope '$scope' (HTTP $http_code)"
+    fi
+  done
+  
+  # Add groups mapper to the groups scope
+  local groups_scope_id
+  groups_scope_id=$(curl -sk "${KEYCLOAK_URL}/admin/realms/${REALM}/client-scopes" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" | \
+    jq -r '.[] | select(.name=="groups") | .id' 2>/dev/null)
+  
+  if [ -n "$groups_scope_id" ] && [ "$groups_scope_id" != "null" ]; then
+    curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/client-scopes/${groups_scope_id}/protocol-mappers/models" \
+      -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "name": "groups",
+        "protocol": "openid-connect",
+        "protocolMapper": "oidc-group-membership-mapper",
+        "config": {
+          "full.path": "false",
+          "id.token.claim": "true",
+          "access.token.claim": "true",
+          "claim.name": "groups",
+          "userinfo.token.claim": "true"
+        }
+      }' -w "" 2>/dev/null
+    echo_info "Added groups mapper to groups scope"
+  fi
+}
+
+function assign_scopes_to_client() {
+  echo_header "Assigning Client Scopes to OpenShift Client"
+
+  if [ -z "$OPENSHIFT_CLIENT_ID" ]; then
+    echo_error "OpenShift client ID not found"
+    return 1
+  fi
+
+  local scopes=("openid" "profile" "email" "groups")
+  
+  for scope in "${scopes[@]}"; do
+    local scope_id
+    scope_id=$(curl -sk "${KEYCLOAK_URL}/admin/realms/${REALM}/client-scopes" \
+      -H "Authorization: Bearer ${ACCESS_TOKEN}" | \
+      jq -r ".[] | select(.name==\"$scope\") | .id" 2>/dev/null)
+    
+    if [ -n "$scope_id" ] && [ "$scope_id" != "null" ]; then
+      curl -sk -X PUT "${KEYCLOAK_URL}/admin/realms/${REALM}/clients/${OPENSHIFT_CLIENT_ID}/default-client-scopes/${scope_id}" \
+        -H "Authorization: Bearer ${ACCESS_TOKEN}" -w "" 2>/dev/null
+      echo_info "Assigned scope '$scope' to openshift client"
+    fi
+  done
+}
+
 function add_groups_protocol_mapper() {
-  echo_header "Adding Groups Protocol Mapper to OpenShift Client"
+  echo_header "Adding Protocol Mappers to OpenShift Client"
 
   if [ -z "$OPENSHIFT_CLIENT_ID" ]; then
     echo_error "OpenShift client ID not found"
@@ -398,34 +487,60 @@ function add_groups_protocol_mapper() {
 
   if [ -n "$existing_mapper" ] && [ "$existing_mapper" != "null" ]; then
     echo_warn "Groups mapper already exists"
-    return 0
+  else
+    # Add groups protocol mapper to include LDAP groups in tokens
+    local response
+    response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/clients/${OPENSHIFT_CLIENT_ID}/protocol-mappers/models" \
+      -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "name": "groups",
+        "protocol": "openid-connect",
+        "protocolMapper": "oidc-group-membership-mapper",
+        "config": {
+          "full.path": "false",
+          "id.token.claim": "true",
+          "access.token.claim": "true",
+          "claim.name": "groups",
+          "userinfo.token.claim": "true"
+        }
+      }' -w "\n%{http_code}" 2>/dev/null)
+
+    local http_code
+    http_code=$(echo "$response" | tail -n1)
+
+    if [ "$http_code" != "201" ]; then
+      echo_error "Failed to create groups mapper (HTTP $http_code)"
+      echo "Response: $(echo "$response" | head -n-1)"
+    else
+      echo_info "Groups mapper created"
+    fi
   fi
 
-  # Add groups protocol mapper to include LDAP groups in tokens
-  local response
-  response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/clients/${OPENSHIFT_CLIENT_ID}/protocol-mappers/models" \
+  # Add preferred_username mapper (required for OpenShift to use username instead of UUID)
+  existing_mapper=$(curl -sk -X GET "${KEYCLOAK_URL}/admin/realms/${REALM}/clients/${OPENSHIFT_CLIENT_ID}/protocol-mappers/models" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d '{
-      "name": "groups",
-      "protocol": "openid-connect",
-      "protocolMapper": "oidc-group-membership-mapper",
-      "config": {
-        "full.path": "false",
-        "id.token.claim": "true",
-        "access.token.claim": "true",
-        "claim.name": "groups",
-        "userinfo.token.claim": "true"
-      }
-    }' -w "\n%{http_code}" 2>/dev/null)
+    -H "Content-Type: application/json" | \
+    jq -r '.[] | select(.name == "preferred_username") | .id' 2>/dev/null)
 
-  local http_code
-  http_code=$(echo "$response" | tail -n1)
-
-  if [ "$http_code" != "201" ]; then
-    echo_error "Failed to create groups mapper (HTTP $http_code)"
-    echo "Response: $(echo "$response" | head -n-1)"
-    return 1
+  if [ -z "$existing_mapper" ] || [ "$existing_mapper" = "null" ]; then
+    curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/clients/${OPENSHIFT_CLIENT_ID}/protocol-mappers/models" \
+      -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "name": "preferred_username",
+        "protocol": "openid-connect",
+        "protocolMapper": "oidc-usermodel-property-mapper",
+        "config": {
+          "user.attribute": "username",
+          "claim.name": "preferred_username",
+          "jsonType.label": "String",
+          "id.token.claim": "true",
+          "access.token.claim": "true",
+          "userinfo.token.claim": "true"
+        }
+      }' -w "" 2>/dev/null
+    echo_info "Preferred username mapper created"
   fi
 
   echo_info "Groups protocol mapper added"
@@ -646,6 +761,8 @@ main() {
   sync_users
   sync_groups
   create_openshift_client
+  create_client_scopes
+  assign_scopes_to_client
   add_groups_protocol_mapper
   verify_configuration
   display_summary
