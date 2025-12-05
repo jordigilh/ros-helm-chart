@@ -54,9 +54,9 @@ LDAP_GROUP_BASE="${LDAP_GROUP_BASE:-OU=CostMgmt,OU=Groups,${LDAP_BASE_DN}}"
 ORG_ID_ATTR="${ORG_ID_ATTR:-costCenter}"      # Maps to org_id
 ACCOUNT_ATTR="${ACCOUNT_ATTR:-division}"       # Maps to account_number
 
-# Group Naming
-ORG_GROUP_PREFIX="${ORG_GROUP_PREFIX:-org-}"
-ACCOUNT_GROUP_PREFIX="${ACCOUNT_GROUP_PREFIX:-account-}"
+# Group Naming (with namespace prefix to avoid collisions)
+ORG_GROUP_PREFIX="${ORG_GROUP_PREFIX:-cost-mgmt-org-}"
+ACCOUNT_GROUP_PREFIX="${ACCOUNT_GROUP_PREFIX:-cost-mgmt-account-}"
 
 # Logging
 LOG_LEVEL="${LOG_LEVEL:-INFO}"  # DEBUG, INFO, WARN, ERROR

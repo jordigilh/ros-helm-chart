@@ -26,9 +26,9 @@ stringData:
   ORG_ID_ATTR: "costCenter"      # LDAP attribute for organization ID
   ACCOUNT_ATTR: "division"       # LDAP attribute for account number
 
-  # Group Naming (optional)
-  ORG_GROUP_PREFIX: "org-"
-  ACCOUNT_GROUP_PREFIX: "account-"
+  # Group Naming (with namespace prefix to avoid collisions)
+  ORG_GROUP_PREFIX: "cost-mgmt-org-"
+  ACCOUNT_GROUP_PREFIX: "cost-mgmt-account-"
 
   # Logging
   LOG_LEVEL: "INFO"  # DEBUG, INFO, WARN, ERROR

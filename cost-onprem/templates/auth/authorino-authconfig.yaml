@@ -45,41 +45,39 @@ spec:
           import future.keywords.in
 
           # Extract org_id from groups
-          # Supports two patterns:
-          #   1. Sync-generated: "org-1234567" (from ldap-user-attrs-to-groups-sync.sh)
-          #   2. Path format: "/organizations/1234567" (if Keycloak adds paths)
+          # Pattern: "cost-mgmt-org-1234567" (from ldap-user-attrs-to-groups-sync.sh)
+          # The prefix prevents collisions with other LDAP groups
           # Use array comprehension to ensure single result even if user has multiple org groups
-          org_ids := [trim_prefix(group, "org-") |
+          org_ids := [trim_prefix(group, "cost-mgmt-org-") |
             some group in input.auth.identity.groups
-            startswith(group, "org-")
+            startswith(group, "cost-mgmt-org-")
             # Validate the org_id portion is numeric (7-10 digits)
-            regex.match(`^org-[0-9]{7,10}$`, group)
+            regex.match(`^cost-mgmt-org-[0-9]{7,10}$`, group)
           ]
           
           # Take first matching org_id (users should have exactly one, but this handles edge cases)
           org_id := org_ids[0] if { count(org_ids) > 0 }
           
-          # Default org_id if no org- group found
+          # Default org_id if no cost-mgmt-org- group found
           default org_id := ""
 
           # Extract account_number from groups
-          # Supports two patterns:
-          #   1. Sync-generated: "account-9876543" (from ldap-user-attrs-to-groups-sync.sh)
-          #   2. Path format: "/accounts/9876543" (if Keycloak adds paths)
+          # Pattern: "cost-mgmt-account-9876543" (from ldap-user-attrs-to-groups-sync.sh)
+          # The prefix prevents collisions with other LDAP groups
           # Backend requires BOTH org_id AND account_number for multi-tenant data isolation
           # They must be different identifiers (org_id != account_number)
           # Use array comprehension to ensure single result
-          account_numbers := [trim_prefix(group, "account-") |
+          account_numbers := [trim_prefix(group, "cost-mgmt-account-") |
             some group in input.auth.identity.groups
-            startswith(group, "account-")
+            startswith(group, "cost-mgmt-account-")
             # Validate the account number is numeric (7-10 digits)
-            regex.match(`^account-[0-9]{7,10}$`, group)
+            regex.match(`^cost-mgmt-account-[0-9]{7,10}$`, group)
           ]
           
           # Take first matching account_number
           account_number := account_numbers[0] if { count(account_numbers) > 0 }
 
-          # Default: Empty string if no account- group found (will trigger auth error)
+          # Default: Empty string if no cost-mgmt-account- group found (will trigger auth error)
           # Both org_id and account_number are REQUIRED for backend database queries
           default account_number := ""
 

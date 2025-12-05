@@ -229,8 +229,8 @@ function create_orgid_group_mapper() {
 
   # Create group mapper for sync-generated org groups
   # These groups are created by ldap-user-attrs-to-groups-sync.sh
-  # Pattern: CN=org-{costCenter} (e.g., CN=org-1234567)
-  # Will be imported as: /organizations/1234567
+  # Pattern: CN=cost-mgmt-org-{costCenter} (e.g., CN=cost-mgmt-org-1234567)
+  # Will be imported as groups by Keycloak
   local response
   response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
@@ -249,7 +249,7 @@ function create_orgid_group_mapper() {
         "membership.user.ldap.attribute": ["uid"],
         "groups.dn": ["ou=CostMgmt,ou=groups,'"${LDAP_BASE_DN}"'"],
         "group.object.classes": ["groupOfNames"],
-        "groups.ldap.filter": ["(cn=org-*)"],
+        "groups.ldap.filter": ["(cn=cost-mgmt-org-*)"],
         "preserve.group.inheritance": ["false"],
         "ignore.missing.groups": ["false"],
         "memberof.ldap.attribute": ["memberOf"],
@@ -268,7 +268,7 @@ function create_orgid_group_mapper() {
   fi
 
   echo_info "✓ Org groups mapper created"
-  echo_info "  Pattern: CN=org-* → groups"
+  echo_info "  Pattern: CN=cost-mgmt-org-* → groups"
   echo_info "  Sync script creates these from user.costCenter attributes"
 }
 
@@ -295,8 +295,8 @@ function create_account_group_mapper() {
 
   # Create group mapper for sync-generated account groups
   # These groups are created by ldap-user-attrs-to-groups-sync.sh
-  # Pattern: CN=account-{accountNumber} (e.g., CN=account-9876543)
-  # Will be imported as: /accounts/9876543
+  # Pattern: CN=cost-mgmt-account-{accountNumber} (e.g., CN=cost-mgmt-account-9876543)
+  # Will be imported as groups by Keycloak
   local response
   response=$(curl -sk -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/components" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
@@ -315,7 +315,7 @@ function create_account_group_mapper() {
         "membership.user.ldap.attribute": ["uid"],
         "groups.dn": ["ou=CostMgmt,ou=groups,'"${LDAP_BASE_DN}"'"],
         "group.object.classes": ["groupOfNames"],
-        "groups.ldap.filter": ["(cn=account-*)"],
+        "groups.ldap.filter": ["(cn=cost-mgmt-account-*)"],
         "preserve.group.inheritance": ["false"],
         "ignore.missing.groups": ["false"],
         "memberof.ldap.attribute": ["memberOf"],
@@ -334,7 +334,7 @@ function create_account_group_mapper() {
   fi
 
   echo_info "✓ Account groups mapper created"
-  echo_info "  Pattern: CN=account-* → groups"
+  echo_info "  Pattern: CN=cost-mgmt-account-* → groups"
   echo_info "  Sync script creates these from user.accountNumber attributes"
 }
 
