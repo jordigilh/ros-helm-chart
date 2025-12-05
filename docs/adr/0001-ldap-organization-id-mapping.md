@@ -149,7 +149,19 @@ Keycloak uses **pull-based synchronization** (queries LDAP), not push:
 
 **Concern:** In READ_ONLY mode, Keycloak doesn't write to LDAP. How do we map user attributes (`costCenter`) to groups?
 
-**Solution:** Our sync script creates groups **in LDAP**, not in Keycloak:
+**Solution:** Our sync script creates groups **in LDAP**, not in Keycloak.
+
+> ⚠️ **Trade-off Acknowledgment**
+>
+> This approach **contradicts** the industry best practice that "groups are for authorization, user attributes for metadata" (see [Role of Groups](#role-of-groups)). We are encoding user metadata (`org_id`, `account_number`) into group names.
+>
+> **Why we accept this trade-off:**
+> - OpenShift TokenReview API only returns `groups` - not user attributes
+> - This is the **only way** to pass `org_id` through the OAuth flow without credentials in the data plane
+> - Groups are created in an **isolated OU** (`ou=CostMgmt`) to minimize impact on existing LDAP structure
+> - Alternative (Claims Service) requires additional infrastructure
+
+**How it works:**
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
