@@ -76,7 +76,12 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 >
 > 4. **Group Purpose**: Groups in enterprise directories are primarily for access control (RBAC), not metadata storage. The Identity Manager Driver for LDAP maps user objects to standard `inetOrgPerson` entries with attributes - groups handle authorization separately ([Novell LDAP Driver Guide](https://www.novell.com/documentation/idmdrivers/pdfdoc/ldap/ldap.pdf)).
 >
-> 5. **Scale Concerns**: For 50k+ users with varying org/account combinations, creating individual groups per combination is impractical. User attributes scale linearly; group memberships scale combinatorially.
+> 5. **Scale Concerns** (documented limitations):
+>    - **Microsoft AD limits**: Maximum recommended group members is 5,000 in Windows 2000 AD; exceeding causes timeouts ([Microsoft AD Limits](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/active-directory-domain-services-maximum-limits))
+>    - **IBM z/OS LDAP**: "The cost of determining a user's groups increases roughly in proportion to the number of groups containing the user" ([IBM LDAP Tuning](https://www.ibm.com/docs/en/zos/3.2.0?topic=tuning-user-groups-considerations-in-large-directories))
+>    - **Atlassian**: Environments with 100k+ users experience "slow permission checks and login processes" due to group membership queries ([Atlassian LDAP Performance](https://support.atlassian.com/confluence/kb/performance-issues-with-large-ldap-repository-100-000-users-or-more/))
+>    - **Evolveum LDAP Guide**: "Managing large groups can be problematic... frequent reading of group entries with vast number of members can severely impact performance" ([LDAP Survival Guide](https://docs.evolveum.com/iam/ldap/ldap-survival-guide/))
+>    - **Recommendation**: Use user attributes or dynamic groups based on attributes to "reduce administrative overhead and improving scalability" ([Imanami](https://www.imanami.com/managing-ldap-groups-enterprise/))
 >
 > **For large enterprises (>10k employees), see Option B2 (Automated Group Sync) which reads existing user attributes.**
 
