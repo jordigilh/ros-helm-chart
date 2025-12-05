@@ -133,8 +133,19 @@ sync_attribute_to_groups() {
   local attr_name="$1"
   local group_prefix="$2"
   local path_prefix="$3"  # e.g., "/organizations/" or "/accounts/"
-
-  log_info "Syncing ${attr_name} → ${group_prefix}* groups..."
+  
+  # Determine type marker based on path prefix
+  local type_marker
+  if [[ "$path_prefix" == "/organizations/" ]]; then
+    type_marker="organization"
+  elif [[ "$path_prefix" == "/accounts/" ]]; then
+    type_marker="account"
+  else
+    log_error "Unknown path prefix: $path_prefix"
+    return 1
+  fi
+  
+  log_info "Syncing ${attr_name} → ${group_prefix}* groups (type: ${type_marker})..."
 
   # Get all unique attribute values
   local values
@@ -176,19 +187,31 @@ sync_attribute_to_groups() {
     local user_count
     user_count=$(echo "$users" | wc -l | tr -d ' ')
 
-    # Check if group exists
-    if ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
-       -b "$group_dn" -s base "(objectClass=*)" dn &>/dev/null; then
-      # Update existing group
-      log_debug "  Updating existing group: $group_dn ($user_count members)"
-
+    # Check if group exists AND verify it's ours via type marker
+    local existing_type
+    existing_type=$(ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
+      -b "$group_dn" -s base "(objectClass=*)" costManagementType 2>/dev/null | \
+      grep "^costManagementType:" | cut -d: -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    
+    if [ -n "$existing_type" ]; then
+      # Group exists - verify it's the correct type
+      if [ "$existing_type" != "$type_marker" ]; then
+        log_warn "  SKIP: Group $group_dn exists but type=$existing_type (expected: $type_marker)"
+        log_warn "  This group may be managed by a different system or process"
+        ((failed++))
+        continue
+      fi
+      
+      # Safe to update - it's ours and correct type
+      log_debug "  Updating managed group: $group_dn ($user_count members, type: $existing_type)"
+      
       # Clear existing members
       ldapmodify -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" &>/dev/null <<EOF || true
 dn: $group_dn
 changetype: modify
 delete: member
 EOF
-
+      
       # Add current members
       while IFS= read -r user_dn; do
         [ -z "$user_dn" ] && continue
@@ -202,18 +225,19 @@ member: $user_dn
 EOF
       done <<< "$users"
     else
-      # Create new group
-      log_debug "  Creating new group: $group_dn ($user_count members)"
-
-      # Need at least one member to create group (groupOfNames requirement)
+      # Create new group with type marker
+      log_debug "  Creating new managed group: $group_dn ($user_count members, type: $type_marker)"
+      
+      # Need at least one member to create group (groupOfNames/costManagementGroup requirement)
       local first_user
       first_user=$(echo "$users" | head -1)
-
+      
       if ! ldapadd -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" &>/dev/null <<EOF; then
 dn: $group_dn
-objectClass: group
+objectClass: costManagementGroup
 cn: $group_name
-description: Auto-generated: Users with ${attr_name}=${value} (maps to ${path_prefix}${value})
+costManagementType: $type_marker
+description: Auto-generated: Users with ${attr_name}=${value} (managed by Cost Management sync)
 member: $first_user
 EOF
         log_error "  Failed to create group: $group_dn"

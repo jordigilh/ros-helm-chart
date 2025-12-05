@@ -183,12 +183,25 @@ data:
       SUBSTR caseIgnoreSubstringsMatch
       SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
       SINGLE-VALUE )
+    olcAttributeTypes: ( 1.3.6.1.4.1.99999.1.3
+      NAME 'costManagementType'
+      DESC 'Type marker for Cost Management managed groups (values: organization, account)'
+      EQUALITY caseIgnoreMatch
+      SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+      SINGLE-VALUE )
     olcObjectClasses: ( 1.3.6.1.4.1.99999.2.1
       NAME 'costManagementUser'
       DESC 'User with cost management attributes (costCenter, accountNumber)'
       SUP top
       AUXILIARY
       MAY ( costCenter $ accountNumber ) )
+    olcObjectClasses: ( 1.3.6.1.4.1.99999.2.2
+      NAME 'costManagementGroup'
+      DESC 'Cost Management managed group with type marker'
+      SUP groupOfNames
+      STRUCTURAL
+      MUST ( costManagementType )
+      MAY ( cn $ description ) )
 
   04-organizations.ldif: |
     # NOTE: This OU structure is kept for organization, but groups will be
@@ -627,16 +640,24 @@ data:
 
       FIRST_USER=$(echo "$USERS" | head -1)
 
-      if ! ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
-         -b "$GROUP_DN" -s base "(objectClass=*)" dn &>/dev/null; then
+      # Check if group exists AND verify it's ours
+      TYPE=$(ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
+        -b "$GROUP_DN" -s base "(objectClass=*)" costManagementType 2>/dev/null | \
+        grep "^costManagementType:" | cut -d: -f2 | tr -d ' ')
+      
+      if [ -z "$TYPE" ]; then
+        # Group doesn't exist, create it with marker
         ldapadd -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" &>/dev/null <<EOF
     dn: $GROUP_DN
-    objectClass: groupOfNames
+    objectClass: costManagementGroup
     cn: ${ORG_GROUP_PREFIX}${ORG_ID}
+    costManagementType: organization
     description: Auto-generated: Users with costCenter=${ORG_ID}
     member: $FIRST_USER
     EOF
-        log_info "  Created: ${ORG_GROUP_PREFIX}${ORG_ID}"
+        log_info "  Created: ${ORG_GROUP_PREFIX}${ORG_ID} (type: organization)"
+      elif [ "$TYPE" != "organization" ]; then
+        log_error "  SKIP: Group $GROUP_DN exists but type=$TYPE (expected: organization)"
       fi
     done
 
@@ -656,16 +677,24 @@ data:
 
       FIRST_USER=$(echo "$USERS" | head -1)
 
-      if ! ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
-         -b "$GROUP_DN" -s base "(objectClass=*)" dn &>/dev/null; then
+      # Check if group exists AND verify it's ours
+      TYPE=$(ldapsearch -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" \
+        -b "$GROUP_DN" -s base "(objectClass=*)" costManagementType 2>/dev/null | \
+        grep "^costManagementType:" | cut -d: -f2 | tr -d ' ')
+      
+      if [ -z "$TYPE" ]; then
+        # Group doesn't exist, create it with marker
         ldapadd -x -H "$LDAP_HOST" -D "$LDAP_BIND_DN" -w "$LDAP_BIND_PASSWORD" &>/dev/null <<EOF
     dn: $GROUP_DN
-    objectClass: groupOfNames
+    objectClass: costManagementGroup
     cn: ${ACCOUNT_GROUP_PREFIX}${ACCOUNT}
+    costManagementType: account
     description: Auto-generated: Users with accountNumber=${ACCOUNT}
     member: $FIRST_USER
     EOF
-        log_info "  Created: ${ACCOUNT_GROUP_PREFIX}${ACCOUNT}"
+        log_info "  Created: ${ACCOUNT_GROUP_PREFIX}${ACCOUNT} (type: account)"
+      elif [ "$TYPE" != "account" ]; then
+        log_error "  SKIP: Group $GROUP_DN exists but type=$TYPE (expected: account)"
       fi
     done
 
