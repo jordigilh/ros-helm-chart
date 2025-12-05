@@ -149,27 +149,39 @@ Keycloak uses **pull-based synchronization** (queries LDAP), not push:
 
 **Challenge:** OpenShift TokenReview only returns `groups`, not user attributes. How do we get `costCenter` and `accountNumber` to Authorino?
 
+**The complete flow:**
+```
+LDAP → Keycloak → JWT (groups claim) → OpenShift User object → Opaque Token → TokenReview → Authorino
+                                              ↓
+                                    groups stored here
+```
+
+API requests use **opaque OAuth tokens** (not JWT). Authorino validates via TokenReview, which returns groups from the OpenShift User object. The User object's groups come from the Keycloak JWT's `groups` claim during initial login.
+
 **Available Solutions:**
 
 | Approach | How It Works | LDAP Impact | Keycloak Impact | RHBK Compatible |
 |----------|--------------|-------------|-----------------|-----------------|
-| **Protocol Mapper** | Keycloak reads user attrs, injects as group claims in JWT | None | Script mapper config | ⚠️ Requires JAR |
-| **Dynamic Groups** | LDAP auto-creates groups from user attrs | Requires support | None | ✅ Yes |
-| **Sync Script** | External job creates groups in LDAP | Creates groups | None | ✅ Yes |
-| **Claims Service** | Separate service Authorino queries | None | None | ✅ Yes |
+| **Protocol Mapper** | Keycloak reads user attrs, adds to JWT `groups` claim → OpenShift imports to User | None | Script mapper config | ⚠️ Requires JAR |
+| **LDAP Group Mapper** | Keycloak imports LDAP groups → adds to JWT `groups` claim → OpenShift imports | Groups in LDAP | Standard mapper | ✅ Yes |
+| **Dynamic Groups** | LDAP auto-creates groups from user attrs | Requires support | Standard mapper | ✅ Yes |
+| **Claims Service** | Separate service Authorino queries directly | None | None | ✅ Yes |
 
 **Industry-aligned approach (Protocol Mapper):**
 ```
-LDAP                          Keycloak                      OpenShift
-────                          ────────                      ─────────
-User: uid=test                Protocol Mapper:              TokenReview:
-└── costCenter: 1234567  ───► "Add costCenter to groups" ─► groups: ["org-1234567"]
-                              (No LDAP modification)
+LDAP                     Keycloak                  OpenShift              Authorino
+────                     ────────                  ─────────              ─────────
+User: uid=test           Protocol Mapper:          User object:           TokenReview:
+└── costCenter: 1234567  transforms attr →         groups: [              groups: [
+                         JWT groups claim:           "org-1234567"          "org-1234567"
+                         ["org-1234567"]           ]                      ]
+                         
+                         (No LDAP modification)
 ```
 
-This keeps metadata in user attributes (per [Role of Groups](#role-of-groups)) and transforms at the Keycloak layer.
+This keeps metadata in user attributes (per [Role of Groups](#role-of-groups)) and transforms at the Keycloak layer before OpenShift imports the groups.
 
-**RHBK Constraint:** Protocol Mappers require JAR packaging in RHBK (see [Option B0](#option-b0-keycloak-protocol-mapper-simplest---recommended)).
+**RHBK Constraint:** Protocol Mappers with custom scripts require JAR packaging in RHBK (see [Option B0](#option-b0-keycloak-protocol-mapper-simplest---recommended)).
 
 ### Key Insight
 
