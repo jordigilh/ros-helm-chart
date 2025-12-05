@@ -175,7 +175,7 @@ User: uid=test           Protocol Mapper:          User object:           TokenR
 └── costCenter: 1234567  transforms attr →         groups: [              groups: [
                          JWT groups claim:           "org-1234567"          "org-1234567"
                          ["org-1234567"]           ]                      ]
-                         
+
                          (No LDAP modification)
 ```
 
@@ -483,34 +483,121 @@ oc get user test -o yaml
 - ⚠️ Groups update on next login (not immediate)
 - ⚠️ Requires packaging scripts as JAR file for RHBK (see below)
 
-**IMPORTANT for RHBK Users:**
+**RHBK Implementation: Pre-packaged JAR with Configurable Attributes** ⭐ **RECOMMENDED**
 
-Red Hat Build of Keycloak **disables script uploading through the admin console** by default. To use script mappers with RHBK, you must:
+Since we control the RHBK deployment, we can pre-package the Protocol Mapper JAR into our custom RHBK image. This gives us the best of both worlds:
+- ✅ **Industry-aligned**: No LDAP modification (metadata stays in user attributes)
+- ✅ **Single JAR for all customers**: Attribute names are configurable at runtime
+- ✅ **Zero operational overhead**: JAR is baked into the image
 
-1. **Package the script as a JAR file**:
-   ```
-   my-scripts/
-   ├── META-INF/
-   │   └── keycloak-scripts.json
-   └── mappers/
-       └── user-attrs-to-groups.js
-   ```
+**JAR Structure:**
+```
+cost-mgmt-mappers.jar
+├── META-INF/
+│   └── keycloak-scripts.json
+└── mappers/
+    └── user-attrs-to-groups.js
+```
 
-2. **Deploy JAR to Keycloak server**:
-   - Add JAR to Keycloak `providers/` directory
-   - Rebuild Keycloak: `kc.sh build`
-   - Restart Keycloak pods
+**keycloak-scripts.json:**
+```json
+{
+  "mappers": [
+    {
+      "name": "cost-mgmt-attrs-to-groups",
+      "fileName": "mappers/user-attrs-to-groups.js",
+      "description": "Maps user LDAP attributes to cost management groups"
+    }
+  ]
+}
+```
 
-3. **Reference in mapper**: Use the script name from `keycloak-scripts.json`
+**user-attrs-to-groups.js (Configurable Script):**
+```javascript
+// Read configuration from realm attributes (set per customer via Keycloak admin)
+var realmAttrs = realm.getAttributes();
+
+// These CONFIG KEYS are hardcoded, but VALUES are configurable per realm
+var orgAttrName = realmAttrs.get("cost-mgmt-org-attr");
+var accountAttrName = realmAttrs.get("cost-mgmt-account-attr");
+
+// Provide defaults if not configured
+if (orgAttrName == null || orgAttrName.isEmpty()) {
+    orgAttrName = "costCenter";  // Default LDAP attribute for org_id
+}
+if (accountAttrName == null || accountAttrName.isEmpty()) {
+    accountAttrName = "division";  // Default LDAP attribute for account_number
+}
+
+// Read user's LDAP attributes using configured names
+var orgId = user.getAttribute(orgAttrName);
+var accountNumber = user.getAttribute(accountAttrName);
+
+// Get existing groups from token
+var groups = token.getOtherClaims().get("groups");
+if (groups == null) {
+    groups = new java.util.ArrayList();
+}
+
+// Add synthetic groups for cost management
+if (orgId != null && orgId.size() > 0 && !orgId.get(0).isEmpty()) {
+    groups.add("cost-mgmt-org-" + orgId.get(0));
+}
+if (accountNumber != null && accountNumber.size() > 0 && !accountNumber.get(0).isEmpty()) {
+    groups.add("cost-mgmt-account-" + accountNumber.get(0));
+}
+
+token.getOtherClaims().put("groups", groups);
+"OK";
+```
+
+**Custom RHBK Dockerfile:**
+```dockerfile
+FROM registry.redhat.io/rhbk/keycloak-rhel9:24
+
+# Copy the protocol mapper JAR
+COPY cost-mgmt-mappers.jar /opt/keycloak/providers/
+
+# Rebuild Keycloak with the new provider
+RUN /opt/keycloak/bin/kc.sh build
+```
+
+**Per-Customer Configuration (No JAR Rebuild):**
+
+| Customer | Realm Attribute | Value |
+|----------|-----------------|-------|
+| Customer A | `cost-mgmt-org-attr` | `costCenter` |
+| Customer A | `cost-mgmt-account-attr` | `division` |
+| Customer B | `cost-mgmt-org-attr` | `departmentNumber` |
+| Customer B | `cost-mgmt-account-attr` | `employeeType` |
+
+Configure via Keycloak Admin API:
+```bash
+# Set which LDAP attributes to use for this customer's realm
+curl -X POST "https://keycloak/admin/realms/openshift/attributes" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cost-mgmt-org-attr": "departmentNumber",
+    "cost-mgmt-account-attr": "employeeType"
+  }'
+```
+
+**What's Hardcoded vs Dynamic:**
+
+| Component | Hardcoded in JAR? | Changeable at Runtime? |
+|-----------|-------------------|------------------------|
+| JavaScript logic | ✅ Yes | ❌ No |
+| Config key names (`cost-mgmt-org-attr`) | ✅ Yes | ❌ No |
+| Config key values (`costCenter`, `departmentNumber`) | ❌ No | ✅ Yes (per realm) |
+| Group prefix (`cost-mgmt-org-`) | ✅ Yes | ❌ No |
 
 **Documentation**: [RHBK 22.0 Server Developer Guide - Deploying Scripts](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/22.0/html-single/server_developer_guide/index#con-as-a-deployment_server_development)
 
-**Verdict for RHBK:** Script mappers work, but require JAR deployment instead of copy-paste in UI. This adds operational complexity.
-
 **When to use this approach:**
-- ✅ If using **upstream Keycloak** (scripts enabled by default)
-- ⚠️ If using **RHBK** and comfortable with JAR packaging + pod restarts
-- ❌ If using **RHBK** and want simple configuration → Use Option B1 or B2 instead (automated groups)
+- ✅ **Recommended for RHBK deployments we control** - industry-aligned, no LDAP modification
+- ✅ If using **upstream Keycloak** (scripts enabled by default, even simpler)
+- ⚠️ If customer controls RHBK and won't use our image → Consider Option B2 (Sync Script) as fallback
 
 ---
 
@@ -927,20 +1014,24 @@ uid=test                Event Listener:            Group: "org_1234567"
 
 For customers with existing enterprise LDAP where users have `costCenter` and `division` attributes, here are all available options:
 
-| Option | Description | Complexity | RHBK Compatible | Best For |
-|--------|-------------|------------|-----------------|----------|
-| **B0: Protocol Mapper** | Keycloak script mapper reads user attrs, injects as groups in token | Low (upstream)<br>High (RHBK) | ⚠️ Yes, but requires JAR packaging | Upstream Keycloak |
-| **B1: Dynamic Groups** | LDAP server auto-creates groups from user attrs | Low | ✅ Yes | LDAP with dynamic group support |
-| **B2: Sync Script** | CronJob reads user attrs, creates/updates LDAP groups | Medium | ✅ Yes | **RHBK deployments (Recommended)** |
+| Option | Description | LDAP Impact | RHBK Compatible | Best For |
+|--------|-------------|-------------|-----------------|----------|
+| **B0: Protocol Mapper** ⭐ | Pre-packaged JAR reads user attrs, injects as groups in JWT | ✅ None | ✅ Yes (with JAR) | **RHBK we control (Recommended)** |
+| **B1: Dynamic Groups** | LDAP server auto-creates groups from user attrs | Creates groups | ✅ Yes | LDAP with dynamic group support |
+| **B2: Sync Script** | CronJob reads user attrs, creates/updates LDAP groups | Creates groups | ✅ Yes | Customer-controlled RHBK |
 
 #### Detailed Comparison
 
-**Option B0: Keycloak Protocol Mapper (Script Mapper)**
-- **Upstream Keycloak**: ✅ Simple (2-minute config, paste JavaScript in UI)
-- **RHBK**: ⚠️ Complex (requires JAR packaging, pod restarts, custom builds)
-- **Pros**: No LDAP changes, real-time on login
-- **Cons**: RHBK requires JAR deployment (CVE-2022-2668 mitigation)
-- **When to use**: Upstream Keycloak deployments only
+**Option B0: Protocol Mapper with Pre-packaged JAR** ⭐ **RECOMMENDED for RHBK we control**
+- **How it works**: JAR baked into custom RHBK image, configuration via realm attributes
+- **Industry-aligned**: ✅ No LDAP modification (metadata stays in user attributes)
+- **Pros**:
+  - No groups created in LDAP (best practice)
+  - Real-time on login (no sync delay)
+  - Single JAR for all customers (attribute names configurable)
+  - No LDAP write credentials needed
+- **Cons**: Requires maintaining custom RHBK image
+- **When to use**: RHBK deployments we control
 
 **Option B1: LDAP Dynamic Groups**
 - **Prerequisites**: LDAP server supports `memberQueryURL` (e.g., OpenLDAP with dynlist overlay)
@@ -948,16 +1039,10 @@ For customers with existing enterprise LDAP where users have `costCenter` and `d
 - **Cons**: Not supported by all LDAP servers (Active Directory doesn't support it)
 - **When to use**: If your LDAP server supports dynamic groups
 
-**Option B2: Automated Group Sync Script** ⭐ **RECOMMENDED for Enterprise (>10k employees) & RHBK**
+**Option B2: Automated Group Sync Script** (Fallback for customer-controlled RHBK)
 - **Implementation**: Kubernetes CronJob runs daily, queries LDAP user attributes, creates/updates groups
-- **Why this matches enterprise patterns**:
-  - Reads existing HR-synced attributes (`costCenter`, `division`) - no schema changes required
-  - Creates groups in isolated OU (`ou=CostMgmt`) - doesn't pollute existing group structure
-  - Standard LDAP operations - works with AD, OpenLDAP, Oracle Directory, etc.
-  - Auditable and reversible - groups can be inspected/deleted without affecting users
 - **Pros**:
   - Works with any LDAP server (AD, OpenLDAP, etc.)
-  - Standard LDAP operations
   - No Keycloak customization
   - Auditable (groups visible in LDAP)
   - Simple to maintain
@@ -966,58 +1051,44 @@ For customers with existing enterprise LDAP where users have `costCenter` and `d
 
 #### Implementation Resources
 
-**For Option B2 (Automated Sync Script):**
+**For Option B0 (Protocol Mapper with JAR) - RECOMMENDED:**
+1. **JAR Package**: `keycloak/cost-mgmt-mappers.jar` (to be created)
+   - Contains configurable JavaScript mapper
+   - Single JAR works for all customers
+   - Attribute names set via Keycloak realm attributes
+
+2. **Custom RHBK Image**: `Dockerfile.rhbk`
+   ```dockerfile
+   FROM registry.redhat.io/rhbk/keycloak-rhel9:24
+   COPY cost-mgmt-mappers.jar /opt/keycloak/providers/
+   RUN /opt/keycloak/bin/kc.sh build
+   ```
+
+3. **Per-Customer Configuration** (no rebuild):
+   ```bash
+   # Set which LDAP attributes to use for this customer
+   curl -X POST "https://keycloak/admin/realms/openshift" \
+     -H "Authorization: Bearer $ADMIN_TOKEN" \
+     -d '{
+       "attributes": {
+         "cost-mgmt-org-attr": "departmentNumber",
+         "cost-mgmt-account-attr": "employeeType"
+       }
+     }'
+   ```
+
+**For Option B2 (Sync Script - Fallback):**
 1. **Script**: `scripts/ldap-user-attrs-to-groups-sync.sh`
-   - Production-ready bash script
-   - Reads `costCenter` and `division` from users
-   - Creates `CN=org-{value}` and `CN=account-{value}` groups
-   - Configurable via environment variables
-   - Full logging and error handling
-
 2. **Deployment**: `scripts/ldap-sync-cronjob.yaml`
-   - Kubernetes CronJob (runs daily at 2 AM)
-   - Secret for LDAP credentials
-   - ConfigMap for script
-   - Resource limits and security context
-   - Network policy template
+3. **Note**: Creates groups in LDAP (not industry best practice, use only if B0 not possible)
 
-3. **Configuration**:
-   ```bash
-   # Edit ldap-sync-cronjob.yaml
-   # Update Secret with your LDAP settings:
-   LDAP_HOST: "ldap://ldap.company.com:389"
-   LDAP_BIND_DN: "CN=svc-keycloak,OU=ServiceAccounts,DC=company,DC=com"
-   LDAP_BIND_PASSWORD: "your-password"
-   ORG_ID_ATTR: "costCenter"      # Your org_id attribute
-   ACCOUNT_ATTR: "division"       # Your account_number attribute
+#### Decision Guide
 
-   # Deploy
-   kubectl apply -f scripts/ldap-sync-cronjob.yaml
-
-   # Manual run for testing
-   kubectl create job --from=cronjob/ldap-user-attrs-sync test-sync-1 -n keycloak
-   ```
-
-4. **Monitoring**:
-   ```bash
-   # Check CronJob status
-   kubectl get cronjob ldap-user-attrs-sync -n keycloak
-
-   # View last job logs
-   kubectl logs -n keycloak -l app=ldap-sync --tail=100
-
-   # Check created groups in LDAP
-   ldapsearch -x -H ldap://ldap.company.com \
-     -b "OU=CostMgmt,OU=Groups,DC=company,DC=com" "(cn=org-*)"
-   ```
-
-#### Decision Guide for Customers
-
-**Choose Option B0 (Protocol Mapper) if:**
-- ✅ Using upstream Keycloak (not RHBK)
+**Choose Option B0 (Protocol Mapper) if:** ⭐ **DEFAULT CHOICE**
+- ✅ We control the RHBK deployment
+- ✅ Want industry-aligned solution (no LDAP modification)
 - ✅ Want real-time updates on login
-- ✅ Don't want to manage LDAP groups
-- ❌ Using RHBK (too complex with JAR packaging)
+- ✅ Don't want to manage LDAP groups or sync scripts
 
 **Choose Option B1 (Dynamic Groups) if:**
 - ✅ LDAP server supports dynamic groups (OpenLDAP with dynlist)
@@ -1025,36 +1096,43 @@ For customers with existing enterprise LDAP where users have `costCenter` and `d
 - ✅ Can't run external sync scripts
 - ❌ Using Active Directory (doesn't support memberQueryURL)
 
-**Choose Option B2 (Sync Script) if:** ⭐
-- ✅ Using RHBK (Red Hat Build of Keycloak)
-- ✅ Using Active Directory or standard LDAP
-- ✅ Want simple, maintainable solution
-- ✅ Can run Kubernetes CronJobs
-- ✅ Daily sync frequency is acceptable
-- ✅ This is **recommended for production RHBK deployments**
+**Choose Option B2 (Sync Script) if:** (Fallback)
+- ⚠️ Customer controls RHBK and won't use our custom image
+- ⚠️ Cannot modify Keycloak deployment
+- ✅ Can run Kubernetes CronJobs with LDAP write access
+- ⚠️ Acceptable to create groups in LDAP (deviates from best practice)
 
 ---
 
 ## Decision Outcome
 
-**Chosen Option: Automated Group Sync with CEL-based Extraction (Option B2 variant)**
+**Chosen Option: Protocol Mapper with Pre-packaged JAR (Option B0 for RHBK)**
 
-### Actual Implementation (POC Verified)
+### Recommended Production Approach
 
-We implemented a variant that combines:
-- **LDAP user attributes** (`costCenter`, `accountNumber`) as the source of truth
-- **Sync script** that creates `cost-mgmt-org-{id}` and `cost-mgmt-account-{id}` groups
-- **Keycloak Group Mapper** to sync groups to JWT tokens
-- **CEL expressions** in Authorino to extract values from group names
+Since we control the RHBK deployment, we use a **pre-packaged Protocol Mapper JAR** that:
+- **Reads user LDAP attributes** (`costCenter`, `accountNumber`) at login time
+- **Transforms them to synthetic groups** (`cost-mgmt-org-{id}`, `cost-mgmt-account-{id}`) in the JWT
+- **Configurable per customer** via Keycloak realm attributes (no JAR rebuild needed)
+- **No LDAP modification** - metadata stays in user attributes (industry best practice)
 
 ### Rationale
 
-1. **CEL over Rego**: Rego is being deprecated in Authorino; CEL is the recommended approach
-2. **Flat Group Names**: `cost-mgmt-org-1234567` is simpler than hierarchical paths like `/organizations/1234567`
-3. **User Attributes as Source**: Enterprise LDAPs typically have `costCenter`/`division` as user attributes, not group attributes
-4. **Sync Script Flexibility**: Works with any LDAP (AD, OpenLDAP) without requiring dynamic group support
-5. **Zero Credentials in Data Plane**: Authorino has no Keycloak or LDAP credentials
-6. **RHBK Compatible**: No script mappers required (avoids JAR packaging complexity)
+1. **Industry-aligned**: Groups are for authorization, not metadata. We don't create groups in LDAP.
+2. **Single JAR for all customers**: Attribute names are configurable at runtime via realm settings
+3. **Zero LDAP write access**: Protocol Mapper only reads user attributes
+4. **Real-time**: Updates on login (no sync delay)
+5. **CEL in Authorino**: Extracts values from group names (Rego is deprecated)
+6. **Zero Credentials in Data Plane**: Authorino has no Keycloak or LDAP credentials
+
+### POC Implementation (2025-12-05)
+
+The POC used a **Sync Script approach** (Option B2) for faster iteration. This verified:
+- CEL expressions work correctly in Authorino
+- Group naming convention (`cost-mgmt-org-{id}`) is parseable
+- End-to-end flow from LDAP → OpenShift → Authorino → Backend
+
+**Production will use Protocol Mapper** (industry-aligned) instead of Sync Script.
 
 ### Complete Request Flow (End-to-End) - VERIFIED ✅
 
