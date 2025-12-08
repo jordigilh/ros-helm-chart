@@ -87,7 +87,7 @@ check_prerequisites() {
         OAUTH_CALLBACK="https://oauth-openshift.apps.$CLUSTER_DOMAIN"
         CONSOLE_URL="https://console-openshift-console.apps.$CLUSTER_DOMAIN"
         echo_success "✓ Cluster domain detected: $CLUSTER_DOMAIN"
-        
+
         # Auto-detect UI base URL if not explicitly set
         if [ -z "$UI_BASE_URL" ]; then
             # Try to detect from existing route
@@ -661,6 +661,26 @@ spec:
               id.token.claim: "true"
               access.token.claim: "true"
               userinfo.token.claim: "true"
+          - name: costCenter
+            protocol: openid-connect
+            protocolMapper: oidc-usermodel-attribute-mapper
+            config:
+              userinfo.token.claim: "true"
+              user.attribute: costCenter
+              id.token.claim: "true"
+              access.token.claim: "true"
+              claim.name: costCenter
+              jsonType.label: String
+          - name: division
+            protocol: openid-connect
+            protocolMapper: oidc-usermodel-attribute-mapper
+            config:
+              userinfo.token.claim: "true"
+              user.attribute: division
+              id.token.claim: "true"
+              access.token.claim: "true"
+              claim.name: division
+              jsonType.label: String
       - name: email
         description: "OpenID Connect built-in scope: email"
         protocol: openid-connect
@@ -846,17 +866,17 @@ EOF
             # Check if both clients are in the list
             local operator_client_found=false
             local ui_client_found=false
-            
+
             if echo "$client_data" | grep -q "\"clientId\":\"$COST_MGMT_OPERATOR_CLIENT_ID\""; then
                 echo_success "✓ Client '$COST_MGMT_OPERATOR_CLIENT_ID' is available via admin API"
                 operator_client_found=true
             fi
-            
+
             if echo "$client_data" | grep -q "\"clientId\":\"$COST_MGMT_UI_CLIENT_ID\""; then
                 echo_success "✓ Client '$COST_MGMT_UI_CLIENT_ID' is available via admin API"
                 ui_client_found=true
             fi
-            
+
             if [ "$operator_client_found" = true ] && [ "$ui_client_found" = true ]; then
                 clients_available=true
                 break
@@ -958,29 +978,29 @@ validate_deployment() {
 # This fixes the admin console loading issue by adding proper Web Origins and Redirect URIs
 configure_admin_console() {
     echo_header "CONFIGURING ADMIN CONSOLE"
-    
+
     # Get Keycloak URL
     local KEYCLOAK_URL=$(oc get route keycloak -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
     if [ -z "$KEYCLOAK_URL" ]; then
         echo_error "Could not get Keycloak route URL"
         return 1
     fi
-    
+
     echo_info "Keycloak URL: https://$KEYCLOAK_URL"
-    
+
     # Get admin credentials
     local ADMIN_PASSWORD=$(oc get secret keycloak-initial-admin -n "$NAMESPACE" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d)
     if [ -z "$ADMIN_PASSWORD" ]; then
         echo_error "Could not retrieve admin password"
         return 1
     fi
-    
+
     # Wait for Keycloak to be ready
     echo_info "Waiting for Keycloak admin API to be available..."
     local max_attempts=30
     local attempt=0
     local token_response=""
-    
+
     while [ $attempt -lt $max_attempts ]; do
         token_response=$(curl -sk -X POST "https://$KEYCLOAK_URL/realms/master/protocol/openid-connect/token" \
             -H "Content-Type: application/x-www-form-urlencoded" \
@@ -988,37 +1008,37 @@ configure_admin_console() {
             -d "password=$ADMIN_PASSWORD" \
             -d "grant_type=password" \
             -d "client_id=admin-cli" 2>/dev/null)
-        
+
         local access_token=$(echo "$token_response" | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
-        
+
         if [ -n "$access_token" ]; then
             echo_success "✓ Admin API is available"
             break
         fi
-        
+
         sleep 2
         attempt=$((attempt + 1))
     done
-    
+
     if [ -z "$access_token" ]; then
         echo_error "Could not authenticate to Keycloak admin API"
         return 1
     fi
-    
+
     # Get security-admin-console client ID
     echo_info "Configuring security-admin-console client..."
     local clients_response=$(curl -sk "https://$KEYCLOAK_URL/admin/realms/master/clients" \
         -H "Authorization: Bearer $access_token" 2>/dev/null)
-    
+
     local client_uuid=$(echo "$clients_response" | grep -o '"id":"[^"]*","clientId":"security-admin-console"' | grep -o '"id":"[^"]*' | cut -d'"' -f4)
-    
+
     if [ -z "$client_uuid" ]; then
         echo_error "Could not find security-admin-console client"
         return 1
     fi
-    
+
     echo_info "Client UUID: $client_uuid"
-    
+
     # Update client configuration to fix admin console loading issue
     # This adds explicit Web Origins and Redirect URIs
     local update_response=$(curl -sk -X PUT "https://$KEYCLOAK_URL/admin/realms/master/clients/$client_uuid" \
@@ -1036,11 +1056,11 @@ configure_admin_console() {
                 "/admin/master/console/*"
             ]
         }' 2>/dev/null)
-    
+
     # Verify the update
     local verify_response=$(curl -sk "https://$KEYCLOAK_URL/admin/realms/master/clients/$client_uuid" \
         -H "Authorization: Bearer $access_token" 2>/dev/null)
-    
+
     if echo "$verify_response" | grep -q "https://$KEYCLOAK_URL"; then
         echo_success "✓ Admin console client configured successfully"
         echo_info "  - Web Origins: https://$KEYCLOAK_URL"
@@ -1100,7 +1120,7 @@ extract_client_secret() {
     extract_single_client_secret() {
         local client_id=$1
         local secret_name=$2
-        
+
         echo_info "Looking up client UUID for '$client_id'..."
         local CLIENT_DATA=$(curl -sk -X GET "$KEYCLOAK_URL/admin/realms/$REALM_NAME/clients" \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
@@ -1157,6 +1177,68 @@ extract_client_secret() {
     echo ""
 }
 
+# Function to create Keycloak CA certificate secret for oauth2-proxy
+create_keycloak_ca_secret() {
+    echo_header "CREATING KEYCLOAK CA CERTIFICATE SECRET"
+
+    local SECRET_NAME="keycloak-ca-cert"
+    local TARGET_NS="$COST_MGMT_NAMESPACE"
+
+    echo_info "Creating Keycloak CA certificate secret in namespace: $TARGET_NS"
+
+    # Ensure target namespace exists
+    if ! oc get namespace "$TARGET_NS" >/dev/null 2>&1; then
+        echo_info "Creating namespace: $TARGET_NS"
+        oc create namespace "$TARGET_NS" 2>/dev/null || true
+    fi
+
+    # Extract CA certificate from OpenShift's ingress operator
+    echo_info "Extracting cluster CA certificate from router-ca secret..."
+
+    local CA_CERT=""
+    CA_CERT=$(oc get secret router-ca -n openshift-ingress-operator -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d || echo "")
+
+    if [ -z "$CA_CERT" ]; then
+        echo_info "Router CA secret not found, trying service-ca ConfigMap..."
+        CA_CERT=$(oc get configmap openshift-service-ca.crt -n openshift-config-managed -o jsonpath='{.data.service-ca\.crt}' 2>/dev/null || echo "")
+    fi
+
+    if [ -z "$CA_CERT" ]; then
+        echo_info "Service CA not found, extracting from Keycloak route certificate..."
+        local KEYCLOAK_HOST=$(oc get route keycloak -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null)
+        if [ -n "$KEYCLOAK_HOST" ]; then
+            CA_CERT=$(echo | openssl s_client -connect "$KEYCLOAK_HOST:443" -servername "$KEYCLOAK_HOST" -showcerts 2>/dev/null | \
+                awk '/-----BEGIN CERTIFICATE-----/{p=1; cert=""} p{cert=cert $0 "\n"} /-----END CERTIFICATE-----/{if(p) {last=cert} p=0} END{print last}')
+        fi
+    fi
+
+    if [ -z "$CA_CERT" ]; then
+        echo_warning "Could not extract CA certificate. oauth2-proxy may fail to connect to Keycloak."
+        echo_warning "  oc get secret router-ca -n openshift-ingress-operator -o jsonpath='{.data.tls\\.crt}' | base64 -d > ca.crt"
+        echo_warning "  oc create secret generic $SECRET_NAME --from-file=ca.crt=ca.crt -n $TARGET_NS"
+        return 1
+    fi
+
+    local TEMP_CA_FILE=$(mktemp)
+    echo "$CA_CERT" > "$TEMP_CA_FILE"
+    oc create secret generic "$SECRET_NAME" \
+        -n "$TARGET_NS" \
+        --from-file=ca.crt="$TEMP_CA_FILE" \
+        --dry-run=client -o yaml | oc apply -f - >/dev/null 2>&1
+    local result=$?
+    rm -f "$TEMP_CA_FILE"
+
+    if [ $result -eq 0 ]; then
+        echo_success "Created secret: $SECRET_NAME in namespace $TARGET_NS"
+        echo_info "  This CA certificate will be used by oauth2-proxy to trust Keycloak"
+    else
+        echo_warning "Failed to create CA certificate secret"
+        return 1
+    fi
+
+    echo ""
+}
+
 # Function to create test group and user
 create_test_group_and_user() {
     echo_header "CREATING TEST GROUP AND USER"
@@ -1208,7 +1290,7 @@ create_test_group_and_user() {
                 "org_id": ["12345"]
             }
         }' 2>/dev/null)
-    
+
     local GROUP_RESPONSE=$(cat /tmp/group_response.txt 2>/dev/null || echo "")
     rm -f /tmp/group_response.txt
 
@@ -1221,7 +1303,7 @@ create_test_group_and_user() {
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" 2>/dev/null)
         GROUP_ID=$(echo "$GROUPS_RESPONSE" | grep -o '"id":"[^"]*"[^}]*"name":"test-group"' | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | head -1)
-        
+
         if [ -n "$GROUP_ID" ]; then
             echo_info "Found existing group 'test-group', updating attributes..."
             # Update group attributes
@@ -1254,8 +1336,8 @@ create_test_group_and_user() {
 
     echo_info "Group ID: $GROUP_ID"
 
-    # Create test user
-    echo_info "Creating user 'test'..."
+    # Create test user with sample org_id/account_number attributes
+    echo_info "Creating user 'test' with costCenter and division attributes..."
     local USER_HTTP_CODE=$(curl -sk -o /tmp/user_response.txt -w "%{http_code}" -X POST "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users" \
         -H "Authorization: Bearer $ACCESS_TOKEN" \
         -H "Content-Type: application/json" \
@@ -1265,9 +1347,13 @@ create_test_group_and_user() {
             "emailVerified": true,
             "enabled": true,
             "firstName": "Test",
-            "lastName": "User"
+            "lastName": "User",
+            "attributes": {
+                "costCenter": ["12345"],
+                "division": ["67890"]
+            }
         }' 2>/dev/null)
-    
+
     local USER_RESPONSE=$(cat /tmp/user_response.txt 2>/dev/null || echo "")
     rm -f /tmp/user_response.txt
 
@@ -1279,10 +1365,10 @@ create_test_group_and_user() {
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" 2>/dev/null)
         USER_ID=$(echo "$USERS_RESPONSE" | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | head -1)
-        
+
         if [ -n "$USER_ID" ]; then
-            echo_info "Found existing user 'test', updating..."
-            # Update user
+            echo_info "Found existing user 'test', updating with attributes..."
+            # Update user with attributes
             curl -sk -X PUT "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users/$USER_ID" \
                 -H "Authorization: Bearer $ACCESS_TOKEN" \
                 -H "Content-Type: application/json" \
@@ -1292,7 +1378,11 @@ create_test_group_and_user() {
                     "emailVerified": true,
                     "enabled": true,
                     "firstName": "Test",
-                    "lastName": "User"
+                    "lastName": "User",
+                    "attributes": {
+                        "costCenter": ["12345"],
+                        "division": ["67890"]
+                    }
                 }' >/dev/null 2>&1
             echo_success "✓ User 'test' updated"
         fi
@@ -1343,7 +1433,7 @@ create_test_group_and_user() {
         local USER_GROUPS=$(curl -sk -X GET "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users/$USER_ID/groups" \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" 2>/dev/null)
-        
+
         if echo "$USER_GROUPS" | grep -q "\"id\":\"$GROUP_ID\""; then
             echo_success "✓ User 'test' is already in group 'test-group'"
         else
@@ -1486,6 +1576,7 @@ main() {
     # Note: Admin secret is auto-generated by RHBK operator when Keycloak instance is created
     deploy_postgresql
     deploy_keycloak
+    create_keycloak_ca_secret
     create_kubernetes_realm
     configure_admin_console
     extract_client_secret

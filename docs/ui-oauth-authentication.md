@@ -344,16 +344,16 @@ The Nginx configuration is embedded in the UI application container. Key configu
 # API proxy location - forwards to ROS API
 location /api {
     proxy_pass ${API_PROXY_URL};
-    
+
     # OAuth2 proxy passes Authorization header with Bearer token via --pass-authorization-header
     # Nginx forwards the Authorization header directly to ROS API
     proxy_set_header Authorization $http_authorization;
-    
+
     # Standard proxy headers
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    
+
     # HTTP/1.1 connection settings
     proxy_http_version 1.1;
     proxy_set_header Connection "";
@@ -367,7 +367,7 @@ location / {
 
 #### Key Configuration Points
 
-1. **API Proxy URL**: 
+1. **API Proxy URL**:
    - Set via `API_PROXY_URL` environment variable
    - Points to ROS API service: `http://<fullname>-ros-api:8000`
    - Configured in Helm values: `ui.app.env.API_PROXY_URL`
@@ -392,9 +392,9 @@ User → Route → OAuth Proxy → Nginx → Serve /index.html → Response
 
 **API Request:**
 ```
-User → Route → OAuth2 Proxy (adds Authorization: Bearer <token> via --pass-authorization-header) 
-  → Nginx (forwards Authorization header) 
-  → ROS API (validates Bearer token) 
+User → Route → OAuth2 Proxy (adds Authorization: Bearer <token> via --pass-authorization-header)
+  → Nginx (forwards Authorization header)
+  → ROS API (validates Bearer token)
   → Response
 ```
 
@@ -578,6 +578,26 @@ oc logs -n openshift-service-ca -l app=service-ca
 # Restart pod to pick up certificate
 oc rollout restart deployment -n ros-ocp -l app.kubernetes.io/component=ui
 ```
+
+### Keycloak Certificate Not Trusted
+
+**Symptom**: OAuth proxy fails to start with error:
+```
+ERROR: Failed to initialise OAuth2 Proxy: tls: failed to verify certificate: x509: certificate signed by unknown authority
+```
+
+**Cause**: The `keycloak-ca-cert` secret is missing or contains wrong CA certificate.
+
+**Solution**:
+```bash
+# Extract the cluster CA from OpenShift ingress operator
+oc get secret router-ca -n openshift-ingress-operator -o jsonpath='{.data.tls\.crt}' | base64 -d > ca.crt
+
+# Create secret in deployment namespace
+kubectl create secret generic keycloak-ca-cert --from-file=ca.crt=./ca.crt -n ros-ocp
+```
+
+**Note**: The `deploy-rhbk.sh` script creates this secret automatically.
 
 ### Session Expired Too Quickly
 

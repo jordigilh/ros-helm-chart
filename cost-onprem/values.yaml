@@ -476,9 +476,9 @@ ui:
 
   oauthProxy:
     image:
-      repository: quay.io/oauth2-proxy/oauth2-proxy
+      repository: registry.redhat.io/rhceph/oauth2-proxy-rhel9
       pullPolicy: IfNotPresent
-      tag: "v7.7.1"
+      tag: "v7.6.0"
     resources:
       limits:
         cpu: "100m"
@@ -494,7 +494,11 @@ ui:
       expire: "720h"
       refresh: "4m"
 
-
+    # TLS configuration for Keycloak OIDC provider communication
+    tls:
+      # Secret containing CA certificate to trust Keycloak's certificate
+      # Created by deploy-rhbk.sh script before helm install
+      caCertSecretName: "keycloak-ca-cert"
   app:
     image:
       repository: quay.io/insights-onprem/koku-ui-mfe-on-prem

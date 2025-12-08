@@ -61,6 +61,7 @@ spec:
         - --cookie-secure=true
         - --cookie-expire={{ .Values.ui.oauthProxy.cookie.expire }}
         - --cookie-refresh={{ .Values.ui.oauthProxy.cookie.refresh }}
+        - --provider-ca-file=/etc/keycloak-ca/ca.crt
         livenessProbe:
           httpGet:
             path: /ping
@@ -84,6 +85,9 @@ spec:
         volumeMounts:
         - name: proxy-tls
           mountPath: /etc/tls/private
+          readOnly: true
+        - name: keycloak-ca
+          mountPath: /etc/keycloak-ca
           readOnly: true
       - name: app
         image: "{{ .Values.ui.app.image.repository }}:{{ .Values.ui.app.image.tag }}"
@@ -121,6 +125,9 @@ spec:
       - name: nginx-config
         configMap:
           name: {{ include "cost-onprem.fullname" . }}-ui-nginx-config
+      - name: keycloak-ca
+        secret:
+          secretName: {{ .Values.ui.oauthProxy.tls.caCertSecretName }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
