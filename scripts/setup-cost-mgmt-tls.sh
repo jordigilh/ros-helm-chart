@@ -566,6 +566,7 @@ spec:
   name: costmanagement-metrics-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  startingCSV: costmanagement-metrics-operator.v4.2.0
 EOF
 
         # Wait for operator to be ready

@@ -360,6 +360,45 @@ Authorino provides OAuth2 TokenReview authentication for the backend API, enabli
 
 **See [Configuration Guide](configuration.md) for detailed requirements**
 
+### 6. User Workload Monitoring (Required for ROS Metrics)
+
+User Workload Monitoring must be enabled for Prometheus to scrape ServiceMonitors deployed by this chart. Without it, the ROS data pipeline will not function - ServiceMonitors will be created but no metrics will be collected.
+
+**Check if User Workload Monitoring is enabled:**
+
+```bash
+# Check for prometheus-user-workload pods
+oc get pods -n openshift-user-workload-monitoring
+
+# If no pods are found, user workload monitoring is not enabled
+```
+
+**Enable User Workload Monitoring:**
+
+```bash
+cat <<EOF | oc apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-monitoring-config
+  namespace: openshift-monitoring
+data:
+  config.yaml: |
+    enableUserWorkload: true
+EOF
+```
+
+**Verify:**
+
+```bash
+# Wait for prometheus-user-workload pods to start
+oc get pods -n openshift-user-workload-monitoring -w
+
+# Expected output: prometheus-user-workload-0, prometheus-user-workload-1, thanos-ruler-user-workload-*
+```
+
+**Warning:** Without User Workload Monitoring enabled, the deployment will appear successful (all pods running, ServiceMonitors created), but the ROS data pipeline will produce no metrics or recommendations. This is a **silent failure** - always verify prometheus-user-workload pods are running before testing the data pipeline.
+
 ---
 
 ## Upgrade Procedures

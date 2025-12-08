@@ -55,7 +55,25 @@ Before forcing an upload, ensure:
 
 1. **Metrics have been collected recently** (within the last hour)
 2. **ServiceMonitors are deployed** (see [installation.md](installation.md))
-3. **User-workload monitoring is enabled** (see [installation.md](installation.md))
+3. **User-workload monitoring is enabled**:
+   ```bash
+   # Verify user workload monitoring is enabled
+   oc get pods -n openshift-user-workload-monitoring
+   # Should show prometheus-user-workload-* pods
+
+   # If not enabled, run:
+   oc apply -f - <<EOF
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: cluster-monitoring-config
+     namespace: openshift-monitoring
+   data:
+     config.yaml: |
+       enableUserWorkload: true
+   EOF
+   ```
+   See [installation.md](installation.md#6-user-workload-monitoring-required-for-ros-metrics) for more details.
 4. **The operator is running**:
    ```bash
    kubectl get pods -n costmanagement-metrics-operator -l app.kubernetes.io/name=costmanagement-metrics-operator
