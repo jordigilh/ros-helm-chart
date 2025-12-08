@@ -59,6 +59,8 @@ spec:
         - --code-challenge-method=S256
         - --email-domain=*
         - --cookie-secure=true
+        - --cookie-expire={{ .Values.ui.oauthProxy.cookie.expire }}
+        - --cookie-refresh={{ .Values.ui.oauthProxy.cookie.refresh }}
         livenessProbe:
           httpGet:
             path: /ping

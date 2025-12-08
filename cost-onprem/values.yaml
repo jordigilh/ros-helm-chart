@@ -489,6 +489,11 @@ ui:
     client:
       id: ""
       secret: ""
+    cookie:
+      # Cookie expiration time (720h = 30 days)
+      expire: "720h"
+      refresh: "4m"
+
 
   app:
     image:
