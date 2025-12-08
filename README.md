@@ -33,7 +33,7 @@ helm repo add cost-onprem https://insights-onprem.github.io/cost-onprem-chart
 helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --create-namespace
 ```
 
-**Note for OpenShift:** See [Authentication Setup](#-authentication-setup) section for required prerequisites (Authorino and Keycloak)
+**Note for OpenShift:** See [Authentication Setup](#-authentication-setup) section for required prerequisites (Keycloak)
 
 📖 **See [Installation Guide](docs/installation.md) for detailed installation options**
 
@@ -48,7 +48,7 @@ helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --creat
 |-------------------|-------------------|---------------|
 | [Quick Start](docs/quickstart.md)<br/>*Fast deployment walkthrough* | [Installation Guide](docs/installation.md)<br/>*Detailed installation instructions* | [Troubleshooting](docs/troubleshooting.md)<br/>*Common issues & solutions* |
 | [Platform Guide](docs/platform-guide.md)<br/>*Kubernetes vs OpenShift* | [JWT Authentication](docs/native-jwt-authentication.md)<br/>*Ingress authentication (Keycloak)* | [Force Upload](docs/force-operator-upload.md)<br/>*Testing & validation* |
-| | [OAuth2 TokenReview](docs/oauth2-tokenreview-authentication.md)<br/>*Backend authentication (Authorino)* | [Scripts Reference](scripts/README.md)<br/>*Automation scripts* |
+| | [Scripts Reference](scripts/README.md)<br/>*Automation scripts* |
 | | [Keycloak Setup](docs/keycloak-jwt-authentication-setup.md)<br/>*SSO configuration* | |
 
 **Need more?** Configuration, security, templates, and specialized guides are available in the [Complete Documentation Index](docs/README.md).
@@ -66,7 +66,7 @@ cost-onprem-chart/
 │       ├── sources-api/       # Source management
 │       ├── ingress/           # API gateway
 │       ├── infrastructure/    # Database, Kafka, storage, cache
-│       ├── auth/              # Authentication (Authorino)
+│       ├── auth/              # Authentication (CA certificates)
 │       ├── monitoring/        # Prometheus ServiceMonitor
 │       ├── shared/            # Shared resources
 │       └── cost-management/   # Future cost management components
@@ -97,11 +97,11 @@ cost-onprem-chart/
 
 **Security Architecture (OpenShift)**:
 - **Ingress Authentication**: Envoy sidecar with JWT validation (Keycloak) for external uploads
-- **Backend Authentication**: Envoy sidecar with OAuth2 TokenReview (Authorino) for OpenShift Console UI access
+- **Backend Authentication**: Envoy sidecar with JWT validation (Keycloak) for API access
 - **Network Policies**: Restrict direct access to backend services (Kruize, Sources API) while allowing Prometheus metrics scraping
 - **Multi-tenancy**: `org_id` and `account_number` from authentication enable data isolation across organizations and accounts
 
-**See [JWT Authentication Guide](docs/native-jwt-authentication.md) and [OAuth2 TokenReview Guide](docs/oauth2-tokenreview-authentication.md) for detailed architecture**
+**See [JWT Authentication Guide](docs/native-jwt-authentication.md) for detailed architecture**
 
 ## ⚙️ Configuration
 
@@ -147,11 +147,9 @@ For OpenShift deployments, JWT authentication is **automatically enabled** and r
 # Step 2: Configure Cost Management Operator with JWT credentials
 ./scripts/setup-cost-mgmt-tls.sh
 
-# Step 3: Deploy Cost Management On-Premise (Authorino is automatically deployed)
+# Step 3: Deploy Cost Management On-Premise
 ./scripts/install-helm-chart.sh
 ```
-
-**Note:** Authorino is now automatically deployed by the Helm chart. No separate installation required.
 
 **📖 See [Keycloak Setup Guide](docs/keycloak-jwt-authentication-setup.md) for detailed configuration instructions**
 

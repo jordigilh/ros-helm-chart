@@ -23,7 +23,7 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 |----------|---------|-------------|
 | **[Keycloak JWT Authentication Setup](keycloak-jwt-authentication-setup.md)** | Complete guide for setting up JWT authentication with Keycloak | Configuring authentication for production environments |
 | **[Native JWT Authentication](native-jwt-authentication.md)** | Detailed explanation of JWT authentication architecture | Understanding how JWT authentication works in Cost Management On-Premise |
-| **[UI OAuth Authentication](ui-oauth-authentication.md)** | Complete guide for UI OAuth authentication with OpenShift OAuth proxy | Understanding and troubleshooting UI authentication on OpenShift |
+| **[UI OAuth Authentication](ui-oauth-authentication.md)** | Complete guide for UI OAuth authentication with Keycloak OAuth proxy | Understanding and troubleshooting UI authentication on OpenShift |
 | **[TLS Certificate Options](tls-certificate-options.md)** | Guide to different TLS certificate configuration scenarios | Configuring TLS for Keycloak JWKS endpoint validation |
 | **[External Keycloak Scenario](external-keycloak-scenario.md)** | Analysis and architecture for using external Keycloak | Connecting Cost Management On-Premise to Keycloak outside the cluster |
 | **[Cost Management Operator TLS Config Setup](cost-management-operator-tls-config-setup.md)** | TLS configuration for the Cost Management Metrics Operator | Setting up secure communication between operator and ROS ingress |
@@ -178,20 +178,20 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 ---
 
 #### [UI OAuth Authentication](ui-oauth-authentication.md)
-**Purpose:** Complete guide for understanding and troubleshooting UI OAuth authentication using OpenShift's native OAuth proxy.
+**Purpose:** Complete guide for understanding and troubleshooting UI OAuth authentication using Keycloak OAuth proxy.
 
 **Use when:**
 - Setting up or troubleshooting the UI component on OpenShift
-- Understanding how UI authentication works with OpenShift OAuth
+- Understanding how UI authentication works with Keycloak OAuth
 - Debugging OAuth redirect loops or authentication issues
 - Configuring TLS certificates for UI
 - Understanding session management and cookie encryption
 
 **Key topics:**
 - OAuth proxy architecture and authentication flow
-- OpenShift OAuth server integration
+- Keycloak OIDC server integration
 - TLS certificate auto-generation via Service CA Operator
-- ServiceAccount OAuth redirect configuration
+- Keycloak client configuration
 - Session secret persistence across upgrades
 - Troubleshooting common authentication issues
 - Security considerations and best practices

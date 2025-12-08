@@ -7,7 +7,7 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 | Script | Purpose | Environment |
 |--------|---------|-------------|
 | `deploy-strimzi.sh` | Deploy Kafka infrastructure | All environments |
-| `install-helm-chart.sh` | Deploy ROS Helm chart (includes Authorino) | All environments |
+| `install-helm-chart.sh` | Deploy ROS Helm chart | All environments |
 | `deploy-rhbk.sh` | Deploy Red Hat Build of Keycloak | OpenShift |
 | `setup-cost-mgmt-tls.sh` | Configure TLS certificates | OpenShift |
 | `test-ocp-dataflow-jwt.sh` | Test JWT + recommendations | JWT-enabled clusters |
@@ -25,14 +25,13 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 # 2. Deploy Kafka infrastructure
 ./deploy-strimzi.sh
 
-# 3. Deploy ROS (Authorino is automatically deployed)
+# 3. Deploy ROS
 ./install-helm-chart.sh
 
 # 4. Test the deployment (if JWT enabled)
 ./test-ocp-dataflow-jwt.sh
 ```
 
-**Note:** Authorino is now automatically deployed by the Helm chart when JWT authentication is enabled on OpenShift.
 
 ### JWT Authentication Setup
 ```bash
@@ -42,7 +41,7 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 # 2. Deploy Kafka infrastructure
 ./deploy-strimzi.sh
 
-# 3. Deploy ROS with JWT authentication (Authorino is automatically deployed)
+# 3. Deploy ROS with JWT authentication
 export JWT_AUTH_ENABLED=true
 ./install-helm-chart.sh
 

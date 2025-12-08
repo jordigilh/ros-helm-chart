@@ -88,9 +88,6 @@ Keycloak Configuration:
 Verify Keycloak connectivity:
   oc get keycloak -A
 
-Check Authorino deployment:
-  kubectl get pods -n {{ $namespace }} -l app.kubernetes.io/component=authorino
-
 For authentication setup details:
   https://github.com/insights-onprem/cost-onprem-chart/blob/main/docs/keycloak-jwt-authentication-setup.md
 

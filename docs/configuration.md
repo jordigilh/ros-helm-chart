@@ -444,8 +444,8 @@ ui:
   replicaCount: 1
   oauthProxy:
     image:
-      repository: registry.redhat.io/openshift4/ose-oauth-proxy-rhel9
-      tag: "latest"
+      repository: quay.io/oauth2-proxy/oauth2-proxy
+      tag: "v7.7.1"
       pullPolicy: IfNotPresent
     resources:
       limits:

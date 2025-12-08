@@ -1,0 +1,29 @@
+{{- if and .Values.ui (eq (include "cost-onprem.platform.isOpenShift" .) "true") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-ui-nginx-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+data:
+  nginx.conf: |
+    location /api {
+        proxy_pass http://{{ include "cost-onprem.fullname" . }}-ros-api:{{ .Values.ros.api.port }};
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Authorization $http_authorization;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header X-Frame-Options "SAMEORIGIN";
+        add_header X-Content-Type-Options "nosniff";
+        add_header Referrer-Policy "strict-origin-when-cross-origin";
+    }
+{{- end }}

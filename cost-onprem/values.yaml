@@ -421,22 +421,6 @@ jwtAuth:
         cpu: 100m
         memory: 128Mi
 
-  # Authorino (OAuth2 TokenReview for Console users)
-  authorino:
-    image:
-      repository: registry.redhat.io/rhcl-1/authorino-rhel9
-      # Use SHA digest for immutable deployment
-      digest: sha256:22d44b5bccacac44ffe96206e69ac91e22557f1c4fbfd46252c6ba9b720d7d6a
-      pullPolicy: IfNotPresent
-
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 100m
-        memory: 128Mi
-
   # Keycloak configuration for JWT validation
   # NOTE: JWT authentication is ONLY supported on OpenShift with Keycloak.
   # On vanilla Kubernetes/KIND, JWT authentication is automatically disabled.
@@ -472,9 +456,10 @@ jwtAuth:
 
     # JWT audience claims that will be validated
     # Must match the 'aud' claim in incoming JWT tokens
-    # Only tokens issued for the cost-management-operator client will be accepted
+    # Tokens from both the operator and UI OAuth proxy will be accepted
     audiences:
       - cost-management-operator
+      - cost-management-ui
 
     # TLS configuration for Keycloak communication
     tls:
@@ -491,9 +476,9 @@ ui:
 
   oauthProxy:
     image:
-      repository: registry.redhat.io/openshift4/ose-oauth-proxy-rhel9
+      repository: quay.io/oauth2-proxy/oauth2-proxy
       pullPolicy: IfNotPresent
-      tag: "latest"
+      tag: "v7.7.1"
     resources:
       limits:
         cpu: "100m"
@@ -501,6 +486,9 @@ ui:
       requests:
         cpu: "50m"
         memory: "64Mi"
+    client:
+      id: ""
+      secret: ""
 
   app:
     image:
@@ -578,6 +566,7 @@ resources:
     limits:
       memory: "2Gi"
       cpu: "1000m"
+
 
 # -----------------------------------------------------------------------------
 # Health Probe Defaults
