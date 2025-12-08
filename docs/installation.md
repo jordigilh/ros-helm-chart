@@ -297,66 +297,13 @@ oc auth can-i create deployments -n cost-onprem
 oc auth can-i create routes -n cost-onprem
 ```
 
-### 4. Authorino Setup for OAuth2 Authentication
-
-**✅ Authorino is now automatically deployed by the Helm chart!**
-
-As of Cost Management On-Premise Helm Chart v2.0, Authorino is deployed as a standalone pod directly by the Helm chart during the standard installation. No separate installation steps are required.
-
-**What gets deployed automatically:**
-- Authorino Deployment (no operator dependency)
-- ServiceAccount and RBAC (ClusterRole/RoleBinding for TokenReview)
-- Services (authorization, metrics, oidc)
-- TLS certificates via OpenShift service-ca
-- AuthConfig resources for OAuth2 TokenReview
-
-**Security Features:**
-- **TLS Encryption**: All communication between Envoy and Authorino is encrypted using TLS
-- **Certificate Management**: Certificates are automatically generated and rotated by OpenShift's service-ca operator
-- **NetworkPolicy**: Access to Authorino is restricted to authorized pods only
-- **Namespace-Scoped**: Authorino operates within the deployment namespace to limit blast radius
-
-**Verification:**
-
-After Helm installation, verify Authorino deployment:
-
-```bash
-# Check Authorino pod
-oc get pods -n cost-onprem -l app.kubernetes.io/component=authorino
-
-# Check Authorino services
-oc get svc -n cost-onprem -l app.kubernetes.io/component=authorino
-
-# Check AuthConfig
-oc get authconfig -n cost-onprem
-
-# Check TLS certificate
-oc get secret -n cost-onprem | grep authorino-server-cert
-```
-
-**What Authorino Does:**
-
-Authorino provides OAuth2 TokenReview authentication for the backend API, enabling OpenShift Console UI users to access Cost Management On-Premise with their session tokens.
-
-**Authentication Flow:**
-1. User accesses Cost Management On-Premise via OpenShift Console UI
-2. Console includes user's session token in request
-3. Envoy proxy forwards request to Authorino for validation
-4. Authorino validates token via Kubernetes TokenReview API
-5. If valid, Authorino injects headers (username, UID)
-6. Envoy transforms headers into rh-identity format
-7. Backend receives authenticated request
-
-**For more details, see [OAuth2 TokenReview Authentication Guide](oauth2-tokenreview-authentication.md)**
-
-### 5. Resource Requirements
+### 4. Resource Requirements
 
 **Single Node OpenShift (SNO):**
 - SNO cluster with ODF installed
 - 30GB+ block devices for ODF
 - Additional 6GB RAM for Cost Management On-Premise workloads
 - Additional 2 CPU cores
-- Authorino resources (minimal: ~100Mi RAM, 0.1 CPU)
 
 **See [Configuration Guide](configuration.md) for detailed requirements**
 
@@ -594,11 +541,10 @@ kubectl top nodes  # requires metrics-server
 
 After successful installation:
 
-1. **Set Up Authorino** (OpenShift only): See [Authorino Setup](#4-authorino-setup-for-oauth2-authentication)
-2. **Configure Access**: See [Configuration Guide](configuration.md)
-3. **Set Up JWT Auth**: See [JWT Authentication Guide](native-jwt-authentication.md)
-4. **Configure TLS**: See [TLS Setup Guide](cost-management-operator-tls-setup.md)
-5. **Run Tests**: See [Scripts Reference](../scripts/README.md)
+1. **Configure Access**: See [Configuration Guide](configuration.md)
+2. **Set Up JWT Auth**: See [JWT Authentication Guide](native-jwt-authentication.md)
+3. **Configure TLS**: See [TLS Setup Guide](cost-management-operator-tls-setup.md)
+4. **Run Tests**: See [Scripts Reference](../scripts/README.md)
 
 ---
 

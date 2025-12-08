@@ -251,14 +251,14 @@ Detects if running on OpenShift.
 
 ### Overview
 
-The UI component provides a web-based user interface for Cost Management On-Premise, available exclusively on OpenShift platforms. It uses an OAuth proxy sidecar for OpenShift authentication and serves the Koku UI micro-frontend application.
+The UI component provides a web-based user interface for Cost Management On-Premise, available exclusively on OpenShift platforms. It uses an OAuth2 proxy sidecar with Keycloak OIDC for authentication and serves the Koku UI micro-frontend application.
 
 **Platform Availability:**
-- ✅ **OpenShift**: Fully supported with OAuth proxy authentication
-- ❌ **Kubernetes/KIND**: Not available (requires OpenShift OAuth infrastructure)
+- ✅ **OpenShift**: Fully supported with Keycloak OAuth proxy authentication
+- ❌ **Kubernetes/KIND**: Not available (requires Keycloak OIDC infrastructure)
 
 **Key Features:**
-- OAuth proxy sidecar for seamless OpenShift authentication
+- OAuth2 proxy sidecar for seamless Keycloak OIDC authentication
 - Automatic TLS certificate management via OpenShift service serving certificates
 - Cookie-based session management
 - Integration with ROS API backend
@@ -272,7 +272,7 @@ The UI component provides a web-based user interface for Cost Management On-Prem
 graph TB
     subgraph Pod["UI Pod"]
         direction TB
-        OAuthProxy["OAuth Proxy Container<br/>(Port 8443)<br/><br/>• OpenShift OAuth<br/>• Session management<br/>• TLS termination"]
+        OAuthProxy["OAuth2 Proxy Container<br/>(Port 8443)<br/><br/>• Keycloak OIDC<br/>• Session management<br/>• TLS termination"]
         App["App Container<br/>(Port 8080)<br/><br/>• Koku UI MFE<br/>• React application<br/>• API proxy"]
         
         OAuthProxy -->|"http://localhost:8080"| App
@@ -292,15 +292,18 @@ graph TB
 
 **Container Configuration**:
 
-#### OAuth Proxy Container
-- **Image**: `registry.redhat.io/openshift4/ose-oauth-proxy-rhel9:latest`
+#### OAuth2 Proxy Container
+- **Image**: `quay.io/oauth2-proxy/oauth2-proxy:v7.7.1`
 - **Port**: `8443` (HTTPS)
-- **Purpose**: Handles OpenShift OAuth authentication flow
+- **Purpose**: Handles Keycloak OIDC authentication flow
 
 **Key Arguments**:
 ```yaml
 - --https-address=:8443
-- --openshift-service-account={{ include "cost-onprem.fullname" . }}-ui
+- --provider=keycloak-oidc
+- --client-id={{ .Values.ui.keycloak.client.id }}
+- --oidc-issuer-url={{ include "cost-onprem.keycloak.issuerUrl" . }}
+- --redirect-url=https://{{ include "cost-onprem.fullname" . }}-ui-{{ .Release.Namespace }}.{{ include "cost-onprem.platform.clusterDomain" . }}/oauth2/callback
 - --cookie-secret-file=/etc/proxy/secrets/session-secret
 - --tls-cert=/etc/tls/private/tls.crt
 - --tls-key=/etc/tls/private/tls.key
@@ -308,12 +311,12 @@ graph TB
 - --pass-host-header=false
 - --skip-provider-button
 - --skip-auth-preflight
-- --pass-access-token
+- --pass-authorization-header
 ```
 
 **Health Probes**:
-- **Liveness**: `GET /oauth/healthz` on port `8443` (HTTPS)
-- **Readiness**: `GET /oauth/healthz` on port `8443` (HTTPS)
+- **Liveness**: `GET /ping` on port `8443` (HTTPS)
+- **Readiness**: `GET /ping` on port `8443` (HTTPS)
 
 **Volume Mounts**:
 - `proxy-tls`: TLS certificate and key from OpenShift service serving certificate secret
@@ -407,25 +410,16 @@ This ensures:
 
 ### `cost-onprem/templates/ui/serviceaccount.yaml`
 
-**Purpose**: ServiceAccount with OAuth redirect reference for OpenShift authentication.
+**Purpose**: ServiceAccount for the UI pod with standard RBAC permissions.
 
-**Key Annotation**:
-```yaml
-annotations:
-  serviceaccounts.openshift.io/oauth-redirectreference.primary: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"{{ include "cost-onprem.fullname" . }}-ui"}}'
-```
-
-**Purpose**: 
-- Registers the UI Route as a valid OAuth redirect target
-- Enables OpenShift OAuth flow to redirect back to UI after authentication
-- Required for OAuth proxy to function correctly
+**Note**: With Keycloak OAuth proxy, the ServiceAccount does not require special OAuth redirect annotations. The OAuth2 proxy handles authentication directly with Keycloak OIDC.
 
 **OAuth Flow**:
 1. User accesses UI Route
-2. OAuth proxy redirects to OpenShift OAuth server
-3. User authenticates with OpenShift credentials
-4. OAuth server redirects back to UI Route (validated via redirect reference)
-5. OAuth proxy receives token, creates session cookie
+2. OAuth2 proxy redirects to Keycloak OIDC server
+3. User authenticates with Keycloak credentials
+4. Keycloak redirects back to UI Route with authorization code
+5. OAuth2 proxy exchanges code for token, creates session cookie
 6. User accesses UI application
 
 ---
@@ -480,8 +474,8 @@ ui:
 
   oauthProxy:
     image:
-      repository: registry.redhat.io/openshift4/ose-oauth-proxy-rhel9
-      tag: "latest"
+      repository: quay.io/oauth2-proxy/oauth2-proxy
+      tag: "v7.7.1"
       pullPolicy: IfNotPresent
     resources:
       limits:
@@ -511,8 +505,8 @@ ui:
 | Value Path | Description | Default |
 |------------|-------------|---------|
 | `ui.replicaCount` | Number of UI pod replicas | `1` |
-| `ui.oauthProxy.image.repository` | OAuth proxy container image | `registry.redhat.io/openshift4/ose-oauth-proxy-rhel9` |
-| `ui.oauthProxy.image.tag` | OAuth proxy image tag | `latest` |
+| `ui.oauthProxy.image.repository` | OAuth2 proxy container image | `quay.io/oauth2-proxy/oauth2-proxy` |
+| `ui.oauthProxy.image.tag` | OAuth2 proxy image tag | `v7.7.1` |
 | `ui.oauthProxy.resources` | OAuth proxy resource limits/requests | See defaults above |
 | `ui.app.image.repository` | UI application container image | `quay.io/insights-onprem/koku-ui-mfe-on-prem` |
 | `ui.app.image.tag` | UI application image tag | `0.0.14` |
@@ -535,7 +529,7 @@ ui:
    - Route (external access)
 
 3. **Post-Deployment**:
-   - OAuth proxy authenticates with OpenShift
+   - OAuth2 proxy authenticates with Keycloak OIDC
    - TLS certificates provisioned automatically
    - Route becomes accessible
    - UI application connects to ROS API backend
