@@ -70,7 +70,7 @@ We need to pass `org_id` from LDAP through Keycloak and OpenShift OAuth to Autho
 - Keycloak acts as OIDC Identity Provider and LDAP federation layer
 - OpenShift OAuth TokenReview API only returns groups
 - Authorino needs `org_id` without querying external services with credentials
-- **LDAP Schema Influence**: We can request that 2 fields (`costCenter`/`org_id` and `accountNumber`) be populated as user attributes, but we cannot enforce whether they are implemented as user attributes or as group memberships - that decision lies with the customer's LDAP administrators
+- **No LDAP Schema Changes Required**: Enterprises already have user attributes (e.g., `costCenter`, `departmentNumber`, `employeeNumber`) that can map to our `org_id` and `account_number`. The Protocol Mapper is configurable per customer to read their existing fields - no new LDAP attributes needed
 
 ---
 
@@ -181,7 +181,7 @@ User: uid=test           Protocol Mapper:          User object:           TokenR
 
 This keeps metadata in user attributes (per [Role of Groups](#role-of-groups)) and transforms at the Keycloak layer before OpenShift imports the groups.
 
-**RHBK Constraint:** Protocol Mappers with custom scripts require JAR packaging in RHBK (see [Option B0](#option-b0-keycloak-protocol-mapper-simplest---recommended)).
+**RHBK Constraint:** Protocol Mappers with custom scripts require JAR packaging in RHBK (see [Protocol Mapper Implementation](#rhbk-implementation-pre-packaged-jar-with-configurable-attributes--recommended)).
 
 ### Key Insight
 
@@ -191,201 +191,13 @@ The **most compatible approach** for enterprises is to:
 3. Create groups in an **isolated OU** (doesn't affect existing infrastructure)
 4. Use **standard LDAP operations** (works with any directory)
 
-This is exactly what **[Option B2 (Automated Group Sync)](#option-b2-automated-group-sync-script--recommended-for-enterprise-10k-employees--rhbk)** implements.
+This aligns with the Protocol Mapper approach - reading existing attributes without LDAP changes.
 
 ---
 
 ## Considered Options
 
-### Option 1: Custom Attributes on LDAP Groups with Keycloak Group Mapper
-
-> ⚠️ **Enterprise Applicability Note**
->
-> This option requires adding custom attributes (`organizationId`, `accountNumber`) to **LDAP group objects** - not user profiles. Users are then added as members of these groups, and Keycloak reads the group's custom attribute as the group name.
->
-> Before choosing this approach, consider the organization's LDAP governance:
->
-> | Factor | Implication |
-> |--------|-------------|
-> | **Schema change process** | Vendors support schema extension, but recommend changes be "controlled" ([Oracle](https://docs.oracle.com/cd/E49437_01/admin.111220/e22648/schema.htm)) |
-> | **Existing attributes** | Enterprises typically have `costCenter`, `department`, `employeeID` already populated - prefer using these |
-> | **Groups purpose** | Best practice: groups for authorization, user attributes for metadata ([Microsoft](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-security-groups)) |
->
-> **If the organization has strict schema governance or prefers using existing attributes, see [Automated Group Sync](#option-b2-automated-group-sync-script--recommended-for-enterprise-10k-employees--rhbk).**
-
-**Architecture (suitable for small deployments):**
-```
-LDAP Groups                         Keycloak                    OpenShift          Authorino
-─────────────                       ────────                    ─────────          ─────────
-
-Organization Group:                 Group: "/organizations/     TokenReview:       org_id: "1234567"
-cn=engineering                              1234567"           groups:            account_number: "9876543"
-ou=organizations                    ↑                           - "/organizations/ (parsed from groups)
-├── cn: engineering                 │                             1234567"
-├── organizationId: 1234567 ────────┘                          - "/accounts/
-└── member: uid=test ───┐                                         9876543"
-                        │
-Account Group:          │           Group: "/accounts/
-cn=account-9876543      │                   9876543"
-ou=accounts             │           ↑
-├── cn: account-9876543 │           │
-├── accountNumber: 9876543 ─────────┘
-└── member: uid=test ───┘
-      (same user in both groups)
-```
-
-**Key Point**: The user `uid=test` is a **member of BOTH groups**:
-1. Member of `cn=engineering,ou=organizations` → gets `organizationId: 1234567`
-2. Member of `cn=account-9876543,ou=accounts` → gets `accountNumber: 9876543`
-
-Keycloak imports both groups, and the user inherits membership in both, which appear in OpenShift's TokenReview response.
-
-### Why Flat Group Membership Instead of Hierarchical Structure?
-
-**Answer: Hierarchical OU structures are MORE common in enterprises**, but we chose flat group membership for this implementation due to technical constraints with Keycloak.
-
-#### What Large Enterprises Actually Use (10k+ Employees)
-
-**Standard Enterprise LDAP/Active Directory Structure:**
-```
-DC=company,DC=com
-├── OU=Users
-│   ├── OU=Americas
-│   │   ├── OU=USA
-│   │   │   ├── OU=Engineering
-│   │   │   │   ├── OU=Cloud-Platform
-│   │   │   │   │   └── CN=John Doe (employeeID: 12345, dept: ENG, costCenter: 1001)
-│   │   │   │   └── OU=Data-Science
-│   │   │   │       └── CN=Jane Smith (employeeID: 12346, dept: ENG, costCenter: 1001)
-│   │   │   ├── OU=Finance
-│   │   │   │   └── CN=Bob Manager (employeeID: 45678, dept: FIN, costCenter: 2001)
-│   │   │   └── OU=Sales
-│   │   └── OU=Canada
-│   │       └── OU=Engineering
-│   ├── OU=EMEA
-│   │   ├── OU=UK
-│   │   └── OU=Germany
-│   └── OU=APAC
-│       ├── OU=Japan
-│       └── OU=Australia
-├── OU=Groups
-│   ├── OU=Security-Groups (access control)
-│   │   ├── CN=VPN-Users
-│   │   ├── CN=AWS-Admins
-│   │   └── CN=Kubernetes-Developers
-│   ├── OU=Distribution-Lists (email)
-│   │   ├── CN=Engineering-All
-│   │   └── CN=Finance-Team
-│   └── OU=Application-Groups (app-specific)
-│       ├── CN=SAP-Users
-│       └── CN=Salesforce-Users
-└── OU=Service-Accounts
-    └── CN=svc-jenkins
-```
-
-**Key Characteristics of Large Enterprise LDAP (10k+ employees):**
-
-1. **Geographic + Departmental Hierarchy**:
-   - User DN: `CN=John Doe,OU=Cloud-Platform,OU=Engineering,OU=USA,OU=Americas,OU=Users,DC=company,DC=com`
-   - 3-5 levels deep minimum
-   - Location (continent → country → city) + Department + Team
-
-2. **Attributes Over Structure for Metadata**:
-   - `employeeID`: Unique identifier
-   - `department`: "ENG", "FIN", "SALES"
-   - `costCenter`: Billing/accounting code
-   - `division`: Business unit
-   - `manager`: DN of manager
-   - **NOT** extracted from DN path, stored as explicit attributes
-
-3. **Thousands of Groups**:
-   - Security groups (10-50k groups in large orgs)
-   - Nested groups (groups within groups)
-   - Dynamic groups (auto-membership based on attributes)
-   - Groups span OUs (not tied to OU hierarchy)
-
-4. **Why This Structure?**
-   - **GPO (Group Policy)**: Apply Windows policies by OU (location/department)
-   - **Delegation**: IT admins get control over specific OU branches
-   - **Scale**: 50k-500k users across multiple countries
-   - **Compliance**: Audit trails show org structure
-   - **Administration**: HR systems sync to specific OU paths
-
-5. **Multi-Forest/Multi-Domain** (Fortune 500):
-   - `DC=us,DC=company,DC=com` (North America)
-   - `DC=emea,DC=company,DC=com` (Europe)
-   - `DC=apac,DC=company,DC=com` (Asia-Pacific)
-   - Trusts between forests for cross-region access
-
-**Critical Insight for Cost Management:**
-- **org_id and account_number would be LDAP attributes, NOT derived from OU structure**
-- Example: `employeeNumber: 12345`, `costCenter: 1001`, `division: Cloud-Services`
-- These attributes are populated by HR systems (Workday, SAP SuccessFactors)
-- Groups are used for access control, not for storing user metadata
-
-**We chose flat group membership (users are members of separate org and account groups) over hierarchical organization structure for this implementation. Here's why:**
-
-#### Alternative: Hierarchical Structure (Not Chosen)
-```
-ou=organizations
-  └── ou=1234567 (org as OU)
-      └── ou=accounts
-          └── ou=9876543 (account as OU)
-              └── uid=test (user DN includes org/account path)
-```
-
-User DN: `uid=test,ou=9876543,ou=accounts,ou=1234567,ou=organizations,dc=example,dc=com`
-
-**Why We Didn't Use This:**
-1. **Keycloak Limitation**: Keycloak's LDAP User Federation doesn't easily extract attributes from parent OUs in the user's DN path
-2. **User Mobility**: Moving a user between organizations requires changing their DN (destructive operation)
-3. **Multi-org Membership**: A user can't belong to multiple organizations (DN is unique)
-4. **Query Complexity**: Finding all users in an org requires recursive subtree searches
-5. **Maintenance**: Requires custom LDAP parsing to extract org_id/account_number from DN
-
-#### Chosen Approach: Flat Group Membership
-```
-Users:
-  uid=test,ou=users,dc=example,dc=com  ← user DN is independent
-
-Groups:
-  cn=engineering,ou=organizations,dc=...  (has organizationId: 1234567, member: uid=test)
-  cn=account-9876543,ou=accounts,dc=...  (has accountNumber: 9876543, member: uid=test)
-```
-
-**Benefits:**
-1. **Keycloak Compatibility**: Standard LDAP group mapper works out of the box
-2. **User Mobility**: Change group memberships without touching user DN
-3. **Multi-org Support**: User can be member of multiple org/account groups
-4. **Simple Queries**: Standard LDAP memberOf queries work
-5. **Clear Semantics**: Group attributes (organizationId, accountNumber) are explicit, not derived from paths
-
-**Trade-off:** Requires explicit group membership management instead of automatic DN-based inheritance. However, this is standard LDAP practice and aligns with how Keycloak expects to consume group data.
-
-### Can We Support Enterprise Hierarchical Structures?
-
-**Yes, but with additional work.** If you need to integrate with an existing enterprise LDAP where users are organized in hierarchical OUs, you have two options:
-
-#### Option A: Parse User DN to Extract Org Info (Advanced)
-```python
-# Custom Authorino metadata evaluator or external service
-user_dn = "CN=John Doe,OU=Account-9876543,OU=Accounts,OU=Org-1234567,OU=Organizations,DC=company,DC=com"
-
-# Parse DN to extract org_id and account_number
-import re
-org_match = re.search(r'OU=Org-(\d+)', user_dn)
-account_match = re.search(r'OU=Account-(\d+)', user_dn)
-
-org_id = org_match.group(1)  # "1234567"
-account_number = account_match.group(1)  # "9876543"
-```
-
-**Challenges:**
-- Requires custom code (Authorino doesn't parse DNs natively)
-- Need to deploy a metadata service that Authorino can call
-- DN parsing is brittle (depends on OU naming conventions)
-
-#### Option B: Use Existing LDAP Attributes (Recommended for Enterprise)
+### Primary Option: Protocol Mapper (Recommended)
 
 **Reality Check**: Large enterprises already have attributes like `employeeNumber`, `costCenter`, `division`, etc. stored on user objects.
 
@@ -398,26 +210,24 @@ cn: John Doe
 sAMAccountName: jdoe
 employeeID: 12345
 department: Engineering
-costCenter: 1001            ← This is your org_id
-division: Cloud-Services
+costCenter: 1001            ← Maps to org_id in X-Rh-Identity
+departmentNumber: 9876543   ← Maps to account_number in X-Rh-Identity
 accountExpires: 0
 memberOf: CN=AWS-Admins,OU=Groups,DC=company,DC=com
 memberOf: CN=Kubernetes-Developers,OU=Groups,DC=company,DC=com
 ```
 
-**Problem**: Keycloak can't map user attributes to group names that OpenShift will import.
+**Challenge**: OpenShift TokenReview only returns groups, not user attributes. Keycloak can't directly map user attributes to groups that OpenShift will import.
 
-**Solutions**: You have three options:
-
-#### Option B0: Keycloak Protocol Mapper (SIMPLEST - Recommended!)
+**Solution**: Use a Protocol Mapper to transform user attributes into synthetic groups in the JWT token.
 
 **Use Keycloak's protocol mapper to inject user attributes as groups in the OIDC token.**
 
-This is a **2-minute configuration change** in Keycloak - no scripts, no sync jobs, no additional LDAP groups!
+This approach requires only Keycloak configuration - no external scripts, sync jobs, or LDAP group creation.
 
 **How It Works:**
 ```
-1. User logs in → Keycloak reads LDAP user attributes (costCenter, division)
+1. User logs in → Keycloak reads LDAP user attributes (costCenter, departmentNumber)
 2. Protocol Mapper transforms: costCenter=1001 → groups=["/organizations/1001"]
 3. OpenShift creates User object with those groups
 4. TokenReview returns those groups → Authorino parses them
@@ -434,23 +244,23 @@ This is a **2-minute configuration change** in Keycloak - no scripts, no sync jo
    - Mapper Type: `Script Mapper`
    - Script:
      ```javascript
-     // Read user LDAP attributes
-     var costCenter = user.getAttribute("costCenter");
-     var division = user.getAttribute("division");
+    // Read user LDAP attributes
+    var costCenter = user.getFirstAttribute("costCenter");
+    var departmentNumber = user.getFirstAttribute("departmentNumber");
 
-     // Get existing groups
-     var groups = token.getOtherClaims().get("groups");
-     if (groups == null) {
-         groups = new java.util.ArrayList();
-     }
+    // Get existing groups
+    var groups = token.getOtherClaims().get("groups");
+    if (groups == null) {
+        groups = new java.util.ArrayList();
+    }
 
-     // Add org_id and account_number as groups
-     if (costCenter != null && costCenter.size() > 0) {
-         groups.add("/organizations/" + costCenter.get(0));
-     }
-     if (division != null && division.size() > 0) {
-         groups.add("/accounts/" + division.get(0));
-     }
+    // Add org_id and account_number as groups
+    if (costCenter != null && !costCenter.isEmpty()) {
+        groups.add("cost-mgmt-org-" + costCenter);
+    }
+    if (departmentNumber != null && !departmentNumber.isEmpty()) {
+        groups.add("cost-mgmt-account-" + departmentNumber);
+    }
 
      token.getOtherClaims().put("groups", groups);
      "OK";
@@ -473,7 +283,7 @@ oc get user test -o yaml
 ```
 
 **Pros:**
-- ✅ **Simple**: 2-minute Keycloak UI configuration
+- ✅ **Simple**: Keycloak UI configuration only
 - ✅ **No LDAP changes**: Uses existing user attributes
 - ✅ **No sync scripts**: Real-time, works on login
 - ✅ **Standard feature**: Built into Keycloak
@@ -485,7 +295,7 @@ oc get user test -o yaml
 
 **RHBK Implementation: Pre-packaged JAR with Configurable Attributes** ⭐ **RECOMMENDED**
 
-Since we control the RHBK deployment, we can pre-package the Protocol Mapper JAR into our custom RHBK image. This gives us the best of both worlds:
+Since we control the RHBK deployment, we can deploy the Protocol Mapper JAR via volume mount. This provides:
 - ✅ **Industry-aligned**: No LDAP modification (metadata stays in user attributes)
 - ✅ **Single JAR for all customers**: Attribute names are configurable at runtime
 - ✅ **Zero operational overhead**: JAR is baked into the image
@@ -526,12 +336,13 @@ if (orgAttrName == null || orgAttrName.isEmpty()) {
     orgAttrName = "costCenter";  // Default LDAP attribute for org_id
 }
 if (accountAttrName == null || accountAttrName.isEmpty()) {
-    accountAttrName = "division";  // Default LDAP attribute for account_number
+    accountAttrName = "departmentNumber";  // Default LDAP attribute for account_number
 }
 
 // Read user's LDAP attributes using configured names
-var orgId = user.getAttribute(orgAttrName);
-var accountNumber = user.getAttribute(accountAttrName);
+// Use getFirstAttribute() - the correct Keycloak API
+var orgId = user.getFirstAttribute(orgAttrName);
+var accountNumber = user.getFirstAttribute(accountAttrName);
 
 // Get existing groups from token
 var groups = token.getOtherClaims().get("groups");
@@ -540,42 +351,22 @@ if (groups == null) {
 }
 
 // Add synthetic groups for cost management
-if (orgId != null && orgId.size() > 0 && !orgId.get(0).isEmpty()) {
-    groups.add("cost-mgmt-org-" + orgId.get(0));
+if (orgId != null && !orgId.isEmpty()) {
+    groups.add("cost-mgmt-org-" + orgId);
 }
-if (accountNumber != null && accountNumber.size() > 0 && !accountNumber.get(0).isEmpty()) {
-    groups.add("cost-mgmt-account-" + accountNumber.get(0));
+if (accountNumber != null && !accountNumber.isEmpty()) {
+    groups.add("cost-mgmt-account-" + accountNumber);
 }
 
 token.getOtherClaims().put("groups", groups);
 "OK";
 ```
 
-**RHBK Operator Deployment Options:**
+**RHBK Operator Deployment:**
 
 The RHBK Operator manages the Keycloak Deployment - you cannot modify it directly. Use `spec.unsupported.podTemplate` to inject custom configurations. Keycloak requires `kc.sh build` after adding providers.
 
-| Option | Custom Image? | Startup Speed | How |
-|--------|--------------|---------------|-----|
-| **A: Custom Image** | ✅ Yes | Fast (pre-built) | `spec.image` in Keycloak CR |
-| **B: Volume + Init Container** | ❌ No | Slower (builds each start) | `spec.unsupported.podTemplate` |
-
-**Option A: Custom Image (Fastest Startup)**
-```dockerfile
-FROM registry.redhat.io/rhbk/keycloak-rhel9:24
-COPY cost-mgmt-mappers.jar /opt/keycloak/providers/
-RUN /opt/keycloak/bin/kc.sh build
-```
-
-Then reference in Keycloak CR:
-```yaml
-apiVersion: k8s.keycloak.org/v2alpha1
-kind: Keycloak
-spec:
-  image: quay.io/my-company/my-rhbk:24-custom
-```
-
-**Option B: Volume Mount via Operator (No Custom Image)** ⭐ **RECOMMENDED**
+**Volume Mount via Operator (No Custom Image)** ⭐ **RECOMMENDED**
 
 Use `spec.unsupported.podTemplate` - the Operator merges this with its managed Deployment:
 
@@ -587,7 +378,7 @@ metadata:
 spec:
   instances: 1
   # ... database, hostname, tls config ...
-  
+
   unsupported:
     podTemplate:
       spec:
@@ -620,7 +411,7 @@ spec:
             emptyDir: {}
 ```
 
-**Why Option B is recommended:**
+**Why this approach:**
 - ✅ No custom image to maintain
 - ✅ Uses stock RHBK image (easier upgrades)
 - ✅ JAR managed separately (ConfigMap/Secret/PVC)
@@ -632,7 +423,7 @@ spec:
 | Customer | Realm Attribute | Value |
 |----------|-----------------|-------|
 | Customer A | `cost-mgmt-org-attr` | `costCenter` |
-| Customer A | `cost-mgmt-account-attr` | `division` |
+| Customer A | `cost-mgmt-account-attr` | `departmentNumber` |
 | Customer B | `cost-mgmt-org-attr` | `departmentNumber` |
 | Customer B | `cost-mgmt-account-attr` | `employeeType` |
 
@@ -660,136 +451,8 @@ curl -X POST "https://keycloak/admin/realms/openshift/attributes" \
 **Documentation**: [RHBK 22.0 Server Developer Guide - Deploying Scripts](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/22.0/html-single/server_developer_guide/index#con-as-a-deployment_server_development)
 
 **When to use this approach:**
-- ✅ **Recommended for RHBK deployments we control** - industry-aligned, no LDAP modification
+- ✅ **Recommended for all RHBK deployments** - industry-aligned, no LDAP modification
 - ✅ If using **upstream Keycloak** (scripts enabled by default, even simpler)
-- ⚠️ If customer controls RHBK and won't use our image → Consider Option B2 (Sync Script) as fallback
-
----
-
-#### Option B1: Dynamic Groups (if LDAP supports it)
-
-```ldif
-# Option B1: Dynamic Groups (if your LDAP supports it)
-dn: CN=cost-org-1001,OU=CostMgmt,OU=Groups,DC=company,DC=com
-objectClass: group
-description: Auto-membership for users with costCenter=1001
-memberQueryURL: ldap:///OU=Users,DC=company,DC=com??sub?(costCenter=1001)
-
-# Option B2: Shadow Groups with Automated Sync
-dn: CN=cost-org-1001,OU=CostMgmt,OU=Groups,DC=company,DC=com
-objectClass: group
-member: CN=John Doe,OU=Cloud-Platform,OU=Engineering,OU=USA,OU=Americas,OU=Users,DC=company,DC=com
-# ^ Populated by script that queries LDAP for costCenter=1001
-```
-
-**Implementation for Enterprises**:
-
-1. **Read existing attributes**: `costCenter` → `org_id`, `division` or `employeeType` → `account_number`
-2. **Automated sync script** (run daily via cron):
-   ```bash
-   # Pseudo-code
-   for each unique costCenter in LDAP:
-     create/update group "CN=cost-org-${costCenter},OU=CostMgmt,OU=Groups"
-     add all users with that costCenter as members
-
-   for each unique division in LDAP:
-     create/update group "CN=cost-account-${division},OU=CostMgmt,OU=Groups"
-     add all users with that division as members
-   ```
-3. **Keycloak imports** these groups using standard LDAP Group Mapper
-4. **Result**: User's `costCenter` and `division` appear as groups in OpenShift
-
-**Benefits:**
-- Leverages existing HR-synchronized attributes
-- No changes to user objects or OU structure
-- Standard enterprise LDAP practice (dynamic/automated groups)
-- Single source of truth (HR system → LDAP attributes → Groups → Keycloak)
-
-**Recommendation for 10k+ Employee Enterprises:**
-
-**For Upstream Keycloak:**
-- **Priority 1**: Use Protocol Mapper (Option B0) - simplest, 2-minute config
-
-**For RHBK (Red Hat Build of Keycloak) - What We're Using:**
-- **Priority 1**: Use Automated Group Sync (Option B1/B2) - simpler than JAR packaging
-- **Priority 2**: If you have DevOps resources, use Protocol Mapper with JAR deployment (Option B0)
-
-**Why?** RHBK disables script uploading via UI by default. While you CAN use script mappers by packaging as JAR + deploying to pods, **automated group sync is actually simpler** for RHBK deployments:
-- No pod restarts or custom JAR builds
-- Standard LDAP operations
-- Easier to audit and maintain
-
-**If Protocol Mappers are disabled or you're using RHBK, use Automated Groups (Option B1/B2)**
-- **DO NOT** create manual groups for each user
-- **DO** use existing LDAP attributes (`costCenter`, `division`, `department`)
-- **AUTOMATE** group creation/membership based on those attributes
-- This is how large enterprises already manage application access (e.g., SAP, Salesforce)
-
-**LDAP Schema Extension:**
-```ldif
-# Define custom attributes for clean numeric values
-attributeTypes: ( 1.3.6.1.4.1.99999.1.1
-  NAME 'organizationId'
-  DESC 'Organization ID - clean numeric value'
-  EQUALITY caseIgnoreMatch
-  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
-  SINGLE-VALUE )
-
-attributeTypes: ( 1.3.6.1.4.1.99999.1.2
-  NAME 'accountNumber'
-  DESC 'Account number - clean numeric value'
-  EQUALITY caseIgnoreMatch
-  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
-  SINGLE-VALUE )
-
-# Define custom object class
-objectClasses: ( 1.3.6.1.4.1.99999.2.1
-  NAME 'costManagementGroup'
-  DESC 'Group with cost management attributes'
-  SUP groupOfNames
-  STRUCTURAL
-  MAY ( organizationId $ accountNumber ) )
-```
-
-**LDAP Group Structure (Separate OUs for Semantic Distinction):**
-```ldif
-# Organization groups (under ou=organizations)
-dn: cn=engineering,ou=organizations,ou=groups,dc=example,dc=com
-objectClass: costManagementGroup
-cn: engineering                    # Display name (preserved)
-organizationId: 1234567           # Clean numeric value
-description: Engineering Team
-member: uid=test,ou=users,dc=example,dc=com
-
-# Account groups (under ou=accounts)
-dn: cn=account-9876543,ou=accounts,ou=groups,dc=example,dc=com
-objectClass: costManagementGroup
-cn: account-9876543               # Display name
-accountNumber: 9876543            # Clean numeric value
-description: Account 9876543
-member: uid=test,ou=users,dc=example,dc=com
-```
-
-**Keycloak LDAP Group Mappers (2 Mappers for Path Distinction):**
-```yaml
-Mapper 1: Organizations
-  Name: organization-groups-mapper
-  LDAP Groups DN: ou=organizations,ou=groups,dc=example,dc=com
-  Group Name LDAP Attribute: organizationId  # Reads this field
-  Preserve Group Inheritance: true           # Creates /organizations/ path
-  Member Attribute: member
-  Mode: READ_ONLY
-  Result: Keycloak group "/organizations/1234567"
-
-Mapper 2: Accounts
-  Name: account-groups-mapper
-  LDAP Groups DN: ou=accounts,ou=groups,dc=example,dc=com
-  Group Name LDAP Attribute: accountNumber   # Reads this field
-  Preserve Group Inheritance: true           # Creates /accounts/ path
-  Member Attribute: member
-  Mode: READ_ONLY
-  Result: Keycloak group "/accounts/9876543"
-```
 
 **Authorino Configuration (CEL Expressions - VERIFIED ✅):**
 
@@ -844,360 +507,46 @@ spec:
 - Returns empty string if no matching group found (Envoy Lua will reject with 401)
 
 **Pros:**
-- ✅ Clean separation: `cn` preserved for display name, custom attributes for IDs
-- ✅ Simple LDAP management: Just 2 extra fields with clean numeric values
-- ✅ No prefixes in values: Store "1234567" not "organization_id_1234567"
-- ✅ Semantic from structure: OU paths distinguish org_id vs account_number
-- ✅ Supports multiple metadata fields: Easy to add more custom attributes
-- ✅ Groups remain human-readable in Keycloak UI (path-based)
-- ✅ Standard LDAP schema extension (well-supported)
-- ✅ Always different values: Two separate fields enforce org_id ≠ account_number
+- ✅ No LDAP changes required - reads existing user attributes
+- ✅ Configurable per customer via realm attributes
+- ✅ Real-time on login (no sync delay)
+- ✅ Single JAR works for all customers
 - ✅ Zero credentials in data plane
+- ✅ Industry-aligned (groups for authorization, attributes for metadata)
 
 **Cons:**
-- ⚠️ Requires specific LDAP fields to be populated (requires coordination with customer's LDAP administrators)
-- ⚠️ Initial schema setup complexity (one-time cost)
-- ⚠️ Requires separate OUs for organizations vs accounts
-
----
-
-### Option 2: Standard LDAP Attribute Repurposing
-
-**Architecture:**
-```
-LDAP Groups                         Keycloak               OpenShift
-─────────────                       ────────               ─────────
-cn=Engineering Team                 Group: "org_1234567"   TokenReview:
-├── cn: Engineering Team                                   groups:
-├── businessCategory: org_1234567 ──┘                      - "org_1234567"
-└── member: uid=test
-```
-
-**LDAP Group Structure:**
-```ldif
-dn: cn=Engineering Team,ou=groups,dc=example,dc=com
-objectClass: groupOfNames
-cn: Engineering Team              # Human-readable name
-businessCategory: org_1234567     # Repurposed for org_id
-member: uid=test,ou=users,dc=example,dc=com
-```
-
-**Keycloak LDAP Group Mapper:**
-```yaml
-Group Name LDAP Attribute: businessCategory
-```
-
-**Authorino Configuration (CEL):**
-```yaml
-response:
-  success:
-    headers:
-      "X-Auth-Org-Id":
-        plain:
-          expression: |
-            auth.identity.user.groups.filter(g, g.startsWith("org_")).size() > 0
-              ? auth.identity.user.groups.filter(g, g.startsWith("org_"))[0].substring(4)
-              : ""
-```
-
-**Alternative standard attributes:**
-- `businessCategory`
-- `description`
-- `displayName`
-- `ou` (organizational unit)
-- `departmentNumber`
-
-**Pros:**
-- ✅ No LDAP schema changes required
-- ✅ Uses standard LDAP attributes
-- ✅ Quick to implement
-- ✅ Zero credentials in data plane
-
-**Cons:**
-- ⚠️ Semantic mismatch (abusing attribute purpose)
-- ⚠️ Requires parsing in Authorino if using prefix pattern
-- ⚠️ Limited to single repurposed attribute
-- ⚠️ May conflict with actual use of that attribute
-- ⚠️ Less maintainable (unclear intent)
-
----
-
-### Option 3: Encoded Group Names (Pattern in `cn`)
-
-**Architecture:**
-```
-LDAP Groups                              Keycloak                    Authorino
-─────────────                            ────────                    ─────────
-cn=org_1234567_engineering               Group:                      Parse: extract
-└── member: uid=test                     "org_1234567_engineering"   org_id: "1234567"
-```
-
-**LDAP Group Structure:**
-```ldif
-dn: cn=org_1234567_engineering,ou=groups,dc=example,dc=com
-objectClass: groupOfNames
-cn: org_1234567_engineering    # Pattern: org_{id}_{team}
-member: uid=test,ou=users,dc=example,dc=com
-```
-
-**Keycloak LDAP Group Mapper:**
-```yaml
-Group Name LDAP Attribute: cn  # Default
-```
-
-**Authorino Configuration (CEL):**
-```yaml
-response:
-  success:
-    headers:
-      "X-Auth-Org-Id":
-        plain:
-          expression: |
-            auth.identity.user.groups.filter(g, g.startsWith("org_")).size() > 0
-              ? auth.identity.user.groups.filter(g, g.startsWith("org_"))[0].split("_")[1]
-              : ""
-```
-
-**Pros:**
-- ✅ No LDAP schema changes
-- ✅ Simple to implement
-- ✅ Groups still somewhat readable
-- ✅ Pattern can be validated
-- ✅ Zero credentials in data plane
-
-**Cons:**
-- ⚠️ Group names less human-readable in UIs
-- ⚠️ Requires string parsing in Authorino (complexity)
-- ⚠️ Pattern must be enforced in LDAP (no validation)
-- ⚠️ Harder to debug/troubleshoot
-- ⚠️ Doesn't scale to multiple metadata fields
-
----
-
-### Option 4: LDAP Attributes with Claims Service
-
-**Architecture:**
-```
-LDAP                    Keycloak              PostgreSQL           Claims Service    Authorino
-────                    ────────              ──────────           ──────────────    ─────────
-uid=test                User Attribute:       user_claims          GET /claims/test  org_id: 1234567
-├── orgId: 1234567      orgId: 1234567        ├── test             ↓
-└── accountNumber: 789  accountNumber: 789    ├── 1234567          { org_id: 1234567,
-                                              └── 789                account: 789 }
-                        ↑
-                   Sync CronJob
-                   (has credentials)
-```
-
-**LDAP User Structure:**
-```ldif
-dn: uid=test,ou=users,dc=example,dc=com
-objectClass: inetOrgPerson
-uid: test
-cn: Test User
-orgId: 1234567              # Stored as user attribute
-accountNumber: 7890123
-```
-
-**Components:**
-
-1. **Keycloak LDAP Attribute Mapper**: Imports `orgId` → user attribute
-2. **Sync Service** (isolated namespace with credentials):
-   ```python
-   # Reads Keycloak Admin API
-   # Writes to PostgreSQL
-   # Runs every 5 minutes (CronJob)
-   ```
-3. **Claims Service** (data plane, no credentials):
-   ```python
-   @app.route('/claims/<username>')
-   def get_claims(username):
-       # Read-only database access
-       return {"org_id": ..., "account_number": ...}
-   ```
-4. **Authorino Metadata**:
-   ```yaml
-   metadata:
-     "custom-claims":
-       http:
-         url: "http://claims-service:8080/claims/{auth.identity.user.username}"
-         cache:
-           ttl: 300
-   ```
-
-**Pros:**
-- ✅ Supports unlimited custom claims
-- ✅ No group name manipulation
-- ✅ Clean separation of concerns
-- ✅ Credentials isolated in sync service
-- ✅ Claims service has zero credentials
-- ✅ Cacheable and performant
-- ✅ Scales to complex attribute structures
-
-**Cons:**
-- ⚠️ Additional infrastructure (database, two services)
-- ⚠️ Sync latency (up to 5 minutes for changes)
-- ⚠️ More complex operational model
-- ⚠️ Requires database backup/management
-- ⚠️ Additional network hop on cold cache
-
----
-
-### Option 5: Keycloak Custom Event Listener (Not Recommended)
-
-**Architecture:**
-```
-LDAP                    Keycloak Plugin            Keycloak
-────                    ───────────────            ────────
-uid=test                Event Listener:            Group: "org_1234567"
-└── orgId: 1234567      - Listen to user import    User: test
-                        - Read orgId attribute         ├── member of ↑
-                        - Create/assign group
-```
-
-**Implementation:**
-- Custom Java plugin for Keycloak
-- Listens to `USER_IMPORTED` events
-- Reads user attributes
-- Creates groups dynamically
-
-**Pros:**
-- ✅ Automatic group creation
-- ✅ Works with user attributes
-
-**Cons:**
-- ❌ Custom code in Keycloak (maintenance burden)
-- ❌ Plugin updates required for Keycloak upgrades
-- ❌ Debugging complexity
-- ❌ Not supported by Red Hat Build of Keycloak
-- ❌ Violates simplicity principle
-- ❌ Harder to test and deploy
-
----
-
-### Summary: Enterprise LDAP Integration Options
-
-For customers with existing enterprise LDAP where users have `costCenter` and `division` attributes, here are all available options:
-
-| Option | Description | LDAP Impact | RHBK Compatible | Best For |
-|--------|-------------|-------------|-----------------|----------|
-| **B0: Protocol Mapper** ⭐ | Pre-packaged JAR reads user attrs, injects as groups in JWT | ✅ None | ✅ Yes (with JAR) | **RHBK we control (Recommended)** |
-| **B1: Dynamic Groups** | LDAP server auto-creates groups from user attrs | Creates groups | ✅ Yes | LDAP with dynamic group support |
-| **B2: Sync Script** | CronJob reads user attrs, creates/updates LDAP groups | Creates groups | ✅ Yes | Customer-controlled RHBK |
-
-#### Detailed Comparison
-
-**Option B0: Protocol Mapper with Pre-packaged JAR** ⭐ **RECOMMENDED for RHBK we control**
-- **How it works**: JAR baked into custom RHBK image, configuration via realm attributes
-- **Industry-aligned**: ✅ No LDAP modification (metadata stays in user attributes)
-- **Pros**:
-  - No groups created in LDAP (best practice)
-  - Real-time on login (no sync delay)
-  - Single JAR for all customers (attribute names configurable)
-  - No LDAP write credentials needed
-- **Cons**: Requires maintaining custom RHBK image
-- **When to use**: RHBK deployments we control
-
-**Option B1: LDAP Dynamic Groups**
-- **Prerequisites**: LDAP server supports `memberQueryURL` (e.g., OpenLDAP with dynlist overlay)
-- **Pros**: No external scripts, native LDAP feature, automatic updates
-- **Cons**: Not supported by all LDAP servers (Active Directory doesn't support it)
-- **When to use**: If your LDAP server supports dynamic groups
-
-**Option B2: Automated Group Sync Script** (Fallback for customer-controlled RHBK)
-- **Implementation**: Kubernetes CronJob runs daily, queries LDAP user attributes, creates/updates groups
-- **Pros**:
-  - Works with any LDAP server (AD, OpenLDAP, etc.)
-  - No Keycloak customization
-  - Auditable (groups visible in LDAP)
-  - Simple to maintain
-- **Cons**: Groups update daily (not real-time)
-- **When to use**: RHBK deployments, enterprise LDAP with standard features
-
-#### Implementation Resources
-
-**For Option B0 (Protocol Mapper with JAR) - RECOMMENDED:**
-1. **JAR Package**: `keycloak/cost-mgmt-mappers.jar` (to be created)
-   - Contains configurable JavaScript mapper
-   - Single JAR works for all customers
-   - Attribute names set via Keycloak realm attributes
-
-2. **Custom RHBK Image**: `Dockerfile.rhbk`
-   ```dockerfile
-   FROM registry.redhat.io/rhbk/keycloak-rhel9:24
-   COPY cost-mgmt-mappers.jar /opt/keycloak/providers/
-   RUN /opt/keycloak/bin/kc.sh build
-   ```
-
-3. **Per-Customer Configuration** (no rebuild):
-   ```bash
-   # Set which LDAP attributes to use for this customer
-   curl -X POST "https://keycloak/admin/realms/openshift" \
-     -H "Authorization: Bearer $ADMIN_TOKEN" \
-     -d '{
-       "attributes": {
-         "cost-mgmt-org-attr": "departmentNumber",
-         "cost-mgmt-account-attr": "employeeType"
-       }
-     }'
-   ```
-
-**For Option B2 (Sync Script - Fallback):**
-1. **Script**: `scripts/ldap-user-attrs-to-groups-sync.sh`
-2. **Deployment**: `scripts/ldap-sync-cronjob.yaml`
-3. **Note**: Creates groups in LDAP (not industry best practice, use only if B0 not possible)
-
-#### Decision Guide
-
-**Choose Option B0 (Protocol Mapper) if:** ⭐ **DEFAULT CHOICE**
-- ✅ We control the RHBK deployment
-- ✅ Want industry-aligned solution (no LDAP modification)
-- ✅ Want real-time updates on login
-- ✅ Don't want to manage LDAP groups or sync scripts
-
-**Choose Option B1 (Dynamic Groups) if:**
-- ✅ LDAP server supports dynamic groups (OpenLDAP with dynlist)
-- ✅ Want native LDAP solution
-- ✅ Can't run external sync scripts
-- ❌ Using Active Directory (doesn't support memberQueryURL)
-
-**Choose Option B2 (Sync Script) if:** (Fallback)
-- ⚠️ Customer controls RHBK and won't use our custom image
-- ⚠️ Cannot modify Keycloak deployment
-- ✅ Can run Kubernetes CronJobs with LDAP write access
-- ⚠️ Acceptable to create groups in LDAP (deviates from best practice)
+- ⚠️ Requires JAR deployment via volume mount (one-time setup)
+- ⚠️ ~30-60s added to pod startup for `kc.sh build`
 
 ---
 
 ## Decision Outcome
 
-**Chosen Option: Protocol Mapper with Pre-packaged JAR (Option B0 for RHBK)**
+**Chosen Option: Protocol Mapper with JAR Deployment**
 
-### Recommended Production Approach
+### Approach
 
-Since we control the RHBK deployment, we use a **pre-packaged Protocol Mapper JAR** that:
-- **Reads user LDAP attributes** (`costCenter`, `accountNumber`) at login time
+Since we control the RHBK deployment, we use a **Protocol Mapper JAR** deployed via volume mount that:
+- **Reads user LDAP attributes** (e.g., `costCenter`, `departmentNumber`, `employeeNumber`) at login time
 - **Transforms them to synthetic groups** (`cost-mgmt-org-{id}`, `cost-mgmt-account-{id}`) in the JWT
 - **Configurable per customer** via Keycloak realm attributes (no JAR rebuild needed)
 - **No LDAP modification** - metadata stays in user attributes (industry best practice)
 
 ### Rationale
 
-1. **Industry-aligned**: Groups are for authorization, not metadata. We don't create groups in LDAP.
+1. **Industry-aligned**: Groups are for authorization, not metadata. We don't modify LDAP.
 2. **Single JAR for all customers**: Attribute names are configurable at runtime via realm settings
-3. **Zero LDAP write access**: Protocol Mapper only reads user attributes
+3. **Zero LDAP write access**: Protocol Mapper only reads existing user attributes
 4. **Real-time**: Updates on login (no sync delay)
-5. **CEL in Authorino**: Extracts values from group names (Rego is deprecated)
+5. **CEL in Authorino**: Extracts values from group names
 6. **Zero Credentials in Data Plane**: Authorino has no Keycloak or LDAP credentials
 
-### POC Implementation (2025-12-05)
+### POC Verified (2025-12-05)
 
-The POC used a **Sync Script approach** (Option B2) for faster iteration. This verified:
-- CEL expressions work correctly in Authorino
-- Group naming convention (`cost-mgmt-org-{id}`) is parseable
-- End-to-end flow from LDAP → OpenShift → Authorino → Backend
-
-**Production will use Protocol Mapper** (industry-aligned) instead of Sync Script.
+The Protocol Mapper approach was tested end-to-end and verified working:
+- LDAP user attributes → Keycloak Protocol Mapper → JWT groups → OpenShift User → TokenReview → Authorino → Backend
+- CEL expressions correctly extract `org_id` and `account_number` from group names
+- API returns expected response (404 = no data, but authentication/authorization passed)
 
 ### Complete Request Flow (End-to-End) - VERIFIED ✅
 
@@ -1325,7 +674,7 @@ request_handle:headers():remove("x-auth-account-number")
 
 ### Migration Path (If Needed Later)
 
-If we need more claims than can fit in group names, we can migrate to **Option 4 (Claims Service)** without breaking changes:
+If we need more claims than can fit in group names, we can migrate to a **Claims Service** without breaking changes:
 
 1. Keep existing group-based org_id extraction (backward compatible)
 2. Deploy claims service for additional attributes
@@ -1373,9 +722,86 @@ API Response: 404 Not Found (authentication passed, no data in DB)
 
 ### Files Implementing This ADR
 - `cost-onprem/templates/auth/authorino-authconfig.yaml` - CEL expressions
+- `keycloak/cost-mgmt-mappers/` - Protocol Mapper JAR source
 - `scripts/configure-keycloak-ldap.sh` - Keycloak configuration
 - `scripts/deploy-ldap-demo.sh` - Demo LDAP with test users
+- `scripts/reconcile-groups-cronjob.yaml` - Group lifecycle management
 - `docs/ldap-rhbk-configuration-guide.md` - Configuration guide
+
+---
+
+## Group Lifecycle Management
+
+### The Problem
+
+When a user's `org_id` or `account_number` changes in LDAP:
+1. **Next login** → Protocol Mapper generates NEW synthetic groups (e.g., `cost-mgmt-org-9999999`)
+2. **OLD groups remain** in OpenShift (e.g., `cost-mgmt-org-1234567`) with user still a member
+3. **TokenReview returns BOTH** → CEL expression may return the wrong value
+
+OpenShift does **not** automatically remove users from groups when the JWT no longer contains them.
+
+### Solution: Automatic Reconciliation CronJob
+
+A Kubernetes CronJob runs every 15 minutes to reconcile OpenShift groups with Keycloak:
+
+```
+Keycloak (Source of Truth)     OpenShift Groups
+────────────────────────────   ────────────────────
+User: test                     cost-mgmt-org-1234567 [test] ← STALE
+  employeeNumber: 9999999      cost-mgmt-org-9999999 [test] ← CURRENT
+  employeeType: 5555555        cost-mgmt-account-9876543 [test] ← STALE
+                               cost-mgmt-account-5555555 [test] ← CURRENT
+
+After Reconciliation:
+  - test removed from cost-mgmt-org-1234567
+  - test removed from cost-mgmt-account-9876543
+  - Empty groups deleted
+```
+
+### Deployment
+
+```bash
+# Deploy the reconciliation CronJob
+oc apply -f scripts/reconcile-groups-cronjob.yaml
+```
+
+### How It Works
+
+1. **Queries Keycloak** for all users and their current attributes
+2. **Builds expected memberships** based on `employeeNumber` → `cost-mgmt-org-{id}`
+3. **Compares with OpenShift** groups
+4. **Removes stale memberships** (user in group but shouldn't be)
+5. **Deletes empty groups** (no members remaining)
+
+### Manual Cleanup (If Needed)
+
+```bash
+# Remove user from specific group
+oc adm groups remove-users cost-mgmt-org-1234567 test
+
+# Delete a group
+oc delete group cost-mgmt-org-1234567
+
+# Force user recreation (nuclear option)
+oc delete user test
+oc delete identity keycloak:<keycloak-user-id>
+# User logs in again → fresh groups from current JWT
+```
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KEYCLOAK_URL` | (cluster-specific) | Keycloak endpoint |
+| `KEYCLOAK_REALM` | `kubernetes` | Realm to query |
+| `COST_MGMT_ORG_ATTR` | `employeeNumber` | LDAP attribute for org_id |
+| `COST_MGMT_ACCOUNT_ATTR` | `employeeType` | LDAP attribute for account_number |
+
+### Files
+
+- `scripts/reconcile-groups-cronjob.yaml` - CronJob manifest
+- `scripts/reconcile-cost-mgmt-groups.sh` - Standalone reconciliation script
 
 ---
 
@@ -1383,30 +809,30 @@ API Response: 404 Not Found (authentication passed, no data in DB)
 
 ### Positive
 
+- **No LDAP Changes**: Reads existing user attributes, no schema modification needed
 - **Automated**: LDAP → Keycloak → OpenShift → Authorino flow is fully automated
 - **Scalable**: Supports thousands of organizations without performance impact
 - **Secure**: No credentials stored in data plane services
-- **Maintainable**: Clear schema and explicit intent
+- **Configurable**: Attribute names configurable per customer via Keycloak realm settings
 - **Debuggable**: Groups visible in Keycloak, OpenShift, and logs
-- **Future-proof**: Easy to add more attributes to the schema
+- **Real-time**: Updates on user login (no sync delay)
 
 ### Negative
 
-- **Schema Management**: Requires LDAP administrator access for initial setup
-- **One-time Complexity**: Schema extension requires careful planning
-- **Dependency**: Solution depends on LDAP schema capabilities
+- **JAR Deployment**: Requires deploying Protocol Mapper JAR via volume mount (one-time setup)
+- **Startup Time**: ~30-60s added to Keycloak pod startup for `kc.sh build`
+- **Group Cleanup**: Requires CronJob to remove stale groups when user attributes change
 
 ### Neutral
 
-- **LDAP Expertise Required**: Team needs LDAP schema extension knowledge (one-time learning)
+- **Keycloak Configuration**: Requires setting up LDAP attribute mappers and realm attributes
 - **Testing**: Requires LDAP test environment for validation
-- **Documentation**: Must document schema for operations team
 
 ## Alternatives for Future Consideration
 
-If requirements change significantly (e.g., need for 10+ custom claims), consider migrating to:
+If requirements change significantly (e.g., need for 10+ custom claims), consider:
 
-- **Option 4 (Claims Service)**: For complex claim structures
+- **Claims Service**: Separate service that Authorino queries for complex claim structures
 - **Hybrid Approach**: Use groups for `org_id` + claims service for additional metadata
 
 ## References
@@ -1425,7 +851,7 @@ If requirements change significantly (e.g., need for 10+ custom claims), conside
 ---
 
 **Decision made by:** Engineering Team
-**Last updated:** 2025-12-04
-**Review date:** 2026-03-04 (3 months)
+**Last updated:** 2025-12-05
+**Review date:** 2026-03-05 (3 months)
 
 

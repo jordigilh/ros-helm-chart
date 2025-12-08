@@ -1,0 +1,195 @@
+# Cost Management Group Reconciliation CronJob
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# This CronJob ensures OpenShift groups stay synchronized with Keycloak/LDAP.
+# When a user's org_id or account_number changes in LDAP, this job:
+#   1. Removes the user from stale groups
+#   2. Deletes empty groups
+#
+# The user's NEW groups are created automatically on their next login.
+#
+# Deploy with:
+#   oc apply -f reconcile-groups-cronjob.yaml -n keycloak
+#
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reconcile-groups-script
+  namespace: keycloak
+  labels:
+    app: cost-mgmt-group-reconciler
+data:
+  reconcile-cost-mgmt-groups.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    KEYCLOAK_URL="${KEYCLOAK_URL:-https://keycloak-keycloak.apps.stress.parodos.dev}"
+    KEYCLOAK_REALM="${KEYCLOAK_REALM:-kubernetes}"
+    ORG_ATTR="${COST_MGMT_ORG_ATTR:-employeeNumber}"
+    ACCOUNT_ATTR="${COST_MGMT_ACCOUNT_ATTR:-employeeType}"
+
+    echo "$(date): Starting group reconciliation..."
+
+    # Get Keycloak admin token
+    PASSWORD=$(cat /var/run/secrets/keycloak/password)
+    TOKEN=$(curl -sk -X POST "$KEYCLOAK_URL/realms/master/protocol/openid-connect/token" \
+      -d "username=admin&password=$PASSWORD&grant_type=password&client_id=admin-cli" | jq -r '.access_token')
+
+    if [ -z "$TOKEN" ] || [ "$TOKEN" == "null" ]; then
+      echo "ERROR: Failed to get Keycloak token"
+      exit 1
+    fi
+
+    # Get all users with their attributes
+    USERS=$(curl -sk "$KEYCLOAK_URL/admin/realms/$KEYCLOAK_REALM/users?max=10000" \
+      -H "Authorization: Bearer $TOKEN")
+
+    # Build map of expected group memberships
+    declare -A EXPECTED_GROUPS
+
+    for row in $(echo "$USERS" | jq -r '.[] | @base64'); do
+      username=$(echo "$row" | base64 -d | jq -r '.username')
+      org_id=$(echo "$row" | base64 -d | jq -r ".attributes.${ORG_ATTR}[0] // empty")
+      account_num=$(echo "$row" | base64 -d | jq -r ".attributes.${ACCOUNT_ATTR}[0] // empty")
+
+      [ -n "$org_id" ] && EXPECTED_GROUPS["cost-mgmt-org-${org_id}"]+="$username "
+      [ -n "$account_num" ] && EXPECTED_GROUPS["cost-mgmt-account-${account_num}"]+="$username "
+    done
+
+    # Reconcile each cost-mgmt group
+    STALE_COUNT=0
+    DELETED_COUNT=0
+
+    for group_name in $(oc get groups -o name 2>/dev/null | grep "cost-mgmt-" | cut -d'/' -f2); do
+      expected="${EXPECTED_GROUPS[$group_name]:-}"
+      current=$(oc get group "$group_name" -o jsonpath='{.users[*]}' 2>/dev/null || echo "")
+
+      # Remove stale memberships
+      for user in $current; do
+        if [[ ! " $expected " =~ " $user " ]]; then
+          echo "Removing stale membership: $user from $group_name"
+          oc adm groups remove-users "$group_name" "$user"
+          ((STALE_COUNT++))
+        fi
+      done
+
+      # Delete empty groups
+      remaining=$(oc get group "$group_name" -o jsonpath='{.users[*]}' 2>/dev/null || echo "")
+      if [ -z "$remaining" ]; then
+        echo "Deleting empty group: $group_name"
+        oc delete group "$group_name"
+        ((DELETED_COUNT++))
+      fi
+    done
+
+    echo "$(date): Reconciliation complete. Removed $STALE_COUNT stale memberships, deleted $DELETED_COUNT empty groups."
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: keycloak-admin-password
+  namespace: keycloak
+  labels:
+    app: cost-mgmt-group-reconciler
+  annotations:
+    description: "Copy of keycloak-initial-admin password for reconciler job"
+type: Opaque
+# Note: This will be populated by the deployment script
+# data:
+#   password: <base64-encoded-password>
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cost-mgmt-group-reconciler
+  namespace: keycloak
+  labels:
+    app: cost-mgmt-group-reconciler
+spec:
+  # Run every 15 minutes
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: cost-mgmt-group-reconciler
+        spec:
+          serviceAccountName: cost-mgmt-reconciler
+          restartPolicy: OnFailure
+          containers:
+          - name: reconciler
+            image: registry.redhat.io/openshift4/ose-cli:v4.14
+            command: ["/bin/bash", "/scripts/reconcile-cost-mgmt-groups.sh"]
+            env:
+            - name: KEYCLOAK_URL
+              value: "https://keycloak-keycloak.apps.stress.parodos.dev"
+            - name: KEYCLOAK_REALM
+              value: "kubernetes"
+            - name: COST_MGMT_ORG_ATTR
+              value: "employeeNumber"
+            - name: COST_MGMT_ACCOUNT_ATTR
+              value: "employeeType"
+            volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+            - name: keycloak-password
+              mountPath: /var/run/secrets/keycloak
+              readOnly: true
+          volumes:
+          - name: script
+            configMap:
+              name: reconcile-groups-script
+              defaultMode: 0755
+          - name: keycloak-password
+            secret:
+              secretName: keycloak-initial-admin
+              items:
+              - key: password
+                path: password
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cost-mgmt-reconciler
+  namespace: keycloak
+  labels:
+    app: cost-mgmt-group-reconciler
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cost-mgmt-group-reconciler
+  labels:
+    app: cost-mgmt-group-reconciler
+rules:
+- apiGroups: ["user.openshift.io"]
+  resources: ["groups"]
+  verbs: ["get", "list", "delete", "update", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cost-mgmt-group-reconciler
+  labels:
+    app: cost-mgmt-group-reconciler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cost-mgmt-group-reconciler
+subjects:
+- kind: ServiceAccount
+  name: cost-mgmt-reconciler
+  namespace: keycloak
+
+

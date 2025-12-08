@@ -280,7 +280,7 @@ The script creates an `openshift` client for OAuth integration:
 # Client Protocol: openid-connect
 # Access Type: confidential
 # Direct Access Grants: ON
-# Valid Redirect URIs: 
+# Valid Redirect URIs:
 #   - https://oauth-openshift.apps.your-cluster.com/oauth2callback/keycloak
 #   - https://oauth-openshift.apps.your-cluster.com/*
 #   - https://console-openshift-console.apps.your-cluster.com/*
@@ -630,7 +630,7 @@ oc logs -n cost-mgmt -l app.kubernetes.io/name=ros-api -c envoy-proxy | \
    ```bash
    # OpenShift secret
    oc get secret keycloak-client-secret -n openshift-config -o jsonpath='{.data.clientSecret}' | base64 -d
-   
+
    # Keycloak client secret (via Admin API)
    curl -sk "${KEYCLOAK_URL}/admin/realms/kubernetes/clients?clientId=openshift" \
      -H "Authorization: Bearer $ADMIN_TOKEN" | jq -r '.[0].secret'

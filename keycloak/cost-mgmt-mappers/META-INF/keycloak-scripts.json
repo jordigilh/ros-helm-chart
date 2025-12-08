@@ -1,0 +1,9 @@
+{
+  "mappers": [
+    {
+      "name": "cost-mgmt-attrs-to-groups",
+      "fileName": "mappers/user-attrs-to-groups.js",
+      "description": "Maps user LDAP attributes (costCenter, accountNumber) to synthetic groups for Cost Management"
+    }
+  ]
+}
