@@ -486,9 +486,6 @@ ui:
       requests:
         cpu: "50m"
         memory: "64Mi"
-    client:
-      id: ""
-      secret: ""
     cookie:
       # Cookie expiration time (720h = 30 days)
       expire: "720h"
@@ -496,9 +493,9 @@ ui:
 
     # TLS configuration for Keycloak OIDC provider communication
     tls:
-      # Secret containing CA certificate to trust Keycloak's certificate
-      # Created by deploy-rhbk.sh script before helm install
-      caCertSecretName: "keycloak-ca-cert"
+      # Enable CA certificate mounting for Keycloak TLS trust
+      # When enabled, mounts secret 'keycloak-ca-cert' (created by install-helm-chart.sh)
+      caCertEnabled: true
   app:
     image:
       repository: quay.io/insights-onprem/koku-ui-mfe-on-prem

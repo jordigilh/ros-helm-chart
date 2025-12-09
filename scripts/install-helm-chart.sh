@@ -1236,17 +1236,47 @@ verify_keycloak_ui_client_secret() {
     fi
 }
 
-# Function to extract UI OAuth client credentials from Keycloak and add to Helm values
-create_ui_oauth_client_secret() {
-    echo_info "Extracting UI OAuth client credentials from Keycloak..."
+# Function to create UI secrets required by oauth2-proxy
+# These are created BEFORE helm install (secrets should NEVER be in Helm charts)
+create_ui_secrets() {
+    echo_info "Creating UI secrets for oauth2-proxy..."
 
+    local release_name="${RELEASE_NAME:-cost-onprem}"
+
+    # 1. Create cookie secret (random session encryption key)
+    local cookie_secret_name="${release_name}-ui-cookie-secret"
+    if kubectl get secret "$cookie_secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_info "Cookie secret '$cookie_secret_name' already exists"
+    else
+        echo_info "Creating cookie secret '$cookie_secret_name'..."
+        local random_secret=$(openssl rand -base64 32 | tr -d '\n' | head -c 32)
+        kubectl create secret generic "$cookie_secret_name" \
+            -n "$NAMESPACE" \
+            --from-literal=session-secret="$random_secret" \
+            >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo_success "✓ Created cookie secret '$cookie_secret_name'"
+        else
+            echo_error "Failed to create cookie secret"
+            return 1
+        fi
+    fi
+
+    # 2. Create OAuth client secret (from Keycloak)
     if [ -z "$KEYCLOAK_NAMESPACE" ]; then
-        echo_warning "Keycloak namespace not set, skipping UI OAuth client credentials extraction"
+        echo_warning "Keycloak namespace not set, skipping OAuth client secret creation"
+        return 0
+    fi
+
+    local oauth_secret_name="${release_name}-ui-oauth-client"
+    local keycloak_ui_secret_name="keycloak-client-secret-cost-management-ui"
+
+    if kubectl get secret "$oauth_secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_info "OAuth client secret '$oauth_secret_name' already exists"
         return 0
     fi
 
     # Check if Keycloak UI client secret exists
-    local keycloak_ui_secret_name="keycloak-client-secret-cost-management-ui"
     if ! kubectl get secret "$keycloak_ui_secret_name" -n "$KEYCLOAK_NAMESPACE" >/dev/null 2>&1; then
         echo_warning "Keycloak UI client secret '$keycloak_ui_secret_name' not found in namespace '$KEYCLOAK_NAMESPACE'"
         echo_info "  Run deploy-rhbk.sh to create the Keycloak UI client secret first"
@@ -1254,28 +1284,119 @@ create_ui_oauth_client_secret() {
     fi
 
     # Extract client ID and client secret from Keycloak secret
-    echo_info "Extracting client ID and client secret from Keycloak secret..."
+    echo_info "Extracting OAuth credentials from Keycloak..."
     local client_id=$(kubectl get secret "$keycloak_ui_secret_name" -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.data.CLIENT_ID}' 2>/dev/null | base64 -d)
     local client_secret=$(kubectl get secret "$keycloak_ui_secret_name" -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.data.CLIENT_SECRET}' 2>/dev/null | base64 -d)
 
-    if [ -z "$client_id" ]; then
-        echo_error "Failed to extract CLIENT_ID from '$keycloak_ui_secret_name'"
-        echo_error "  The secret may not have the expected structure"
+    if [ -z "$client_id" ] || [ -z "$client_secret" ]; then
+        echo_error "Failed to extract credentials from Keycloak secret"
         return 1
     fi
 
-    if [ -z "$client_secret" ]; then
-        echo_error "Failed to extract CLIENT_SECRET from '$keycloak_ui_secret_name'"
-        echo_error "  The secret may not have the expected structure"
+    # Create the OAuth client secret
+    echo_info "Creating OAuth client secret '$oauth_secret_name'..."
+    kubectl create secret generic "$oauth_secret_name" \
+        -n "$NAMESPACE" \
+        --from-literal=client-id="$client_id" \
+        --from-literal=client-secret="$client_secret" \
+        >/dev/null 2>&1
+
+    if [ $? -eq 0 ]; then
+        echo_success "✓ Created OAuth client secret '$oauth_secret_name'"
+    else
+        echo_error "Failed to create OAuth client secret"
+        return 1
+    fi
+}
+
+# Function to create Keycloak CA certificate secret for oauth2-proxy TLS trust
+create_keycloak_ca_secret() {
+    echo_info "Creating Keycloak CA certificate secret for TLS trust..."
+
+    local secret_name="keycloak-ca-cert"
+
+    if [ -z "$KEYCLOAK_NAMESPACE" ]; then
+        echo_warning "Keycloak namespace not set, skipping CA certificate extraction"
+        return 0
+    fi
+
+    # Check if secret already exists
+    if kubectl get secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_info "Keycloak CA secret '$secret_name' already exists in namespace '$NAMESPACE'"
+        return 0
+    fi
+
+    # Get Keycloak route host
+    local keycloak_host=$(kubectl get route keycloak -n "$KEYCLOAK_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null)
+    if [ -z "$keycloak_host" ]; then
+        echo_warning "Could not find Keycloak route in namespace '$KEYCLOAK_NAMESPACE'"
+        echo_info "  Trying alternative methods to extract CA certificate..."
+    fi
+
+    local ca_cert=""
+    local temp_cert=$(mktemp)
+
+    # Method 1: Extract from OpenShift router CA secret (most reliable)
+    if kubectl get secret router-ca -n openshift-ingress-operator >/dev/null 2>&1; then
+        echo_info "Extracting CA from OpenShift router-ca secret..."
+        ca_cert=$(kubectl get secret router-ca -n openshift-ingress-operator -o jsonpath='{.data.tls\.crt}' | base64 -d 2>/dev/null)
+        if [ -n "$ca_cert" ]; then
+            echo "$ca_cert" > "$temp_cert"
+            if openssl x509 -noout -text -in "$temp_cert" >/dev/null 2>&1; then
+                echo_success "✓ Extracted CA from router-ca secret"
+            else
+                ca_cert=""
+            fi
+        fi
+    fi
+
+    # Method 2: Extract from Keycloak route directly using openssl
+    if [ -z "$ca_cert" ] && [ -n "$keycloak_host" ]; then
+        echo_info "Extracting CA from Keycloak route: $keycloak_host..."
+        ca_cert=$(echo | openssl s_client -connect "$keycloak_host:443" -servername "$keycloak_host" 2>/dev/null | openssl x509 2>/dev/null)
+        if [ -n "$ca_cert" ]; then
+            echo "$ca_cert" > "$temp_cert"
+            if openssl x509 -noout -text -in "$temp_cert" >/dev/null 2>&1; then
+                echo_success "✓ Extracted CA from Keycloak route"
+            else
+                ca_cert=""
+            fi
+        fi
+    fi
+
+    # Method 3: Try default ingress cert ConfigMap
+    if [ -z "$ca_cert" ]; then
+        echo_info "Trying default-ingress-cert ConfigMap..."
+        ca_cert=$(kubectl get configmap default-ingress-cert -n openshift-config-managed -o jsonpath='{.data.ca-bundle\.crt}' 2>/dev/null)
+        if [ -n "$ca_cert" ]; then
+            echo_success "✓ Extracted CA from default-ingress-cert ConfigMap"
+        fi
+    fi
+
+    # Cleanup temp file
+    rm -f "$temp_cert"
+
+    if [ -z "$ca_cert" ]; then
+        echo_error "Failed to extract Keycloak CA certificate using any method"
+        echo_info "  The oauth2-proxy may fail to connect to Keycloak with TLS errors"
+        echo_info "  You can manually create the secret with:"
+        echo_info "    kubectl create secret generic $secret_name --from-file=ca.crt=<your-ca-cert> -n $NAMESPACE"
         return 1
     fi
 
-    # Add to Helm arguments to override values.yaml
-    # The Helm chart will create the secret using these values
-    echo_info "Adding UI OAuth client credentials to Helm values..."
-    HELM_EXTRA_ARGS+=("--set" "ui.oauthProxy.client.id=$client_id")
-    HELM_EXTRA_ARGS+=("--set" "ui.oauthProxy.client.secret=$client_secret")
-    echo_success "UI OAuth client credentials will be passed to Helm chart via --set arguments"
+    # Create the secret
+    echo_info "Creating secret '$secret_name' in namespace '$NAMESPACE'..."
+    kubectl create secret generic "$secret_name" \
+        --from-literal=ca.crt="$ca_cert" \
+        --namespace="$NAMESPACE"
+
+    if [ $? -eq 0 ]; then
+        echo_success "✓ Created Keycloak CA secret '$secret_name'"
+        return 0
+    else
+        echo_error "Failed to create Keycloak CA secret"
+        return 1
+    fi
 }
 
 # Function to setup JWT authentication based on platform
@@ -1431,11 +1552,19 @@ main() {
         exit 1
     fi
 
-    # Create UI OAuth client secret (if Keycloak is available)
+    # Create UI secrets (cookie + OAuth client) - required before helm install
     if [ "$JWT_AUTH_ENABLED" = "true" ] && [ -n "$KEYCLOAK_NAMESPACE" ]; then
-        if ! create_ui_oauth_client_secret; then
-            echo_warning "Failed to create UI OAuth client secret. UI OAuth may not work correctly."
+        if ! create_ui_secrets; then
+            echo_warning "Failed to create UI secrets. UI OAuth may not work correctly."
             echo_info "  Ensure deploy-rhbk.sh has been run to create the Keycloak UI client secret"
+        fi
+    fi
+
+    # Create Keycloak CA certificate secret for oauth2-proxy TLS trust (if Keycloak is available)
+    if [ "$JWT_AUTH_ENABLED" = "true" ] && [ -n "$KEYCLOAK_NAMESPACE" ]; then
+        if ! create_keycloak_ca_secret; then
+            echo_warning "Failed to create Keycloak CA secret. oauth2-proxy may have TLS issues."
+            echo_info "  You may need to manually create the keycloak-ca-cert secret"
         fi
     fi
 
