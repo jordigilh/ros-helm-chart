@@ -61,7 +61,9 @@ spec:
         - --cookie-secure=true
         - --cookie-expire={{ .Values.ui.oauthProxy.cookie.expire }}
         - --cookie-refresh={{ .Values.ui.oauthProxy.cookie.refresh }}
+        {{- if .Values.ui.oauthProxy.tls.caCertEnabled }}
         - --provider-ca-file=/etc/keycloak-ca/ca.crt
+        {{- end }}
         livenessProbe:
           httpGet:
             path: /ping
@@ -86,9 +88,11 @@ spec:
         - name: proxy-tls
           mountPath: /etc/tls/private
           readOnly: true
+        {{- if .Values.ui.oauthProxy.tls.caCertEnabled }}
         - name: keycloak-ca
           mountPath: /etc/keycloak-ca
           readOnly: true
+        {{- end }}
       - name: app
         image: "{{ .Values.ui.app.image.repository }}:{{ .Values.ui.app.image.tag }}"
         imagePullPolicy: {{ .Values.ui.app.image.pullPolicy | default .Values.global.pullPolicy }}
@@ -125,9 +129,11 @@ spec:
       - name: nginx-config
         configMap:
           name: {{ include "cost-onprem.fullname" . }}-ui-nginx-config
+      {{- if .Values.ui.oauthProxy.tls.caCertEnabled }}
       - name: keycloak-ca
         secret:
-          secretName: {{ .Values.ui.oauthProxy.tls.caCertSecretName }}
+          secretName: keycloak-ca-cert
+      {{- end }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
