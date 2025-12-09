@@ -661,25 +661,25 @@ spec:
               id.token.claim: "true"
               access.token.claim: "true"
               userinfo.token.claim: "true"
-          - name: costCenter
+          - name: org_id
             protocol: openid-connect
             protocolMapper: oidc-usermodel-attribute-mapper
             config:
               userinfo.token.claim: "true"
-              user.attribute: costCenter
+              user.attribute: org_id
               id.token.claim: "true"
               access.token.claim: "true"
-              claim.name: costCenter
+              claim.name: org_id
               jsonType.label: String
-          - name: division
+          - name: account_number
             protocol: openid-connect
             protocolMapper: oidc-usermodel-attribute-mapper
             config:
               userinfo.token.claim: "true"
-              user.attribute: division
+              user.attribute: account_number
               id.token.claim: "true"
               access.token.claim: "true"
-              claim.name: division
+              claim.name: account_number
               jsonType.label: String
       - name: email
         description: "OpenID Connect built-in scope: email"
@@ -780,7 +780,7 @@ spec:
         clientAuthenticatorType: client-secret
         serviceAccountsEnabled: false
         standardFlowEnabled: true
-        directAccessGrantsEnabled: false
+        directAccessGrantsEnabled: true
         implicitFlowEnabled: false
         publicClient: false
         protocol: openid-connect
@@ -795,16 +795,6 @@ spec:
         optionalClientScopes:
           - offline_access
         protocolMappers:
-          - name: Org ID
-            protocol: openid-connect
-            protocolMapper: oidc-usermodel-attribute-mapper
-            config:
-              userinfo.token.claim: "true"
-              user.attribute: org_id
-              id.token.claim: "true"
-              access.token.claim: "true"
-              claim.name: org_id
-              jsonType.label: String
           - name: aud-mapper-cost-management-ui
             protocol: openid-connect
             protocolMapper: oidc-audience-mapper
@@ -1177,76 +1167,14 @@ extract_client_secret() {
     echo ""
 }
 
-# Function to create Keycloak CA certificate secret for oauth2-proxy
-create_keycloak_ca_secret() {
-    echo_header "CREATING KEYCLOAK CA CERTIFICATE SECRET"
-
-    local SECRET_NAME="keycloak-ca-cert"
-    local TARGET_NS="$COST_MGMT_NAMESPACE"
-
-    echo_info "Creating Keycloak CA certificate secret in namespace: $TARGET_NS"
-
-    # Ensure target namespace exists
-    if ! oc get namespace "$TARGET_NS" >/dev/null 2>&1; then
-        echo_info "Creating namespace: $TARGET_NS"
-        oc create namespace "$TARGET_NS" 2>/dev/null || true
-    fi
-
-    # Extract CA certificate from OpenShift's ingress operator
-    echo_info "Extracting cluster CA certificate from router-ca secret..."
-
-    local CA_CERT=""
-    CA_CERT=$(oc get secret router-ca -n openshift-ingress-operator -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d || echo "")
-
-    if [ -z "$CA_CERT" ]; then
-        echo_info "Router CA secret not found, trying service-ca ConfigMap..."
-        CA_CERT=$(oc get configmap openshift-service-ca.crt -n openshift-config-managed -o jsonpath='{.data.service-ca\.crt}' 2>/dev/null || echo "")
-    fi
-
-    if [ -z "$CA_CERT" ]; then
-        echo_info "Service CA not found, extracting from Keycloak route certificate..."
-        local KEYCLOAK_HOST=$(oc get route keycloak -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null)
-        if [ -n "$KEYCLOAK_HOST" ]; then
-            CA_CERT=$(echo | openssl s_client -connect "$KEYCLOAK_HOST:443" -servername "$KEYCLOAK_HOST" -showcerts 2>/dev/null | \
-                awk '/-----BEGIN CERTIFICATE-----/{p=1; cert=""} p{cert=cert $0 "\n"} /-----END CERTIFICATE-----/{if(p) {last=cert} p=0} END{print last}')
-        fi
-    fi
-
-    if [ -z "$CA_CERT" ]; then
-        echo_warning "Could not extract CA certificate. oauth2-proxy may fail to connect to Keycloak."
-        echo_warning "  oc get secret router-ca -n openshift-ingress-operator -o jsonpath='{.data.tls\\.crt}' | base64 -d > ca.crt"
-        echo_warning "  oc create secret generic $SECRET_NAME --from-file=ca.crt=ca.crt -n $TARGET_NS"
-        return 1
-    fi
-
-    local TEMP_CA_FILE=$(mktemp)
-    echo "$CA_CERT" > "$TEMP_CA_FILE"
-    oc create secret generic "$SECRET_NAME" \
-        -n "$TARGET_NS" \
-        --from-file=ca.crt="$TEMP_CA_FILE" \
-        --dry-run=client -o yaml | oc apply -f - >/dev/null 2>&1
-    local result=$?
-    rm -f "$TEMP_CA_FILE"
-
-    if [ $result -eq 0 ]; then
-        echo_success "Created secret: $SECRET_NAME in namespace $TARGET_NS"
-        echo_info "  This CA certificate will be used by oauth2-proxy to trust Keycloak"
-    else
-        echo_warning "Failed to create CA certificate secret"
-        return 1
-    fi
-
-    echo ""
-}
-
-# Function to create test group and user
-create_test_group_and_user() {
-    echo_header "CREATING TEST GROUP AND USER"
+# Function to create test user with org_id and account_number attributes
+create_test_user() {
+    echo_header "CREATING TEST USER"
 
     # Get Keycloak URL from Route
     local KEYCLOAK_URL=$(oc get route keycloak -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
     if [ -z "$KEYCLOAK_URL" ]; then
-        echo_warning "Could not determine Keycloak URL, skipping test group/user creation"
+        echo_warning "Could not determine Keycloak URL, skipping test user creation"
         return 1
     fi
 
@@ -1273,71 +1201,15 @@ create_test_group_and_user() {
     local ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
 
     if [ -z "$ACCESS_TOKEN" ]; then
-        echo_warning "Could not obtain admin token, skipping test group/user creation"
+        echo_warning "Could not obtain admin token, skipping test user creation"
         return 1
     fi
 
     echo_success "Admin token obtained"
 
-    # Create test-group with org_id attribute
-    echo_info "Creating group 'test-group'..."
-    local GROUP_HTTP_CODE=$(curl -sk -o /tmp/group_response.txt -w "%{http_code}" -X POST "$KEYCLOAK_URL/admin/realms/$REALM_NAME/groups" \
-        -H "Authorization: Bearer $ACCESS_TOKEN" \
-        -H "Content-Type: application/json" \
-        -d '{
-            "name": "test-group",
-            "attributes": {
-                "org_id": ["12345"]
-            }
-        }' 2>/dev/null)
-
-    local GROUP_RESPONSE=$(cat /tmp/group_response.txt 2>/dev/null || echo "")
-    rm -f /tmp/group_response.txt
-
-    # Check if group was created or already exists
-    local GROUP_ID=""
-    if [ "$GROUP_HTTP_CODE" = "409" ] || echo "$GROUP_RESPONSE" | grep -q "already exists\|Conflict"; then
-        echo_warning "Group 'test-group' may already exist, attempting to find it..."
-        # Get existing group
-        local GROUPS_RESPONSE=$(curl -sk -X GET "$KEYCLOAK_URL/admin/realms/$REALM_NAME/groups" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" 2>/dev/null)
-        GROUP_ID=$(echo "$GROUPS_RESPONSE" | grep -o '"id":"[^"]*"[^}]*"name":"test-group"' | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | head -1)
-
-        if [ -n "$GROUP_ID" ]; then
-            echo_info "Found existing group 'test-group', updating attributes..."
-            # Update group attributes
-            curl -sk -X PUT "$KEYCLOAK_URL/admin/realms/$REALM_NAME/groups/$GROUP_ID" \
-                -H "Authorization: Bearer $ACCESS_TOKEN" \
-                -H "Content-Type: application/json" \
-                -d '{
-                    "name": "test-group",
-                    "attributes": {
-                        "org_id": ["12345"]
-                    }
-                }' >/dev/null 2>&1
-            echo_success "✓ Group 'test-group' updated with org_id attribute"
-        fi
-    elif [ "$GROUP_HTTP_CODE" = "201" ] || [ "$GROUP_HTTP_CODE" = "200" ]; then
-        # Group created successfully, extract ID from Location header or response
-        # Try to get it from the groups list (most reliable)
-        sleep 2
-        local GROUPS_RESPONSE=$(curl -sk -X GET "$KEYCLOAK_URL/admin/realms/$REALM_NAME/groups" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" 2>/dev/null)
-        GROUP_ID=$(echo "$GROUPS_RESPONSE" | grep -o '"id":"[^"]*"[^}]*"name":"test-group"' | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | head -1)
-        echo_success "✓ Group 'test-group' created"
-    fi
-
-    if [ -z "$GROUP_ID" ]; then
-        echo_warning "Could not determine group ID for 'test-group'"
-        return 1
-    fi
-
-    echo_info "Group ID: $GROUP_ID"
-
-    # Create test user with sample org_id/account_number attributes
-    echo_info "Creating user 'test' with costCenter and division attributes..."
+    # Create test user with org_id and account_number attributes
+    # These values match the operator client's hardcoded values for testing
+    echo_info "Creating user 'test' with org_id and account_number attributes..."
     local USER_HTTP_CODE=$(curl -sk -o /tmp/user_response.txt -w "%{http_code}" -X POST "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users" \
         -H "Authorization: Bearer $ACCESS_TOKEN" \
         -H "Content-Type: application/json" \
@@ -1349,8 +1221,8 @@ create_test_group_and_user() {
             "firstName": "Test",
             "lastName": "User",
             "attributes": {
-                "costCenter": ["12345"],
-                "division": ["67890"]
+                "org_id": ["12345"],
+                "account_number": ["7890123"]
             }
         }' 2>/dev/null)
 
@@ -1380,8 +1252,8 @@ create_test_group_and_user() {
                     "firstName": "Test",
                     "lastName": "User",
                     "attributes": {
-                        "costCenter": ["12345"],
-                        "division": ["67890"]
+                        "org_id": ["12345"],
+                        "account_number": ["7890123"]
                     }
                 }' >/dev/null 2>&1
             echo_success "✓ User 'test' updated"
@@ -1420,28 +1292,7 @@ create_test_group_and_user() {
         echo_warning "Could not set password for user 'test' (may already be set)"
     fi
 
-    # Add user to group
-    echo_info "Adding user 'test' to group 'test-group'..."
-    local MEMBERSHIP_RESPONSE=$(curl -sk -X PUT "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users/$USER_ID/groups/$GROUP_ID" \
-        -H "Authorization: Bearer $ACCESS_TOKEN" \
-        -H "Content-Type: application/json" 2>/dev/null)
-
-    if [ $? -eq 0 ]; then
-        echo_success "✓ User 'test' added to group 'test-group'"
-    else
-        # Check if user is already in the group
-        local USER_GROUPS=$(curl -sk -X GET "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users/$USER_ID/groups" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" 2>/dev/null)
-
-        if echo "$USER_GROUPS" | grep -q "\"id\":\"$GROUP_ID\""; then
-            echo_success "✓ User 'test' is already in group 'test-group'"
-        else
-            echo_warning "Could not add user 'test' to group 'test-group'"
-        fi
-    fi
-
-    echo_success "✓ Test group and user creation complete"
+    echo_success "✓ Test user creation complete"
     echo ""
 }
 
@@ -1489,13 +1340,13 @@ display_summary() {
     echo_info "  Secret stored in: keycloak-client-secret-cost-management-ui"
     echo ""
 
-    echo_info "Test User and Group Information:"
-    echo_info "  Group: test-group"
-    echo_info "    Attribute: org_id = 12345"
+    echo_info "Test User Information:"
     echo_info "  User: test"
     echo_info "    Password: test"
     echo_info "    Email: test@test.com (verified)"
-    echo_info "    Group Membership: test-group"
+    echo_info "    Attributes:"
+    echo_info "      org_id: 12345"
+    echo_info "      account_number: 7890123"
     echo ""
 
     # Display admin credential retrieval
@@ -1576,11 +1427,10 @@ main() {
     # Note: Admin secret is auto-generated by RHBK operator when Keycloak instance is created
     deploy_postgresql
     deploy_keycloak
-    create_keycloak_ca_secret
     create_kubernetes_realm
     configure_admin_console
     extract_client_secret
-    create_test_group_and_user
+    create_test_user
 
     # Validate and summarize
     if validate_deployment; then
