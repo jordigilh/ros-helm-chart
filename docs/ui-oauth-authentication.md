@@ -597,7 +597,7 @@ oc get secret router-ca -n openshift-ingress-operator -o jsonpath='{.data.tls\.c
 kubectl create secret generic keycloak-ca-cert --from-file=ca.crt=./ca.crt -n ros-ocp
 ```
 
-**Note**: The `deploy-rhbk.sh` script creates this secret automatically.
+**Note**: The `install-helm-chart.sh` script creates this secret automatically when `ui.oauthProxy.tls.caCertEnabled=true`. The secret must be created in the `cost-onprem` namespace, which is why it's handled by the Helm installation script rather than `deploy-rhbk.sh`.
 
 ### Session Expired Too Quickly
 

@@ -25,7 +25,7 @@ Browser → UI Route → oauth2-proxy → Keycloak Login → JWT Token → Sessi
 
 3. **Keycloak CA Certificate** (for self-signed certificates)
    
-   If Keycloak uses a self-signed certificate, oauth2-proxy needs the CA certificate to trust it. The `deploy-rhbk.sh` script creates this automatically, but if deploying manually:
+   If Keycloak uses a self-signed certificate, oauth2-proxy needs the CA certificate to trust it. The `install-helm-chart.sh` script creates this automatically when `ui.oauthProxy.tls.caCertEnabled=true`, but if deploying manually:
    
    ```bash
    # Extract the cluster CA (signs OpenShift route certificates)
