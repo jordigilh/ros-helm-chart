@@ -123,16 +123,6 @@ data:
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
                   inline_code: |
-                    -- Helper function to get claim value with fallbacks
-                    local function get_claim(payload, ...)
-                      for _, key in ipairs({...}) do
-                        if payload[key] ~= nil and payload[key] ~= "" then
-                          return tostring(payload[key])
-                        end
-                      end
-                      return ""
-                    end
-
                     -- Helper function to validate org_id and account_number
                     local function validate_identifier(value, field_name, max_length)
                       max_length = max_length or 128  -- Default max length
@@ -205,16 +195,17 @@ data:
                         return
                       end
 
-                      -- Extract org_id with fallbacks
-                      local org_id = get_claim(jwt_data, "org_id", "organization_id", "tenant_id")
-                      if org_id == "" then
+                      -- Extract org_id (required claim)
+                      local org_id = jwt_data["org_id"]
+                      if org_id == nil or org_id == "" then
                         request_handle:logWarn("Missing org_id in JWT claims")
                         request_handle:respond(
                           {[":status"] = "401"},
-                          "Unauthorized: Missing organization ID in JWT claims"
+                          "Unauthorized: Missing org_id in JWT claims"
                         )
                         return
                       end
+                      org_id = tostring(org_id)
 
                       -- Validate org_id
                       local valid, err_msg = validate_identifier(org_id, "org_id")
@@ -222,16 +213,22 @@ data:
                         request_handle:logWarn("Invalid org_id: " .. err_msg)
                         request_handle:respond(
                           {[":status"] = "401"},
-                          "Unauthorized: Invalid organization ID"
+                          "Unauthorized: Invalid org_id"
                         )
                         return
                       end
 
-                      -- Extract account_number with fallbacks
-                      local account_number = get_claim(jwt_data, "account_number", "account_id", "account")
-                      if account_number == "" then
-                        account_number = org_id  -- Fallback to org_id
+                      -- Extract account_number (required claim)
+                      local account_number = jwt_data["account_number"]
+                      if account_number == nil or account_number == "" then
+                        request_handle:logWarn("Missing account_number in JWT claims")
+                        request_handle:respond(
+                          {[":status"] = "401"},
+                          "Unauthorized: Missing account_number in JWT claims"
+                        )
+                        return
                       end
+                      account_number = tostring(account_number)
 
                       -- Validate account_number
                       local valid, err_msg = validate_identifier(account_number, "account_number")
@@ -239,7 +236,7 @@ data:
                         request_handle:logWarn("Invalid account_number: " .. err_msg)
                         request_handle:respond(
                           {[":status"] = "401"},
-                          "Unauthorized: Invalid account number"
+                          "Unauthorized: Invalid account_number"
                         )
                         return
                       end

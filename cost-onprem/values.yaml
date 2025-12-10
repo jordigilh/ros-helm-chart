@@ -476,9 +476,9 @@ ui:
 
   oauthProxy:
     image:
-      repository: quay.io/oauth2-proxy/oauth2-proxy
+      repository: registry.redhat.io/rhceph/oauth2-proxy-rhel9
       pullPolicy: IfNotPresent
-      tag: "v7.7.1"
+      tag: "v7.6.0"
     resources:
       limits:
         cpu: "100m"
@@ -486,15 +486,16 @@ ui:
       requests:
         cpu: "50m"
         memory: "64Mi"
-    client:
-      id: ""
-      secret: ""
     cookie:
       # Cookie expiration time (720h = 30 days)
       expire: "720h"
       refresh: "4m"
 
-
+    # TLS configuration for Keycloak OIDC provider communication
+    tls:
+      # Enable CA certificate mounting for Keycloak TLS trust
+      # When enabled, mounts secret 'keycloak-ca-cert' (created by install-helm-chart.sh)
+      caCertEnabled: true
   app:
     image:
       repository: quay.io/insights-onprem/koku-ui-mfe-on-prem

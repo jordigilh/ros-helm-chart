@@ -39,6 +39,7 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 
 | Document | Purpose | When to Use |
 |----------|---------|-------------|
+| **[UI OAuth Testing](ui-oauth-testing.md)** | Guide for testing UI OAuth flow with Keycloak | Validating UI authentication after deployment |
 | **[Force Operator Upload](force-operator-upload.md)** | Guide for manually triggering metrics upload for testing | Testing end-to-end pipeline or validating changes |
 | **[Upload Verification Checklist](cost-management-operator-upload-verification-checklist.md)** | Step-by-step checklist to verify operator metrics upload | Validating that the operator successfully uploaded metrics to Kruize |
 | **[Troubleshooting Guide](troubleshooting.md)** | Common issues and their solutions | Diagnosing and resolving problems with your deployment |
