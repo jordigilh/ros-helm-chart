@@ -315,11 +315,11 @@ The operator:
 The cookie secret is persisted across Helm upgrades using the `lookup` function:
 
 ```yaml
-{{- $secret := (lookup "v1" "Secret" .Release.Namespace (printf "%s-ui-cookie-secret" (include "ros-ocp.fullname" .))) -}}
+{{- $secret := (lookup "v1" "Secret" .Release.Namespace (printf "%s-ui-cookie-secret" (include "cost-onprem.fullname" .))) -}}
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ include "ros-ocp.fullname" . }}-ui-cookie-secret
+  name: {{ include "cost-onprem.fullname" . }}-ui-cookie-secret
 type: Opaque
 data:
   session-secret: {{ if $secret }}{{ index $secret.data "session-secret" }}{{ else }}{{ randAlphaNum 32 | b64enc }}{{ end }}
@@ -422,7 +422,7 @@ This ensures Nginx knows where to proxy API requests.
 
 ```bash
 # Get the UI route URL
-UI_ROUTE=$(oc get route -n ros-ocp -l app.kubernetes.io/component=ui -o jsonpath='{.items[0].spec.host}')
+UI_ROUTE=$(oc get route -n cost-onprem -l app.kubernetes.io/component=ui -o jsonpath='{.items[0].spec.host}')
 
 # Access in browser
 echo "https://$UI_ROUTE"
@@ -437,40 +437,40 @@ curl -v "https://$UI_ROUTE"
 
 ```bash
 # Check route exists
-oc get route -n ros-ocp -l app.kubernetes.io/component=ui
+oc get route -n cost-onprem -l app.kubernetes.io/component=ui
 
 # Verify TLS reencrypt termination
-oc get route -n ros-ocp -l app.kubernetes.io/component=ui -o jsonpath='{.items[0].spec.tls.termination}'
+oc get route -n cost-onprem -l app.kubernetes.io/component=ui -o jsonpath='{.items[0].spec.tls.termination}'
 # Expected: reencrypt
 
 # Check route target
-oc describe route -n ros-ocp -l app.kubernetes.io/component=ui
+oc describe route -n cost-onprem -l app.kubernetes.io/component=ui
 ```
 
 ### Verify TLS Certificate
 
 ```bash
 # Check if TLS secret exists
-oc get secret -n ros-ocp -l app.kubernetes.io/component=ui | grep tls
+oc get secret -n cost-onprem -l app.kubernetes.io/component=ui | grep tls
 
 # View certificate details
-oc get secret <fullname>-ui-tls -n ros-ocp -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -text -noout
+oc get secret <fullname>-ui-tls -n cost-onprem -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -text -noout
 
 # Verify certificate is valid
-oc get secret <fullname>-ui-tls -n ros-ocp -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -dates
+oc get secret <fullname>-ui-tls -n cost-onprem -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -dates
 ```
 
 ### Verify OAuth Proxy Health
 
 ```bash
 # Check OAuth proxy health endpoint
-oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c oauth-proxy -- \
+oc exec -n cost-onprem -l app.kubernetes.io/component=ui -c oauth-proxy -- \
   curl -k https://localhost:8443/oauth/healthz
 
 # Expected: "OK"
 
 # Check OAuth proxy logs
-oc logs -n ros-ocp -l app.kubernetes.io/component=ui -c oauth-proxy --tail=50
+oc logs -n cost-onprem -l app.kubernetes.io/component=ui -c oauth-proxy --tail=50
 
 # Look for:
 # - "Listening on :8443"
@@ -481,35 +481,35 @@ oc logs -n ros-ocp -l app.kubernetes.io/component=ui -c oauth-proxy --tail=50
 
 ```bash
 # Check UI app health
-oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
+oc exec -n cost-onprem -l app.kubernetes.io/component=ui -c app -- \
   curl http://localhost:8080/
 
 # Expected: HTML response
 
 # Check UI app logs
-oc logs -n ros-ocp -l app.kubernetes.io/component=ui -c app --tail=50
+oc logs -n cost-onprem -l app.kubernetes.io/component=ui -c app --tail=50
 ```
 
 ### Verify Nginx Configuration
 
 ```bash
 # Check API_PROXY_URL environment variable
-oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
+oc exec -n cost-onprem -l app.kubernetes.io/component=ui -c app -- \
   env | grep API_PROXY_URL
 
 # Expected: API_PROXY_URL=http://<fullname>-ros-api:8000
 
 # Test Nginx API proxy (requires authenticated session)
 # First, get a valid session cookie, then:
-oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
+oc exec -n cost-onprem -l app.kubernetes.io/component=ui -c app -- \
   curl -H "Authorization: Bearer <test-token>" \
        http://localhost:8080/api/status
 
 # Check Nginx logs (if available in container)
-oc logs -n ros-ocp -l app.kubernetes.io/component=ui -c app --tail=50 | grep nginx
+oc logs -n cost-onprem -l app.kubernetes.io/component=ui -c app --tail=50 | grep nginx
 
 # Verify ROS API is accessible from UI pod
-oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
+oc exec -n cost-onprem -l app.kubernetes.io/component=ui -c app -- \
   curl http://<fullname>-ros-api:8000/status
 ```
 
@@ -539,16 +539,16 @@ oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
 **Diagnosis**:
 ```bash
 # Check ServiceAccount annotation
-oc get serviceaccount -n ros-ocp -l app.kubernetes.io/component=ui -o yaml | grep oauth-redirectreference
+oc get serviceaccount -n cost-onprem -l app.kubernetes.io/component=ui -o yaml | grep oauth-redirectreference
 
 # Verify route name matches annotation
-oc get route -n ros-ocp -l app.kubernetes.io/component=ui -o jsonpath='{.items[0].metadata.name}'
+oc get route -n cost-onprem -l app.kubernetes.io/component=ui -o jsonpath='{.items[0].metadata.name}'
 ```
 
 **Solution**:
 ```bash
 # Reinstall to fix annotation mismatch
-helm upgrade ros-ocp ./ros-ocp -n ros-ocp --force
+helm upgrade cost-onprem ./cost-onprem -n cost-onprem --force
 ```
 
 ### TLS Certificate Not Generated
@@ -561,22 +561,22 @@ helm upgrade ros-ocp ./ros-ocp -n ros-ocp --force
 oc get pods -n openshift-service-ca -l app=service-ca
 
 # Check service annotation
-oc get service -n ros-ocp -l app.kubernetes.io/component=ui -o yaml | grep serving-cert-secret-name
+oc get service -n cost-onprem -l app.kubernetes.io/component=ui -o yaml | grep serving-cert-secret-name
 
 # Check if secret was created
-oc get secret -n ros-ocp | grep ui-tls
+oc get secret -n cost-onprem | grep ui-tls
 ```
 
 **Solution**:
 ```bash
 # Wait for certificate generation (usually < 30 seconds)
-oc wait --for=condition=ready secret/<fullname>-ui-tls -n ros-ocp --timeout=60s
+oc wait --for=condition=ready secret/<fullname>-ui-tls -n cost-onprem --timeout=60s
 
 # If timeout, check Service CA logs
 oc logs -n openshift-service-ca -l app=service-ca
 
 # Restart pod to pick up certificate
-oc rollout restart deployment -n ros-ocp -l app.kubernetes.io/component=ui
+oc rollout restart deployment -n cost-onprem -l app.kubernetes.io/component=ui
 ```
 
 ### Keycloak Certificate Not Trusted
@@ -606,10 +606,10 @@ kubectl create secret generic keycloak-ca-cert --from-file=ca.crt=./ca.crt -n co
 **Diagnosis**:
 ```bash
 # Check cookie secret age
-oc get secret -n ros-ocp <fullname>-ui-cookie-secret -o jsonpath='{.metadata.creationTimestamp}'
+oc get secret -n cost-onprem <fullname>-ui-cookie-secret -o jsonpath='{.metadata.creationTimestamp}'
 
 # Check if secret changed recently
-oc describe secret -n ros-ocp <fullname>-ui-cookie-secret
+oc describe secret -n cost-onprem <fullname>-ui-cookie-secret
 ```
 
 **Solution**:
@@ -618,7 +618,7 @@ oc describe secret -n ros-ocp <fullname>-ui-cookie-secret
 # If manually deleted, users will need to re-login
 
 # Verify lookup function is working
-helm get manifest ros-ocp -n ros-ocp | grep -A 5 "lookup.*Secret"
+helm get manifest cost-onprem -n cost-onprem | grep -A 5 "lookup.*Secret"
 ```
 
 ### 503 Service Unavailable
@@ -628,25 +628,25 @@ helm get manifest ros-ocp -n ros-ocp | grep -A 5 "lookup.*Secret"
 **Diagnosis**:
 ```bash
 # Check pod status
-oc get pods -n ros-ocp -l app.kubernetes.io/component=ui
+oc get pods -n cost-onprem -l app.kubernetes.io/component=ui
 
 # Check service endpoints
-oc get endpoints -n ros-ocp -l app.kubernetes.io/component=ui
+oc get endpoints -n cost-onprem -l app.kubernetes.io/component=ui
 
 # Check route backend
-oc describe route -n ros-ocp -l app.kubernetes.io/component=ui
+oc describe route -n cost-onprem -l app.kubernetes.io/component=ui
 ```
 
 **Solution**:
 ```bash
 # Ensure pod is ready
-oc wait --for=condition=ready pod -n ros-ocp -l app.kubernetes.io/component=ui --timeout=60s
+oc wait --for=condition=ready pod -n cost-onprem -l app.kubernetes.io/component=ui --timeout=60s
 
 # Check readiness probe
-oc describe pod -n ros-ocp -l app.kubernetes.io/component=ui | grep -A 5 Readiness
+oc describe pod -n cost-onprem -l app.kubernetes.io/component=ui | grep -A 5 Readiness
 
 # View probe logs
-oc logs -n ros-ocp -l app.kubernetes.io/component=ui -c oauth-proxy | grep healthz
+oc logs -n cost-onprem -l app.kubernetes.io/component=ui -c oauth-proxy | grep healthz
 ```
 
 ### OAuth Proxy Crashes
@@ -656,19 +656,19 @@ oc logs -n ros-ocp -l app.kubernetes.io/component=ui -c oauth-proxy | grep healt
 **Diagnosis**:
 ```bash
 # Check pod events
-oc describe pod -n ros-ocp -l app.kubernetes.io/component=ui
+oc describe pod -n cost-onprem -l app.kubernetes.io/component=ui
 
 # Check oauth-proxy logs
-oc logs -n ros-ocp -l app.kubernetes.io/component=ui -c oauth-proxy --previous
+oc logs -n cost-onprem -l app.kubernetes.io/component=ui -c oauth-proxy --previous
 
 # Check resource limits
-oc get pod -n ros-ocp -l app.kubernetes.io/component=ui -o jsonpath='{.spec.containers[?(@.name=="oauth-proxy")].resources}'
+oc get pod -n cost-onprem -l app.kubernetes.io/component=ui -o jsonpath='{.spec.containers[?(@.name=="oauth-proxy")].resources}'
 ```
 
 **Solution**:
 ```bash
 # Increase memory if OOMKilled
-helm upgrade ros-ocp ./ros-ocp -n ros-ocp \
+helm upgrade cost-onprem ./cost-onprem -n cost-onprem \
   --set ui.oauth-proxy.resources.limits.memory=256Mi \
   --set ui.oauth-proxy.resources.requests.memory=128Mi
 ```
@@ -680,23 +680,23 @@ helm upgrade ros-ocp ./ros-ocp -n ros-ocp \
 **Diagnosis**:
 ```bash
 # Check app logs
-oc logs -n ros-ocp -l app.kubernetes.io/component=ui -c app
+oc logs -n cost-onprem -l app.kubernetes.io/component=ui -c app
 
 # Test app directly
-oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
+oc exec -n cost-onprem -l app.kubernetes.io/component=ui -c app -- \
   curl http://localhost:8080/
 
 # Check app port configuration
-oc get deployment -n ros-ocp -l app.kubernetes.io/component=ui -o jsonpath='{.spec.template.spec.containers[?(@.name=="app")].ports[0].containerPort}'
+oc get deployment -n cost-onprem -l app.kubernetes.io/component=ui -o jsonpath='{.spec.template.spec.containers[?(@.name=="app")].ports[0].containerPort}'
 ```
 
 **Solution**:
 ```bash
 # Verify app port matches configuration
-helm upgrade ros-ocp ./ros-ocp -n ros-ocp --set ui.app.port=8080
+helm upgrade cost-onprem ./cost-onprem -n cost-onprem --set ui.app.port=8080
 
 # Increase app resources if needed
-helm upgrade ros-ocp ./ros-ocp -n ros-ocp \
+helm upgrade cost-onprem ./cost-onprem -n cost-onprem \
   --set ui.app.resources.limits.memory=512Mi
 ```
 
@@ -707,35 +707,35 @@ helm upgrade ros-ocp ./ros-ocp -n ros-ocp \
 **Diagnosis**:
 ```bash
 # Check if API_PROXY_URL is set correctly
-oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
+oc exec -n cost-onprem -l app.kubernetes.io/component=ui -c app -- \
   env | grep API_PROXY_URL
 
 # Verify ROS API service is accessible
-oc get svc -n ros-ocp -l app.kubernetes.io/component=ros-api
+oc get svc -n cost-onprem -l app.kubernetes.io/component=ros-api
 
 # Test ROS API directly
-oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
+oc exec -n cost-onprem -l app.kubernetes.io/component=ui -c app -- \
   curl http://<fullname>-ros-api:8000/status
 
 # Check if OAuth2 proxy is passing Authorization header
-oc logs -n ros-ocp -l app.kubernetes.io/component=ui -c oauth-proxy | grep -i "authorization\|pass-authorization"
+oc logs -n cost-onprem -l app.kubernetes.io/component=ui -c oauth-proxy | grep -i "authorization\|pass-authorization"
 ```
 
 **Solution**:
 ```bash
 # Verify API_PROXY_URL environment variable
 # Should be: http://<fullname>-ros-api:8000
-oc get deployment -n ros-ocp -l app.kubernetes.io/component=ui -o yaml | \
+oc get deployment -n cost-onprem -l app.kubernetes.io/component=ui -o yaml | \
   grep -A 2 API_PROXY_URL
 
 # Ensure OAuth2 proxy is configured with --pass-authorization-header flag
 # This flag enables Authorization header to be passed to upstream
-oc get deployment -n ros-ocp -l app.kubernetes.io/component=ui -o yaml | \
+oc get deployment -n cost-onprem -l app.kubernetes.io/component=ui -o yaml | \
   grep -i "pass-authorization-header"
 
 # If missing, update Helm values to include:
 # ui.oauthProxy.args: ["--pass-authorization-header"]
-helm upgrade ros-ocp ./ros-ocp -n ros-ocp \
+helm upgrade cost-onprem ./cost-onprem -n cost-onprem \
   --set ui.oauthProxy.passAuthorizationHeader=true
 ```
 
@@ -746,15 +746,15 @@ helm upgrade ros-ocp ./ros-ocp -n ros-ocp \
 **Diagnosis**:
 ```bash
 # Check Nginx configuration (if accessible)
-oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
+oc exec -n cost-onprem -l app.kubernetes.io/component=ui -c app -- \
   cat /etc/nginx/nginx.conf 2>/dev/null || echo "Nginx config not accessible"
 
 # Test ROS API connectivity from UI pod
-oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
+oc exec -n cost-onprem -l app.kubernetes.io/component=ui -c app -- \
   curl -v http://<fullname>-ros-api:8000/status
 
 # Check DNS resolution
-oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
+oc exec -n cost-onprem -l app.kubernetes.io/component=ui -c app -- \
   nslookup <fullname>-ros-api || getent hosts <fullname>-ros-api
 ```
 
@@ -765,13 +765,13 @@ oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
 # API_PROXY_URL should be: http://<fullname>-ros-api:8000
 
 # Check service exists and is accessible
-oc get svc -n ros-ocp <fullname>-ros-api
+oc get svc -n cost-onprem <fullname>-ros-api
 
 # Verify ROS API pod is running
-oc get pods -n ros-ocp -l app.kubernetes.io/component=ros-api
+oc get pods -n cost-onprem -l app.kubernetes.io/component=ros-api
 
 # Test network connectivity
-oc exec -n ros-ocp -l app.kubernetes.io/component=ui -c app -- \
+oc exec -n cost-onprem -l app.kubernetes.io/component=ui -c app -- \
   nc -zv <fullname>-ros-api 8000
 ```
 
