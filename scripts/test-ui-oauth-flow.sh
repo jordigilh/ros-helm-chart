@@ -198,7 +198,7 @@ if [ -n "$ACCESS_TOKEN" ]; then
     # Format JSONs side by side (Keycloak first - smaller, JWT second - filtered)
     echo ""
     KC_FMT=$(echo "$KC_USER_DATA" | jq '.[0] | {username, email, attributes}' 2>/dev/null || echo "$KC_USER_DATA")
-    JWT_FMT=$(echo "$JWT_PAYLOAD" | jq '{preferred_username, email, costCenter, division}' 2>/dev/null || echo "$JWT_PAYLOAD")
+    JWT_FMT=$(echo "$JWT_PAYLOAD" | jq '{preferred_username, email, org_id, account_number}' 2>/dev/null || echo "$JWT_PAYLOAD")
 
     echo "┌───────────────────────────────┐  ┌───────────────────────────────┐"
     echo "│       Keycloak User           │  │        JWT Token              │"
@@ -220,16 +220,16 @@ if [ -n "$ACCESS_TOKEN" ]; then
         log_warn "JWT missing email claim"
     fi
 
-    if echo "$JWT_PAYLOAD" | grep -q "costCenter"; then
-        log_pass "JWT contains costCenter"
+    if echo "$JWT_PAYLOAD" | grep -q "org_id"; then
+        log_pass "JWT contains org_id"
     else
-        log_warn "JWT missing costCenter claim"
+        log_warn "JWT missing org_id claim"
     fi
 
-    if echo "$JWT_PAYLOAD" | grep -q "division"; then
-        log_pass "JWT contains division"
+    if echo "$JWT_PAYLOAD" | grep -q "account_number"; then
+        log_pass "JWT contains account_number"
     else
-        log_warn "JWT missing division claim"
+        log_warn "JWT missing account_number claim"
     fi
 else
     log_warn "Skipping JWT claims - no token"

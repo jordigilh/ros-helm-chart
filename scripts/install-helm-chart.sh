@@ -1336,21 +1336,33 @@ create_keycloak_ca_secret() {
     local ca_cert=""
     local temp_cert=$(mktemp)
 
-    # Method 1: Extract from OpenShift router CA secret (most reliable)
-    if kubectl get secret router-ca -n openshift-ingress-operator >/dev/null 2>&1; then
-        echo_info "Extracting CA from OpenShift router-ca secret..."
-        ca_cert=$(kubectl get secret router-ca -n openshift-ingress-operator -o jsonpath='{.data.tls\.crt}' | base64 -d 2>/dev/null)
+    # Method 1: Extract from default-ingress-cert ConfigMap (most compatible)
+    # This contains the full CA bundle used by OpenShift ingress
+    if kubectl get configmap default-ingress-cert -n openshift-config-managed >/dev/null 2>&1; then
+        echo_info "Extracting CA from default-ingress-cert ConfigMap..."
+        ca_cert=$(kubectl get configmap default-ingress-cert -n openshift-config-managed -o jsonpath='{.data.ca-bundle\.crt}' 2>/dev/null)
         if [ -n "$ca_cert" ]; then
-            echo "$ca_cert" > "$temp_cert"
-            if openssl x509 -noout -text -in "$temp_cert" >/dev/null 2>&1; then
-                echo_success "✓ Extracted CA from router-ca secret"
-            else
-                ca_cert=""
+            echo_success "✓ Extracted CA from default-ingress-cert ConfigMap"
+        fi
+    fi
+
+    # Method 2: Extract from OpenShift router CA secret
+    if [ -z "$ca_cert" ]; then
+        if kubectl get secret router-ca -n openshift-ingress-operator >/dev/null 2>&1; then
+            echo_info "Extracting CA from OpenShift router-ca secret..."
+            ca_cert=$(kubectl get secret router-ca -n openshift-ingress-operator -o jsonpath='{.data.tls\.crt}' | base64 -d 2>/dev/null)
+            if [ -n "$ca_cert" ]; then
+                echo "$ca_cert" > "$temp_cert"
+                if openssl x509 -noout -text -in "$temp_cert" >/dev/null 2>&1; then
+                    echo_success "✓ Extracted CA from router-ca secret"
+                else
+                    ca_cert=""
+                fi
             fi
         fi
     fi
 
-    # Method 2: Extract from Keycloak route directly using openssl
+    # Method 3: Extract from Keycloak route directly using openssl
     if [ -z "$ca_cert" ] && [ -n "$keycloak_host" ]; then
         echo_info "Extracting CA from Keycloak route: $keycloak_host..."
         ca_cert=$(echo | openssl s_client -connect "$keycloak_host:443" -servername "$keycloak_host" 2>/dev/null | openssl x509 2>/dev/null)
@@ -1361,15 +1373,6 @@ create_keycloak_ca_secret() {
             else
                 ca_cert=""
             fi
-        fi
-    fi
-
-    # Method 3: Try default ingress cert ConfigMap
-    if [ -z "$ca_cert" ]; then
-        echo_info "Trying default-ingress-cert ConfigMap..."
-        ca_cert=$(kubectl get configmap default-ingress-cert -n openshift-config-managed -o jsonpath='{.data.ca-bundle\.crt}' 2>/dev/null)
-        if [ -n "$ca_cert" ]; then
-            echo_success "✓ Extracted CA from default-ingress-cert ConfigMap"
         fi
     fi
 
