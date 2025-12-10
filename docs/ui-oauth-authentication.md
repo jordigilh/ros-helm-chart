@@ -594,7 +594,7 @@ ERROR: Failed to initialise OAuth2 Proxy: tls: failed to verify certificate: x50
 oc get secret router-ca -n openshift-ingress-operator -o jsonpath='{.data.tls\.crt}' | base64 -d > ca.crt
 
 # Create secret in deployment namespace
-kubectl create secret generic keycloak-ca-cert --from-file=ca.crt=./ca.crt -n ros-ocp
+kubectl create secret generic keycloak-ca-cert --from-file=ca.crt=./ca.crt -n cost-onprem
 ```
 
 **Note**: The `install-helm-chart.sh` script creates this secret automatically when `ui.oauthProxy.tls.caCertEnabled=true`. The secret must be created in the `cost-onprem` namespace, which is why it's handled by the Helm installation script rather than `deploy-rhbk.sh`.
