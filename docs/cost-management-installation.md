@@ -33,7 +33,7 @@
 
 ### Resource Requirements by Component
 
-#### Infrastructure Chart (cost-management-infrastructure)
+#### Infrastructure Chart (cost-onprem-infra)
 
 | Component | Pods | CPU Request | CPU Limit | Memory Request | Memory Limit |
 |-----------|------|-------------|-----------|----------------|--------------|
@@ -179,7 +179,7 @@ jq --version
                     └──────────────────────────────┘
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃  DATA PROCESSING LAYER (cost-management-infrastructure chart)          ┃
+┃  DATA PROCESSING LAYER (cost-onprem-infra chart)          ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
     ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
@@ -256,7 +256,7 @@ The infrastructure chart deploys the data processing layer: PostgreSQL, Hive Met
 cd /path/to/ros-helm-chart
 
 # Deploy infrastructure chart
-helm install cost-management-infrastructure ./cost-management-infrastructure \
+helm install cost-onprem-infra ./cost-onprem-infra \
   --namespace $NAMESPACE \
   --create-namespace \
   --wait \
@@ -830,7 +830,7 @@ See `COMPLETE_RESOLUTION_JOURNEY.md` for details.
 
 ```bash
 # Upgrade infrastructure
-helm upgrade cost-management-infrastructure ./cost-management-infrastructure \
+helm upgrade cost-onprem-infra ./cost-onprem-infra \
   --namespace $NAMESPACE \
   --reuse-values
 
