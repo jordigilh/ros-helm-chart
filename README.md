@@ -2,9 +2,8 @@
 
 This repository contains Helm charts for deploying cost management solutions on-premise:
 
-1. **`cost-onprem/`** - Resource Optimization Service (ROS) with Kruize integration
-2. **`cost-management-infrastructure/`** - Cost Management data processing infrastructure (PostgreSQL, Trino, Hive, Redis) ⭐ NEW
-3. **`cost-management-onprem/`** - Cost Management application (Koku API, MASU, Celery workers) ⭐ NEW
+1. **`cost-onprem/`** - Main application chart containing ROS, Kruize, Sources API, and Koku (Cost Management) components
+2. **`cost-onprem-infra/`** - Infrastructure chart (PostgreSQL, Trino, Hive Metastore) deployed before the main chart
 
 ---
 
@@ -14,18 +13,18 @@ Complete Helm charts for deploying the full Cost Management stack with OCP cost 
 
 **🚀 Quick Start:**
 ```bash
-# Automated deployment (recommended)
-./scripts/install-cost-management-complete.sh
+# Automated deployment (recommended) - deploys both infra + main chart
+./scripts/install-helm-chart.sh
 
 # Or deploy components separately
-./scripts/bootstrap-infrastructure.sh        # Infrastructure (PostgreSQL, Trino, Hive)
-./scripts/install-cost-helm-chart.sh        # Application (Koku API, MASU, Workers)
+./scripts/bootstrap-infrastructure.sh --namespace cost-onprem  # Infrastructure (PostgreSQL, Trino, Hive)
+./scripts/install-helm-chart.sh                                 # Application (uses infra deployed above)
 ```
 
 **📖 Documentation:**
 - **[Cost Management Installation Guide](docs/cost-management-installation.md)** - Complete deployment guide
 - **Prerequisites**: OpenShift 4.18+, ODF (150GB+), Kafka/Strimzi
-- **Architecture**: 2-chart deployment (infrastructure + application)
+- **Architecture**: 2-chart deployment (`cost-onprem-infra` → `cost-onprem`)
 - **E2E Testing**: Automated validation with `./scripts/cost-mgmt-ocp-dataflow.sh`
 
 **Key Features:**
@@ -144,9 +143,18 @@ cost-onprem-chart/
 ## ⚙️ Configuration
 
 ### Resource Requirements
-- **Memory**: 8GB+ (12GB+ recommended)
-- **CPU**: 4+ cores
-- **Storage**: 30GB+ persistent storage
+
+Complete Cost Management deployment requires significant cluster resources:
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| **CPU** | 10 cores | 12-14 cores |
+| **Memory** | 24 Gi | 32-40 Gi |
+| **Worker Nodes** | 3 × 8 Gi | 3 × 16 Gi |
+| **Storage** | 300 Gi | 400+ Gi |
+| **Pods** | ~55 | - |
+
+**📖 See [Resource Requirements Guide](docs/resource-requirements.md) for detailed breakdown by component.**
 
 ### Storage Options
 - **Kubernetes/KIND**: MinIO (automatically deployed)

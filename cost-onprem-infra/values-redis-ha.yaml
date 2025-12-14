@@ -1,12 +1,12 @@
-# Redis High Availability Configuration for Cost Management
+# Redis High Availability Configuration for Cost Management On-Premise
 #
 # This configuration deploys Redis in Sentinel mode for high availability,
 # which ensures reliable Celery chord callbacks and result backend persistence.
 #
 # Usage:
-#   helm upgrade cost-mgmt-infra ./cost-management-infrastructure \
-#     -f cost-management-infrastructure/values-redis-ha.yaml \
-#     -n cost-mgmt
+#   helm upgrade cost-onprem-infra ./cost-onprem-infra \
+#     -f cost-onprem-infra/values-redis-ha.yaml \
+#     -n cost-onprem
 
 redis:
   # Enable Redis deployment
@@ -124,15 +124,14 @@ redis:
   networkPolicy:
     enabled: true
     allowExternal: false
-    ingressNSMatchLabels:
-      name: cost-mgmt
+    # ingressNSMatchLabels: set dynamically based on deployment namespace
 
   # Metrics (Prometheus)
   metrics:
     enabled: true
     serviceMonitor:
       enabled: true
-      namespace: cost-mgmt
+      # namespace: defaults to .Release.Namespace if not specified
 
 # Pod Disruption Budget
 # Ensure at least 2 Redis pods are always available

@@ -1,16 +1,17 @@
 #!/bin/bash
 # =============================================================================
-# Cost Management Infrastructure Bootstrap Script
+# Cost On-Premise Infrastructure Bootstrap Script
 # =============================================================================
 # This script deploys and initializes the infrastructure components for
-# Cost Management (PostgreSQL) and runs database migrations.
+# Cost Management On-Premise (PostgreSQL, Trino, Hive Metastore) and runs
+# database migrations.
 #
 # Usage:
 #   ./bootstrap-infrastructure.sh --namespace <namespace> [options]
 #
 # Options:
 #   --namespace <name>      Kubernetes namespace (required)
-#   --release-name <name>   Helm release name (default: cost-mgmt-infra)
+#   --release-name <name>   Helm release name (default: cost-onprem-infra)
 #   --skip-deploy          Skip infrastructure deployment
 #   --skip-migrations      Skip waiting for migrations
 #   --help                 Show this help message
@@ -45,11 +46,11 @@ log_error() {
 
 # Default values
 NAMESPACE=""
-RELEASE_NAME="cost-mgmt-infra"
+RELEASE_NAME="cost-onprem-infra"
 SKIP_DEPLOY=false
 SKIP_MIGRATIONS=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INFRA_CHART_DIR="$(dirname "$SCRIPT_DIR")/cost-management-infrastructure"
+INFRA_CHART_DIR="$(dirname "$SCRIPT_DIR")/cost-onprem-infra"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -87,8 +88,8 @@ if [ -z "$NAMESPACE" ]; then
     exit 1
 fi
 
-log_info "Cost Management Infrastructure Bootstrap"
-log_info "========================================"
+log_info "Cost On-Premise Infrastructure Bootstrap"
+log_info "========================================="
 log_info "Namespace: $NAMESPACE"
 log_info "Release: $RELEASE_NAME"
 log_info ""
@@ -211,9 +212,9 @@ log_success "Database initialization complete"
 # =============================================================================
 # NOTE: Database migrations are handled by the Helm chart via a post-install hook.
 # The migration Job template is defined in:
-#   cost-management-infrastructure/templates/migration-job.yaml
+#   cost-onprem-infra/templates/migration-job.yaml
 # The migration image is configured in:
-#   cost-management-infrastructure/values.yaml (migration.image)
+#   cost-onprem-infra/values.yaml (migration.image)
 #
 # If you need to run migrations manually, you can:
 #   kubectl create job manual-migration --from=job/cost-mgmt-infra-migration -n cost-mgmt
@@ -275,7 +276,7 @@ else
 fi
 
 # All migration logic is now handled by the Helm chart
-# See: cost-management-infrastructure/templates/migration-job.yaml
+# See: cost-onprem-infra/templates/migration-job.yaml
 
 # =============================================================================
 # Step 5: Validate Setup

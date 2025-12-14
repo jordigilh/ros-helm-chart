@@ -1,13 +1,13 @@
-# Cost Management Infrastructure Chart
+# Cost On-Premise Infrastructure Chart
 
-This Helm chart deploys the infrastructure components for Cost Management, specifically PostgreSQL. This follows the SaaS pattern where infrastructure is managed separately from the application.
+This Helm chart deploys the infrastructure components for Cost Management On-Premise, specifically PostgreSQL, Trino, and Hive Metastore. This follows the SaaS pattern where infrastructure is managed separately from the application.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────┐
-│  Cost Management Infrastructure    │
-│  (This Chart)                       │
+│  Cost On-Premise Infrastructure    │
+│  (This Chart: cost-onprem-infra)   │
 │                                     │
 │  ┌─────────────────────────────┐   │
 │  │   PostgreSQL StatefulSet    │   │
@@ -16,17 +16,27 @@ This Helm chart deploys the infrastructure components for Cost Management, speci
 │  │   - User: koku              │   │
 │  │   - Extensions & Roles      │   │
 │  └─────────────────────────────┘   │
+│                                     │
+│  ┌─────────────────────────────┐   │
+│  │   Trino + Hive Metastore    │   │
+│  │   - Analytics Engine        │   │
+│  │   - Metadata Storage        │   │
+│  └─────────────────────────────┘   │
+│                                     │
+│  ┌─────────────────────────────┐   │
+│  │   Redis                     │   │
+│  │   - Cache Layer             │   │
+│  └─────────────────────────────┘   │
 └─────────────────────────────────────┘
                  ▲
                  │ External Connection
                  │
 ┌─────────────────────────────────────┐
 │  Cost Management Application        │
-│  (cost-management-onprem chart)     │
+│  (cost-onprem chart)                │
 │                                     │
 │  - Koku API Pods                    │
 │  - Celery Workers                   │
-│  - Redis (cache)                    │
 │  - Connects to external PostgreSQL  │
 └─────────────────────────────────────┘
 ```
@@ -64,7 +74,7 @@ The `postgres` superuser is accessible only via local connections for security.
 Use the bootstrap script to deploy and initialize everything:
 
 ```bash
-./scripts/bootstrap-infrastructure.sh --namespace cost-mgmt
+./scripts/bootstrap-infrastructure.sh --namespace cost-onprem
 ```
 
 This script will:
@@ -80,8 +90,8 @@ This script will:
 After infrastructure is ready, deploy the application:
 
 ```bash
-helm upgrade --install cost-mgmt ./cost-management-onprem \
-  --namespace cost-mgmt
+helm upgrade --install cost-onprem ./cost-onprem \
+  --namespace cost-onprem
   # Database connection is pre-configured in values.yaml:
   # host: postgres
   # secretName: postgres-credentials
@@ -94,8 +104,8 @@ If you prefer to deploy manually:
 ### 1. Deploy Infrastructure Chart
 
 ```bash
-helm upgrade --install cost-mgmt-infra ./cost-management-infrastructure \
-  --namespace cost-mgmt \
+helm upgrade --install cost-onprem-infra ./cost-onprem-infra \
+  --namespace cost-onprem \
   --create-namespace \
   --wait
 ```
@@ -105,20 +115,20 @@ helm upgrade --install cost-mgmt-infra ./cost-management-infrastructure \
 Wait for PostgreSQL to be ready:
 
 ```bash
-kubectl wait --for=condition=ready pod/postgres-0 -n cost-mgmt --timeout=5m
+kubectl wait --for=condition=ready pod/postgres-0 -n cost-onprem --timeout=5m
 ```
 
 Create extensions and roles:
 
 ```bash
 POD=postgres-0
-kubectl exec $POD -n cost-mgmt -- psql -U postgres -d koku -c \
+kubectl exec $POD -n cost-onprem -- psql -U postgres -d koku -c \
   "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
 
-kubectl exec $POD -n cost-mgmt -- psql -U postgres -d postgres -c \
+kubectl exec $POD -n cost-onprem -- psql -U postgres -d postgres -c \
   "CREATE ROLE hive WITH LOGIN PASSWORD 'hive';"
 
-kubectl exec $POD -n cost-mgmt -- psql -U postgres -d postgres -c \
+kubectl exec $POD -n cost-onprem -- psql -U postgres -d postgres -c \
   "CREATE DATABASE hive OWNER hive;"
 ```
 
@@ -140,7 +150,7 @@ kubectl create secret generic my-postgresql-credentials \
   --from-literal=database=koku \
   --from-literal=username=koku \
   --from-literal=password=<your-password> \
-  -n cost-mgmt
+  -n cost-onprem
 ```
 
 3. Configure the application chart to use your database:
@@ -150,21 +160,21 @@ kubectl create secret generic my-postgresql-credentials \
 # costManagement.database.host: my-postgresql-host
 # costManagement.database.secretName: my-postgresql-credentials
 
-helm upgrade --install cost-mgmt ./cost-management-onprem \
-  --namespace cost-mgmt
+helm upgrade --install cost-onprem ./cost-onprem \
+  --namespace cost-onprem
 ```
 
 ### Custom Storage Class
 
 ```bash
-helm upgrade --install cost-mgmt-infra ./cost-management-infrastructure \
+helm upgrade --install cost-onprem-infra ./cost-onprem-infra \
   --set postgresql.persistence.storageClassName=my-storage-class
 ```
 
 ### Resource Limits
 
 ```bash
-helm upgrade --install cost-mgmt-infra ./cost-management-infrastructure \
+helm upgrade --install cost-onprem-infra ./cost-onprem-infra \
   --set postgresql.resources.requests.cpu=1000m \
   --set postgresql.resources.requests.memory=2Gi
 ```
@@ -184,19 +194,19 @@ The bootstrap script performs these initialization steps:
 
 Check events:
 ```bash
-kubectl describe pod postgres-0 -n cost-mgmt
+kubectl describe pod postgres-0 -n cost-onprem
 ```
 
 Check PVC status:
 ```bash
-kubectl get pvc -n cost-mgmt
+kubectl get pvc -n cost-onprem
 ```
 
 ### Connection Issues
 
 Test database connectivity:
 ```bash
-kubectl exec postgres-0 -n cost-mgmt -- \
+kubectl exec postgres-0 -n cost-onprem -- \
   psql -U postgres -d koku -c "SELECT version();"
 ```
 
@@ -204,7 +214,7 @@ kubectl exec postgres-0 -n cost-mgmt -- \
 
 View migration job logs:
 ```bash
-kubectl logs job/cost-mgmt-migration-<timestamp> -n cost-mgmt
+kubectl logs job/cost-onprem-infra-migration-<timestamp> -n cost-onprem
 ```
 
 ## Maintenance
@@ -212,14 +222,14 @@ kubectl logs job/cost-mgmt-migration-<timestamp> -n cost-mgmt
 ### Backup Database
 
 ```bash
-kubectl exec postgres-0 -n cost-mgmt -- \
+kubectl exec postgres-0 -n cost-onprem -- \
   pg_dump -U koku koku > backup-$(date +%Y%m%d).sql
 ```
 
 ### Restore Database
 
 ```bash
-cat backup.sql | kubectl exec -i postgres-0 -n cost-mgmt -- \
+cat backup.sql | kubectl exec -i postgres-0 -n cost-onprem -- \
   psql -U koku koku
 ```
 
@@ -245,9 +255,9 @@ cat backup.sql | kubectl exec -i postgres-0 -n cost-mgmt -- \
 ## Support
 
 For issues or questions:
-- Check application logs: `kubectl logs -n cost-mgmt -l app.kubernetes.io/component=api`
-- Check database logs: `kubectl logs -n cost-mgmt postgres-0`
-- Run bootstrap script: `./scripts/bootstrap-infrastructure.sh --namespace cost-mgmt`
+- Check application logs: `kubectl logs -n cost-onprem -l app.kubernetes.io/component=api`
+- Check database logs: `kubectl logs -n cost-onprem postgres-0`
+- Run bootstrap script: `./scripts/bootstrap-infrastructure.sh --namespace cost-onprem`
 
 ## Services Created
 
@@ -257,16 +267,3 @@ For issues or questions:
 | Service | `postgres` | ClusterIP | Database service endpoint |
 | Secret | `postgres-credentials` | Opaque | Database credentials (auto-generated) |
 | PVC | `postgresql-data-postgres-0` | Storage | Persistent database storage |
-
-
-- Run bootstrap script: `./scripts/bootstrap-infrastructure.sh --namespace cost-mgmt`
-
-## Services Created
-
-| Resource | Name | Type | Description |
-|----------|------|------|-------------|
-| StatefulSet | `postgres` | Workload | PostgreSQL database |
-| Service | `postgres` | ClusterIP | Database service endpoint |
-| Secret | `postgres-credentials` | Opaque | Database credentials (auto-generated) |
-| PVC | `postgresql-data-postgres-0` | Storage | Persistent database storage |
-

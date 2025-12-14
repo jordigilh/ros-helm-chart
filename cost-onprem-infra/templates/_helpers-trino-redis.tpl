@@ -76,7 +76,7 @@ Common labels for Trino resources
 */}}
 {{- define "cost-mgmt.trino.labels" -}}
 {{ include "cost-mgmt.labels" . }}
-app.kubernetes.io/part-of: cost-management-infrastructure
+app.kubernetes.io/part-of: cost-onprem-infra
 app.kubernetes.io/component: trino
 {{- end -}}
 
