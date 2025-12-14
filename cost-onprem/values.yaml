@@ -1113,14 +1113,15 @@ resources:
       memory: "512Mi"
       cpu: "500m"
 
-  # Standard application services
+  # Standard application services (ROS API, Processor, Poller, Housekeeper)
+  # Aligned with SaaS Clowder configuration (ros-ocp-backend/clowdapp.yaml)
   application:
     requests:
-      memory: "256Mi"
-      cpu: "100m"
+      memory: "1Gi"
+      cpu: "500m"
     limits:
-      memory: "512Mi"
-      cpu: "300m"
+      memory: "1Gi"
+      cpu: "1"
 
   # Kruize is memory-intensive (Java workload)
   kruize:

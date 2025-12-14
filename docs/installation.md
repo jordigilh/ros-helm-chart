@@ -542,6 +542,10 @@ kubectl exec -it statefulset/cost-onprem-minio -n cost-onprem -- \
 
 ## Resource Requirements by Component
 
+> **Note:** Resource allocations are aligned with the SaaS Clowder configuration from:
+> - **Koku:** `deploy/clowdapp.yaml` in [insights-onprem/koku](https://github.com/insights-onprem/koku)
+> - **ROS:** `clowdapp.yaml` in [insights-onprem/ros-ocp-backend](https://github.com/insights-onprem/ros-ocp-backend)
+
 ### Infrastructure Chart (cost-onprem-infra)
 
 | Component | Pods | CPU Request | CPU Limit | Memory Request | Memory Limit |
@@ -564,17 +568,19 @@ kubectl exec -it statefulset/cost-onprem-minio -n cost-onprem -- \
 | **Koku Listener** | 1 | 150m | 300m | 300Mi | 600Mi |
 | **Celery Beat** | 1 | 50m | 100m | 200Mi | 400Mi |
 | **Celery Workers** | 11-21 | 100m each | 200m each | 256Mi-512Mi | 400Mi-1Gi |
-| **ROS API** | 1 | 300m | 1000m | 640Mi | 1.25Gi |
-| **ROS Processor** | 1 | 200m | 500m | 512Mi | 1Gi |
+| **ROS API** | 1 | 500m | 1000m | 1Gi | 1Gi |
+| **ROS Processor** | 1 | 500m | 1000m | 1Gi | 1Gi |
+| **ROS Poller** | 1 | 500m | 1000m | 1Gi | 1Gi |
+| **ROS Housekeeper** | 1 | 500m | 1000m | 1Gi | 1Gi |
 | **Kruize** | 1-2 | 200m | 1000m | 1Gi | 2Gi |
-| **Subtotal** | **17-27** | **~2.5-4.5 cores** | **~5-9 cores** | **~5-10 Gi** | **~10-18 Gi** |
+| **Subtotal** | **18-28** | **~4-6 cores** | **~8-12 cores** | **~9-14 Gi** | **~14-22 Gi** |
 
 ### Total Deployment Summary
 
 | Scenario | Pods | CPU Request | CPU Limit | Memory Request | Memory Limit |
 |----------|------|-------------|-----------|----------------|--------------|
-| **OCP-Only (minimal)** | ~23 | ~5 cores | ~12 cores | ~14 Gi | ~28 Gi |
-| **OCP on Cloud** | ~32 | ~6.3 cores | ~15 cores | ~17 Gi | ~32 Gi |
+| **OCP-Only (minimal)** | ~24 | ~7.5 cores | ~15 cores | ~16 Gi | ~28 Gi |
+| **OCP on Cloud** | ~34 | ~9 cores | ~18 cores | ~21 Gi | ~36 Gi |
 
 **Note:** See [Worker Deployment Scenarios](worker-deployment-scenarios.md) for detailed worker requirements by scenario.
 
