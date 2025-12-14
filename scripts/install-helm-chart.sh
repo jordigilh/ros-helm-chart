@@ -501,6 +501,39 @@ cleanup_downloaded_chart() {
     fi
 }
 
+# Function to deploy infrastructure chart (PostgreSQL, Trino, Hive Metastore)
+deploy_infrastructure_chart() {
+    echo_info "Deploying infrastructure chart (cost-onprem-infra)..."
+
+    local infra_script="$SCRIPT_DIR/bootstrap-infrastructure.sh"
+
+    if [ ! -f "$infra_script" ]; then
+        echo_error "Infrastructure bootstrap script not found at: $infra_script"
+        return 1
+    fi
+
+    # Check if infrastructure is already deployed
+    if helm status cost-onprem-infra -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_info "Infrastructure chart 'cost-onprem-infra' is already deployed in namespace '$NAMESPACE'"
+        echo_info "Skipping infrastructure deployment. Use --skip-migrations if you need to skip migration checks."
+        # Still run the script with --skip-deploy to ensure DB is ready and migrations are complete
+        if ! "$infra_script" --namespace "$NAMESPACE" --skip-deploy; then
+            echo_warning "Infrastructure validation had issues, continuing..."
+        fi
+        return 0
+    fi
+
+    # Run the bootstrap infrastructure script
+    echo_info "Running bootstrap-infrastructure.sh..."
+    if "$infra_script" --namespace "$NAMESPACE"; then
+        echo_success "✓ Infrastructure chart deployed successfully"
+        return 0
+    else
+        echo_error "Failed to deploy infrastructure chart"
+        return 1
+    fi
+}
+
 # Function to deploy Helm chart
 deploy_helm_chart() {
     echo_info "Deploying Cost Management On Premise Helm chart..."
@@ -1309,6 +1342,42 @@ create_ui_secrets() {
     fi
 }
 
+# Function to create Django secret for Koku
+# This secret is used by Koku for Django's SECRET_KEY
+create_django_secret() {
+    echo_info "Creating Django secret for Koku..."
+
+    local secret_name="cost-onprem-django-secret"
+
+    # Check if secret already exists
+    if kubectl get secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_info "Django secret '$secret_name' already exists in namespace '$NAMESPACE'"
+        return 0
+    fi
+
+    # Generate a random 50-character secret key
+    local secret_key=$(openssl rand -base64 48 | tr -dc 'a-zA-Z0-9' | head -c 50)
+
+    if [ -z "$secret_key" ]; then
+        echo_error "Failed to generate Django secret key"
+        return 1
+    fi
+
+    # Create the secret
+    echo_info "Creating secret '$secret_name' in namespace '$NAMESPACE'..."
+    kubectl create secret generic "$secret_name" \
+        --from-literal=secret-key="$secret_key" \
+        --namespace="$NAMESPACE"
+
+    if [ $? -eq 0 ]; then
+        echo_success "✓ Created Django secret '$secret_name'"
+        return 0
+    else
+        echo_error "Failed to create Django secret"
+        return 1
+    fi
+}
+
 # Function to create Keycloak CA certificate secret for oauth2-proxy TLS trust
 create_keycloak_ca_secret() {
     echo_info "Creating Keycloak CA certificate secret for TLS trust..."
@@ -1571,9 +1640,20 @@ main() {
         fi
     fi
 
+    # Create Django secret for Koku (if costManagement is enabled)
+    if ! create_django_secret; then
+        echo_warning "Failed to create Django secret. Koku may not start correctly."
+    fi
+
     # Verify Strimzi operator and Kafka cluster are available
     if ! verify_strimzi_and_kafka; then
         echo_error "Strimzi/Kafka prerequisites not met"
+        exit 1
+    fi
+
+    # Deploy infrastructure chart (PostgreSQL, Trino, Hive Metastore)
+    if ! deploy_infrastructure_chart; then
+        echo_error "Failed to deploy infrastructure chart"
         exit 1
     fi
 

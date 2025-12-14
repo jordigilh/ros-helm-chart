@@ -697,7 +697,7 @@ main() {
     # Create all required secrets (external to Helm)
     echo_info "Creating required secrets (managed externally, referenced in values)..."
 
-    # NOTE: Database credentials are now created by cost-management-infrastructure chart
+    # NOTE: Database credentials are now created by cost-onprem-infra chart
     # Run scripts/bootstrap-infrastructure.sh before deploying the application
 
     create_django_secret
