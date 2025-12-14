@@ -709,7 +709,7 @@ costManagement:
   # ---------------------------------------------------------------------------
   # Database Configuration
   # ---------------------------------------------------------------------------
-  # PostgreSQL is deployed via the cost-management-infrastructure chart
+  # PostgreSQL is deployed via the cost-onprem-infra chart
   # Run scripts/bootstrap-infrastructure.sh before deploying the application
   database:
     # Connection details for external PostgreSQL
