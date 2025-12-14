@@ -164,11 +164,12 @@ costManagement:
     reads:
       replicas: 2
       resources:
+        # Aligned with SaaS Clowder configuration (deploy/clowdapp.yaml)
         requests:
-          cpu: 300m
-          memory: 500Mi
+          cpu: 250m
+          memory: 512Mi
         limits:
-          cpu: 600m
+          cpu: 500m
           memory: 1Gi
 
       livenessProbe:
@@ -218,11 +219,12 @@ costManagement:
     writes:
       replicas: 1
       resources:
+        # Aligned with SaaS Clowder configuration (deploy/clowdapp.yaml)
         requests:
-          cpu: 300m
-          memory: 500Mi
+          cpu: 250m
+          memory: 512Mi
         limits:
-          cpu: 600m
+          cpu: 500m
           memory: 1Gi
 
       livenessProbe:
