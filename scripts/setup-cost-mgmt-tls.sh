@@ -563,11 +563,35 @@ metadata:
   namespace: $NAMESPACE
 spec:
   channel: stable
+  installPlanApproval: Manual
   name: costmanagement-metrics-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
-  startingCSV: costmanagement-metrics-operator.v4.2.0
+  startingCSV: costmanagement-metrics-operator.4.2.0
 EOF
+
+        # Wait for install plan to be created and approve it
+        print_status "Waiting for install plan to be created..."
+        install_plan=""
+        timeout=120
+        while [[ $timeout -gt 0 ]]; do
+            install_plan=$(oc get installplan -n "$NAMESPACE" -o jsonpath='{.items[?(@.spec.approved==false)].metadata.name}' 2>/dev/null | awk '{print $1}')
+            if [[ -n "$install_plan" ]]; then
+                break
+            fi
+            sleep 5
+            timeout=$((timeout - 5))
+            print_status "Waiting for install plan... (${timeout}s remaining)"
+        done
+
+        if [[ -z "$install_plan" ]]; then
+            print_error "Timeout waiting for install plan to be created"
+            exit 1
+        fi
+
+        print_status "Approving install plan: $install_plan"
+        oc patch installplan "$install_plan" -n "$NAMESPACE" --type merge --patch '{"spec":{"approved":true}}'
+        print_success "Install plan approved"
 
         # Wait for operator to be ready
         print_status "Waiting for operator to be ready (this may take a few minutes)..."
