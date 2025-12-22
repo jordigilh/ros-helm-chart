@@ -61,6 +61,11 @@ spec:
         - --cookie-secure=true
         - --cookie-expire={{ .Values.ui.oauthProxy.cookie.expire }}
         - --cookie-refresh={{ .Values.ui.oauthProxy.cookie.refresh }}
+        {{- if (include "cost-onprem.keycloak.issuerUrl" .) }}
+        {{- $issuerUrl := include "cost-onprem.keycloak.issuerUrl" . }}
+        {{- $uiUrl := printf "https://%s-ui-%s.%s" (include "cost-onprem.fullname" .) .Release.Namespace (include "cost-onprem.platform.clusterDomain" .) }}
+        - --backend-logout-url={{ printf "%s/protocol/openid-connect/logout?id_token_hint={id_token}" $issuerUrl }}
+        {{- end }}
         {{- if .Values.ui.oauthProxy.tls.caCertEnabled }}
         - --provider-ca-file=/etc/keycloak-ca/ca.crt
         {{- end }}
