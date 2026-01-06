@@ -75,7 +75,7 @@ while IFS= read -r image; do
         cache_file="$CACHE_DIR/${repo_path//\//_}.digest"
         api_url="https://quay.io/api/v1/repository/${repo_path}/tag/?limit=1&specificTag=latest"
         
-        response=$(curl -sf "$api_url" 2>/dev/null) || continue
+        response=$(curl -sf --connect-timeout 10 --max-time 30 "$api_url" 2>/dev/null) || continue
         current_digest=$(echo "$response" | jq -r '.tags[0].manifest_digest // empty')
         last_modified=$(echo "$response" | jq -r '.tags[0].last_modified // empty')
         
