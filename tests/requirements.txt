@@ -1,0 +1,7 @@
+# Test dependencies for cost-onprem-chart
+pytest>=8.0.0
+pytest-timeout>=2.3.0
+requests>=2.31.0
+PyYAML>=6.0
+kubernetes>=29.0.0
+

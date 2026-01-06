@@ -491,19 +491,44 @@ test_jwt_flow() {
         fi
     fi
     
-    # Export environment variables for JWT test script
+    # Export environment variables for pytest
     export NAMESPACE="${NAMESPACE}"
+    export HELM_RELEASE_NAME="${HELM_RELEASE_NAME:-cost-onprem}"
+    export KEYCLOAK_NAMESPACE="${KEYCLOAK_NAMESPACE:-keycloak}"
     
     if [[ "${VERBOSE}" == "true" ]]; then
         export VERBOSE="true"
     fi
     
-    if ! execute_script "${SCRIPT_TEST_JWT}"; then
-        log_error "JWT authentication test failed"
+    # Run pytest test suite
+    local pytest_script="${LOCAL_SCRIPTS_DIR}/run-pytest.sh"
+    if [[ ! -x "${pytest_script}" ]]; then
+        log_error "Pytest runner not found at: ${pytest_script}"
         exit 1
     fi
     
-    log_success "JWT authentication test completed"
+    log_info "Running pytest test suite..."
+    
+    if [[ "${DRY_RUN}" == "true" ]]; then
+        log_info "DRY RUN: Would execute: ${pytest_script}"
+        return 0
+    fi
+    
+    if [[ "${VERBOSE}" == "true" ]]; then
+        if ! "${pytest_script}" -v; then
+            log_error "Pytest test suite failed"
+            log_info "JUnit report available at: tests/reports/junit.xml"
+            exit 1
+        fi
+    else
+        if ! "${pytest_script}"; then
+            log_error "Pytest test suite failed"
+            log_info "JUnit report available at: tests/reports/junit.xml"
+            exit 1
+        fi
+    fi
+    
+    log_success "Pytest test suite completed"
 }
 
 ################################################################################
