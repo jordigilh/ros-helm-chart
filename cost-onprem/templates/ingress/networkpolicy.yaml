@@ -29,5 +29,15 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.jwtAuth.envoy.port }}  # Envoy sidecar port (9080 by default)
+    # Allow traffic from UI pods within the same namespace for API proxying
+    # UI nginx connects via service port (8080), which routes to Envoy container port (9080)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: ui
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.jwtAuth.envoy.port }}  # Envoy container port (9080 by default)
 {{- end }}
 
