@@ -12,7 +12,7 @@ The ROS Helm Chart uses **Envoy's native JWT authentication filter** for validat
 graph TB
     Client["Client<br/>(with JWT)"]
     Envoy["Envoy Sidecar<br/>(Port 8080)<br/><br/>1. jwt_authn filter<br/>   - Fetches JWKS from Keycloak<br/>   - Validates JWT signature<br/>   - Extracts claims to metadata<br/><br/>2. Lua filter<br/>   - Reads JWT claims<br/>   - Injects X-ROS-* headers<br/><br/>3. Routes to backend"]
-    Ingress["ROS Ingress Service<br/>(Port 8081)<br/><br/>- Trusts X-ROS headers<br/>- Processes authenticated upload"]
+    Ingress["Ingress Service<br/>(Port 8081)<br/><br/>- Trusts X-RH-Identity headers<br/>- Processes authenticated upload"]
 
     Client -->|"Authorization: Bearer &lt;JWT&gt;"| Envoy
     Envoy -->|"X-ROS-Authenticated: true<br/>X-ROS-User-ID: &lt;sub&gt;<br/>X-Bearer-Token: &lt;token&gt;"| Ingress
@@ -28,24 +28,73 @@ graph TB
 
 | Service | Main Port | Envoy Port | Authentication Method |
 |---------|-----------|------------|----------------------|
-| **Ingress** | 8081 | 8080 | ✅ JWT validation (from Cost Management Operator) |
-| **Cost Management On-Premise API** | 8001 | 8080 | ✅ X-Rh-Identity header validation |
+| **Ingress** | 8081 | 9080 | ✅ JWT validation, routes to multiple backends |
+| **ROS API** | 8000 | 9080 | ✅ X-Rh-Identity header validation |
+
+**Ingress Envoy Routing:**
+
+The Ingress Envoy proxy handles JWT authentication and routes requests to multiple backend services:
+
+| Path | Backend | Description |
+|------|---------|-------------|
+| `/api/cost-management/*` | Koku API (port 8000) | Cost management reports and analytics |
+| `/api/sources/*` | Sources API (port 8000) | Provider and source management |
+| `/api/ingress/*` | Ingress (port 8081) | File uploads |
+| `/` (default) | Ingress (port 8081) | Default route |
 
 **Services without Envoy sidecars** (direct authentication):
 
 | Service | Port | Authentication Method |
 |---------|------|----------------------|
-| **Sources API** | 8000 | Mixed: ROS endpoints are unauthenticated, but Cost Management require X-Rh-Identity|
-| **Kruize** | 8080 | Internal service (accessed via Cost Management On-Premise API) |
+| **Koku API** | 8000 | X-Rh-Identity header from Envoy |
+| **Sources API** | 8000 | X-Rh-Identity header from Envoy or internal access |
+| **Kruize** | 8080 | Internal service (accessed via ROS API) |
 | **Cost Management On-Premise Processor** | N/A | Kafka consumer (no HTTP API) |
 | **Cost Management On-Premise Recommendation Poller** | N/A | Internal service (no external API) |
 | **Cost Management On-Premise Housekeeper** | N/A | Internal service (no external API) |
 
 **How It Works:**
-1. **Ingress Service (Envoy sidecar)**: Validates JWT from Cost Management Operator and transforms it to `X-Rh-Identity` header
-2. **Cost Management On-Premise API (Envoy sidecar)**: Accepts `X-Rh-Identity` header from authenticated clients and forwards to application container
-3. **Sources API (no sidecar)**: Has X-Rh-Identity validation middleware for protected endpoints; certain endpoints (e.g., `/application_types`) are unauthenticated for internal service access
-4. **Internal Services**: Communicate with each other using service accounts or inherit authentication context, accessing unauthenticated endpoints where appropriate
+1. **Ingress Service (Envoy sidecar)**: Validates JWT from Keycloak, extracts claims (`org_id`, `account_number`, `access`), builds `X-Rh-Identity` header, and routes to appropriate backend based on path
+2. **ROS API (Envoy sidecar)**: Validates JWT and transforms to headers for ROS-specific endpoints
+3. **Koku API (no sidecar)**: Receives `X-Rh-Identity` header from Envoy, uses it for tenant identification and RBAC
+4. **Sources API (no sidecar)**: Receives `X-Rh-Identity` header from Envoy for protected endpoints; certain endpoints (e.g., `/application_types`) are unauthenticated for internal service access
+5. **Internal Services**: Communicate with each other using service accounts or inherit authentication context
+
+### X-Rh-Identity Header Format
+
+The Envoy Lua filter constructs the `X-Rh-Identity` header from JWT claims:
+
+```json
+{
+  "org_id": "<from JWT org_id claim>",
+  "identity": {
+    "org_id": "<from JWT org_id claim>",
+    "account_number": "<from JWT account_number claim>",
+    "type": "User",
+    "user": {
+      "username": "<from JWT preferred_username claim>",
+      "access": <from JWT access claim, JSON object>
+    }
+  },
+  "entitlements": {
+    "cost_management": {
+      "is_entitled": "True"
+    }
+  }
+}
+```
+
+> **⚠️ Note: Dual org_id Placement**
+>
+> The `org_id` field appears at **both** the top level and inside `identity`. This is a workaround
+> for a bug in Koku's `dev_middleware.py` (line 63) which incorrectly reads `org_id` from the
+> top level instead of `identity.org_id`. See [Part 6: Technical Notes](keycloak-jwt-authentication-setup.md#part-6-technical-notes) for details.
+
+**Required JWT Claims:**
+- `org_id`: Organization ID (e.g., `org1234567`)
+- `account_number`: Account number (e.g., `7890123`)
+- `preferred_username`: Username for logging
+- `access`: JSON object defining resource-level permissions (see [Keycloak JWT Setup](keycloak-jwt-authentication-setup.md))
 
 **Network Security:**
 - Network policies restrict external access to backend services
@@ -276,7 +325,7 @@ This script:
 
 ## Payload Requirements
 
-The ROS ingress service expects tar.gz archives with:
+The ingress service expects tar.gz archives with:
 
 1. **manifest.json** (required):
 ```json

@@ -41,15 +41,27 @@ graph TB
 - **Envoy** validates JWT signature and injects authentication headers
 - **Ingress Service** parses JWT claims directly (does NOT use X-Rh-Identity)
 - **ROS Backend API** uses X-Rh-Identity header (XRHID format)
-- **XRHID Format**: `{"identity":{"org_id":"...","account_number":"...","type":"User"}}` (base64-encoded)
+- **XRHID Format**: `{"org_id":"...","identity":{"org_id":"...","account_number":"...","type":"User"}}` (base64-encoded)
 - The `org_id` claim from JWT is required and used throughout the system
+
+> **⚠️ Important: Dual org_id Placement**
+>
+> The X-Rh-Identity header includes `org_id` in **two locations**:
+> 1. **Top-level**: `{"org_id": "org1234567", ...}` - Workaround for Koku dev_middleware bug
+> 2. **Inside identity**: `{"identity": {"org_id": "org1234567", ...}}` - Correct location per Red Hat schema
+>
+> This dual placement is required because Koku's `dev_middleware.py` (line 63) incorrectly reads
+> `identity_header.get("org_id")` instead of `identity_header.get("identity", {}).get("org_id")`.
+> The Envoy Lua filter places `org_id` in both locations for compatibility.
 
 ### Key Requirements
 
 1. **JWT Token** must contain:
    - Standard OIDC claims (`sub`, `iat`, `exp`, `iss`, `aud`)
    - **`org_id`** claim (String) - **REQUIRED** by ROS backend for organization identification
-   - **`account_number`** claim (String) - **Recommended** for account-level data isolation and tenant identification
+   - **`account_number`** claim (String) - **REQUIRED** for account-level data isolation and tenant identification
+   - **`email`** claim (String) - **REQUIRED** by Koku for user creation (if not provided, defaults to `username@example.com`)
+   - **`preferred_username`** claim (String) - **Recommended** for user display name
 
 2. **Supported org_id Claim Names** (Envoy Lua filter supports multiple alternatives):
    - `org_id` (preferred)
@@ -72,6 +84,115 @@ graph TB
 5. **Operator Configuration**:
    - Secret with client_id and client_secret
    - Token URL pointing to Keycloak realm
+
+6. **UI/Interactive User Configuration** (for Cost Management UI access):
+   - Uses **ENHANCED_ORG_ADMIN** mode - all authenticated users are org admins
+   - No `access` claim required in JWT
+   - Simplified setup with full access within each user's org
+
+### Authentication Mode: ENHANCED_ORG_ADMIN
+
+The Cost Management on-premise deployment uses **ENHANCED_ORG_ADMIN** mode for simplified authentication:
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `DEVELOPMENT` | `false` | Use production middleware (fixes Mock user bugs) |
+| `ENHANCED_ORG_ADMIN` | `true` | Bypass external RBAC service for admin users |
+| `is_org_admin` | `true` (in X-Rh-Identity) | Grant full access within user's org |
+
+**How it works**:
+1. Envoy validates JWT and extracts `org_id`, `account_number`, and `username`
+2. Envoy constructs X-Rh-Identity header with `is_org_admin: true`
+3. Koku receives the request and sees `is_org_admin=true`
+4. With `ENHANCED_ORG_ADMIN=true`, Koku skips RBAC service calls
+5. User gets full access to all resources within their org
+
+**Benefits**:
+- ✅ No external RBAC service required
+- ✅ No `access` claim needed in JWT or Keycloak user attributes
+- ✅ Simpler Keycloak configuration
+- ✅ Production middleware (no Mock user bugs)
+
+**Limitations**:
+- ⚠️ All authenticated users are org admins (no granular RBAC within org)
+- ⚠️ Cannot restrict "User A sees only Cluster X" within same org
+- ✅ Multi-tenancy IS preserved: users only see their own org's data
+
+**When to use**:
+- Single-tenant deployments
+- Trusted-user environments
+- Deployments where all users should have full access
+
+### Future: Granular RBAC (Not Currently Implemented)
+
+For deployments requiring granular permissions within an org, a future enhancement could:
+1. Deploy a custom RBAC service
+2. Set `ENHANCED_ORG_ADMIN=false`
+3. Add `access` claim to JWT with resource-level permissions
+4. Configure Koku to call the RBAC service
+
+**Resource Types** (for future RBAC implementation):
+
+| Resource Type | Description |
+|--------------|-------------|
+| `openshift.cluster` | OpenShift cluster access |
+| `openshift.project` | OpenShift project/namespace access |
+| `openshift.node` | OpenShift node access |
+| `cost_model` | Cost model read/write access |
+
+> **Note**: AWS, Azure, and GCP providers are not currently supported in on-prem deployments.
+
+### Creating a User with Required Attributes
+
+To create a user that can access Cost Management UI, you must configure the following user attributes in Keycloak:
+
+**Required User Attributes**:
+
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `org_id` | String | Tenant identifier (maps to database schema) | `org1234567` |
+| `account_number` | String | Customer account identifier | `7890123` |
+
+> **Note**: The `access` attribute is **NOT required** when using ENHANCED_ORG_ADMIN mode.
+> All authenticated users are treated as org admins with full access within their org.
+
+**Creating a User via Keycloak Admin Console**:
+
+1. Navigate to **Users** → **Add User**
+2. Fill in username, email, first/last name
+3. Go to **Attributes** tab
+4. Add the following attributes:
+
+   | Key | Value |
+   |-----|-------|
+   | `org_id` | `org1234567` |
+   | `account_number` | `7890123` |
+
+5. Go to **Credentials** tab and set a password
+6. Ensure user is enabled
+
+**Creating a User via Keycloak Admin API**:
+
+```bash
+curl -X POST "$KEYCLOAK_URL/admin/realms/kubernetes/users" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "cost-user",
+    "email": "cost-user@example.com",
+    "emailVerified": true,
+    "enabled": true,
+    "firstName": "Cost",
+    "lastName": "User",
+    "attributes": {
+      "org_id": ["org1234567"],
+      "account_number": ["7890123"]
+    }
+  }'
+```
+
+> **Note**: The `org_id` currently requires the `org` prefix (e.g., `org1234567` instead of `1234567`)
+> as a workaround for a Koku schema naming bug. This will be addressed in a future release.
 
 ### How org_id and account_number are Extracted (Technical Details)
 
@@ -161,11 +282,15 @@ sequenceDiagram
    -- Default: org_id value if missing
    ```
 
-4. Builds XRHID JSON structure (Red Hat Identity format):
+4. Builds XRHID JSON structure (Red Hat Identity format with dual org_id):
    ```lua
+   -- NOTE: org_id appears in TWO places as a workaround for Koku middleware compatibility
+   -- 1. Top-level "org_id" - for middleware compatibility
+   -- 2. identity.org_id - correct location per Red Hat identity schema
+   -- is_org_admin=true triggers ENHANCED_ORG_ADMIN bypass (no RBAC service calls)
    local xrhid = string.format(
-     '{"identity":{"org_id":"%s","account_number":"%s","type":"User"}}',
-     org_id, account_number
+     '{"org_id":"%s","identity":{"org_id":"%s","account_number":"%s","type":"User","user":{"username":"%s","is_org_admin":true}},"entitlements":{"cost_management":{"is_entitled":true}}}',
+     org_id, org_id, account_number, username
    )
    ```
 
@@ -270,7 +395,7 @@ Ingress Application (port 8081)
 
 #### Stage 3: Backend Services Parse Identity
 
-**Ingress Service** (`insights-ros-ingress`):
+**Ingress Service** (`ingress`):
 - **Authentication Pattern**: JWT-based (different from cost-onprem-backend)
 - **Location**: `internal/upload/handler.go`
 - **REQUIRES** (application validates, Envoy injects):
@@ -294,7 +419,7 @@ Ingress Application (port 8081)
   - Logging and tracing
 
 **Why JWT instead of XRHID for Ingress?**
-- `insights-ros-ingress` is a shared upload service that predates XRHID standardization
+- `ingress` is a shared upload service that handles file uploads and API routing
 - Designed for direct JWT parsing to support flexible claim extraction
 - Uses Envoy for JWT validation security, but needs raw token for claims
 
@@ -310,12 +435,23 @@ Ingress Application (port 8081)
   // Decodes X-Rh-Identity header
   decodedIdentity := base64.StdEncoding.DecodeString(header)
 
+  // XRHID with dual org_id placement and ENHANCED_ORG_ADMIN support
   type XRHID struct {
+      OrgID    string `json:"org_id"`  // Top-level org_id for middleware compatibility
       Identity struct {
-          OrgID         string `json:"org_id"`
+          OrgID         string `json:"org_id"`          // Correct location per Red Hat schema
           AccountNumber string `json:"account_number"`
           Type          string `json:"type"`
+          User          struct {
+              Username   string `json:"username"`
+              IsOrgAdmin bool   `json:"is_org_admin"`  // Triggers ENHANCED_ORG_ADMIN bypass
+          } `json:"user"`
       } `json:"identity"`
+      Entitlements struct {
+          CostManagement struct {
+              IsEntitled bool `json:"is_entitled"`
+          } `json:"cost_management"`
+      } `json:"entitlements"`
   }
   ```
 - Extracts `org_id` and `account_number` for multi-tenancy
@@ -1187,7 +1323,58 @@ ORG_ID="2" CLIENT_ID="cost-management-operator-2"
 
 ---
 
-## Part 6: Troubleshooting
+## Part 6: Technical Notes
+
+### ENHANCED_ORG_ADMIN Mode
+
+The on-premise deployment uses `DEVELOPMENT=false` and `ENHANCED_ORG_ADMIN=true` to provide a simpler authentication model without requiring an external RBAC service.
+
+**Configuration**:
+```yaml
+# In Koku deployment
+DEVELOPMENT: "False"        # Use production middleware
+ENHANCED_ORG_ADMIN: "True"  # Bypass RBAC for org admins
+```
+
+**X-Rh-Identity Header Format**:
+
+```json
+{
+  "org_id": "org1234567",              
+  "identity": {
+    "org_id": "org1234567",            
+    "account_number": "7890123",
+    "type": "User",
+    "user": {
+      "username": "test",
+      "is_org_admin": true
+    }
+  },
+  "entitlements": {
+    "cost_management": {"is_entitled": true}
+  }
+}
+```
+
+**How it works**:
+1. `is_org_admin: true` in the identity marks the user as an organization admin
+2. With `ENHANCED_ORG_ADMIN=true`, Koku's `_get_access()` method returns `{}` for admin users
+3. This bypasses the RBAC service call entirely
+4. User gets full access to all resources within their org
+
+**Benefits over DEVELOPMENT mode**:
+- ✅ No Mock user bugs (production middleware)
+- ✅ Proper `beta` attribute handling
+- ✅ Real User objects instead of Mock objects
+- ✅ All middleware checks work correctly
+
+**Dual org_id placement**:
+The `org_id` appears at both top-level and inside `identity` for middleware compatibility.
+This ensures proper tenant lookup regardless of which code path reads the org_id.
+
+---
+
+## Part 7: Troubleshooting
 
 ### Issue: "Invalid or missing identity" (401 Unauthorized)
 
@@ -1279,7 +1466,7 @@ ORG_ID="2" CLIENT_ID="cost-management-operator-2"
 
 ---
 
-## Part 7: Security Considerations
+## Part 8: Security Considerations
 
 ### Token Lifespan
 
@@ -1340,7 +1527,7 @@ Ensure CA certificates are properly configured for self-signed certs.
 
 ---
 
-## Part 8: Complete Example
+## Part 9: Complete Example
 
 Here's a complete end-to-end setup script:
 
