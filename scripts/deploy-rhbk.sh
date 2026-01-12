@@ -761,7 +761,7 @@ spec:
             config:
               access.token.claim: "true"
               claim.name: org_id
-              claim.value: "12345"
+              claim.value: "org1234567"
               id.token.claim: "false"
               jsonType.label: String
               userinfo.token.claim: "false"
