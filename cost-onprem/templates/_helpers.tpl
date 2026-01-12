@@ -655,41 +655,48 @@ Storage configuration (returns the appropriate config object)
 
 {{/*
 Storage endpoint (MinIO service or ODF endpoint)
+Supports: ODF (production) and MinIO standalone (CI)
 */}}
 {{- define "cost-onprem.storage.endpoint" -}}
-{{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" -}}
+{{- /* 1. Check for explicit override */ -}}
 {{- if and .Values.odf .Values.odf.endpoint -}}
 {{- .Values.odf.endpoint -}}
 {{- else -}}
-{{- /* Dynamic ODF S3 service discovery using NooBaa CRD status */ -}}
-{{- $noobaaList := lookup "noobaa.io/v1alpha1" "NooBaa" "" "" -}}
-{{- $s3Endpoint := "" -}}
-{{- if and $noobaaList $noobaaList.items -}}
-  {{- range $noobaaList.items -}}
-    {{- if and .status .status.services .status.services.serviceS3 .status.services.serviceS3.internalDNS -}}
-      {{- $internalDNS := index .status.services.serviceS3.internalDNS 0 -}}
-      {{- if $internalDNS -}}
-        {{- /* Extract service name from internal DNS (e.g., "https://s3.openshift-storage.svc:443" -> "s3.openshift-storage.svc.cluster.local") */ -}}
-        {{- $serviceName := regexReplaceAll "https://" $internalDNS "" -}}
-        {{- $serviceName = regexReplaceAll ":443" $serviceName "" -}}
-        {{- /* Convert short DNS to full cluster DNS (e.g., "s3.openshift-storage.svc" -> "s3.openshift-storage.svc.cluster.local") */ -}}
-        {{- if not (hasSuffix ".cluster.local" $serviceName) -}}
-          {{- $serviceName = printf "%s.cluster.local" $serviceName -}}
+  {{- /* 2. Detect ODF vs MinIO by checking NooBaa CRD */ -}}
+  {{- $noobaaList := lookup "noobaa.io/v1alpha1" "NooBaa" "" "" -}}
+  {{- if and $noobaaList $noobaaList.items (gt (len $noobaaList.items) 0) -}}
+    {{- /* ODF detected - discover S3 endpoint from NooBaa CRD */ -}}
+    {{- $s3Endpoint := "" -}}
+    {{- range $noobaaList.items -}}
+      {{- if and .status .status.services .status.services.serviceS3 .status.services.serviceS3.internalDNS -}}
+        {{- $internalDNS := index .status.services.serviceS3.internalDNS 0 -}}
+        {{- if $internalDNS -}}
+          {{- $serviceName := regexReplaceAll "https://" $internalDNS "" -}}
+          {{- $serviceName = regexReplaceAll ":443" $serviceName "" -}}
+          {{- if not (hasSuffix ".cluster.local" $serviceName) -}}
+            {{- $serviceName = printf "%s.cluster.local" $serviceName -}}
+          {{- end -}}
+          {{- $s3Endpoint = $serviceName -}}
+          {{- break -}}
         {{- end -}}
-        {{- $s3Endpoint = $serviceName -}}
-        {{- break -}}
       {{- end -}}
     {{- end -}}
-  {{- end -}}
-{{- end -}}
-{{- if $s3Endpoint -}}
+    {{- if $s3Endpoint -}}
 {{- $s3Endpoint -}}
-{{- else -}}
-{{- fail "Unable to discover ODF S3 service endpoint. Please ensure OpenShift Data Foundation is installed and specify 'odf.endpoint' in values.yaml" -}}
-{{- end -}}
-{{- end -}}
-{{- else -}}
-{{- printf "%s-minio:%v" (include "cost-onprem.fullname" .) .Values.minio.ports.api -}}
+    {{- else -}}
+      {{- fail "ODF detected but unable to discover S3 endpoint from NooBaa CRD. Please specify 'odf.endpoint' in values.yaml" -}}
+    {{- end -}}
+  {{- else -}}
+    {{- /* MinIO standalone (CI pattern) - check for proxy service */ -}}
+    {{- $minioProxy := lookup "v1" "Service" .Release.Namespace "minio-storage" -}}
+    {{- if $minioProxy -}}
+      {{- /* CI pattern: minio-storage proxy service in same namespace */ -}}
+minio-storage
+    {{- else -}}
+      {{- /* Fallback: MinIO in minio namespace */ -}}
+minio.minio.svc
+    {{- end -}}
+  {{- end -}}
 {{- end -}}
 {{- end }}
 
@@ -697,14 +704,43 @@ Storage endpoint (MinIO service or ODF endpoint)
 Storage port (MinIO port or ODF port)
 */}}
 {{- define "cost-onprem.storage.port" -}}
-{{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" -}}
-{{- if .Values.odf -}}
+{{- if and .Values.odf .Values.odf.port -}}
 {{- .Values.odf.port -}}
 {{- else -}}
+  {{- /* Auto-detect based on ODF NooBaa CRD */ -}}
+  {{- $noobaaList := lookup "noobaa.io/v1alpha1" "NooBaa" "" "" -}}
+  {{- if and $noobaaList $noobaaList.items (gt (len $noobaaList.items) 0) -}}
 443
+  {{- else -}}
+9000
+  {{- end -}}
 {{- end -}}
+{{- end }}
+
+{{/*
+Storage endpoint with protocol and port for S3 connections
+This helper constructs the full S3 endpoint URL including protocol and port.
+Uses .Values.odf.useSSL (set by install script) to determine protocol.
+No lookup() calls - relies on values passed via --set flags.
+
+Returns:
+  - ODF (useSSL=true):  https://s3.openshift-storage.svc:443
+  - MinIO (useSSL=false): http://minio-storage:9000
+*/}}
+{{- define "cost-onprem.storage.endpointWithProtocol" -}}
+{{- $endpoint := include "cost-onprem.storage.endpoint" . -}}
+{{- $port := include "cost-onprem.storage.port" . -}}
+{{- $useSSL := false -}}
+
+{{- /* Determine protocol based on .Values.odf.useSSL (passed by install script) */ -}}
+{{- if and .Values.odf (hasKey .Values.odf "useSSL") -}}
+  {{- $useSSL = .Values.odf.useSSL -}}
+{{- end -}}
+
+{{- if $useSSL -}}
+https://{{ $endpoint }}:{{ $port }}
 {{- else -}}
-{{- .Values.minio.ports.api -}}
+http://{{ $endpoint }}:{{ $port }}
 {{- end -}}
 {{- end }}
 
@@ -741,15 +777,24 @@ insights-upload-perma
 Storage use SSL flag
 */}}
 {{- define "cost-onprem.storage.useSSL" -}}
-{{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" -}}
-{{- if .Values.odf -}}
+{{- if ne .Values.odf.useSSL nil -}}
 {{- .Values.odf.useSSL -}}
 {{- else -}}
+  {{- /* Auto-detect based on ODF NooBaa CRD */ -}}
+  {{- $noobaaList := lookup "noobaa.io/v1alpha1" "NooBaa" "" "" -}}
+  {{- if and $noobaaList $noobaaList.items (gt (len $noobaaList.items) 0) -}}
 true
+  {{- else -}}
+false
+  {{- end -}}
 {{- end -}}
-{{- else -}}
-{{- .Values.ingress.storage.useSSL -}}
-{{- end -}}
+{{- end }}
+
+{{/*
+Storage credentials secret name
+*/}}
+{{- define "cost-onprem.storage.secretName" -}}
+{{- printf "%s-storage-credentials" (include "cost-onprem.fullname" .) -}}
 {{- end }}
 
 {{/*
