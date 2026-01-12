@@ -96,7 +96,7 @@ graph TB
         Lua --> Router
     end
 
-    Backend["ROS Ingress Backend<br/>(Port 8081)<br/><br/>- Trusts X-ROS headers<br/>- Processes authenticated req"]
+    Backend["Ingress Backend<br/>(Port 8081)<br/><br/>- Trusts X-RH-Identity headers<br/>- Processes authenticated req"]
 
     Router --> Backend
 
@@ -163,7 +163,7 @@ end
 
 #### 3. Cluster Configuration
 
-**Backend Cluster** (`ros-ingress-backend`):
+**Backend Cluster** (`ingress-backend`):
 - **Type**: STATIC
 - **Address**: `127.0.0.1:8081` (same pod, different port)
 - **Timeout**: 5 seconds
@@ -274,16 +274,16 @@ graph TB
         direction TB
         OAuthProxy["OAuth2 Proxy Container<br/>(Port 8443)<br/><br/>• Keycloak OIDC<br/>• Session management<br/>• TLS termination"]
         App["App Container<br/>(Port 8080)<br/><br/>• Koku UI MFE<br/>• React application<br/>• API proxy"]
-        
+
         OAuthProxy -->|"http://localhost:8080"| App
     end
-    
+
     Route["OpenShift Route<br/>(reencrypt TLS)"]
     Service["UI Service<br/>(Port 8443)"]
-    
+
     Route -->|"HTTPS"| Service
     Service -->|"HTTPS"| OAuthProxy
-    
+
     style OAuthProxy fill:#fff59d,stroke:#333,stroke-width:2px,color:#000
     style App fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
     style Route fill:#90caf9,stroke:#333,stroke-width:2px,color:#000
