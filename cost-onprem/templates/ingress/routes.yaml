@@ -2,20 +2,23 @@
 {{- /*
 ROUTES CONFIGURATION
 
-This file contains only the essential routes required for external access:
+This file contains routes required for external access:
 
 1. Main route (/) - ROS API status and recommendations endpoints
 2. Ingress route (/api/ingress) - File upload and version check
-3. UI route (/) - User interface
+3. Cost Management API route (/api/cost-management) - Koku API (JWT validated via Envoy)
+4. Sources API route (/api/sources) - Provider management (JWT validated via Envoy)
+5. UI route (/) - User interface
+
+All API routes go through the Envoy ingress proxy for JWT authentication.
+The Envoy proxy validates JWT tokens and injects X-Rh-Identity headers.
 
 INTERNAL-ONLY SERVICES (no routes, accessed via network policies):
 - Kruize - Accessed only by internal services (processor, poller, housekeeper)
-- Sources API - Accessed only by internal services (housekeeper)
 
 REMOVED ROUTES (previously defined, not needed):
 - Kruize route (/api/kruize) - Internal only, blocked by network policy
 - ROS API route (/api/ros) - Alternative API path
-- Sources API route (/api/sources) - Internal only
 - MinIO Console route (/minio) - Not needed for ODF
 */ -}}
 ---
@@ -83,6 +86,66 @@ spec:
     {{- end }}
   {{- end }}
 ---
+# Route for Cost Management API (through Envoy for JWT validation)
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  {{- with (index .Values.serviceRoute.hosts 0) }}
+  {{- if .host }}
+  host: {{ .host | quote }}
+  {{- end }}
+  {{- end }}
+  path: /api/cost-management
+  to:
+    kind: Service
+    name: {{ include "cost-onprem.fullname" . }}-ingress
+    weight: 100
+  port:
+    targetPort: http
+  {{- if and .Values.serviceRoute.tls .Values.serviceRoute.tls.termination }}
+  tls:
+    termination: {{ .Values.serviceRoute.tls.termination }}
+    {{- if .Values.serviceRoute.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ .Values.serviceRoute.tls.insecureEdgeTerminationPolicy }}
+    {{- end }}
+  {{- end }}
+---
+# Route for Sources API (through Envoy for JWT validation)
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-sources
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sources-api
+spec:
+  {{- with (index .Values.serviceRoute.hosts 0) }}
+  {{- if .host }}
+  host: {{ .host | quote }}
+  {{- end }}
+  {{- end }}
+  path: /api/sources
+  to:
+    kind: Service
+    name: {{ include "cost-onprem.fullname" . }}-ingress
+    weight: 100
+  port:
+    targetPort: http
+  {{- if and .Values.serviceRoute.tls .Values.serviceRoute.tls.termination }}
+  tls:
+    termination: {{ .Values.serviceRoute.tls.termination }}
+    {{- if .Values.serviceRoute.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ .Values.serviceRoute.tls.insecureEdgeTerminationPolicy }}
+    {{- end }}
+  {{- end }}
+---
 # UI route
 apiVersion: route.openshift.io/v1
 kind: Route
@@ -106,4 +169,22 @@ spec:
   tls:
     termination: reencrypt
     insecureEdgeTerminationPolicy: Redirect
+---
+# Sources API route - Required for Cost Management Operator and E2E testing
+# Sources API provisions tables in the koku database that Koku uses
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: sources-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sources-api
+spec:
+  to:
+    kind: Service
+    name: {{ include "cost-onprem.fullname" . }}-sources-api
+    weight: 100
+  port:
+    targetPort: 8000
 {{- end }}
