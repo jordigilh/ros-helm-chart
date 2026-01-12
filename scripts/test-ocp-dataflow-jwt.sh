@@ -21,6 +21,14 @@
 # Authentication:
 # - Ingress: Keycloak JWT (external uploads from Cost Management Operator)
 # - Backend API: Keycloak JWT (for API access)
+#
+# Debug Logging:
+# ==============
+# - Debug logs are created in /tmp for critical operations (Keycloak auth, JWT tokens, source registration)
+# - Logs are automatically cleaned up on successful completion
+# - Logs are preserved on failure for investigation and contain full API request/response data
+# - Debug logs may contain sensitive data (passwords, tokens, secrets) - do not share publicly without redaction
+# - Logs are automatically cleaned up on script exit (normal, interrupt, or error)
 
 set -e  # Exit on any error
 
@@ -38,7 +46,18 @@ cleanup() {
     exit $exit_code
 }
 
-trap cleanup EXIT INT TERM
+# Cleanup function specifically for interrupt signals (Ctrl+C, SIGTERM)
+# Normal failures preserve logs for investigation; interrupts clean up
+cleanup_on_interrupt() {
+    echo ""
+    echo "Script interrupted. Cleaning up..."
+    # Remove debug logs on interrupt (user canceled operation)
+    rm -f /tmp/keycloak-debug.* /tmp/jwt-token-debug.* /tmp/source-registration-debug.* 2>/dev/null || true
+    cleanup
+}
+
+trap cleanup EXIT
+trap cleanup_on_interrupt INT TERM
 
 # Color codes for output
 RED='\033[0;31m'
@@ -261,6 +280,14 @@ get_jwt_token() {
         return 1
     fi
 
+    # Create temporary file for capturing API responses for debugging
+    local debug_log=$(mktemp /tmp/jwt-token-debug.XXXXXX)
+    echo "=== JWT Token Request Debug Log ===" > "$debug_log"
+    echo "Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$debug_log"
+    echo "Keycloak URL: ${KEYCLOAK_URL}" >> "$debug_log"
+    echo "Client ID: ${CLIENT_ID}" >> "$debug_log"
+    echo "" >> "$debug_log"
+
     # Determine the correct realm and token endpoint
     local realm="kubernetes"
     # RHBK v22+ does not use /auth prefix
@@ -269,17 +296,37 @@ get_jwt_token() {
     echo_info "Getting token from: $token_url"
     echo_info "Client ID: $CLIENT_ID"
 
-    # Request JWT token using client credentials flow
+    # Request JWT token using client credentials flow - capture full response for debugging
+    echo "Step 1: Requesting JWT token from Keycloak..." >> "$debug_log"
+    echo "Request URL: $token_url" >> "$debug_log"
+    echo "Grant type: client_credentials" >> "$debug_log"
+    echo "" >> "$debug_log"
+
     local token_response=$(curl -s -k -X POST "$token_url" \
         -H "Content-Type: application/x-www-form-urlencoded" \
         -d "grant_type=client_credentials" \
         -d "client_id=$CLIENT_ID" \
-        -d "client_secret=$CLIENT_SECRET" 2>/dev/null)
+        -d "client_secret=$CLIENT_SECRET" 2>&1)
 
     local curl_exit=$?
+    echo "Curl exit code: $curl_exit" >> "$debug_log"
+    echo "Response: $token_response" >> "$debug_log"
+    echo "" >> "$debug_log"
+
     if [ $curl_exit -ne 0 ] || [ -z "$token_response" ]; then
-        echo_error "Failed to connect to Keycloak token endpoint (curl exit code: $curl_exit)"
-        return 1
+        echo "ERROR: Failed to connect to Keycloak token endpoint" >> "$debug_log"
+        echo_error "FATAL: Failed to connect to Keycloak token endpoint"
+        echo_error "Curl exit code: $curl_exit"
+        echo_error ""
+        echo_error "Keycloak URL: $token_url"
+        echo_error "Debug log saved to: $debug_log"
+        echo ""
+        echo_error "Troubleshooting:"
+        echo_error "  1. Verify Keycloak is running: kubectl get pods -n $KEYCLOAK_NAMESPACE"
+        echo_error "  2. Test Keycloak endpoint: curl -k $KEYCLOAK_URL/realms/kubernetes"
+        echo_error "  3. Check network connectivity from test environment"
+        echo_error "  4. Review full debug log: cat $debug_log"
+        exit 1
     fi
 
     # Extract access token from response using jq
@@ -287,10 +334,27 @@ get_jwt_token() {
     local expires_in=$(echo "$token_response" | jq -r '.expires_in // 0' 2>/dev/null)
 
     if [ -z "$JWT_TOKEN" ] || [ "$JWT_TOKEN" = "null" ]; then
-        echo_error "Failed to extract JWT token from response"
-        echo_info "Token response: $token_response"
-        return 1
+        local error_msg=$(echo "$token_response" | jq -r '.error_description // .error // "Unknown error"' 2>/dev/null)
+        echo "ERROR: Failed to extract JWT token from response" >> "$debug_log"
+        echo "Error: $error_msg" >> "$debug_log"
+        echo_error "FATAL: Failed to extract JWT token from Keycloak response"
+        echo_error "Error: $error_msg"
+        echo_error ""
+        echo_error "Keycloak response:"
+        echo "$token_response" | jq '.' 2>/dev/null || echo "$token_response"
+        echo ""
+        echo_error "Debug log saved to: $debug_log"
+        echo ""
+        echo_error "Troubleshooting:"
+        echo_error "  1. Verify client credentials: kubectl get secret -n $KEYCLOAK_NAMESPACE"
+        echo_error "  2. Check client configuration in Keycloak admin console"
+        echo_error "  3. Verify client_id '$CLIENT_ID' exists and is enabled"
+        echo_error "  4. Review full debug log: cat $debug_log"
+        exit 1
     fi
+
+    echo "SUCCESS: JWT token obtained (length: ${#JWT_TOKEN})" >> "$debug_log"
+    echo "Token expires in: ${expires_in} seconds" >> "$debug_log"
 
     # Calculate expiry time
     JWT_TOKEN_EXPIRY=$(($(date +%s) + ${expires_in:-300}))
@@ -298,6 +362,9 @@ get_jwt_token() {
     echo_success "JWT token obtained successfully"
     echo_info "Token length: ${#JWT_TOKEN} characters"
     echo_info "Token expires in: ${expires_in:-300} seconds"
+
+    # Clean up debug log on success
+    rm -f "$debug_log"
 
     # Optionally decode and display token info (first part only for security)
     local token_header=$(echo "$JWT_TOKEN" | cut -d'.' -f1)
@@ -544,39 +611,104 @@ ORG_ID=""  # Will be fetched from Keycloak test user
 # This ensures test data is uploaded with the same org_id that the UI user has
 fetch_org_id_from_keycloak() {
     echo_info "Fetching org_id from Keycloak test user..."
-    
+
+    # Create temporary file for capturing API responses for debugging
+    local debug_log=$(mktemp /tmp/keycloak-debug.XXXXXX)
+    echo "=== Keycloak org_id Fetch Debug Log ===" > "$debug_log"
+    echo "Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$debug_log"
+    echo "Keycloak URL: ${KEYCLOAK_URL}" >> "$debug_log"
+    echo "" >> "$debug_log"
+
     # Get Keycloak admin credentials
-    local kc_admin_pass=$(kubectl get secret -n "$KEYCLOAK_NAMESPACE" keycloak-initial-admin -o jsonpath='{.data.password}' 2>/dev/null | base64 -d)
+    echo "Step 1: Fetching Keycloak admin password from secret..." >> "$debug_log"
+    local kc_admin_pass=$(kubectl get secret -n "$KEYCLOAK_NAMESPACE" keycloak-initial-admin -o jsonpath='{.data.password}' 2>>"$debug_log" | base64 -d)
+
     if [ -z "$kc_admin_pass" ]; then
-        echo_warn "Could not get Keycloak admin password, using default org_id"
-        ORG_ID="12345"
-        return
+        echo "ERROR: Could not get Keycloak admin password" >> "$debug_log"
+        echo_error "FATAL: Could not get Keycloak admin password from secret"
+        echo_error "Secret: $KEYCLOAK_NAMESPACE/keycloak-initial-admin"
+        echo_error ""
+        echo_error "Cannot proceed without org_id - test requires correct tenant identifier"
+        echo_error "Debug log saved to: $debug_log"
+        cat "$debug_log"
+        exit 1
     fi
-    
-    # Get admin token
-    local kc_admin_token=$(curl -s -X POST "${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" \
+    echo "SUCCESS: Admin password retrieved (length: ${#kc_admin_pass})" >> "$debug_log"
+    echo "" >> "$debug_log"
+
+    # Get admin token - capture full response for debugging
+    echo "Step 2: Requesting admin token from Keycloak..." >> "$debug_log"
+    echo "Request URL: ${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" >> "$debug_log"
+
+    local kc_token_response=$(curl -s -X POST "${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" \
         -H "Content-Type: application/x-www-form-urlencoded" \
         -d "client_id=admin-cli" \
         -d "username=admin" \
         -d "password=${kc_admin_pass}" \
-        -d "grant_type=password" 2>/dev/null | jq -r '.access_token')
-    
+        -d "grant_type=password" 2>&1)
+
+    echo "Response: $kc_token_response" >> "$debug_log"
+    echo "" >> "$debug_log"
+
+    local kc_admin_token=$(echo "$kc_token_response" | jq -r '.access_token' 2>/dev/null)
+
     if [ -z "$kc_admin_token" ] || [ "$kc_admin_token" = "null" ]; then
-        echo_warn "Could not get Keycloak admin token, using default org_id"
-        ORG_ID="12345"
-        return
+        local error_msg=$(echo "$kc_token_response" | jq -r '.error_description // .error // "Unknown error"' 2>/dev/null)
+        echo "ERROR: Token retrieval failed" >> "$debug_log"
+        echo "Error: $error_msg" >> "$debug_log"
+        echo_error "FATAL: Could not get Keycloak admin token"
+        echo_error "Error: $error_msg"
+        echo_error ""
+        echo_error "Keycloak response:"
+        echo "$kc_token_response" | jq '.' 2>/dev/null || echo "$kc_token_response"
+        echo ""
+        echo_error "Cannot proceed without org_id - test requires correct tenant identifier"
+        echo_error "Debug log saved to: $debug_log"
+        echo ""
+        echo_error "Troubleshooting:"
+        echo_error "  1. Verify Keycloak is running: kubectl get pods -n $KEYCLOAK_NAMESPACE"
+        echo_error "  2. Check admin credentials: kubectl get secret -n $KEYCLOAK_NAMESPACE keycloak-initial-admin"
+        echo_error "  3. Test Keycloak endpoint: curl -k $KEYCLOAK_URL/realms/master"
+        echo_error "  4. Review full debug log: cat $debug_log"
+        exit 1
     fi
-    
+    echo "SUCCESS: Admin token retrieved (length: ${#kc_admin_token})" >> "$debug_log"
+    echo "" >> "$debug_log"
+
     # Get test user's org_id attribute
-    local user_org_id=$(curl -s "${KEYCLOAK_URL}/admin/realms/kubernetes/users?username=test" \
-        -H "Authorization: Bearer $kc_admin_token" 2>/dev/null | jq -r '.[0].attributes.org_id[0]' 2>/dev/null)
-    
+    echo "Step 3: Fetching test user's org_id attribute..." >> "$debug_log"
+    echo "Request URL: ${KEYCLOAK_URL}/admin/realms/kubernetes/users?username=test" >> "$debug_log"
+
+    local user_response=$(curl -s "${KEYCLOAK_URL}/admin/realms/kubernetes/users?username=test" \
+        -H "Authorization: Bearer $kc_admin_token" 2>&1)
+
+    echo "Response: $user_response" >> "$debug_log"
+    echo "" >> "$debug_log"
+
+    local user_org_id=$(echo "$user_response" | jq -r '.[0].attributes.org_id[0]' 2>/dev/null)
+
     if [ -n "$user_org_id" ] && [ "$user_org_id" != "null" ]; then
         ORG_ID="$user_org_id"
+        echo "SUCCESS: org_id fetched from Keycloak: $ORG_ID" >> "$debug_log"
         echo_success "Fetched org_id from Keycloak: $ORG_ID"
+        # Clean up debug log on success
+        rm -f "$debug_log"
     else
-        echo_warn "Could not fetch org_id from Keycloak test user, using default"
-        ORG_ID="12345"
+        echo "ERROR: Could not extract org_id from user response" >> "$debug_log"
+        echo_error "FATAL: Could not fetch org_id from Keycloak test user"
+        echo_error ""
+        echo_error "User response from Keycloak:"
+        echo "$user_response" | jq '.' 2>/dev/null || echo "$user_response"
+        echo ""
+        echo_error "Cannot proceed without org_id - test requires correct tenant identifier"
+        echo_error "Debug log saved to: $debug_log"
+        echo ""
+        echo_error "Troubleshooting:"
+        echo_error "  1. Verify test user exists: Check Keycloak admin console"
+        echo_error "  2. Verify user has org_id attribute: Check user profile in Keycloak"
+        echo_error "  3. Re-run user creation: ./scripts/deploy-rhbk.sh"
+        echo_error "  4. Review full debug log: cat $debug_log"
+        exit 1
     fi
 }
 
@@ -611,100 +743,199 @@ register_ocp_source() {
     fi
     echo_info "Using pod for API calls: $exec_pod"
 
+    # Create temporary file for capturing API responses for debugging
+    local debug_log=$(mktemp /tmp/source-registration-debug.XXXXXX)
+    echo "=== Source Registration Debug Log ===" > "$debug_log"
+    echo "Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$debug_log"
+    echo "Sources API URL: ${SOURCES_API_URL}" >> "$debug_log"
+    echo "Cluster ID: ${cluster_id}" >> "$debug_log"
+    echo "Org ID: ${ORG_ID}" >> "$debug_log"
+    echo "Exec Pod: ${exec_pod}" >> "$debug_log"
+    echo "" >> "$debug_log"
+
     # Step 1: Get OpenShift source type ID
     echo_info "Getting OpenShift source type ID..."
+    echo "Step 1: Getting OpenShift source type ID..." >> "$debug_log"
+    echo "Request URL: ${SOURCES_API_URL}/source_types" >> "$debug_log"
+
     local source_types_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -- \
         curl -s "${SOURCES_API_URL}/source_types" \
         -H "Content-Type: application/json" \
-        -H "x-rh-sources-org-id: $ORG_ID" 2>/dev/null)
+        -H "x-rh-sources-org-id: $ORG_ID" 2>&1)
+
+    echo "Response: $source_types_response" >> "$debug_log"
+    echo "" >> "$debug_log"
 
     local ocp_source_type_id=$(echo "$source_types_response" | jq -r '.data[] | select(.name == "openshift") | .id' 2>/dev/null)
     if [ -z "$ocp_source_type_id" ] || [ "$ocp_source_type_id" = "null" ]; then
-        echo_error "Failed to find OpenShift source type"
-        echo_info "Available source types: $(echo "$source_types_response" | jq -r '.data[].name' 2>/dev/null | tr '\n' ', ')"
-        return 1
+        echo "ERROR: Failed to find OpenShift source type" >> "$debug_log"
+        local available_types=$(echo "$source_types_response" | jq -r '.data[].name' 2>/dev/null | tr '\n' ', ')
+        echo "Available source types: $available_types" >> "$debug_log"
+        echo_error "FATAL: Failed to find OpenShift source type"
+        echo_error ""
+        echo_error "Sources API response:"
+        echo "$source_types_response" | jq '.' 2>/dev/null || echo "$source_types_response"
+        echo ""
+        echo_error "Available source types: $available_types"
+        echo_error "Debug log saved to: $debug_log"
+        echo ""
+        echo_error "Troubleshooting:"
+        echo_error "  1. Verify Sources API is running: kubectl get pods -n $NAMESPACE -l app.kubernetes.io/component=sources-api"
+        echo_error "  2. Check Sources API logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=sources-api"
+        echo_error "  3. Verify network connectivity from $exec_pod"
+        echo_error "  4. Review full debug log: cat $debug_log"
+        exit 1
     fi
     echo_info "OpenShift source type ID: $ocp_source_type_id"
+    echo "SUCCESS: OpenShift source type ID: $ocp_source_type_id" >> "$debug_log"
 
     # Step 2: Get Cost Management application type ID
     echo_info "Getting Cost Management application type ID..."
+    echo "Step 2: Getting Cost Management application type ID..." >> "$debug_log"
+    echo "Request URL: ${SOURCES_API_URL}/application_types" >> "$debug_log"
+
     local app_types_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -- \
         curl -s "${SOURCES_API_URL}/application_types" \
         -H "Content-Type: application/json" \
-        -H "x-rh-sources-org-id: $ORG_ID" 2>/dev/null)
+        -H "x-rh-sources-org-id: $ORG_ID" 2>&1)
+
+    echo "Response: $app_types_response" >> "$debug_log"
+    echo "" >> "$debug_log"
 
     local cost_mgmt_app_type_id=$(echo "$app_types_response" | jq -r '.data[] | select(.name == "/insights/platform/cost-management") | .id' 2>/dev/null)
     if [ -z "$cost_mgmt_app_type_id" ] || [ "$cost_mgmt_app_type_id" = "null" ]; then
-        echo_error "Failed to find Cost Management application type"
-        echo_info "Available app types: $(echo "$app_types_response" | jq -r '.data[].name' 2>/dev/null | tr '\n' ', ')"
-        return 1
+        echo "ERROR: Failed to find Cost Management application type" >> "$debug_log"
+        local available_apps=$(echo "$app_types_response" | jq -r '.data[].name' 2>/dev/null | tr '\n' ', ')
+        echo "Available app types: $available_apps" >> "$debug_log"
+        echo_error "FATAL: Failed to find Cost Management application type"
+        echo_error ""
+        echo_error "Sources API response:"
+        echo "$app_types_response" | jq '.' 2>/dev/null || echo "$app_types_response"
+        echo ""
+        echo_error "Available app types: $available_apps"
+        echo_error "Debug log saved to: $debug_log"
+        echo ""
+        echo_error "Troubleshooting:"
+        echo_error "  1. Verify Sources API is running: kubectl get pods -n $NAMESPACE -l app.kubernetes.io/component=sources-api"
+        echo_error "  2. Check Sources API logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=sources-api"
+        echo_error "  3. Verify application types are seeded in database"
+        echo_error "  4. Review full debug log: cat $debug_log"
+        exit 1
     fi
     echo_info "Cost Management application type ID: $cost_mgmt_app_type_id"
+    echo "SUCCESS: Cost Management application type ID: $cost_mgmt_app_type_id" >> "$debug_log"
 
     # Step 3: Create the OCP source
     TEST_SOURCE_NAME="E2E Test OCP Source $(date +%s)"
     echo_info "Creating OCP source: $TEST_SOURCE_NAME"
+    echo "Step 3: Creating OCP source..." >> "$debug_log"
+    echo "Source name: $TEST_SOURCE_NAME" >> "$debug_log"
 
     local create_source_payload=$(cat <<EOF
 {"name": "$TEST_SOURCE_NAME", "source_type_id": "$ocp_source_type_id", "source_ref": "$cluster_id"}
 EOF
 )
 
+    echo "Payload: $create_source_payload" >> "$debug_log"
+
     local source_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -- \
         curl -s -X POST "${SOURCES_API_URL}/sources" \
         -H "Content-Type: application/json" \
         -H "x-rh-sources-org-id: $ORG_ID" \
-        -d "$create_source_payload" 2>/dev/null)
+        -d "$create_source_payload" 2>&1)
+
+    echo "Response: $source_response" >> "$debug_log"
+    echo "" >> "$debug_log"
 
     TEST_SOURCE_ID=$(echo "$source_response" | jq -r '.id' 2>/dev/null)
     if [ -z "$TEST_SOURCE_ID" ] || [ "$TEST_SOURCE_ID" = "null" ]; then
-        echo_error "Failed to create source"
-        echo_info "Response: $source_response"
-        return 1
+        echo "ERROR: Failed to create source" >> "$debug_log"
+        echo_error "FATAL: Failed to create OCP source"
+        echo_error ""
+        echo_error "Sources API response:"
+        echo "$source_response" | jq '.' 2>/dev/null || echo "$source_response"
+        echo ""
+        echo_error "Debug log saved to: $debug_log"
+        echo ""
+        echo_error "Troubleshooting:"
+        echo_error "  1. Verify Sources API is running: kubectl get pods -n $NAMESPACE -l app.kubernetes.io/component=sources-api"
+        echo_error "  2. Check Sources API logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=sources-api"
+        echo_error "  3. Verify source type ID '$ocp_source_type_id' is valid"
+        echo_error "  4. Review full debug log: cat $debug_log"
+        exit 1
     fi
     echo_success "Source created with ID: $TEST_SOURCE_ID"
+    echo "SUCCESS: Source created with ID: $TEST_SOURCE_ID" >> "$debug_log"
 
     # Step 4: Create authentication for the source
     echo_info "Creating authentication for source..."
+    echo "Step 4: Creating authentication for source..." >> "$debug_log"
+
     local auth_payload=$(cat <<EOF
 {"resource_type": "Source", "resource_id": "$TEST_SOURCE_ID", "authtype": "token", "username": "$cluster_id"}
 EOF
 )
 
+    echo "Payload: $auth_payload" >> "$debug_log"
+
     local auth_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -- \
         curl -s -X POST "${SOURCES_API_URL}/authentications" \
         -H "Content-Type: application/json" \
         -H "x-rh-sources-org-id: $ORG_ID" \
-        -d "$auth_payload" 2>/dev/null)
+        -d "$auth_payload" 2>&1)
+
+    echo "Response: $auth_response" >> "$debug_log"
+    echo "" >> "$debug_log"
 
     local auth_id=$(echo "$auth_response" | jq -r '.id' 2>/dev/null)
     if [ -z "$auth_id" ] || [ "$auth_id" = "null" ]; then
+        echo "WARNING: Authentication creation may have failed (non-critical)" >> "$debug_log"
         echo_warning "Authentication creation may have failed (non-critical)"
         echo_info "Response: $auth_response"
     else
         echo_success "Authentication created with ID: $auth_id"
+        echo "SUCCESS: Authentication created with ID: $auth_id" >> "$debug_log"
     fi
 
     # Step 5: Create Cost Management application
     echo_info "Creating Cost Management application..."
+    echo "Step 5: Creating Cost Management application..." >> "$debug_log"
+
     local app_payload=$(cat <<EOF
 {"source_id": "$TEST_SOURCE_ID", "application_type_id": "$cost_mgmt_app_type_id", "extra": {"bucket": "koku-bucket", "cluster_id": "$cluster_id"}}
 EOF
 )
 
+    echo "Payload: $app_payload" >> "$debug_log"
+
     local app_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -- \
         curl -s -X POST "${SOURCES_API_URL}/applications" \
         -H "Content-Type: application/json" \
         -H "x-rh-sources-org-id: $ORG_ID" \
-        -d "$app_payload" 2>/dev/null)
+        -d "$app_payload" 2>&1)
+
+    echo "Response: $app_response" >> "$debug_log"
+    echo "" >> "$debug_log"
 
     local app_id=$(echo "$app_response" | jq -r '.id' 2>/dev/null)
     if [ -z "$app_id" ] || [ "$app_id" = "null" ]; then
-        echo_error "Failed to create Cost Management application"
-        echo_info "Response: $app_response"
-        return 1
+        echo "ERROR: Failed to create Cost Management application" >> "$debug_log"
+        echo_error "FATAL: Failed to create Cost Management application"
+        echo_error ""
+        echo_error "Sources API response:"
+        echo "$app_response" | jq '.' 2>/dev/null || echo "$app_response"
+        echo ""
+        echo_error "Debug log saved to: $debug_log"
+        echo ""
+        echo_error "Troubleshooting:"
+        echo_error "  1. Verify source ID '$TEST_SOURCE_ID' is valid"
+        echo_error "  2. Verify application type ID '$cost_mgmt_app_type_id' is valid"
+        echo_error "  3. Check Sources API logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=sources-api"
+        echo_error "  4. Review full debug log: cat $debug_log"
+        exit 1
     fi
     echo_success "Cost Management application created with ID: $app_id"
+    echo "SUCCESS: Cost Management application created with ID: $app_id" >> "$debug_log"
 
     # Step 6: Wait for Koku to process the source (via Kafka event)
     # The Sources API publishes to Kafka, then sources-listener creates the provider
@@ -745,15 +976,30 @@ EOF
     done
 
     if [ "$provider_found" = "false" ]; then
-        echo_error "Timeout waiting for provider to be created in Koku database"
-        echo_info "Check sources-listener logs: oc logs -n $NAMESPACE deployment/cost-onprem-sources-listener --tail=50"
-        return 1
+        echo "ERROR: Timeout waiting for provider to be created in Koku database" >> "$debug_log"
+        echo_error "FATAL: Timeout waiting for provider to be created in Koku database"
+        echo_error ""
+        echo_error "Source was created in Sources API but Koku has not processed it yet"
+        echo_error "This indicates an issue with the Kafka event processing pipeline"
+        echo_error ""
+        echo_error "Debug log saved to: $debug_log"
+        echo ""
+        echo_error "Troubleshooting:"
+        echo_error "  1. Check sources-listener logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=sources-listener --tail=50"
+        echo_error "  2. Check Kafka topics: kubectl exec -n $NAMESPACE kafka-0 -- bin/kafka-topics.sh --list --bootstrap-server localhost:9092"
+        echo_error "  3. Verify Kafka is running: kubectl get pods -n $NAMESPACE -l app.kubernetes.io/name=kafka"
+        echo_error "  4. Check Koku database connectivity from sources-listener"
+        echo_error "  5. Review full debug log: cat $debug_log"
+        exit 1
     fi
 
     echo_success "OCP source registered successfully"
     echo_info "  Source ID: $TEST_SOURCE_ID"
     echo_info "  Source Name: $TEST_SOURCE_NAME"
     echo_info "  Cluster ID: $cluster_id"
+
+    # Clean up debug log on success
+    rm -f "$debug_log"
 
     return 0
 }
