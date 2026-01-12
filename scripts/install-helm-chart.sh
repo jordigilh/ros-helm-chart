@@ -452,14 +452,35 @@ create_s3_buckets() {
         exit 1
     fi
 
-    # Determine S3 endpoint based on platform
+    # Detect storage backend (ODF vs MinIO) - aligns with Helm template logic
     local s3_url mc_insecure
-    if [ "$PLATFORM" = "openshift" ]; then
+    echo_info "Detecting storage backend..."
+
+    if kubectl get crd noobaa.noobaa.io >/dev/null 2>&1 && \
+       kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
+        # ODF NooBaa detected
         s3_url="https://s3.openshift-storage.svc:443"
         mc_insecure="--insecure"
-    else
-        s3_url="http://${HELM_RELEASE_NAME}-minio:9000"
+        echo_info "  ✓ Detected: ODF (NooBaa S3)"
+    elif kubectl get service minio-storage -n "$NAMESPACE" >/dev/null 2>&1; then
+        # MinIO CI pattern (proxy service in cost-onprem namespace)
+        s3_url="http://minio-storage:9000"
         mc_insecure=""
+        echo_info "  ✓ Detected: MinIO (CI pattern - proxy service)"
+    elif kubectl get service minio -n minio >/dev/null 2>&1; then
+        # MinIO standalone (in minio namespace)
+        s3_url="http://minio.minio.svc:9000"
+        mc_insecure=""
+        echo_info "  ✓ Detected: MinIO (minio namespace)"
+    else
+        echo_error "Could not detect storage backend (ODF or MinIO)"
+        echo_error "Checked for:"
+        echo_error "  - ODF NooBaa CRD in openshift-storage"
+        echo_error "  - minio-storage service in $NAMESPACE"
+        echo_error "  - minio service in minio namespace"
+        echo_error ""
+        echo_error "Please ensure either ODF or MinIO is properly deployed."
+        exit 1
     fi
 
     echo_info "Creating buckets at ${s3_url}..."
