@@ -947,7 +947,7 @@ EOF
         db_pod="cost-onprem-database-0"
     fi
 
-    local max_wait=120  # 2 minutes max
+    local max_wait=240  # 4 minutes max (accounts for first-time tenant provisioning with migrations)
     local wait_interval=5
     local elapsed=0
     local provider_found=false
