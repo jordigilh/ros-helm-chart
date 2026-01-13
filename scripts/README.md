@@ -6,11 +6,13 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 
 | Script | Purpose | Environment |
 |--------|---------|-------------|
+| `deploy-test-cost-onprem.sh` | **Full deployment + test orchestration** | OpenShift |
+| `run-pytest.sh` | Run pytest test suite | All environments |
 | `deploy-strimzi.sh` | Deploy Kafka infrastructure | All environments |
 | `install-helm-chart.sh` | Deploy ROS Helm chart | All environments |
 | `deploy-rhbk.sh` | Deploy Red Hat Build of Keycloak | OpenShift |
 | `setup-cost-mgmt-tls.sh` | Configure TLS certificates | OpenShift |
-| `test-ocp-dataflow-jwt.sh` | Test JWT + recommendations | JWT-enabled clusters |
+| `test-ocp-dataflow-jwt.sh` | Legacy shell-based JWT test | OpenShift |
 | `query-kruize.sh` | Query Kruize database | All environments |
 | `deploy-kind.sh` | Create test cluster | CI/CD, Local dev |
 | `cleanup-kind-artifacts.sh` | Cleanup test environment | CI/CD, Local dev |
@@ -210,34 +212,82 @@ KAFKA_BOOTSTRAP_SERVERS=my-kafka:9092 ./deploy-strimzi.sh
 
 ---
 
-### `test-ocp-dataflow-jwt.sh`
-End-to-end test of JWT authentication flow with sample cost data.
+### `deploy-test-cost-onprem.sh`
+Complete orchestration script for deploying and testing Cost On-Prem with JWT authentication.
 
-**Test flow:**
-1. Auto-detects Keycloak configuration
-2. Obtains JWT token using client credentials
-3. Creates test payload (CSV + manifest.json)
-4. Uploads data via JWT-authenticated endpoint
-5. Validates ingress processing
-6. Checks for recommendations
+**What it does:**
+1. Deploys Red Hat Build of Keycloak (RHBK)
+2. Deploys Kafka/Strimzi infrastructure
+3. Installs Cost On-Prem Helm chart
+4. Configures TLS certificates
+5. Runs pytest test suite
 
 **Usage:**
 ```bash
-# Test JWT authentication
-./test-ocp-dataflow-jwt.sh
+# Full deployment + tests
+./deploy-test-cost-onprem.sh
 
-# Custom namespace
-./test-ocp-dataflow-jwt.sh --namespace ros-production
+# Run tests only (skip deployments)
+./deploy-test-cost-onprem.sh --tests-only
 
-# Verbose output for troubleshooting
-./test-ocp-dataflow-jwt.sh --verbose
+# Skip specific steps
+./deploy-test-cost-onprem.sh --skip-rhbk --skip-strimzi
+
+# Dry run to preview actions
+./deploy-test-cost-onprem.sh --dry-run --verbose
 ```
 
-**Requirements:**
-- JWT authentication enabled in ROS deployment
-- Red Hat Build of Keycloak (RHBK) with `cost-management-operator` client
+**Best for:** CI/CD pipelines, complete E2E deployment and validation
 
-**Best for:** CI/CD pipelines, complete E2E validation including recommendations
+---
+
+### `run-pytest.sh`
+Run the pytest test suite for JWT authentication and data flow validation.
+
+**Test categories:**
+- `smoke` - Quick smoke tests
+- `auth` - JWT authentication tests
+- `upload` - Data upload tests
+- `e2e` - End-to-end data flow tests
+
+**Usage:**
+```bash
+# Run all tests
+./run-pytest.sh
+
+# Run specific test categories
+./run-pytest.sh --smoke
+./run-pytest.sh --auth
+./run-pytest.sh --e2e
+
+# Run tests matching a pattern
+./run-pytest.sh -k "test_jwt"
+
+# Setup environment only
+./run-pytest.sh --setup-only
+```
+
+**Output:** JUnit XML report at `tests/reports/junit.xml`
+
+**Requirements:**
+- Python 3.9+
+- OpenShift CLI (`oc`) logged in
+- Cost On-Prem deployed with JWT authentication
+
+**See also:** [Test Suite Documentation](../tests/README.md)
+
+---
+
+### `test-ocp-dataflow-jwt.sh`
+Legacy shell script for JWT authentication testing. **Superseded by pytest suite** but kept for reference.
+
+**Usage:**
+```bash
+# Run legacy shell test
+./test-ocp-dataflow-jwt.sh
+```
+
+**Note:** The pytest suite (`run-pytest.sh`) is now the recommended approach for testing.
 
 ---
 
@@ -289,25 +339,30 @@ Query Kruize database for experiments and recommendations.
 ## 🧪 Test Strategy
 
 ### For CI/CD Pipelines
-Use the JWT test script for comprehensive E2E validation:
+Use the orchestration script for comprehensive E2E deployment and validation:
 
 **Recommended CI/CD workflow:**
 ```bash
-# 1. Deploy Kafka infrastructure
-./deploy-strimzi.sh
+# Full deployment + tests (recommended)
+./deploy-test-cost-onprem.sh
 
-# 2. Deploy environment
-./install-helm-chart.sh
+# Or run tests only on existing deployment
+./deploy-test-cost-onprem.sh --tests-only
 
-# 3. Validate full E2E (quick synthetic test)
-./test-ocp-dataflow-jwt.sh || exit 1
+# Or run pytest directly
+./run-pytest.sh
 ```
 
-The `test-ocp-dataflow-jwt.sh` script validates:
-- ✅ JWT authentication
+The pytest test suite validates:
+- ✅ Keycloak connectivity and JWT token generation
+- ✅ JWT authentication on ingress and backend APIs
+- ✅ Data upload with JWT authentication
 - ✅ Full data flow (ingress → processor → Kruize)
 - ✅ Recommendation generation
-- ✅ Complete E2E functionality in ~2 minutes
+
+**Test output:** JUnit XML report at `tests/reports/junit.xml`
+
+**See also:** [Test Suite Documentation](../tests/README.md)
 
 ---
 

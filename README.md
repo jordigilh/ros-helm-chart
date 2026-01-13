@@ -70,6 +70,7 @@ cost-onprem-chart/
 │       ├── monitoring/        # Prometheus ServiceMonitor
 │       ├── shared/            # Shared resources
 │       └── cost-management/   # Future cost management components
+├── tests/                     # Pytest test suite
 ├── docs/                      # Documentation
 ├── scripts/                   # Installation and automation scripts
 └── .github/workflows/         # CI/CD automation
@@ -189,7 +190,19 @@ Key requirements:
 
 ## 🧪 Testing & CI/CD
 
-The chart includes comprehensive CI/CD automation:
+### Test Suite
+```bash
+# Run all tests
+./scripts/run-pytest.sh
+
+# Run specific test categories
+./scripts/run-pytest.sh --auth    # JWT authentication tests
+./scripts/run-pytest.sh --e2e     # End-to-end data flow tests
+```
+
+**See [Test Suite Documentation](tests/README.md) for detailed usage**
+
+### CI/CD Automation
 - **Lint & Validate**: Chart validation on every PR
 - **Full Deployment Test**: E2E testing with KIND cluster
 - **Automated Releases**: Version-tagged releases with packaged charts

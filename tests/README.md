@@ -64,6 +64,9 @@ JUnit XML reports are generated at `tests/reports/junit.xml` for CI integration.
 
 # Run without virtual environment (use system Python)
 ./scripts/run-pytest.sh --no-venv
+
+# Setup environment only (install deps, don't run tests)
+./scripts/run-pytest.sh --setup-only
 ```
 
 ## Manual Setup
@@ -80,15 +83,33 @@ pip install -r requirements.txt
 pytest -v --junit-xml=reports/junit.xml
 ```
 
+## Integration with Deployment Script
+
+The tests can also be run via the main deployment script:
+
+```bash
+# Run tests only (skip all deployments)
+./scripts/deploy-test-cost-onprem.sh --tests-only
+
+# Full deployment + tests
+./scripts/deploy-test-cost-onprem.sh
+
+# Deploy without running tests
+./scripts/deploy-test-cost-onprem.sh --skip-test
+```
+
 ## Test Structure
 
 ```
 tests/
-├── conftest.py              # Shared fixtures and configuration
+├── conftest.py                  # Shared fixtures and configuration
+├── utils.py                     # Helper functions for oc commands
 ├── test_jwt_authentication.py   # JWT auth tests
-├── test_data_flow.py        # Upload and recommendation tests
-├── pytest.ini               # Pytest configuration
-├── requirements.txt         # Python dependencies
-└── README.md               # This file
+├── test_data_flow.py            # Upload and recommendation tests
+├── pytest.ini                   # Pytest configuration
+├── requirements.txt             # Python dependencies
+├── reports/                     # Generated test reports (gitignored)
+│   └── junit.xml
+└── README.md                    # This file
 ```
 
