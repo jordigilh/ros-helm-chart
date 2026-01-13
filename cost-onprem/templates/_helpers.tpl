@@ -333,47 +333,36 @@ Handles dry-run mode gracefully, fails deployment only if no suitable storage cl
 Usage: {{ include "cost-onprem.storage.class" . }}
 */}}
 {{- define "cost-onprem.storage.class" -}}
-  {{- $storageClasses := lookup "storage.k8s.io/v1" "StorageClass" "" "" -}}
+  {{- /* 1. FIRST check for explicit user-defined storage class */ -}}
   {{- $userDefinedClass := include "cost-onprem.storage.getUserDefinedClass" . -}}
-
-  {{- /* Handle dry-run mode or cluster connectivity issues */ -}}
-  {{- if not (and $storageClasses $storageClasses.items) -}}
-    {{- if $userDefinedClass -}}
-      {{- /* In dry-run mode, trust the user-defined storage class */ -}}
+  {{- if $userDefinedClass -}}
+    {{- /* User provided explicit storage class - trust it and skip lookups */ -}}
 {{- $userDefinedClass -}}
-    {{- else -}}
+  {{- else -}}
+    {{- /* No explicit storage class - need to query cluster */ -}}
+    {{- $storageClasses := lookup "storage.k8s.io/v1" "StorageClass" "" "" -}}
+
+    {{- /* Handle dry-run mode or cluster connectivity issues */ -}}
+    {{- if not (and $storageClasses $storageClasses.items) -}}
       {{- /* In dry-run mode with no explicit storage class, use a reasonable default */ -}}
 {{- include "cost-onprem.storage.getPlatformDefault" . -}}
-    {{- end -}}
-  {{- else -}}
-    {{- /* Normal operation - query cluster for available storage classes */ -}}
-    {{- $defaultFound := include "cost-onprem.storage.findDefault" . -}}
-    {{- $userClassExists := include "cost-onprem.storage.userClassExists" . -}}
+    {{- else -}}
+      {{- /* Normal operation - find default storage class */ -}}
+      {{- $defaultFound := "" -}}
+      {{- range $storageClasses.items -}}
+        {{- if and .metadata.annotations (eq (index .metadata.annotations "storageclass.kubernetes.io/is-default-class") "true") -}}
+          {{- $defaultFound = .metadata.name -}}
+        {{- end -}}
+      {{- end -}}
 
-    {{- if $userDefinedClass -}}
-      {{- if eq $userClassExists "true" -}}
-{{- $userDefinedClass -}}
-      {{- else -}}
-        {{- if $defaultFound -}}
-          {{- printf "# Warning: Storage class '%s' not found, using default '%s' instead" $userDefinedClass $defaultFound | println -}}
+      {{- if $defaultFound -}}
 {{- $defaultFound -}}
-        {{- else -}}
+      {{- else -}}
 {{- $scNames := list -}}
         {{- range $storageClasses.items -}}
           {{- $scNames = append $scNames .metadata.name -}}
         {{- end -}}
-{{- fail (printf "Storage class '%s' not found and no default storage class available. Available storage classes: %s" $userDefinedClass (join ", " $scNames)) -}}
-        {{- end -}}
-      {{- end -}}
-    {{- else -}}
-      {{- if $defaultFound -}}
-{{- $defaultFound -}}
-      {{- else -}}
-{{- $scNames2 := list -}}
-        {{- range $storageClasses.items -}}
-          {{- $scNames2 = append $scNames2 .metadata.name -}}
-        {{- end -}}
-{{- fail (printf "No default storage class found in cluster. Available storage classes: %s\nPlease either:\n1. Set a default storage class with 'storageclass.kubernetes.io/is-default-class=true' annotation, or\n2. Explicitly specify a storage class with 'global.storageClass'" (join ", " $scNames2)) -}}
+{{- fail (printf "No default storage class found in cluster. Available storage classes: %s\nPlease either:\n1. Set a default storage class with 'storageclass.kubernetes.io/is-default-class=true' annotation, or\n2. Explicitly specify a storage class with 'global.storageClass'" (join ", " $scNames)) -}}
       {{- end -}}
     {{- end -}}
   {{- end -}}
