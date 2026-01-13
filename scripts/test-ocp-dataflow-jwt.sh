@@ -758,7 +758,7 @@ register_ocp_source() {
     echo "Step 1: Getting OpenShift source type ID..." >> "$debug_log"
     echo "Request URL: ${SOURCES_API_URL}/source_types" >> "$debug_log"
 
-    local source_types_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -- \
+    local source_types_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -c sources-listener -- \
         curl -s "${SOURCES_API_URL}/source_types" \
         -H "Content-Type: application/json" \
         -H "x-rh-sources-org-id: $ORG_ID" 2>&1)
@@ -794,7 +794,7 @@ register_ocp_source() {
     echo "Step 2: Getting Cost Management application type ID..." >> "$debug_log"
     echo "Request URL: ${SOURCES_API_URL}/application_types" >> "$debug_log"
 
-    local app_types_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -- \
+    local app_types_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -c sources-listener -- \
         curl -s "${SOURCES_API_URL}/application_types" \
         -H "Content-Type: application/json" \
         -H "x-rh-sources-org-id: $ORG_ID" 2>&1)
@@ -838,7 +838,7 @@ EOF
 
     echo "Payload: $create_source_payload" >> "$debug_log"
 
-    local source_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -- \
+    local source_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -c sources-listener -- \
         curl -s -X POST "${SOURCES_API_URL}/sources" \
         -H "Content-Type: application/json" \
         -H "x-rh-sources-org-id: $ORG_ID" \
@@ -878,7 +878,7 @@ EOF
 
     echo "Payload: $auth_payload" >> "$debug_log"
 
-    local auth_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -- \
+    local auth_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -c sources-listener -- \
         curl -s -X POST "${SOURCES_API_URL}/authentications" \
         -H "Content-Type: application/json" \
         -H "x-rh-sources-org-id: $ORG_ID" \
@@ -908,7 +908,7 @@ EOF
 
     echo "Payload: $app_payload" >> "$debug_log"
 
-    local app_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -- \
+    local app_response=$(oc exec -n "$NAMESPACE" "$exec_pod" -c sources-listener -- \
         curl -s -X POST "${SOURCES_API_URL}/applications" \
         -H "Content-Type: application/json" \
         -H "x-rh-sources-org-id: $ORG_ID" \
@@ -1019,7 +1019,7 @@ cleanup_test_source() {
     fi
 
     if [ -n "$exec_pod" ] && [ -n "$SOURCES_API_URL" ]; then
-        oc exec -n "$NAMESPACE" "$exec_pod" -- \
+        oc exec -n "$NAMESPACE" "$exec_pod" -c sources-listener -- \
             curl -s -X DELETE "${SOURCES_API_URL}/sources/${TEST_SOURCE_ID}" \
             -H "x-rh-sources-org-id: $ORG_ID" 2>/dev/null || true
         echo_info "Test source deleted"
