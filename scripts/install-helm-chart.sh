@@ -659,6 +659,12 @@ deploy_helm_chart() {
         helm_cmd="$helm_cmd ${HELM_EXTRA_ARGS[*]}"
     fi
 
+    # Increase Kubernetes client rate limits to prevent rate limiting errors
+    # This is especially important for charts with many lookup() calls
+    export KUBE_CLIENT_QPS=${KUBE_CLIENT_QPS:-50}
+    export KUBE_CLIENT_BURST=${KUBE_CLIENT_BURST:-100}
+    echo_info "Kubernetes client rate limits: QPS=$KUBE_CLIENT_QPS, Burst=$KUBE_CLIENT_BURST"
+
     echo_info "Executing: $helm_cmd"
 
     # Execute Helm command
