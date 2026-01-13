@@ -659,18 +659,34 @@ deploy_helm_chart() {
         helm_cmd="$helm_cmd ${HELM_EXTRA_ARGS[*]}"
     fi
 
-    # Increase Kubernetes client rate limits to prevent rate limiting errors
-    # This is especially important for charts with many lookup() calls
-    export KUBE_CLIENT_QPS=${KUBE_CLIENT_QPS:-50}
-    export KUBE_CLIENT_BURST=${KUBE_CLIENT_BURST:-100}
-    echo_info "Kubernetes client rate limits: QPS=$KUBE_CLIENT_QPS, Burst=$KUBE_CLIENT_BURST"
+    # Allow API rate limiter to reset after pre-deployment operations
+    # This prevents "rate: Wait(n=1) would exceed context deadline" errors
+    # CI environments often have many API calls from bucket creation, secret setup, etc.
+    echo_info "Pausing to allow Kubernetes API rate limiter to reset..."
+    sleep 30
+
+    # Configure kubeconfig with higher rate limits for Helm
+    # This is especially important for charts with many lookup() calls (we have 36)
+    local temp_kubeconfig=$(mktemp)
+    kubectl config view --raw > "$temp_kubeconfig"
+    
+    # Helm will use this kubeconfig with higher limits
+    export KUBECONFIG="$temp_kubeconfig"
+    export KUBE_QPS=50
+    export KUBE_BURST=100
+    echo_info "Configured Kubernetes client: QPS=$KUBE_QPS, Burst=$KUBE_BURST"
 
     echo_info "Executing: $helm_cmd"
 
     # Execute Helm command
     eval $helm_cmd
-
-    if [ $? -eq 0 ]; then
+    
+    local helm_exit_code=$?
+    
+    # Cleanup temp kubeconfig
+    rm -f "$temp_kubeconfig"
+    
+    if [ $helm_exit_code -eq 0 ]; then
         echo_success "Helm chart deployed successfully"
     else
         echo_error "Failed to deploy Helm chart"
