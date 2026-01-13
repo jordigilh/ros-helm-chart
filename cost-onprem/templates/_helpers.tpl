@@ -871,6 +871,10 @@ First try to get URL from Keycloak CR status, then fallback to route/ingress dis
 Only supports RHBK (v2alpha1) operator
 */}}
 {{- define "cost-onprem.keycloak.url" -}}
+{{- /* 1. Check for explicit override from values (set via --set or values.yaml) */ -}}
+{{- if and .Values.keycloak .Values.keycloak.url -}}
+{{- .Values.keycloak.url -}}
+{{- else -}}
 {{- $keycloakUrl := "" -}}
 {{- $ns := include "cost-onprem.keycloak.namespace" . -}}
 {{- if $ns -}}
@@ -933,6 +937,7 @@ Only supports RHBK (v2alpha1) operator
   {{- end -}}
 {{- end -}}
 {{- $keycloakUrl -}}
+{{- end -}}
 {{- end }}
 
 {{/*
