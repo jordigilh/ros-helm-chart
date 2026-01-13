@@ -456,7 +456,7 @@ create_s3_buckets() {
     local s3_url mc_insecure
     echo_info "Detecting storage backend..."
 
-    if kubectl get crd noobaa.noobaa.io >/dev/null 2>&1 && \
+    if kubectl get crd noobaas.noobaa.io >/dev/null 2>&1 && \
        kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
         # ODF NooBaa detected
         s3_url="https://s3.openshift-storage.svc:443"
