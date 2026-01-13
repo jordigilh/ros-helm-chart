@@ -640,7 +640,7 @@ fetch_org_id_from_keycloak() {
     echo "Step 2: Requesting admin token from Keycloak..." >> "$debug_log"
     echo "Request URL: ${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" >> "$debug_log"
 
-    local kc_token_response=$(curl -s -X POST "${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" \
+    local kc_token_response=$(curl -sk -X POST "${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" \
         -H "Content-Type: application/x-www-form-urlencoded" \
         -d "client_id=admin-cli" \
         -d "username=admin" \
@@ -679,7 +679,7 @@ fetch_org_id_from_keycloak() {
     echo "Step 3: Fetching test user's org_id attribute..." >> "$debug_log"
     echo "Request URL: ${KEYCLOAK_URL}/admin/realms/kubernetes/users?username=test" >> "$debug_log"
 
-    local user_response=$(curl -s "${KEYCLOAK_URL}/admin/realms/kubernetes/users?username=test" \
+    local user_response=$(curl -sk "${KEYCLOAK_URL}/admin/realms/kubernetes/users?username=test" \
         -H "Authorization: Bearer $kc_admin_token" 2>&1)
 
     echo "Response: $user_response" >> "$debug_log"
