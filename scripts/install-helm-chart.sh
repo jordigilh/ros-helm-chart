@@ -591,46 +591,46 @@ cleanup_downloaded_chart() {
 # This replaces expensive lookup() calls in Helm templates with pre-detected values
 # Reduces Kubernetes API calls from ~400+ to ~10
 detect_and_inject_values() {
-    echo_info "Pre-detecting cluster configuration to optimize Helm deployment..."
+    echo_info "Pre-detecting cluster configuration to optimize Helm deployment..." >&2
 
     local extra_sets=()
 
     # ============================================
     # Storage Backend Detection (ODF vs MinIO)
     # ============================================
-    echo_info "  Detecting storage backend..."
+    echo_info "  Detecting storage backend..." >&2
 
     if kubectl get crd noobaas.noobaa.io >/dev/null 2>&1 && \
        kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
         # ODF/NooBaa detected
-        echo_info "    ✓ Detected: OpenShift Data Foundation (ODF)"
+        echo_info "    ✓ Detected: OpenShift Data Foundation (ODF)" >&2
         extra_sets+=("--set" "odf.storageType=odf")
         extra_sets+=("--set" "odf.endpoint=s3.openshift-storage.svc")
         extra_sets+=("--set" "odf.port=443")
         extra_sets+=("--set" "odf.useSSL=true")
     elif kubectl get service minio-storage -n "$NAMESPACE" >/dev/null 2>&1; then
         # MinIO with proxy service in cost-onprem namespace
-        echo_info "    ✓ Detected: MinIO (CI pattern - proxy service)"
+        echo_info "    ✓ Detected: MinIO (CI pattern - proxy service)" >&2
         extra_sets+=("--set" "odf.storageType=minio")
         extra_sets+=("--set" "odf.endpoint=minio-storage")
         extra_sets+=("--set" "odf.port=9000")
         extra_sets+=("--set" "odf.useSSL=false")
     elif kubectl get service minio -n minio >/dev/null 2>&1; then
         # MinIO standalone in minio namespace
-        echo_info "    ✓ Detected: MinIO (minio namespace)"
+        echo_info "    ✓ Detected: MinIO (minio namespace)" >&2
         extra_sets+=("--set" "odf.storageType=minio")
         extra_sets+=("--set" "odf.endpoint=minio.minio.svc")
         extra_sets+=("--set" "odf.port=9000")
         extra_sets+=("--set" "odf.useSSL=false")
     else
-        echo_warning "    ⚠ Could not detect storage backend - Helm will use lookup() fallback"
+        echo_warning "    ⚠ Could not detect storage backend - Helm will use lookup() fallback" >&2
     fi
 
     # ============================================
     # Keycloak URL Detection
     # ============================================
     if [ "$PLATFORM" = "openshift" ]; then
-        echo_info "  Detecting Keycloak URL..."
+        echo_info "  Detecting Keycloak URL..." >&2
 
         if kubectl get crd keycloaks.k8s.keycloak.org >/dev/null 2>&1; then
             # Try to find Keycloak route
@@ -647,38 +647,38 @@ detect_and_inject_values() {
             fi
 
             if [ -n "$kc_route" ]; then
-                echo_info "    ✓ Detected: https://$kc_route"
+                echo_info "    ✓ Detected: https://$kc_route" >&2
                 extra_sets+=("--set" "keycloak.url=https://$kc_route")
             else
-                echo_warning "    ⚠ Keycloak CRD found but no route - Helm will use lookup() fallback"
+                echo_warning "    ⚠ Keycloak CRD found but no route - Helm will use lookup() fallback" >&2
             fi
         else
-            echo_info "    ⓘ Keycloak CRD not found - JWT auth will be disabled"
+            echo_info "    ⓘ Keycloak CRD not found - JWT auth will be disabled" >&2
         fi
     fi
 
     # ============================================
     # Default Storage Class Detection
     # ============================================
-    echo_info "  Detecting default storage class..."
+    echo_info "  Detecting default storage class..." >&2
 
     local default_sc=$(kubectl get storageclass -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}' 2>/dev/null | awk '{print $1}')
 
     if [ -n "$default_sc" ]; then
-        echo_info "    ✓ Detected: $default_sc"
+        echo_info "    ✓ Detected: $default_sc" >&2
         extra_sets+=("--set" "global.storageClass=$default_sc")
     else
         # Try alternative annotation
         default_sc=$(kubectl get storageclass -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.beta\.kubernetes\.io/is-default-class=="true")].metadata.name}' 2>/dev/null | awk '{print $1}')
         if [ -n "$default_sc" ]; then
-            echo_info "    ✓ Detected: $default_sc"
+            echo_info "    ✓ Detected: $default_sc" >&2
             extra_sets+=("--set" "global.storageClass=$default_sc")
         else
-            echo_warning "    ⚠ No default storage class - Helm will use lookup() fallback"
+            echo_warning "    ⚠ No default storage class - Helm will use lookup() fallback" >&2
         fi
     fi
 
-    # Return the --set flags
+    # Return the --set flags (to stdout only)
     echo "${extra_sets[@]}"
 }
 
