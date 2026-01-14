@@ -678,6 +678,33 @@ detect_and_inject_values() {
         fi
     fi
 
+    # ============================================
+    # OpenShift Cluster Domain Detection
+    # ============================================
+    if [ "$PLATFORM" = "openshift" ]; then
+        echo_info "  Detecting OpenShift cluster domain..." >&2
+        
+        # Try to get domain from ingress config
+        local cluster_domain=$(kubectl get ingress.config.openshift.io/cluster -o jsonpath='{.spec.domain}' 2>/dev/null || echo "")
+        
+        if [ -z "$cluster_domain" ]; then
+            # Fallback: get from ingress controller
+            cluster_domain=$(kubectl get ingresscontroller -n openshift-ingress-operator default -o jsonpath='{.status.domain}' 2>/dev/null || echo "")
+        fi
+        
+        if [ -z "$cluster_domain" ]; then
+            # Fallback: extract from existing route
+            cluster_domain=$(kubectl get route -A -o jsonpath='{.items[0].spec.host}' 2>/dev/null | sed 's/^[^.]*\.//' || echo "")
+        fi
+        
+        if [ -n "$cluster_domain" ]; then
+            echo_info "    ✓ Detected: $cluster_domain" >&2
+            extra_sets+=("--set" "global.clusterDomain=$cluster_domain")
+        else
+            echo_warning "    ⚠ Could not detect cluster domain - Helm will use lookup() fallback" >&2
+        fi
+    fi
+
     # Return the --set flags (to stdout only)
     echo "${extra_sets[@]}"
 }
@@ -761,19 +788,6 @@ deploy_helm_chart() {
         echo_info "Adding additional Helm arguments: ${HELM_EXTRA_ARGS[*]}"
         helm_cmd="$helm_cmd ${HELM_EXTRA_ARGS[*]}"
     fi
-
-    # Allow API rate limiter to reset after pre-deployment operations
-    # This prevents "rate: Wait(n=1) would exceed context deadline" errors
-    # CI environments often have many API calls from bucket creation, secret setup, etc.
-    echo_info "Pausing to allow Kubernetes API rate limiter to reset..."
-    sleep 30
-
-    # Configure Helm client rate limits
-    # This is especially important for charts with many lookup() calls
-    # Setting high limits to prevent client-side rate limiting errors
-    export HELM_QPS=100
-    export HELM_BURST_LIMIT=1000
-    echo_info "Configured Helm rate limits: QPS=$HELM_QPS, Burst=$HELM_BURST_LIMIT"
 
     echo_info "Executing: $helm_cmd"
 

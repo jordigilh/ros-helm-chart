@@ -220,20 +220,25 @@ STRICT MODE: Fails deployment if cluster domain cannot be detected
 Usage: {{ include "cost-onprem.platform.clusterDomain" . }}
 */}}
 {{- define "cost-onprem.platform.clusterDomain" -}}
-  {{- /* Try multiple strategies to detect cluster domain */ -}}
-  {{- $domain := include "cost-onprem.platform.getDomainFromIngressConfig" . -}}
-  {{- if eq $domain "" -}}
-    {{- $domain = include "cost-onprem.platform.getDomainFromIngressController" . -}}
-  {{- end -}}
-  {{- if eq $domain "" -}}
-    {{- $domain = include "cost-onprem.platform.getDomainFromRoutes" . -}}
-  {{- end -}}
-
-  {{- if eq $domain "" -}}
-    {{- /* STRICT MODE: Fail if cluster domain cannot be detected */ -}}
-{{- fail "ERROR: Unable to detect OpenShift cluster domain. Ensure you are deploying to a properly configured OpenShift cluster with ingress controllers and routes. Dynamic detection failed for: config.openshift.io/v1/Ingress, operator.openshift.io/v1/IngressController, and existing Routes." -}}
+  {{- /* 1. Check for explicit override first (avoids lookup calls) */ -}}
+  {{- if and .Values.global .Values.global.clusterDomain -}}
+{{- .Values.global.clusterDomain -}}
   {{- else -}}
+    {{- /* 2. Try multiple strategies to detect cluster domain */ -}}
+    {{- $domain := include "cost-onprem.platform.getDomainFromIngressConfig" . -}}
+    {{- if eq $domain "" -}}
+      {{- $domain = include "cost-onprem.platform.getDomainFromIngressController" . -}}
+    {{- end -}}
+    {{- if eq $domain "" -}}
+      {{- $domain = include "cost-onprem.platform.getDomainFromRoutes" . -}}
+    {{- end -}}
+
+    {{- if eq $domain "" -}}
+      {{- /* STRICT MODE: Fail if cluster domain cannot be detected */ -}}
+{{- fail "ERROR: Unable to detect OpenShift cluster domain. Ensure you are deploying to a properly configured OpenShift cluster with ingress controllers and routes. Dynamic detection failed for: config.openshift.io/v1/Ingress, operator.openshift.io/v1/IngressController, and existing Routes." -}}
+    {{- else -}}
 {{- $domain -}}
+    {{- end -}}
   {{- end -}}
 {{- end }}
 
