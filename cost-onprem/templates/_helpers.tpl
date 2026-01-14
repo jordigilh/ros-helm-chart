@@ -769,31 +769,48 @@ Keycloak Dynamic Configuration Helpers
 */}}
 
 {{/*
+Get Keycloak CR object (centralized lookup to avoid duplication)
+Returns the first Keycloak CR found, or empty dict if none exist
+Only supports: k8s.keycloak.org/v2alpha1 (RHBK v22+)
+This is a low-level helper - most code should use higher-level helpers like .namespace, .url, etc.
+*/}}
+{{- define "cost-onprem.keycloak.getCR" -}}
+{{- $keycloaks := lookup "k8s.keycloak.org/v2alpha1" "Keycloak" "" "" -}}
+{{- if and $keycloaks $keycloaks.items (gt (len $keycloaks.items) 0) -}}
+{{- index $keycloaks.items 0 | toJson -}}
+{{- else -}}
+{}
+{{- end -}}
+{{- end }}
+
+{{/*
 Detect if Keycloak (RHBK) is installed in the cluster
 This helper looks for Keycloak Custom Resources from the RHBK operator
 Only supports: k8s.keycloak.org/v2alpha1 (RHBK v22+)
 */}}
 {{- define "cost-onprem.keycloak.isInstalled" -}}
-{{- $keycloakFound := false -}}
-{{- /* Look for RHBK v2alpha1 CRs */ -}}
-{{- $keycloaks := lookup "k8s.keycloak.org/v2alpha1" "Keycloak" "" "" -}}
-{{- if $keycloaks -}}
-  {{- if $keycloaks.items -}}
-    {{- if gt (len $keycloaks.items) 0 -}}
-      {{- $keycloakFound = true -}}
+{{- /* 1. Check for explicit override first (avoids lookup calls) */ -}}
+{{- if and .Values.jwtAuth .Values.jwtAuth.keycloak (hasKey .Values.jwtAuth.keycloak "installed") -}}
+  {{- .Values.jwtAuth.keycloak.installed -}}
+{{- else if or .Values.keycloak.url .Values.jwtAuth.keycloak.namespace -}}
+  {{- /* If keycloak.url or keycloak.namespace is explicitly set, assume installed */ -}}
+  true
+{{- else -}}
+  {{- /* 2. Check for Keycloak CR */ -}}
+  {{- $cr := include "cost-onprem.keycloak.getCR" . | fromJson -}}
+  {{- if $cr.metadata -}}
+    true
+  {{- else -}}
+    {{- /* 3. Fallback: try namespace pattern matching */ -}}
+    {{- $found := false -}}
+    {{- range $ns := (lookup "v1" "Namespace" "" "").items -}}
+      {{- if or (contains "keycloak" $ns.metadata.name) (contains "sso" $ns.metadata.name) -}}
+        {{- $found = true -}}
+      {{- end -}}
     {{- end -}}
+    {{- $found -}}
   {{- end -}}
 {{- end -}}
-{{- /* Fallback: try namespace pattern matching if no CRs found */ -}}
-{{- if not $keycloakFound -}}
-  {{- range $ns := (lookup "v1" "Namespace" "" "").items -}}
-    {{- if or (contains "keycloak" $ns.metadata.name) (contains "sso" $ns.metadata.name) -}}
-      {{- $keycloakFound = true -}}
-      {{- break -}}
-    {{- end -}}
-  {{- end -}}
-{{- end -}}
-{{- $keycloakFound -}}
 {{- end }}
 
 {{/*
@@ -801,31 +818,25 @@ Find Keycloak namespace by looking for Keycloak CRs first, then fallback to patt
 Only supports RHBK (v2alpha1) operator
 */}}
 {{- define "cost-onprem.keycloak.namespace" -}}
-{{- $keycloakNs := "" -}}
-{{- /* First priority: check for explicit namespace override */ -}}
+{{- /* 1. Check for explicit namespace override (avoids lookup calls) */ -}}
 {{- if .Values.jwtAuth.keycloak.namespace -}}
-  {{- $keycloakNs = .Values.jwtAuth.keycloak.namespace -}}
+  {{- .Values.jwtAuth.keycloak.namespace -}}
 {{- else -}}
-  {{- /* Second priority: try to find namespace from RHBK v2alpha1 CRs */ -}}
-  {{- $keycloaks := lookup "k8s.keycloak.org/v2alpha1" "Keycloak" "" "" -}}
-  {{- if $keycloaks -}}
-    {{- if $keycloaks.items -}}
-      {{- if gt (len $keycloaks.items) 0 -}}
-        {{- $keycloakNs = (index $keycloaks.items 0).metadata.namespace -}}
-      {{- end -}}
-    {{- end -}}
-  {{- end -}}
-  {{- /* Final fallback: try namespace pattern matching if no CRs found */ -}}
-  {{- if not $keycloakNs -}}
+  {{- /* 2. Try to find namespace from Keycloak CR */ -}}
+  {{- $cr := include "cost-onprem.keycloak.getCR" . | fromJson -}}
+  {{- if $cr.metadata -}}
+    {{- $cr.metadata.namespace -}}
+  {{- else -}}
+    {{- /* 3. Fallback: try namespace pattern matching */ -}}
+    {{- $found := "" -}}
     {{- range $ns := (lookup "v1" "Namespace" "" "").items -}}
       {{- if or (contains "keycloak" $ns.metadata.name) (contains "sso" $ns.metadata.name) -}}
-        {{- $keycloakNs = $ns.metadata.name -}}
-        {{- break -}}
+        {{- $found = $ns.metadata.name -}}
       {{- end -}}
     {{- end -}}
+    {{- $found -}}
   {{- end -}}
 {{- end -}}
-{{- $keycloakNs -}}
 {{- end }}
 
 {{/*
@@ -833,30 +844,97 @@ Find Keycloak service name by looking at Keycloak CRs first, then service discov
 Only supports RHBK (v2alpha1) operator
 */}}
 {{- define "cost-onprem.keycloak.serviceName" -}}
-{{- $keycloakSvc := "" -}}
-{{- $ns := include "cost-onprem.keycloak.namespace" . -}}
-{{- if $ns -}}
-  {{- /* Try RHBK v2alpha1 CR */ -}}
-  {{- $keycloaks := lookup "k8s.keycloak.org/v2alpha1" "Keycloak" $ns "" -}}
-  {{- if $keycloaks -}}
-    {{- if $keycloaks.items -}}
-      {{- if gt (len $keycloaks.items) 0 -}}
-        {{- $keycloak := index $keycloaks.items 0 -}}
-        {{- $keycloakSvc = printf "%s-service" $keycloak.metadata.name -}}
+{{- /* 1. Check for explicit override first (avoids lookup calls) */ -}}
+{{- if and .Values.jwtAuth .Values.jwtAuth.keycloak .Values.jwtAuth.keycloak.serviceName -}}
+  {{- .Values.jwtAuth.keycloak.serviceName -}}
+{{- else -}}
+  {{- /* 2. Try to get service name from Keycloak CR */ -}}
+  {{- $cr := include "cost-onprem.keycloak.getCR" . | fromJson -}}
+  {{- if $cr.metadata -}}
+    {{- printf "%s-service" $cr.metadata.name -}}
+  {{- else -}}
+    {{- /* 3. Fallback: service discovery in the namespace */ -}}
+    {{- $ns := include "cost-onprem.keycloak.namespace" . -}}
+    {{- if $ns -}}
+      {{- $found := "" -}}
+      {{- range $svc := (lookup "v1" "Service" $ns "").items -}}
+        {{- if or (contains "keycloak" $svc.metadata.name) (contains "sso" $svc.metadata.name) -}}
+          {{- $found = $svc.metadata.name -}}
+        {{- end -}}
       {{- end -}}
-    {{- end -}}
-  {{- end -}}
-  {{- /* Fallback: service discovery in the namespace */ -}}
-  {{- if not $keycloakSvc -}}
-    {{- range $svc := (lookup "v1" "Service" $ns "").items -}}
-      {{- if or (contains "keycloak" $svc.metadata.name) (contains "sso" $svc.metadata.name) -}}
-        {{- $keycloakSvc = $svc.metadata.name -}}
-        {{- break -}}
-      {{- end -}}
+      {{- $found -}}
     {{- end -}}
   {{- end -}}
 {{- end -}}
-{{- $keycloakSvc -}}
+{{- end }}
+
+{{/*
+Get Keycloak URL from CR status.hostname field
+Returns empty string if not available
+*/}}
+{{- define "cost-onprem.keycloak.getUrlFromCR" -}}
+{{- $cr := include "cost-onprem.keycloak.getCR" . | fromJson -}}
+{{- if and $cr.status $cr.status.hostname -}}
+  {{- printf "https://%s" $cr.status.hostname -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get Keycloak URL from OpenShift Route
+Returns empty string if not found
+*/}}
+{{- define "cost-onprem.keycloak.getUrlFromRoute" -}}
+{{- $ns := include "cost-onprem.keycloak.namespace" . -}}
+{{- if $ns -}}
+  {{- $found := "" -}}
+  {{- range $route := (lookup "route.openshift.io/v1" "Route" $ns "").items -}}
+    {{- if or (contains "keycloak" $route.metadata.name) (contains "sso" $route.metadata.name) -}}
+      {{- $scheme := "https" -}}
+      {{- if not $route.spec.tls -}}
+        {{- $scheme = "http" -}}
+      {{- end -}}
+      {{- $found = printf "%s://%s" $scheme $route.spec.host -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $found -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get Keycloak URL from Kubernetes Ingress
+Returns empty string if not found
+*/}}
+{{- define "cost-onprem.keycloak.getUrlFromIngress" -}}
+{{- $ns := include "cost-onprem.keycloak.namespace" . -}}
+{{- if $ns -}}
+  {{- $found := "" -}}
+  {{- range $ing := (lookup "networking.k8s.io/v1" "Ingress" $ns "").items -}}
+    {{- if or (contains "keycloak" $ing.metadata.name) (contains "sso" $ing.metadata.name) -}}
+      {{- if $ing.spec.rules -}}
+        {{- $host := (index $ing.spec.rules 0).host -}}
+        {{- $scheme := "http" -}}
+        {{- if $ing.spec.tls -}}
+          {{- $scheme = "https" -}}
+        {{- end -}}
+        {{- $found = printf "%s://%s" $scheme $host -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $found -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get Keycloak URL from Service (fallback - constructs internal cluster URL)
+Returns empty string if service not found
+*/}}
+{{- define "cost-onprem.keycloak.getUrlFromService" -}}
+{{- $ns := include "cost-onprem.keycloak.namespace" . -}}
+{{- $svcName := include "cost-onprem.keycloak.serviceName" . -}}
+{{- if and $ns $svcName -}}
+  {{- $servicePort := .Values.jwtAuth.keycloak.servicePort | default 8080 -}}
+  {{- printf "http://%s.%s.svc.cluster.local:%v" $svcName $ns $servicePort -}}
+{{- end -}}
 {{- end }}
 
 {{/*
@@ -867,70 +945,31 @@ Only supports RHBK (v2alpha1) operator
 {{- define "cost-onprem.keycloak.url" -}}
 {{- /* 1. Check for explicit override from values (set via --set or values.yaml) */ -}}
 {{- if and .Values.keycloak .Values.keycloak.url -}}
-{{- .Values.keycloak.url -}}
+  {{- .Values.keycloak.url -}}
 {{- else -}}
-{{- $keycloakUrl := "" -}}
-{{- $ns := include "cost-onprem.keycloak.namespace" . -}}
-{{- if $ns -}}
-  {{- /* Try RHBK v2alpha1 CR status */ -}}
-  {{- $keycloaks := lookup "k8s.keycloak.org/v2alpha1" "Keycloak" $ns "" -}}
-  {{- if $keycloaks -}}
-    {{- if $keycloaks.items -}}
-      {{- if gt (len $keycloaks.items) 0 -}}
-        {{- $keycloak := index $keycloaks.items 0 -}}
-        {{- if $keycloak.status -}}
-          {{- if $keycloak.status.hostname -}}
-            {{- $keycloakUrl = printf "https://%s" $keycloak.status.hostname -}}
-          {{- end -}}
-        {{- end -}}
-      {{- end -}}
-    {{- end -}}
-  {{- end -}}
-  {{- /* Fallback: route/ingress discovery if CR doesn't have externalURL */ -}}
-  {{- if not $keycloakUrl -}}
-    {{- if (include "cost-onprem.platform.isOpenShift" .) -}}
-      {{- /* OpenShift: Look for Keycloak route */ -}}
-      {{- range $route := (lookup "route.openshift.io/v1" "Route" $ns "").items -}}
-        {{- if or (contains "keycloak" $route.metadata.name) (contains "sso" $route.metadata.name) -}}
-          {{- $scheme := "https" -}}
-          {{- if $route.spec.tls -}}
-            {{- $scheme = "https" -}}
-          {{- else -}}
-            {{- $scheme = "http" -}}
-          {{- end -}}
-          {{- $keycloakUrl = printf "%s://%s" $scheme $route.spec.host -}}
-          {{- break -}}
-        {{- end -}}
-      {{- end -}}
+  {{- /* 2. Try to get URL from Keycloak CR status */ -}}
+  {{- $url := include "cost-onprem.keycloak.getUrlFromCR" . -}}
+  {{- if $url -}}
+    {{- $url -}}
+  {{- else if (include "cost-onprem.platform.isOpenShift" .) -}}
+    {{- /* 3. OpenShift: Try route discovery */ -}}
+    {{- $url = include "cost-onprem.keycloak.getUrlFromRoute" . -}}
+    {{- if $url -}}
+      {{- $url -}}
     {{- else -}}
-      {{- /* Kubernetes: Look for Keycloak ingress or construct service URL */ -}}
-      {{- $found := false -}}
-      {{- range $ing := (lookup "networking.k8s.io/v1" "Ingress" $ns "").items -}}
-        {{- if or (contains "keycloak" $ing.metadata.name) (contains "sso" $ing.metadata.name) -}}
-          {{- if $ing.spec.rules -}}
-            {{- $host := (index $ing.spec.rules 0).host -}}
-            {{- $scheme := "http" -}}
-            {{- if $ing.spec.tls -}}
-              {{- $scheme = "https" -}}
-            {{- end -}}
-            {{- $keycloakUrl = printf "%s://%s" $scheme $host -}}
-            {{- $found = true -}}
-            {{- break -}}
-          {{- end -}}
-        {{- end -}}
-      {{- end -}}
-      {{- if not $found -}}
-        {{- /* Final fallback: construct service URL */ -}}
-        {{- $svcName := include "cost-onprem.keycloak.serviceName" . -}}
-        {{- if $svcName -}}
-          {{- $servicePort := .Values.jwtAuth.keycloak.servicePort | default 8080 -}}
-          {{- $keycloakUrl = printf "http://%s.%s.svc.cluster.local:%v" $svcName $ns $servicePort -}}
-        {{- end -}}
-      {{- end -}}
+      {{- /* 4. Final fallback: service URL */ -}}
+      {{- include "cost-onprem.keycloak.getUrlFromService" . -}}
+    {{- end -}}
+  {{- else -}}
+    {{- /* 3. Kubernetes: Try ingress discovery */ -}}
+    {{- $url = include "cost-onprem.keycloak.getUrlFromIngress" . -}}
+    {{- if $url -}}
+      {{- $url -}}
+    {{- else -}}
+      {{- /* 4. Final fallback: service URL */ -}}
+      {{- include "cost-onprem.keycloak.getUrlFromService" . -}}
     {{- end -}}
   {{- end -}}
-{{- end -}}
-{{- $keycloakUrl -}}
 {{- end -}}
 {{- end }}
 
