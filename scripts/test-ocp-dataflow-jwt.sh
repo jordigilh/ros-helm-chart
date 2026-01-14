@@ -1664,7 +1664,7 @@ check_for_recommendations() {
 # Store recommendations check result for main function
 check_recommendations_with_retry() {
     local cluster_id="$1"
-    local max_retries=3
+    local max_retries=30  # Increased to 30 minutes total wait time
     local retry_interval=60
     local attempt=1
 
