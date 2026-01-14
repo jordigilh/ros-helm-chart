@@ -1510,7 +1510,7 @@ verify_koku_processing() {
 
     # Step 1: Verify manifest and file processing
     echo_info "--- Step 8a: Manifest & File Processing ---"
-    if verify_koku_manifest_processing "$cluster_id" 120; then
+    if verify_koku_manifest_processing "$cluster_id" 600; then  # 10 min for CI cold start
         koku_passed=$((koku_passed + 1))
         echo_success "✓ Koku manifest processing verified"
     else
@@ -1521,7 +1521,7 @@ verify_koku_processing() {
 
     # Step 2: Verify summary tables (may take longer)
     echo_info "--- Step 8b: Summary Table Population ---"
-    if verify_koku_summary_tables "$cluster_id" 180; then
+    if verify_koku_summary_tables "$cluster_id" 900; then  # 15 min for CI migrations + processing
         koku_passed=$((koku_passed + 1))
         echo_success "✓ Koku summary tables populated"
     else
