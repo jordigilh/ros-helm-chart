@@ -30,6 +30,9 @@ spec:
       {{- end }}
       securityContext:
         {{- include "cost-onprem.securityContext.pod" . | nindent 8 }}
+        {{- if .Values.valkey.persistence.enabled }}
+        fsGroup: 1000  # Ensure Valkey can write to persistent volume
+        {{- end }}
       containers:
         - name: {{ $cacheName }}
           image: "{{ .Values.valkey.image.repository }}:{{ .Values.valkey.image.tag }}"
