@@ -947,7 +947,7 @@ EOF
         db_pod="cost-onprem-database-0"
     fi
 
-    local max_wait=240  # 4 minutes max (accounts for first-time tenant provisioning with migrations)
+    local max_wait=600  # 10 minutes for CI (cold database, first-time tenant provisioning with migrations, Kafka lag)
     local wait_interval=5
     local elapsed=0
     local provider_found=false
@@ -1559,9 +1559,9 @@ check_for_recommendations() {
     echo_info "Checking recommendations for cluster: $cluster_id"
 
     # Wait for Kruize to process data and generate recommendations
-    echo_info "Waiting for Kruize to process data and generate recommendations (45 seconds)..."
-    echo_info "Kruize needs time to analyze metrics and create optimization recommendations..."
-    sleep 45
+    echo_info "Waiting for Kruize to process data and generate recommendations (2 minutes)..."
+    echo_info "Kruize needs time to receive ROS events, create experiments, and analyze metrics..."
+    sleep 120
 
     # Check if Kruize is accessible
     local kruize_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=kruize" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
