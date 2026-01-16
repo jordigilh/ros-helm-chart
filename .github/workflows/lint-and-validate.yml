@@ -33,8 +33,14 @@ jobs:
         cd cost-onprem
 
         # Template validation without cluster connection
+        # Provide minimal required values for validation
         echo "Running template validation..."
-        helm template cost-onprem-test . --debug --dry-run
+        helm template cost-onprem-test . --debug --dry-run \
+          --set odf.credentials.accessKey=test-access-key \
+          --set odf.credentials.secretKey=test-secret-key \
+          --set global.clusterDomain=test.example.com \
+          --set global.clusterName=test-cluster \
+          --set jwtAuth.keycloak.url=https://keycloak.test.example.com
         echo "✓ Helm template validation completed successfully"
 
 

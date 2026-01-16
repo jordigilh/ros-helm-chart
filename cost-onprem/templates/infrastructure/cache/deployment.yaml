@@ -30,6 +30,12 @@ spec:
       {{- end }}
       securityContext:
         {{- include "cost-onprem.securityContext.pod" . | nindent 8 }}
+        {{- if .Values.valkey.persistence.enabled }}
+        {{- $fsGroup := include "cost-onprem.valkey.fsGroup" . }}
+        {{- if $fsGroup }}
+        fsGroup: {{ $fsGroup }}
+        {{- end }}
+        {{- end }}
       containers:
         - name: {{ $cacheName }}
           image: "{{ .Values.valkey.image.repository }}:{{ .Values.valkey.image.tag }}"

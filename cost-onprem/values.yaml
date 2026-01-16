@@ -901,6 +901,14 @@ valkey:
       cpu: 500m
       memory: 512Mi
 
+  # Security context for Valkey pod
+  # fsGroup is dynamically detected from namespace SCC annotations for OpenShift
+  # This ensures compatibility across OCP 4.18 and 4.20+
+  securityContext:
+    fsGroup: null  # Dynamically detected by default
+    # Override only if needed for specific requirements:
+    # fsGroup: 1000740000  # Example: CI environment value
+
 # -----------------------------------------------------------------------------
 # Shared Infrastructure - Object Storage
 # -----------------------------------------------------------------------------

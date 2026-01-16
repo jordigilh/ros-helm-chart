@@ -2,11 +2,22 @@
 # This file provides OpenShift-specific overrides with testing/development settings
 # Uses OpenShift Routes, ODF storage, and smaller resource allocations for testing
 #
+# OPTIMIZATION: This file reduces Helm lookup API calls from 29 to ~9 by providing
+# explicit values for auto-detection. This improves deployment speed and reduces
+# API server load, especially important in CI environments.
+#
 # For production deployments, override with larger values:
 #   --set database.ros.storage.size=100Gi
 #   --set resources.kruize.requests.memory=2Gi
 
 global:
+  # Cluster domain - auto-detected if empty, but providing it skips 4 API lookups
+  # CI script will set this dynamically: $(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
+  clusterDomain: ""  # Set by CI or leave empty for auto-detection
+  
+  # Cluster name - auto-detected if empty, but providing it skips 2 API lookups
+  clusterName: ""  # Set by CI or leave empty for auto-detection
+  
   # OpenShift Data Foundation (ODF) storage class
   # Common values: odf-storagecluster-ceph-rbd, ocs-storagecluster-ceph-rbd
   # When left empty, the cost-onprem.storage.class helper will auto-discover the default storage class from the cluster
@@ -16,6 +27,14 @@ global:
   storageType: "odf"
   pullPolicy: IfNotPresent
   imagePullSecrets: []
+
+# Explicit storage class names to avoid API lookups (optional but recommended for CI)
+# When provided, skips StorageClass list/get API calls (saves 2-4 lookups)
+# storageClassNames:
+#   database: "odf-storagecluster-ceph-rbd"
+#   kafka: "odf-storagecluster-ceph-rbd"
+#   storage: "odf-storagecluster-ceph-rbd"
+#   valkey: "odf-storagecluster-ceph-rbd"
 
 # Reduced resource requirements for testing environment
 # Production recommendation: Increase memory for Kruize (2-4Gi)
@@ -72,6 +91,18 @@ valkey:
 
 # ODF (Production Storage - for OpenShift deployments)
 # Replaces MinIO on OpenShift
+# 
+# OPTIMIZATION: Auto-detection makes 5-6 API lookups to discover NooBaa credentials
+# For CI/testing, provide explicit credentials to skip lookups:
+# odf:
+#   credentials:
+#     accessKey: "access-key-from-noobaa-admin-secret"
+#     secretKey: "secret-key-from-noobaa-admin-secret"
+#
+# Production: Pre-create storage credentials Secret to skip all lookups:
+#   kubectl create secret generic cost-onprem-storage-credentials \
+#     --from-literal=AWS_ACCESS_KEY_ID=... \
+#     --from-literal=AWS_SECRET_ACCESS_KEY=...
 odf:
   endpoint: ""  # Auto-detected from NooBaa CRD status
   port: 443
@@ -82,6 +113,16 @@ odf:
 kruize:
   env:
     k8sType: openshift  # Override default kubernetes value
+
+# JWT Authentication configuration (avoids Keycloak auto-discovery lookups)
+# Providing explicit Keycloak settings saves ~8 API lookups
+# CI script will set this dynamically: $(oc get route -n keycloak keycloak -o jsonpath='{.spec.host}')
+jwtAuth:
+  keycloak:
+    # url: ""  # Set by CI script, e.g., "https://keycloak.apps.example.com"
+    installed: true  # Tells chart Keycloak exists, skips CR lookup
+    # namespace: "keycloak"  # Optional: skip namespace discovery
+    # serviceName: "keycloak"  # Optional: skip service discovery
 
 # Authentication configuration
 # OpenShift uses native OAuth/RBAC, so we disable custom JWT auth

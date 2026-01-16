@@ -608,7 +608,6 @@ detect_and_inject_values() {
         extra_sets+=("--set" "odf.endpoint=s3.openshift-storage.svc")
         extra_sets+=("--set" "odf.port=443")
         extra_sets+=("--set" "odf.useSSL=true")
-        extra_sets+=("--set" "costManagement.storage.secure=true")
 
         # Try to get ODF credentials from noobaa-admin secret
         local odf_access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' 2>/dev/null | base64 -d || echo "")
@@ -625,7 +624,6 @@ detect_and_inject_values() {
         extra_sets+=("--set" "odf.endpoint=minio-storage")
         extra_sets+=("--set" "odf.port=9000")
         extra_sets+=("--set" "odf.useSSL=false")
-        extra_sets+=("--set" "costManagement.storage.secure=false")
 
         # Try to get MinIO credentials from cost-onprem-odf-credentials secret
         local minio_access_key=$(kubectl get secret cost-onprem-odf-credentials -n "$NAMESPACE" -o jsonpath='{.data.access-key}' 2>/dev/null | base64 -d || echo "")
@@ -642,7 +640,6 @@ detect_and_inject_values() {
         extra_sets+=("--set" "odf.endpoint=minio.minio.svc")
         extra_sets+=("--set" "odf.port=9000")
         extra_sets+=("--set" "odf.useSSL=false")
-        extra_sets+=("--set" "costManagement.storage.secure=false")
 
         # Try to get MinIO credentials from minio-credentials secret
         local minio_access_key=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.access-key}' 2>/dev/null | base64 -d || echo "")
@@ -783,6 +780,24 @@ detect_and_inject_values() {
             extra_sets+=("--set" "global.clusterName=$cluster_name")
         else
             echo_warning "    ⚠ Could not detect cluster name - Helm will use default" >&2
+        fi
+
+        # ============================================
+        # Namespace fsGroup Detection (for Valkey persistence)
+        # ============================================
+        echo_info "  Detecting namespace fsGroup for storage..." >&2
+        local namespace_fsgroup=""
+        local fsgroup_range=$(kubectl get namespace "${NAMESPACE}" -o jsonpath='{.metadata.annotations.openshift\.io/sa\.scc\.supplemental-groups}' 2>/dev/null || echo "")
+
+        if [ -n "$fsgroup_range" ]; then
+            # Extract the first number from "1000740000/10000" format
+            namespace_fsgroup=$(echo "$fsgroup_range" | cut -d'/' -f1)
+            if [ -n "$namespace_fsgroup" ]; then
+                echo_info "    ✓ Detected fsGroup: $namespace_fsgroup (from range: $fsgroup_range)" >&2
+                extra_sets+=("--set" "valkey.securityContext.fsGroup=$namespace_fsgroup")
+            fi
+        else
+            echo_warning "    ⚠ Could not detect namespace fsGroup - Helm will use lookup() fallback" >&2
         fi
     fi
 
