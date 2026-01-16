@@ -67,22 +67,24 @@ check_prerequisites() {
     fi
     echo_success "✓ OpenShift CLI (oc) is available"
 
-    # Check if logged into OpenShift
-    if ! oc whoami >/dev/null 2>&1; then
-        echo_error "Not logged into OpenShift cluster. Please run 'oc login' first."
+    # Check if logged into OpenShift/Kubernetes
+    # Use kubectl cluster-info as it works with both oc and kubectl
+    if ! kubectl cluster-info >/dev/null 2>&1; then
+        echo_error "Not logged into cluster. Please run 'oc login' or configure kubectl."
         exit 1
     fi
-    echo_success "✓ Logged into OpenShift cluster as: $(oc whoami)"
+    CURRENT_CONTEXT=$(kubectl config current-context 2>/dev/null || echo "unknown")
+    echo_success "✓ Logged into cluster (context: $CURRENT_CONTEXT)"
 
     # Check if cluster has admin permissions
-    if ! oc auth can-i create subscriptions.operators.coreos.com -A >/dev/null 2>&1; then
+    if ! kubectl auth can-i create subscriptions.operators.coreos.com -A >/dev/null 2>&1; then
         echo_error "Insufficient permissions to install operators. Cluster admin access required."
         exit 1
     fi
     echo_success "✓ Cluster admin permissions verified"
 
     # Auto-detect cluster domain
-    CLUSTER_DOMAIN=$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}' 2>/dev/null || echo "")
+    CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}' 2>/dev/null || echo "")
     if [ -n "$CLUSTER_DOMAIN" ]; then
         OAUTH_CALLBACK="https://oauth-openshift.apps.$CLUSTER_DOMAIN"
         CONSOLE_URL="https://console-openshift-console.apps.$CLUSTER_DOMAIN"
@@ -759,7 +761,7 @@ spec:
             config:
               access.token.claim: "true"
               claim.name: org_id
-              claim.value: "12345"
+              claim.value: "org1234567"
               id.token.claim: "false"
               jsonType.label: String
               userinfo.token.claim: "false"
@@ -802,6 +804,29 @@ spec:
               included.client.audience: $COST_MGMT_UI_CLIENT_ID
               id.token.claim: "true"
               access.token.claim: "true"
+          # Map user attributes to JWT claims for X-Rh-Identity construction
+          - name: org-id-mapper
+            protocol: openid-connect
+            protocolMapper: oidc-usermodel-attribute-mapper
+            config:
+              user.attribute: org_id
+              claim.name: org_id
+              access.token.claim: "true"
+              id.token.claim: "true"
+              jsonType.label: String
+              userinfo.token.claim: "false"
+          - name: account-number-mapper
+            protocol: openid-connect
+            protocolMapper: oidc-usermodel-attribute-mapper
+            config:
+              user.attribute: account_number
+              claim.name: account_number
+              access.token.claim: "true"
+              id.token.claim: "true"
+              jsonType.label: String
+              userinfo.token.claim: "false"
+          # Note: "access" attribute mapper removed - using ENHANCED_ORG_ADMIN mode
+          # All authenticated users are org admins with full access within their org
 EOF
         echo_success "✓ Kubernetes realm import created"
     fi
@@ -1209,22 +1234,39 @@ create_test_user() {
 
     # Create test user with org_id and account_number attributes
     # These values match the operator client's hardcoded values for testing
+    #
+    # WORKAROUND: The org_id includes "org" prefix (org1234567 instead of 1234567)
+    # because the Koku image has a bug that prepends "org" to the org_id when
+    # creating tenant schemas. This results in schema names like "orgorg1234567"
+    # when the org_id is "org1234567". Once the Koku bug is fixed, change this
+    # back to a plain numeric org_id like "1234567".
+    # See: https://github.com/project-koku/koku/issues/XXXX (TODO: add issue link)
+    #
+    # REQUIRED ATTRIBUTES for Cost Management:
+    #   - org_id: Tenant identifier (maps to database schema)
+    #   - account_number: Customer account identifier
+    #
+    # Note: "access" attribute is NOT required when using ENHANCED_ORG_ADMIN mode.
+    # All authenticated users are treated as org admins with full access within their org.
+    # This simplifies setup but means no granular RBAC within an org.
+    # Multi-tenancy is preserved: users only see data for their own org_id.
+
     echo_info "Creating user 'test' with org_id and account_number attributes..."
     local USER_HTTP_CODE=$(curl -sk -o /tmp/user_response.txt -w "%{http_code}" -X POST "$KEYCLOAK_URL/admin/realms/$REALM_NAME/users" \
         -H "Authorization: Bearer $ACCESS_TOKEN" \
         -H "Content-Type: application/json" \
-        -d '{
-            "username": "test",
-            "email": "test@test.com",
-            "emailVerified": true,
-            "enabled": true,
-            "firstName": "Test",
-            "lastName": "User",
-            "attributes": {
-                "org_id": ["12345"],
-                "account_number": ["7890123"]
+        -d "{
+            \"username\": \"test\",
+            \"email\": \"test@test.com\",
+            \"emailVerified\": true,
+            \"enabled\": true,
+            \"firstName\": \"Test\",
+            \"lastName\": \"User\",
+            \"attributes\": {
+                \"org_id\": [\"org1234567\"],
+                \"account_number\": [\"7890123\"]
             }
-        }' 2>/dev/null)
+        }" 2>/dev/null)
 
     local USER_RESPONSE=$(cat /tmp/user_response.txt 2>/dev/null || echo "")
     rm -f /tmp/user_response.txt
@@ -1252,7 +1294,7 @@ create_test_user() {
                     "firstName": "Test",
                     "lastName": "User",
                     "attributes": {
-                        "org_id": ["12345"],
+                        "org_id": ["org1234567"],
                         "account_number": ["7890123"]
                     }
                 }' >/dev/null 2>&1
@@ -1345,8 +1387,9 @@ display_summary() {
     echo_info "    Password: test"
     echo_info "    Email: test@test.com (verified)"
     echo_info "    Attributes:"
-    echo_info "      org_id: 12345"
+    echo_info "      org_id: org1234567 (includes 'org' prefix as workaround for Koku bug)"
     echo_info "      account_number: 7890123"
+    echo_info "      access: OCP-only (openshift.cluster, openshift.project, openshift.node, cost_model)"
     echo ""
 
     # Display admin credential retrieval
