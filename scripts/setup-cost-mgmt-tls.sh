@@ -824,7 +824,7 @@ spec:
 
   # Packaging configuration
   packaging:
-    max_reports_to_store: 30
+    max_reports_to_store: 30 
     max_size_MB: 100
 EOF
     else
