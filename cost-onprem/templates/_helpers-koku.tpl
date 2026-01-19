@@ -234,7 +234,7 @@ Selector labels for Koku API reads
 {{- define "cost-onprem.koku.api.reads.selectorLabels" -}}
 {{ include "cost-onprem.selectorLabels" . }}
 app.kubernetes.io/component: cost-management-api
-api-type: reads
+cost-onprem.io/api-type: reads
 {{- end -}}
 
 {{/*
@@ -243,7 +243,7 @@ Selector labels for Koku API writes
 {{- define "cost-onprem.koku.api.writes.selectorLabels" -}}
 {{ include "cost-onprem.selectorLabels" . }}
 app.kubernetes.io/component: cost-management-api
-api-type: writes
+cost-onprem.io/api-type: writes
 {{- end -}}
 
 {{/*
@@ -251,8 +251,8 @@ Selector labels for Celery Beat
 */}}
 {{- define "cost-onprem.koku.celery.beat.selectorLabels" -}}
 {{ include "cost-onprem.selectorLabels" . }}
-app.kubernetes.io/component: cost-management-celery
-celery-type: beat
+app.kubernetes.io/component: scheduler
+cost-onprem.io/celery-type: beat
 {{- end -}}
 
 {{/*
@@ -263,9 +263,9 @@ Usage: {{ include "cost-onprem.koku.celery.worker.selectorLabels" (dict "context
 {{- $context := .context -}}
 {{- $type := .type -}}
 {{ include "cost-onprem.selectorLabels" $context }}
-app.kubernetes.io/component: cost-management-celery
-celery-type: worker
-worker-queue: {{ $type }}
+app.kubernetes.io/component: worker
+cost-onprem.io/celery-type: worker
+cost-onprem.io/worker-queue: {{ $type }}
 {{- end -}}
 
 {{/*

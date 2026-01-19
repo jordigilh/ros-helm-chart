@@ -6,8 +6,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: partition-cleaner
-    app.kubernetes.io/name: ros-partition-cleaner
+    app.kubernetes.io/component: maintenance
 spec:
   schedule: {{ .Values.ros.housekeeper.partitionCleaner.schedule | quote }}
   jobTemplate:
@@ -16,8 +15,7 @@ spec:
         metadata:
           labels:
             {{- include "cost-onprem.selectorLabels" . | nindent 12 }}
-            app.kubernetes.io/component: partition-cleaner
-            app.kubernetes.io/name: ros-partition-cleaner
+            app.kubernetes.io/component: maintenance
         spec:
           restartPolicy: OnFailure
           serviceAccountName: {{ .Values.ros.serviceAccount.name }}

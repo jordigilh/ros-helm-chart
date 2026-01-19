@@ -7,7 +7,6 @@ metadata:
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: cache
-    app.kubernetes.io/name: {{ $cacheName }}
 spec:
   replicas: 1
   strategy:
@@ -16,13 +15,11 @@ spec:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: cache
-      app.kubernetes.io/name: {{ $cacheName }}
   template:
     metadata:
       labels:
         {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: cache
-        app.kubernetes.io/name: {{ $cacheName }}
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:

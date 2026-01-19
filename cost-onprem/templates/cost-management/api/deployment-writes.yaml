@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "cost-onprem.koku.labels" . | nindent 4 }}
     app.kubernetes.io/component: cost-management-api
-    api-type: writes
+    cost-onprem.io/api-type: writes
 spec:
   replicas: {{ .Values.costManagement.api.writes.replicas }}
   selector:
@@ -17,7 +17,7 @@ spec:
       labels:
         {{- include "cost-onprem.koku.labels" . | nindent 8 }}
         app.kubernetes.io/component: cost-management-api
-        api-type: writes
+        cost-onprem.io/api-type: writes
     spec:
       serviceAccountName: {{ include "cost-onprem.koku.serviceAccountName" . }}
 

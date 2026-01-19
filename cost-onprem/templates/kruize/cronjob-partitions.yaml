@@ -7,7 +7,6 @@ metadata:
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: maintenance
-    app.kubernetes.io/name: kruize-partitions
 spec:
   schedule: {{ .Values.kruize.partitions.deleteSchedule | quote }}
   concurrencyPolicy: Forbid
@@ -20,7 +19,6 @@ spec:
           labels:
             {{- include "cost-onprem.selectorLabels" . | nindent 12 }}
             app.kubernetes.io/component: maintenance
-            app.kubernetes.io/name: kruize-partitions
         spec:
           restartPolicy: OnFailure
           {{- with .Values.global.imagePullSecrets }}

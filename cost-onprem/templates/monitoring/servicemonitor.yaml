@@ -8,7 +8,6 @@ metadata:
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
-    app.kubernetes.io/name: ros-api
 spec:
   namespaceSelector:
     matchNames:
@@ -17,7 +16,6 @@ spec:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: api
-      app.kubernetes.io/name: ros-api
   endpoints:
     - port: metrics
       interval: {{ .Values.monitoring.scrapeInterval }}
@@ -32,7 +30,6 @@ metadata:
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: processor
-    app.kubernetes.io/name: ros-processor
 spec:
   namespaceSelector:
     matchNames:
@@ -41,7 +38,6 @@ spec:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: processor
-      app.kubernetes.io/name: ros-processor
   endpoints:
     - port: metrics
       interval: {{ .Values.monitoring.scrapeInterval }}
@@ -56,7 +52,6 @@ metadata:
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: ros-recommendation-poller
-    app.kubernetes.io/name: ros-rec-poller
 spec:
   namespaceSelector:
     matchNames:
@@ -65,7 +60,6 @@ spec:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: ros-recommendation-poller
-      app.kubernetes.io/name: ros-rec-poller
   endpoints:
     - port: metrics
       interval: {{ .Values.monitoring.scrapeInterval }}
@@ -80,7 +74,6 @@ metadata:
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: optimization
-    app.kubernetes.io/name: kruize
 spec:
   namespaceSelector:
     matchNames:
@@ -89,7 +82,6 @@ spec:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: optimization
-      app.kubernetes.io/name: kruize
   endpoints:
     - port: http
       interval: {{ .Values.monitoring.scrapeInterval }}
@@ -103,7 +95,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cost-management-api
+    app.kubernetes.io/component: api
 spec:
   namespaceSelector:
     matchNames:
@@ -111,7 +103,7 @@ spec:
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: cost-management-api
+      app.kubernetes.io/component: api
   endpoints:
     - port: http
       interval: {{ .Values.monitoring.scrapeInterval }}

@@ -7,21 +7,18 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: api
-    app.kubernetes.io/name: sources-api
+    app.kubernetes.io/component: sources-api
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: api
-      app.kubernetes.io/name: sources-api
+      app.kubernetes.io/component: sources-api
   template:
     metadata:
       labels:
         {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: api
-        app.kubernetes.io/name: sources-api
+        app.kubernetes.io/component: sources-api
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
