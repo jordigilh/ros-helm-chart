@@ -15,12 +15,20 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # Allow traffic from housekeeper to Sources API REST endpoints
+    # Allow traffic from ingress (envoy), housekeeper and sources-listener to Sources API REST endpoints
     - from:
         - podSelector:
             matchLabels:
               app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: ingress
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
               app.kubernetes.io/component: housekeeper
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: sources-listener
       ports:
         - protocol: TCP
           port: 8000

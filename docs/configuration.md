@@ -241,25 +241,60 @@ Services accessible through OpenShift Routes:
 # List all routes
 oc get routes -n cost-onprem
 
-# Example routes
-oc get route cost-onprem-main -n cost-onprem       # Main API (Cost Management On-Premise API)
-oc get route cost-onprem-ingress -n cost-onprem    # Ingress API (file upload)
+# Available routes:
+oc get route cost-onprem-main -n cost-onprem       # ROS API (/)
+oc get route cost-onprem-api -n cost-onprem        # Cost Management API (/api/cost-management)
+oc get route cost-onprem-sources -n cost-onprem    # Sources API (/api/sources)
+oc get route cost-onprem-ingress -n cost-onprem    # File upload API (/api/ingress)
 oc get route cost-onprem-ui -n cost-onprem         # UI (web interface)
 ```
+
+**Route Architecture:**
+
+| Route | Path | Backend | Purpose |
+|-------|------|---------|---------|
+| `cost-onprem-main` | `/` | ROS API | ROS status and recommendations |
+| `cost-onprem-api` | `/api/cost-management` | Envoy → Koku API | Cost Management reports (JWT validated) |
+| `cost-onprem-sources` | `/api/sources` | Envoy → Sources API | Provider management (JWT validated) |
+| `cost-onprem-ingress` | `/api/ingress` | Envoy → Ingress | File uploads (JWT validated) |
+| `cost-onprem-ui` | (default) | UI | Web interface (reencrypt TLS) |
+
+> **Note**: The `cost-onprem-api`, `cost-onprem-sources`, and `cost-onprem-ingress` routes all pass through the Envoy ingress proxy for JWT authentication.
 
 **Access Pattern:**
 ```bash
 # Get route URLs
-MAIN_ROUTE=$(oc get route cost-onprem-main -n cost-onprem -o jsonpath='{.spec.host}')
+API_ROUTE=$(oc get route cost-onprem-api -n cost-onprem -o jsonpath='{.spec.host}')
 INGRESS_ROUTE=$(oc get route cost-onprem-ingress -n cost-onprem -o jsonpath='{.spec.host}')
 UI_ROUTE=$(oc get route cost-onprem-ui -n cost-onprem -o jsonpath='{.spec.host}')
 
-# Test endpoints
-curl https://$MAIN_ROUTE/status
-curl https://$INGRESS_ROUTE/api/ingress/ready
+# Test Cost Management API (requires JWT)
+curl -k https://$API_ROUTE/api/cost-management/v1/status/ \
+  -H "Authorization: Bearer $JWT_TOKEN"
 
-# Access UI (requires OpenShift authentication)
+# Test file upload endpoint
+curl -k https://$INGRESS_ROUTE/api/ingress/v1/version
+
+# Access UI (requires Keycloak authentication)
 echo "UI available at: https://$UI_ROUTE"
+```
+
+### TLS Configuration
+
+Enable TLS edge termination for API routes:
+
+```yaml
+serviceRoute:
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+```
+
+Or via Helm:
+```bash
+helm upgrade cost-onprem ./cost-onprem -n cost-onprem \
+  --set serviceRoute.tls.termination=edge \
+  --set serviceRoute.tls.insecureEdgeTerminationPolicy=Redirect
 ```
 
 ### Port Forwarding (Alternative Access)

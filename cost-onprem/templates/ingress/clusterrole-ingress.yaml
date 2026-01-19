@@ -1,8 +1,8 @@
-{{/* Create ClusterRole for insights-ros-ingress service account */}}
+{{/* Create ClusterRole for ingress service account */}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "cost-onprem.fullname" . }}-insights-ros-ingress
+  name: {{ include "cost-onprem.fullname" . }}-ingress
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: rbac

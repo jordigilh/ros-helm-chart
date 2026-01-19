@@ -137,4 +137,13 @@ spec:
       ports:
         - protocol: TCP
           port: 9080  # Envoy sidecar port (when JWT enabled, service routes to Envoy)
+          # Allow traffic from ingress (envoy proxy) to Koku API REST endpoints
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: ingress
+      ports:
+        - protocol: TCP
+          port: 8000  # Koku API port (used by ingress envoy)
 {{- end }}

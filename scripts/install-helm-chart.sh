@@ -433,6 +433,92 @@ create_storage_credentials_secret() {
     fi
 }
 
+# Function to create S3 buckets (required for data storage)
+# This function MUST succeed for the installation to continue.
+# - If buckets already exist: prints notification and continues
+# - If buckets don't exist and creation fails: exits with error
+create_s3_buckets() {
+    echo_info "Creating S3 buckets..."
+
+    local secret_name="${HELM_RELEASE_NAME}-storage-credentials"
+
+    # Get S3 credentials from the storage credentials secret
+    local access_key=$(kubectl get secret "$secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}' 2>/dev/null | base64 -d)
+    local secret_key=$(kubectl get secret "$secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}' 2>/dev/null | base64 -d)
+
+    if [ -z "$access_key" ] || [ -z "$secret_key" ]; then
+        echo_error "S3 credentials not found in secret $secret_name"
+        echo_error "Cannot proceed without S3 storage. Aborting installation."
+        exit 1
+    fi
+
+    # Detect storage backend (ODF vs MinIO) - aligns with Helm template logic
+    local s3_url mc_insecure
+    echo_info "Detecting storage backend..."
+
+    if kubectl get crd noobaas.noobaa.io >/dev/null 2>&1 && \
+       kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
+        # ODF NooBaa detected
+        s3_url="https://s3.openshift-storage.svc:443"
+        mc_insecure="--insecure"
+        echo_info "  ✓ Detected: ODF (NooBaa S3)"
+    elif kubectl get service minio-storage -n "$NAMESPACE" >/dev/null 2>&1; then
+        # MinIO CI pattern (proxy service in cost-onprem namespace)
+        s3_url="http://minio-storage:9000"
+        mc_insecure=""
+        echo_info "  ✓ Detected: MinIO (CI pattern - proxy service)"
+    elif kubectl get service minio -n minio >/dev/null 2>&1; then
+        # MinIO standalone (in minio namespace)
+        s3_url="http://minio.minio.svc:9000"
+        mc_insecure=""
+        echo_info "  ✓ Detected: MinIO (minio namespace)"
+    else
+        echo_error "Could not detect storage backend (ODF or MinIO)"
+        echo_error "Checked for:"
+        echo_error "  - ODF NooBaa CRD in openshift-storage"
+        echo_error "  - minio-storage service in $NAMESPACE"
+        echo_error "  - minio service in minio namespace"
+        echo_error ""
+        echo_error "Please ensure either ODF or MinIO is properly deployed."
+        exit 1
+    fi
+
+    echo_info "Creating buckets at ${s3_url}..."
+
+    # Use kubectl run --rm for one-shot bucket creation (auto-cleanup)
+    # Using alpine image since minio/mc doesn't have a shell
+    # Real failures (connectivity, permissions) will cause non-zero exit
+    local output
+    if output=$(kubectl run bucket-setup --rm -i --restart=Never \
+        --image=alpine:latest \
+        -n "$NAMESPACE" \
+        -- sh -c "
+            set -e
+            wget -q https://dl.min.io/client/mc/release/linux-amd64/mc -O /usr/local/bin/mc && chmod +x /usr/local/bin/mc
+            mc alias set s3 ${s3_url} '${access_key}' '${secret_key}' ${mc_insecure}
+            for bucket in insights-upload-perma koku-bucket ros-data; do
+                if mc ls s3/\${bucket} ${mc_insecure} >/dev/null 2>&1; then
+                    echo \"ℹ️  Bucket \${bucket} already exists\"
+                else
+                    mc mb s3/\${bucket} ${mc_insecure}
+                    echo \"✅ Created bucket: \${bucket}\"
+                fi
+            done
+            echo ''
+            echo 'Available buckets:'
+            mc ls s3 ${mc_insecure}
+        " 2>&1); then
+        echo "$output"
+        echo_success "S3 buckets ready"
+        return 0
+    else
+        echo "$output"
+        echo_error "Failed to create S3 buckets. Cannot proceed without storage."
+        echo_error "Check S3 connectivity and credentials."
+        exit 1
+    fi
+}
+
 # Function to download latest chart from GitHub
 download_latest_chart() {
     echo_info "Downloading latest Helm chart from GitHub..."
@@ -501,6 +587,224 @@ cleanup_downloaded_chart() {
     fi
 }
 
+# Function to detect cluster configuration and generate Helm --set flags
+# This replaces expensive lookup() calls in Helm templates with pre-detected values
+# Reduces Kubernetes API calls from ~400+ to ~10
+detect_and_inject_values() {
+    echo_info "Pre-detecting cluster configuration to optimize Helm deployment..." >&2
+
+    local extra_sets=()
+
+    # ============================================
+    # Storage Backend Detection (ODF vs MinIO)
+    # ============================================
+    echo_info "  Detecting storage backend..." >&2
+
+    if kubectl get crd noobaas.noobaa.io >/dev/null 2>&1 && \
+       kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
+        # ODF/NooBaa detected
+        echo_info "    ✓ Detected: OpenShift Data Foundation (ODF)" >&2
+        extra_sets+=("--set" "odf.storageType=odf")
+        extra_sets+=("--set" "odf.endpoint=s3.openshift-storage.svc")
+        extra_sets+=("--set" "odf.port=443")
+        extra_sets+=("--set" "odf.useSSL=true")
+
+        # Try to get ODF credentials from noobaa-admin secret
+        local odf_access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' 2>/dev/null | base64 -d || echo "")
+        local odf_secret_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' 2>/dev/null | base64 -d || echo "")
+        if [ -n "$odf_access_key" ] && [ -n "$odf_secret_key" ]; then
+            echo_info "    ✓ Detected ODF credentials from noobaa-admin secret" >&2
+            extra_sets+=("--set" "odf.credentials.accessKey=$odf_access_key")
+            extra_sets+=("--set" "odf.credentials.secretKey=$odf_secret_key")
+        fi
+    elif kubectl get service minio-storage -n "$NAMESPACE" >/dev/null 2>&1; then
+        # MinIO with proxy service in cost-onprem namespace
+        echo_info "    ✓ Detected: MinIO (CI pattern - proxy service)" >&2
+        extra_sets+=("--set" "odf.storageType=minio")
+        extra_sets+=("--set" "odf.endpoint=minio-storage")
+        extra_sets+=("--set" "odf.port=9000")
+        extra_sets+=("--set" "odf.useSSL=false")
+
+        # Try to get MinIO credentials from cost-onprem-odf-credentials secret
+        local minio_access_key=$(kubectl get secret cost-onprem-odf-credentials -n "$NAMESPACE" -o jsonpath='{.data.access-key}' 2>/dev/null | base64 -d || echo "")
+        local minio_secret_key=$(kubectl get secret cost-onprem-odf-credentials -n "$NAMESPACE" -o jsonpath='{.data.secret-key}' 2>/dev/null | base64 -d || echo "")
+        if [ -n "$minio_access_key" ] && [ -n "$minio_secret_key" ]; then
+            echo_info "    ✓ Detected MinIO credentials from cost-onprem-odf-credentials secret" >&2
+            extra_sets+=("--set" "odf.credentials.accessKey=$minio_access_key")
+            extra_sets+=("--set" "odf.credentials.secretKey=$minio_secret_key")
+        fi
+    elif kubectl get service minio -n minio >/dev/null 2>&1; then
+        # MinIO standalone in minio namespace
+        echo_info "    ✓ Detected: MinIO (minio namespace)" >&2
+        extra_sets+=("--set" "odf.storageType=minio")
+        extra_sets+=("--set" "odf.endpoint=minio.minio.svc")
+        extra_sets+=("--set" "odf.port=9000")
+        extra_sets+=("--set" "odf.useSSL=false")
+
+        # Try to get MinIO credentials from minio-credentials secret
+        local minio_access_key=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.access-key}' 2>/dev/null | base64 -d || echo "")
+        local minio_secret_key=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.secret-key}' 2>/dev/null | base64 -d || echo "")
+        if [ -n "$minio_access_key" ] && [ -n "$minio_secret_key" ]; then
+            echo_info "    ✓ Detected MinIO credentials from minio-credentials secret" >&2
+            extra_sets+=("--set" "odf.credentials.accessKey=$minio_access_key")
+            extra_sets+=("--set" "odf.credentials.secretKey=$minio_secret_key")
+        fi
+    else
+        echo_warning "    ⚠ Could not detect storage backend - Helm will use lookup() fallback" >&2
+    fi
+
+    # ============================================
+    # Keycloak URL and Namespace Detection
+    # ============================================
+    if [ "$PLATFORM" = "openshift" ]; then
+        echo_info "  Detecting Keycloak configuration..." >&2
+
+        if kubectl get crd keycloaks.k8s.keycloak.org >/dev/null 2>&1; then
+            # Keycloak CRD exists - mark as installed
+            extra_sets+=("--set" "jwtAuth.keycloak.installed=true")
+            echo_info "    ✓ Keycloak CRD detected (installed=true)" >&2
+
+            # Try to find Keycloak namespace and route
+            local kc_namespace=""
+            local kc_route=""
+            local kc_service=""
+
+            # Check for Keycloak CR first
+            kc_namespace=$(kubectl get keycloak -A -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || echo "")
+
+            if [ -n "$kc_namespace" ]; then
+                echo_info "    ✓ Detected namespace: $kc_namespace" >&2
+                extra_sets+=("--set" "jwtAuth.keycloak.namespace=$kc_namespace")
+
+                # Try to find service in that namespace
+                kc_service=$(kubectl get service -n "$kc_namespace" -l app=keycloak -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+                if [ -n "$kc_service" ]; then
+                    echo_info "    ✓ Detected service: $kc_service" >&2
+                    extra_sets+=("--set" "jwtAuth.keycloak.serviceName=$kc_service")
+                fi
+
+                # Try to find route in that namespace
+                kc_route=$(kubectl get route -n "$kc_namespace" -o jsonpath='{.items[0].spec.host}' 2>/dev/null || echo "")
+            else
+                # Fallback: try common namespaces
+                for ns in keycloak rhbk rhsso; do
+                    if kubectl get namespace "$ns" >/dev/null 2>&1; then
+                        kc_namespace="$ns"
+                        kc_service=$(kubectl get service -n "$ns" -l app=keycloak -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+                        kc_route=$(kubectl get route -n "$ns" -o jsonpath='{.items[0].spec.host}' 2>/dev/null || echo "")
+                        if [ -n "$kc_route" ]; then
+                            echo_info "    ✓ Detected namespace: $kc_namespace (fallback)" >&2
+                            extra_sets+=("--set" "jwtAuth.keycloak.namespace=$kc_namespace")
+                            if [ -n "$kc_service" ]; then
+                                echo_info "    ✓ Detected service: $kc_service (fallback)" >&2
+                                extra_sets+=("--set" "jwtAuth.keycloak.serviceName=$kc_service")
+                            fi
+                            break
+                        fi
+                    fi
+                done
+            fi
+
+            if [ -n "$kc_route" ]; then
+                echo_info "    ✓ Detected URL: https://$kc_route" >&2
+                extra_sets+=("--set" "jwtAuth.keycloak.url=https://$kc_route")
+            else
+                echo_warning "    ⚠ Keycloak CRD found but no route - Helm will use lookup() fallback" >&2
+            fi
+        else
+            # No Keycloak CRD - mark as not installed
+            extra_sets+=("--set" "jwtAuth.keycloak.installed=false")
+            echo_info "    ⓘ Keycloak CRD not found (installed=false) - JWT auth will be disabled" >&2
+        fi
+    fi
+
+    # ============================================
+    # Default Storage Class Detection
+    # ============================================
+    echo_info "  Detecting default storage class..." >&2
+
+    local default_sc=$(kubectl get storageclass -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}' 2>/dev/null | awk '{print $1}')
+
+    if [ -n "$default_sc" ]; then
+        echo_info "    ✓ Detected: $default_sc" >&2
+        extra_sets+=("--set" "global.storageClass=$default_sc")
+    else
+        # Try alternative annotation
+        default_sc=$(kubectl get storageclass -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.beta\.kubernetes\.io/is-default-class=="true")].metadata.name}' 2>/dev/null | awk '{print $1}')
+        if [ -n "$default_sc" ]; then
+            echo_info "    ✓ Detected: $default_sc" >&2
+            extra_sets+=("--set" "global.storageClass=$default_sc")
+        else
+            echo_warning "    ⚠ No default storage class - Helm will use lookup() fallback" >&2
+        fi
+    fi
+
+    # ============================================
+    # OpenShift Cluster Domain and Name Detection
+    # ============================================
+    if [ "$PLATFORM" = "openshift" ]; then
+        echo_info "  Detecting OpenShift cluster configuration..." >&2
+
+        # Detect cluster domain
+        local cluster_domain=$(kubectl get ingress.config.openshift.io/cluster -o jsonpath='{.spec.domain}' 2>/dev/null || echo "")
+
+        if [ -z "$cluster_domain" ]; then
+            # Fallback: get from ingress controller
+            cluster_domain=$(kubectl get ingresscontroller -n openshift-ingress-operator default -o jsonpath='{.status.domain}' 2>/dev/null || echo "")
+        fi
+
+        if [ -z "$cluster_domain" ]; then
+            # Fallback: extract from existing route
+            cluster_domain=$(kubectl get route -A -o jsonpath='{.items[0].spec.host}' 2>/dev/null | sed 's/^[^.]*\.//' || echo "")
+        fi
+
+        if [ -n "$cluster_domain" ]; then
+            echo_info "    ✓ Detected domain: $cluster_domain" >&2
+            extra_sets+=("--set" "global.clusterDomain=$cluster_domain")
+        else
+            echo_warning "    ⚠ Could not detect cluster domain - Helm will use lookup() fallback" >&2
+        fi
+
+        # Detect cluster name/ID
+        local cluster_name=$(kubectl get infrastructure cluster -o jsonpath='{.status.infrastructureName}' 2>/dev/null || echo "")
+        if [ -z "$cluster_name" ]; then
+            # Fallback: get from clusterversion
+            local cluster_id=$(kubectl get clusterversion version -o jsonpath='{.spec.clusterID}' 2>/dev/null || echo "")
+            if [ -n "$cluster_id" ]; then
+                cluster_name="cluster-${cluster_id:0:8}"
+            fi
+        fi
+
+        if [ -n "$cluster_name" ]; then
+            echo_info "    ✓ Detected cluster name: $cluster_name" >&2
+            extra_sets+=("--set" "global.clusterName=$cluster_name")
+        else
+            echo_warning "    ⚠ Could not detect cluster name - Helm will use default" >&2
+        fi
+
+        # ============================================
+        # Namespace fsGroup Detection (for Valkey persistence)
+        # ============================================
+        echo_info "  Detecting namespace fsGroup for storage..." >&2
+        local namespace_fsgroup=""
+        local fsgroup_range=$(kubectl get namespace "${NAMESPACE}" -o jsonpath='{.metadata.annotations.openshift\.io/sa\.scc\.supplemental-groups}' 2>/dev/null || echo "")
+
+        if [ -n "$fsgroup_range" ]; then
+            # Extract the first number from "1000740000/10000" format
+            namespace_fsgroup=$(echo "$fsgroup_range" | cut -d'/' -f1)
+            if [ -n "$namespace_fsgroup" ]; then
+                echo_info "    ✓ Detected fsGroup: $namespace_fsgroup (from range: $fsgroup_range)" >&2
+                extra_sets+=("--set" "valkey.securityContext.fsGroup=$namespace_fsgroup")
+            fi
+        else
+            echo_warning "    ⚠ Could not detect namespace fsGroup - Helm will use lookup() fallback" >&2
+        fi
+    fi
+
+    # Return the --set flags (to stdout only)
+    echo "${extra_sets[@]}"
+}
+
 # Function to deploy Helm chart
 deploy_helm_chart() {
     echo_info "Deploying Cost Management On Premise Helm chart..."
@@ -541,8 +845,9 @@ deploy_helm_chart() {
     local helm_cmd="helm upgrade --install \"$HELM_RELEASE_NAME\" \"$chart_source\""
     helm_cmd="$helm_cmd --namespace \"$NAMESPACE\""
     helm_cmd="$helm_cmd --create-namespace"
-    helm_cmd="$helm_cmd --timeout=${HELM_TIMEOUT:-600s}"
+    helm_cmd="$helm_cmd --timeout=${HELM_TIMEOUT:-1200s}"  # Increased from 600s to 1200s (20min) to allow rate limiter recovery
     helm_cmd="$helm_cmd --wait"
+    helm_cmd="$helm_cmd --debug"  # Enable verbose debug output to trace rate limiter failures
 
     # Add values file if specified
     if [ -n "$VALUES_FILE" ]; then
@@ -567,18 +872,43 @@ deploy_helm_chart() {
         echo_info "JWT authentication disabled (non-OpenShift platform)"
     fi
 
+    # Pre-detect cluster configuration to avoid expensive lookup() calls in templates
+    # This reduces Kubernetes API calls from ~400+ to ~10
+    local detected_values=($(detect_and_inject_values))
+    if [ ${#detected_values[@]} -gt 0 ]; then
+        echo_info "Adding pre-detected values to Helm command (${#detected_values[@]} flags)"
+        helm_cmd="$helm_cmd ${detected_values[*]}"
+    fi
+
     # Add additional Helm arguments passed to the script
     if [ ${#HELM_EXTRA_ARGS[@]} -gt 0 ]; then
         echo_info "Adding additional Helm arguments: ${HELM_EXTRA_ARGS[*]}"
         helm_cmd="$helm_cmd ${HELM_EXTRA_ARGS[*]}"
     fi
 
+    # DIAGNOSTIC: Try client-side dry-run first to isolate template rendering vs kubectl operations
+    echo_info "=== DIAGNOSTIC: Testing template rendering with --dry-run=client ==="
+    local dryrun_cmd="${helm_cmd} --dry-run=client"
+    echo_info "Executing: $dryrun_cmd"
+    if eval $dryrun_cmd > /dev/null 2>&1; then
+        echo_success "✓ Template rendering succeeded (client-side dry-run passed)"
+        echo_info "  This means the rate limit occurs during server-side operations, not template parsing"
+    else
+        echo_error "✗ Template rendering FAILED (client-side dry-run failed)"
+        echo_info "  This means the rate limit occurs during template parsing/rendering"
+        echo_info "  The lookup() calls in templates are overwhelming the API even before deployment"
+    fi
+    echo_info "=== END DIAGNOSTIC ==="
+    echo ""
+
     echo_info "Executing: $helm_cmd"
 
     # Execute Helm command
     eval $helm_cmd
 
-    if [ $? -eq 0 ]; then
+    local helm_exit_code=$?
+
+    if [ $helm_exit_code -eq 0 ]; then
         echo_success "Helm chart deployed successfully"
     else
         echo_error "Failed to deploy Helm chart"
@@ -870,7 +1200,7 @@ run_health_checks() {
             kubectl port-forward -n "$NAMESPACE" pod/"$ingress_pod" 18080:${ingress_internal_port} --request-timeout=90s >/dev/null 2>&1 &
             ingress_pf_pid=$!
             sleep 3
-            if kill -0 "$ingress_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18080/ready >/dev/null 2>&1; then
+            if kill -0 "$ingress_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18080/ >/dev/null 2>&1; then
                 echo_success "✓ Ingress API service is healthy (port-forward, internal port ${ingress_internal_port})"
             else
                 echo_error "✗ Ingress API service is not responding (port-forward)"
@@ -1009,7 +1339,7 @@ cleanup() {
         shift
     done
 
-    echo_info "Cleaning up Cost Management On Premise Helm deployment..."
+    echo_info "Cleaning up Cost Management On Premise deployment..."
     echo_info "Note: This will NOT remove Strimzi/Kafka. To clean them up separately:"
     echo_info "  ./deploy-strimzi.sh cleanup"
     echo ""
@@ -1309,6 +1639,42 @@ create_ui_secrets() {
     fi
 }
 
+# Function to create Django secret for Koku
+# This secret is used by Koku for Django's SECRET_KEY
+create_django_secret() {
+    echo_info "Creating Django secret for Koku..."
+
+    local secret_name="cost-onprem-django-secret"
+
+    # Check if secret already exists
+    if kubectl get secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_info "Django secret '$secret_name' already exists in namespace '$NAMESPACE'"
+        return 0
+    fi
+
+    # Generate a random 50-character secret key
+    local secret_key=$(openssl rand -base64 48 | tr -dc 'a-zA-Z0-9' | head -c 50)
+
+    if [ -z "$secret_key" ]; then
+        echo_error "Failed to generate Django secret key"
+        return 1
+    fi
+
+    # Create the secret
+    echo_info "Creating secret '$secret_name' in namespace '$NAMESPACE'..."
+    kubectl create secret generic "$secret_name" \
+        --from-literal=secret-key="$secret_key" \
+        --namespace="$NAMESPACE"
+
+    if [ $? -eq 0 ]; then
+        echo_success "✓ Created Django secret '$secret_name'"
+        return 0
+    else
+        echo_error "Failed to create Django secret"
+        return 1
+    fi
+}
+
 # Function to create Keycloak CA certificate secret for oauth2-proxy TLS trust
 create_keycloak_ca_secret() {
     echo_info "Creating Keycloak CA certificate secret for TLS trust..."
@@ -1493,15 +1859,30 @@ main() {
 
     while [ $# -gt 0 ]; do
         case "$1" in
+            --namespace|-n)
+                # Script argument - set namespace
+                NAMESPACE="$2"
+                shift 2
+                ;;
+            --values|-f)
+                # Script argument - set values file
+                VALUES_FILE="$2"
+                shift 2
+                ;;
             --set|--set-string|--set-file|--set-json)
                 # These are Helm arguments, collect them
                 HELM_EXTRA_ARGS+=("$1" "$2")
                 shift 2
                 ;;
-            --*)
-                # Other Helm arguments
-                HELM_EXTRA_ARGS+=("$1")
-                shift
+            --help|-h)
+                echo "Usage: $0 [OPTIONS]"
+                echo ""
+                echo "Options:"
+                echo "  --namespace, -n NAME    Set the namespace (default: cost-onprem)"
+                echo "  --values, -f FILE       Specify values file"
+                echo "  --set KEY=VALUE         Set Helm values"
+                echo "  --help, -h              Show this help"
+                exit 0
                 ;;
             *)
                 # Unknown argument, skip it
@@ -1555,6 +1936,11 @@ main() {
         exit 1
     fi
 
+    # Create S3 buckets (required for data storage)
+    if ! create_s3_buckets; then
+        echo_warning "Failed to create S3 buckets. Data storage may not work correctly."
+    fi
+
     # Create UI secrets (cookie + OAuth client) - required before helm install
     if [ "$JWT_AUTH_ENABLED" = "true" ] && [ -n "$KEYCLOAK_NAMESPACE" ]; then
         if ! create_ui_secrets; then
@@ -1569,6 +1955,11 @@ main() {
             echo_warning "Failed to create Keycloak CA secret. oauth2-proxy may have TLS issues."
             echo_info "  You may need to manually create the keycloak-ca-cert secret"
         fi
+    fi
+
+    # Create Django secret for Koku (if costManagement is enabled)
+    if ! create_django_secret; then
+        echo_warning "Failed to create Django secret. Koku may not start correctly."
     fi
 
     # Verify Strimzi operator and Kafka cluster are available

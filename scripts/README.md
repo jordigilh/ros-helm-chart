@@ -1,6 +1,6 @@
-# ROS Helm Chart Scripts
+# Cost Management On-Premise Helm Chart Scripts
 
-Automation scripts for deploying, configuring, and testing the Resource Optimization Service (ROS) with JWT authentication and TLS certificate handling.
+Automation scripts for deploying, configuring, and testing the Cost Management On-Premise (CoP) with JWT authentication and TLS certificate handling.
 
 ## 📋 Available Scripts
 
@@ -9,9 +9,10 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 | `deploy-test-cost-onprem.sh` | **Full deployment + test orchestration** | OpenShift |
 | `run-pytest.sh` | Run pytest test suite | All environments |
 | `deploy-strimzi.sh` | Deploy Kafka infrastructure | All environments |
-| `install-helm-chart.sh` | Deploy ROS Helm chart | All environments |
+| `install-helm-chart.sh` | Deploy CoP Helm chart | All environments |
 | `deploy-rhbk.sh` | Deploy Red Hat Build of Keycloak | OpenShift |
 | `setup-cost-mgmt-tls.sh` | Configure TLS certificates | OpenShift |
+| `cost-mgmt-ocp-dataflow.sh` | **E2E Cost Management test** | All environments |
 | `test-ocp-dataflow-jwt.sh` | Legacy shell-based JWT test | OpenShift |
 | `query-kruize.sh` | Query Kruize database | All environments |
 | `deploy-kind.sh` | Create test cluster | CI/CD, Local dev |
@@ -27,10 +28,13 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 # 2. Deploy Kafka infrastructure
 ./deploy-strimzi.sh
 
-# 3. Deploy ROS
+# 3. Deploy Cost Management
 ./install-helm-chart.sh
 
-# 4. Test the deployment (if JWT enabled)
+# 4. Validate the deployment (E2E test)
+./cost-mgmt-ocp-dataflow.sh
+
+# 5. (Optional) Test JWT authentication if Keycloak enabled
 ./test-ocp-dataflow-jwt.sh
 ```
 
@@ -43,7 +47,7 @@ Automation scripts for deploying, configuring, and testing the Resource Optimiza
 # 2. Deploy Kafka infrastructure
 ./deploy-strimzi.sh
 
-# 3. Deploy ROS with JWT authentication
+# 3. Deploy CoP with JWT authentication
 export JWT_AUTH_ENABLED=true
 ./install-helm-chart.sh
 
@@ -62,7 +66,7 @@ export JWT_AUTH_ENABLED=true
 # 2. Deploy Kafka infrastructure
 ./deploy-strimzi.sh
 
-# 3. Deploy ROS from local chart
+# 3. Deploy CoP from local chart
 export USE_LOCAL_CHART=true
 ./install-helm-chart.sh
 
@@ -73,7 +77,7 @@ export USE_LOCAL_CHART=true
 ## 📖 Script Documentation
 
 ### `install-helm-chart.sh`
-Deploy or upgrade the ROS Helm chart with automatic configuration.
+Deploy or upgrade the CoP Helm chart with automatic configuration.
 
 **Key features:**
 - Installs from GitHub releases or local chart
@@ -99,7 +103,7 @@ export USE_LOCAL_CHART=true
 ./install-helm-chart.sh
 
 # Custom namespace
-export NAMESPACE=ros-production
+export NAMESPACE=cost-onprem
 ./install-helm-chart.sh
 
 # Check deployment status
@@ -119,7 +123,7 @@ export NAMESPACE=ros-production
 ---
 
 ### `deploy-rhbk.sh`
-Deploy Red Hat Build of Keycloak (RHBK) with ROS integration.
+Deploy Red Hat Build of Keycloak (RHBK) with CoP integration.
 
 **What it creates:**
 - RHBK Operator in target namespace
@@ -278,6 +282,89 @@ Run the pytest test suite for JWT authentication and data flow validation.
 
 ---
 
+### `cost-mgmt-ocp-dataflow.sh`
+End-to-end validation of Cost Management data pipeline (OCP provider).
+
+**Test flow:**
+1. Preflight checks (database, S3, Kafka connectivity)
+2. Database migrations verification
+3. Kafka cluster health validation
+4. Provider setup (creates OCP provider via Sources API → Kafka → Listener)
+5. Data generation with nise + upload to S3
+6. Kafka message triggers MASU processing
+7. Data processing validation (PostgreSQL tables populated)
+8. Cost validation (PostgreSQL summary tables match expected values)
+
+**Usage:**
+```bash
+# Run smoke test (recommended - ~3 minutes)
+./cost-mgmt-ocp-dataflow.sh
+
+# Run with diagnostics on failure
+./cost-mgmt-ocp-dataflow.sh --diagnose
+
+# Custom namespace
+NAMESPACE=my-cost-mgmt ./cost-mgmt-ocp-dataflow.sh
+```
+
+**Expected Output (Success):**
+```
+======================================================================
+  ✅ SMOKE VALIDATION PASSED
+======================================================================
+
+  📊 DATA PROOF - Actual rows from PostgreSQL:
+  ------------------------------------------------------------------
+  Date         Namespace            CPU(h)     CPU Req    Mem(GB)
+  ------------------------------------------------------------------
+  2025-12-01   test-namespace           6.00     12.00     12.00
+  ------------------------------------------------------------------
+  TOTALS       (1 rows)                 6.00     12.00     12.00
+  ------------------------------------------------------------------
+
+  📋 EXPECTED vs ACTUAL (from nise YAML):
+  --------------------------------------------------
+  Metric                      Expected     Actual Match
+  --------------------------------------------------
+  CPU Request (hours)            12.00      12.00 ✅
+  Memory Request (GB-hrs)        24.00      24.00 ✅
+  --------------------------------------------------
+
+  ✅ File Processing: 3 checks passed
+  ✅ Cost: 2 checks passed
+======================================================================
+
+Phases: 7/7 passed
+  ✅ preflight
+  ✅ migrations
+  ✅ kafka_validation
+  ✅ provider
+  ✅ data_upload
+  ✅ processing
+  ✅ validation
+
+✅ E2E SMOKE TEST PASSED
+
+╔═══════════════════════════════════════════════════════════════╗
+║  ✓ OCP E2E Validation PASSED                                  ║
+║  Total time: 3m 19s                                          ║
+╚═══════════════════════════════════════════════════════════════╝
+```
+
+**Key Validation Points:**
+- **Data Proof**: Shows actual rows from PostgreSQL `reporting_ocpusagelineitem_daily_summary`
+- **Expected vs Actual**: Compares nise-generated values against PostgreSQL aggregates
+- **Match Icons**: ✅ indicates values match within 5% tolerance
+
+**Requirements:**
+- Cost Management deployed with `cost-onprem` chart
+- Kafka cluster running (Strimzi)
+- S3/ODF storage accessible
+
+**Best for:** CI/CD pipelines, deployment validation, data flow verification
+
+---
+
 ### `test-ocp-dataflow-jwt.sh`
 Legacy shell script for JWT authentication testing. **Superseded by pytest suite** but kept for reference.
 
@@ -285,8 +372,19 @@ Legacy shell script for JWT authentication testing. **Superseded by pytest suite
 ```bash
 # Run legacy shell test
 ./test-ocp-dataflow-jwt.sh
+
+# Custom namespace
+./test-ocp-dataflow-jwt.sh --namespace cost-onprem
+
+# Verbose output for troubleshooting
+./test-ocp-dataflow-jwt.sh --verbose
 ```
 
+**Requirements:**
+- JWT authentication enabled in CoP deployment
+- Red Hat Build of Keycloak (RHBK) with `cost-management-operator` client
+
+**Best for:** CI/CD pipelines, complete E2E validation including recommendations
 **Note:** The pytest suite (`run-pytest.sh`) is now the recommended approach for testing.
 
 ---
@@ -325,7 +423,7 @@ Query Kruize database for experiments and recommendations.
 ./query-kruize.sh --schema
 
 # Custom namespace
-./query-kruize.sh --namespace ros-production --experiments
+./query-kruize.sh --namespace cost-onprem --experiments
 ```
 
 **Requirements:**
@@ -341,11 +439,31 @@ Query Kruize database for experiments and recommendations.
 ### For CI/CD Pipelines
 Use the orchestration script for comprehensive E2E deployment and validation:
 
-**Recommended CI/CD workflow:**
+**Cost Management Validation (recommended):**
 ```bash
 # Full deployment + tests (recommended)
 ./deploy-test-cost-onprem.sh
 
+# 2. Deploy Cost Management
+./install-helm-chart.sh
+
+# 3. Validate Cost Management data flow (~3 minutes)
+./cost-mgmt-ocp-dataflow.sh || exit 1
+```
+
+The `cost-mgmt-ocp-dataflow.sh` script validates:
+- ✅ Sources API → Kafka → Sources Listener integration
+- ✅ OCP provider creation via production flow
+- ✅ S3 upload → Kafka → MASU processing
+- ✅ PostgreSQL data tables populated
+- ✅ PostgreSQL summary aggregation
+- ✅ Cost calculations match expected values
+- ✅ **Shows actual data proof** (not just PASSED/FAILED)
+
+**JWT Authentication Validation (if Keycloak enabled):**
+```bash
+# Validate JWT authentication flow
+./test-ocp-dataflow-jwt.sh || exit 1
 # Or run tests only on existing deployment
 ./deploy-test-cost-onprem.sh --tests-only
 
@@ -381,7 +499,7 @@ Create KIND (Kubernetes IN Docker) cluster for testing and development.
 ./deploy-kind.sh
 
 # Custom cluster name
-export KIND_CLUSTER_NAME=ros-test
+export KIND_CLUSTER_NAME=cop-test
 ./deploy-kind.sh
 
 # Use Docker instead of Podman
@@ -402,7 +520,7 @@ Clean up KIND clusters and related resources.
 ./cleanup-kind-artifacts.sh
 
 # Cleanup custom cluster
-export KIND_CLUSTER_NAME=ros-test
+export KIND_CLUSTER_NAME=cop-test
 ./cleanup-kind-artifacts.sh
 ```
 
@@ -483,6 +601,6 @@ All scripts use color-coded output:
 ---
 
 **Last Updated**: October 2025
-**Maintainer**: ROS Engineering Team
+**Maintainer**: CoP Engineering Team
 **Supported Platforms**: OpenShift 4.18+ (Kubernetes 1.31+), KIND (CI/CD)
 **Tested With**: OpenShift 4.18.24

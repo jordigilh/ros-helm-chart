@@ -145,14 +145,14 @@ show_help() {
 
 check_prerequisites() {
     log_step "Checking prerequisites"
-    
+
     if [[ "${DRY_RUN}" == "true" ]]; then
         log_info "DRY RUN: Skipping prerequisite checks"
         return 0
     fi
-    
+
     local missing_tools=()
-    
+
     # Check required tools
     for tool in oc kubectl helm yq; do
         if ! command -v "$tool" &> /dev/null; then
@@ -161,7 +161,7 @@ check_prerequisites() {
             log_verbose "Found: $tool ($(command -v "$tool"))"
         fi
     done
-    
+
     if [[ ${#missing_tools[@]} -gt 0 ]]; then
         log_error "Missing required tools: ${missing_tools[*]}"
         log_error "Please install missing tools and try again"
@@ -171,13 +171,13 @@ check_prerequisites() {
         log_error "  Linux:  kubectl: https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/  |  yq: https://github.com/mikefarah/yq#install"
         exit 1
     fi
-    
+
     log_success "All required tools are installed"
 }
 
 detect_openshift_credentials() {
     log_info "Detecting OpenShift credentials from environment..."
-    
+
     # Detect API URL from kubeconfig if not set
     if [[ -z "${OPENSHIFT_API}" ]] && [[ -f "${KUBECONFIG}" ]]; then
         OPENSHIFT_API=$(yq e '.clusters[0].cluster.server' "${KUBECONFIG}" 2>/dev/null || echo "")
@@ -185,7 +185,7 @@ detect_openshift_credentials() {
             log_verbose "Detected API URL from kubeconfig: ${OPENSHIFT_API}"
         fi
     fi
-    
+
     # Detect password from files if not set
     if [[ -z "${OPENSHIFT_PASSWORD}" ]]; then
         if [[ -n "${KUBEADMIN_PASSWORD_FILE}" ]] && [[ -s "${KUBEADMIN_PASSWORD_FILE}" ]]; then
@@ -200,22 +200,22 @@ detect_openshift_credentials() {
 
 login_to_openshift() {
     log_step "Logging into OpenShift"
-    
+
     if [[ "${DRY_RUN}" == "true" ]]; then
         log_info "DRY RUN: Would login to OpenShift"
         return 0
     fi
-    
+
     # Detect credentials from environment
     detect_openshift_credentials
-    
+
     # Check if credentials are available
     if [[ -z "${OPENSHIFT_API}" ]]; then
         log_error "OPENSHIFT_API not set and could not be detected from kubeconfig"
         log_error "Please set OPENSHIFT_API environment variable or ensure KUBECONFIG is valid"
         return 1
     fi
-    
+
     if [[ -z "${OPENSHIFT_PASSWORD}" ]]; then
         log_error "OPENSHIFT_PASSWORD not set and could not be detected from files"
         log_error "Please set one of:"
@@ -224,13 +224,13 @@ login_to_openshift() {
         log_error "  - SHARED_DIR containing kubeadmin-password file"
         return 1
     fi
-    
+
     # Configure kubeconfig to skip TLS verification
     if [[ -f "${KUBECONFIG}" ]]; then
         log_verbose "Configuring kubeconfig to skip TLS verification..."
         yq -i 'del(.clusters[].cluster.certificate-authority-data) | .clusters[].cluster.insecure-skip-tls-verify=true' "${KUBECONFIG}" 2>/dev/null || true
     fi
-    
+
     # Attempt login
     log_info "Logging in as ${OPENSHIFT_USERNAME} to ${OPENSHIFT_API}..."
     if oc login "${OPENSHIFT_API}" \
@@ -247,16 +247,16 @@ login_to_openshift() {
 
 check_oc_connection() {
     log_step "Verifying OpenShift connection"
-    
+
     if [[ "${DRY_RUN}" == "true" ]]; then
         log_info "DRY RUN: Would verify OpenShift connection"
         return 0
     fi
-    
+
     # Check if already logged in
     if ! oc whoami &> /dev/null; then
         log_info "Not currently logged into OpenShift, attempting automatic login..."
-        
+
         # Try to login automatically
         if ! login_to_openshift; then
             log_error "Automatic login failed"
@@ -274,15 +274,15 @@ check_oc_connection() {
     else
         log_success "Already logged into OpenShift"
     fi
-    
+
     local current_user
     current_user=$(oc whoami)
     local current_server
     current_server=$(oc whoami --show-server)
-    
+
     log_success "Connected to OpenShift as: ${current_user}"
     log_info "Server: ${current_server}"
-    
+
     # Check if user has admin privileges
     if oc auth can-i create clusterrole &> /dev/null; then
         log_success "User has cluster-admin privileges"
@@ -296,7 +296,7 @@ execute_script() {
     local script_name="$1"
     shift
     local script_path="${LOCAL_SCRIPTS_DIR}/${script_name}"
-    
+
     if [[ ! -f "${script_path}" ]]; then
         log_error "Script not found: ${script_path}"
         return 1
@@ -304,39 +304,39 @@ execute_script() {
     if [[ ! -x "${script_path}" ]]; then
         chmod +x "${script_path}" 2>/dev/null || true
     fi
-    
+
     if [[ "${DRY_RUN}" == "true" ]]; then
         log_info "DRY RUN: Would execute: ${script_path} $*"
         return 0
     fi
-    
+
     log_info "Executing: ${script_path} $*"
-    
+
     local exit_code=0
     if [[ "${VERBOSE}" == "true" ]]; then
         bash -x "${script_path}" "$@" || exit_code=$?
     else
         "${script_path}" "$@" || exit_code=$?
     fi
-    
+
     return ${exit_code}
 }
 
 create_namespace() {
     log_step "Creating namespace: ${NAMESPACE}"
-    
+
     if [[ "${DRY_RUN}" == "true" ]]; then
         log_info "DRY RUN: Would create namespace ${NAMESPACE}"
         return 0
     fi
-    
+
     if oc get namespace "${NAMESPACE}" &> /dev/null; then
         log_info "Namespace ${NAMESPACE} already exists"
     else
         oc create namespace "${NAMESPACE}"
         log_success "Created namespace: ${NAMESPACE}"
     fi
-    
+
     # Label namespace for Cost Management Operator
     log_info "Labeling namespace for Cost Management Operator..."
     oc label namespace "${NAMESPACE}" cost_management_optimizations=true --overwrite
@@ -352,21 +352,21 @@ deploy_rhbk() {
         log_warning "Skipping Red Hat Build of Keycloak (RHBK) deployment (--skip-rhbk)"
         return 0
     fi
-    
+
     log_step "Deploying Red Hat Build of Keycloak (RHBK) (1/5)"
-    
+
     # Export environment variables for RHBK script
     # export NAMESPACE="${NAMESPACE}"
-    
+
     if [[ "${VERBOSE}" == "true" ]]; then
         export VERBOSE="true"
     fi
-    
+
     if ! execute_script "${SCRIPT_DEPLOY_RHBK}"; then
         log_error "Red Hat Build of Keycloak (RHBK) deployment failed"
         exit 1
     fi
-    
+
     log_success "Red Hat Build of Keycloak (RHBK) deployment completed"
 }
 
@@ -375,25 +375,25 @@ deploy_strimzi() {
         log_warning "Skipping Kafka/Strimzi deployment (--skip-strimzi)"
         return 0
     fi
-    
+
     log_step "Deploying Kafka/Strimzi (2/5)"
-    
+
     # Export environment variables for Strimzi script
     # export KAFKA_NAMESPACE="${NAMESPACE}"
     export KAFKA_ENVIRONMENT="ocp"
     export STORAGE_CLASS="${STORAGE_CLASS:-}"
-    
+
     log_verbose "Using storage class: ${STORAGE_CLASS}"
-    
+
     if [[ "${VERBOSE}" == "true" ]]; then
         export VERBOSE="true"
     fi
-    
+
     if ! execute_script "${SCRIPT_DEPLOY_STRIMZI}"; then
         log_error "Kafka/Strimzi deployment failed"
         exit 1
     fi
-    
+
     log_success "Kafka/Strimzi deployment completed"
 }
 
@@ -402,23 +402,23 @@ deploy_helm_chart() {
         log_warning "Skipping Cost On-Prem Helm chart installation (--skip-helm)"
         return 0
     fi
-    
-    log_step "Deploying Cost On-Prem Helm chart (3/5)"    
-    
+
+    log_step "Deploying Cost On-Prem Helm chart (3/5)"
+
     # Use the official openshift-values.yaml from repo root
     local values_file="${PROJECT_ROOT}/${OPENSHIFT_VALUES_FILE}"
     download_openshift_values "${values_file}"
     export VALUES_FILE="${values_file}"
-    
+
     # Export environment variables for Helm script
     export NAMESPACE="${NAMESPACE}"
     export JWT_AUTH_ENABLED="true"
     export USE_LOCAL_CHART="${USE_LOCAL_CHART}"
-    
+
     if [[ "${VERBOSE}" == "true" ]]; then
         export VERBOSE="true"
     fi
-    
+
     if ! execute_script "${SCRIPT_INSTALL_HELM}"; then
         log_error "Helm chart deployment failed"
         log_info ""
@@ -429,13 +429,13 @@ deploy_helm_chart() {
         log_info "  4. Check events: oc get events -n ${NAMESPACE} --sort-by='.lastTimestamp'"
         exit 1
     fi
-    
+
     log_success "Cost On-Prem Helm chart deployment completed"
 }
 
 download_openshift_values() {
     local values_file="$1"
-    
+
     log_info "Using local OpenShift values file from repository"
     log_verbose "Path: ${values_file}"
     if [[ ! -f "${values_file}" ]]; then
@@ -443,7 +443,7 @@ download_openshift_values() {
         log_error "Ensure ${OPENSHIFT_VALUES_FILE} exists at the repository root"
         return 1
     fi
-    
+
     if [[ "${VERBOSE}" == "true" ]]; then
         log_verbose "Values file contents (first 30 lines):"
         head -30 "${values_file}" | while IFS= read -r line; do
@@ -457,18 +457,18 @@ setup_tls() {
         log_warning "Skipping TLS certificate setup (--skip-tls)"
         return 0
     fi
-    
+
     log_step "Configuring TLS certificates (4/5)"
-    
+
     # Export environment variables for TLS script
     export NAMESPACE="${NAMESPACE}"
-    
+
     if [[ "${VERBOSE}" == "true" ]]; then
         export VERBOSE="true"
     fi
-    
+
     execute_script "${SCRIPT_SETUP_TLS}"
-    
+
     log_success "TLS certificate setup completed"
 }
 
@@ -477,9 +477,9 @@ test_jwt_flow() {
         log_warning "Skipping JWT authentication test (--skip-test)"
         return 0
     fi
-    
+
     log_step "Testing JWT authentication (5/5)"
-    
+
     # Ensure we're logged in to OpenShift for JWT test
     if [[ "${DRY_RUN}" != "true" ]]; then
         if ! oc whoami -t &> /dev/null; then
@@ -495,7 +495,7 @@ test_jwt_flow() {
     export NAMESPACE="${NAMESPACE}"
     export HELM_RELEASE_NAME="${HELM_RELEASE_NAME:-cost-onprem}"
     export KEYCLOAK_NAMESPACE="${KEYCLOAK_NAMESPACE:-keycloak}"
-    
+
     if [[ "${VERBOSE}" == "true" ]]; then
         export VERBOSE="true"
     fi
@@ -567,7 +567,7 @@ main() {
     echo ""
     echo -e "${CYAN}Cost On-Prem OpenShift JWT Authentication Deployment${NC}"
     echo ""
-    
+
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -625,7 +625,7 @@ main() {
                 ;;
         esac
     done
-    
+
     # In tests-only mode, skip all deployment steps and run tests
     if [[ "${TESTS_ONLY}" == "true" ]]; then
         SKIP_RHBK=true
@@ -634,28 +634,36 @@ main() {
         SKIP_TLS=true
         SKIP_TEST=false
     fi
-    
+
     # Show deployment summary
     print_summary
-    
+
     if [[ "${DRY_RUN}" == "true" ]]; then
         log_warning "DRY RUN MODE: No changes will be made"
         echo ""
     fi
-    
+
     # Execute deployment steps
     check_prerequisites
     check_oc_connection
     if [[ "${TESTS_ONLY}" != "true" ]]; then
         create_namespace
     fi
-    
+
     deploy_rhbk
     deploy_strimzi
+
+    # Run Helm sanity test before deploying complex chart
+    log_info "Running Helm sanity test to verify basic functionality..."
+    if ! bash "${SCRIPT_DIR}/helm-sanity-test.sh"; then
+        log_error "Helm sanity test failed - aborting deployment"
+        exit 1
+    fi
+
     deploy_helm_chart
     setup_tls
     test_jwt_flow
-    
+
     # Print completion message
     if [[ "${DRY_RUN}" == "false" ]]; then
         print_completion
@@ -664,7 +672,7 @@ main() {
         log_info "DRY RUN completed. No changes were made."
         echo ""
     fi
-    
+
     exit 0
 }
 

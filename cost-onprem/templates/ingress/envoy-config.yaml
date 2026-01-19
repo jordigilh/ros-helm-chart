@@ -78,10 +78,31 @@ data:
                   # - No host header injection risk in this architecture
                   domains: ["*"]
                   routes:
+                  # Cost Management API - routes to Koku API service
+                  - match:
+                      prefix: "/api/cost-management/"
+                    route:
+                      cluster: koku-api-backend
+                      timeout: 60s
+                      retry_policy:
+                        retry_on: 5xx,reset,connect-failure,refused-stream
+                        num_retries: 2
+                        per_try_timeout: 30s
+                  # Sources API - routes to Sources API service
+                  - match:
+                      prefix: "/api/sources/"
+                    route:
+                      cluster: sources-api-backend
+                      timeout: 30s
+                      retry_policy:
+                        retry_on: 5xx,reset,connect-failure,refused-stream
+                        num_retries: 2
+                        per_try_timeout: 15s
+                  # File upload ingress - routes to ingress backend
                   - match:
                       prefix: "/"
                     route:
-                      cluster: ros-ingress-backend
+                      cluster: ingress-backend
                       timeout: 30s
                       retry_policy:
                         retry_on: 5xx,reset,connect-failure,refused-stream
@@ -143,8 +164,38 @@ data:
                       return true, nil
                     end
 
-                    -- Helper function to build JSON manually (no json lib in Envoy Lua)
-                    local function build_xrhid_json(org_id, account_number, user_type)
+                    -- =============================================================================
+                    -- Build X-Rh-Identity JSON structure for Koku authentication
+                    -- =============================================================================
+                    -- This function constructs the X-Rh-Identity header required by Koku.
+                    --
+                    -- Authentication Mode: ENHANCED_ORG_ADMIN
+                    -- -----------------------------------------
+                    -- Koku is configured with DEVELOPMENT=false and ENHANCED_ORG_ADMIN=true.
+                    -- When is_org_admin=true in the identity header, Koku bypasses RBAC service
+                    -- calls and grants full access to all resources within the user's org.
+                    --
+                    -- Required fields:
+                    --   org_id: Tenant/schema lookup. Koku prepends "org" to create schema name.
+                    --           NOTE: Included at BOTH top-level AND inside identity{} as a
+                    --           workaround for Koku middleware compatibility.
+                    --   account_number: Customer account identifier (required by identity schema)
+                    --   type: Identity type, always "User" for interactive users
+                    --   user.username: For logging/audit purposes
+                    --   user.is_org_admin: TRUE - Required for ENHANCED_ORG_ADMIN mode to bypass
+                    --           RBAC service calls. All users are treated as org admins.
+                    --
+                    -- Hardcoded fields:
+                    --   entitlements.cost_management.is_entitled: REQUIRED - Koku checks this in
+                    --           middleware and returns 403 if not "True". No bypass exists.
+                    --
+                    -- Limitations of ENHANCED_ORG_ADMIN mode:
+                    --   - All authenticated users have full admin access within their org
+                    --   - No granular RBAC (e.g., "user A sees only cluster X") within same org
+                    --   - Multi-tenancy IS preserved: users only see their own org's data
+                    --   - Suitable for single-tenant or trusted-user deployments
+                    -- =============================================================================
+                    local function build_xrhid_json(org_id, account_number, user_type, username, email)
                       -- Properly escape JSON special characters
                       local function escape_json(str)
                         if type(str) ~= "string" then
@@ -163,9 +214,16 @@ data:
                       org_id = escape_json(org_id)
                       account_number = escape_json(account_number)
                       user_type = escape_json(user_type)
+                      username = escape_json(username or "user")
+                      email = escape_json(email or (username .. "@example.com"))
 
-                      return string.format('{"identity":{"org_id":"%s","account_number":"%s","type":"%s"}}',
-                                          org_id, account_number, user_type)
+                      -- is_org_admin=true triggers ENHANCED_ORG_ADMIN bypass in Koku
+                      -- This grants full access without calling external RBAC service
+                      -- Note: email is REQUIRED by Koku's middleware for user creation
+                      return string.format(
+                        '{"org_id":"%s","identity":{"org_id":"%s","account_number":"%s","type":"%s","user":{"username":"%s","email":"%s","is_org_admin":true}},"entitlements":{"cost_management":{"is_entitled":true}}}',
+                        org_id, org_id, account_number, user_type, username, email
+                      )
                     end
 
                     function envoy_on_request(request_handle)
@@ -175,97 +233,112 @@ data:
                         local metadata = request_handle:streamInfo():dynamicMetadata()
                         local jwt_metadata = metadata:get("envoy.filters.http.jwt_authn")
 
-                      if jwt_metadata == nil then
-                        request_handle:logWarn("No JWT metadata found")
-                        request_handle:respond(
-                          {[":status"] = "401"},
-                          "Unauthorized: No JWT metadata found"
-                        )
-                        return
-                      end
-
-                      -- Extract JWT payload from the keycloak provider
-                      local jwt_data = jwt_metadata["keycloak"]
-                      if jwt_data == nil then
-                        request_handle:logWarn("No JWT data found for keycloak provider in metadata")
-                        request_handle:respond(
-                          {[":status"] = "401"},
-                          "Unauthorized: No JWT data found for keycloak provider"
-                        )
-                        return
-                      end
-
-                      -- Extract org_id (required claim)
-                      local org_id = jwt_data["org_id"]
-                      if org_id == nil or org_id == "" then
-                        request_handle:logWarn("Missing org_id in JWT claims")
-                        request_handle:respond(
-                          {[":status"] = "401"},
-                          "Unauthorized: Missing org_id in JWT claims"
-                        )
-                        return
-                      end
-                      org_id = tostring(org_id)
-
-                      -- Validate org_id
-                      local valid, err_msg = validate_identifier(org_id, "org_id")
-                      if not valid then
-                        request_handle:logWarn("Invalid org_id: " .. err_msg)
-                        request_handle:respond(
-                          {[":status"] = "401"},
-                          "Unauthorized: Invalid org_id"
-                        )
-                        return
-                      end
-
-                      -- Extract account_number (required claim)
-                      local account_number = jwt_data["account_number"]
-                      if account_number == nil or account_number == "" then
-                        request_handle:logWarn("Missing account_number in JWT claims")
-                        request_handle:respond(
-                          {[":status"] = "401"},
-                          "Unauthorized: Missing account_number in JWT claims"
-                        )
-                        return
-                      end
-                      account_number = tostring(account_number)
-
-                      -- Validate account_number
-                      local valid, err_msg = validate_identifier(account_number, "account_number")
-                      if not valid then
-                        request_handle:logWarn("Invalid account_number: " .. err_msg)
-                        request_handle:respond(
-                          {[":status"] = "401"},
-                          "Unauthorized: Invalid account_number"
-                        )
-                        return
-                      end
-
-                      -- Build and encode X-Rh-Identity header
-                      local xrhid_json = build_xrhid_json(org_id, account_number, "User")
-                      local xrhid_b64 = request_handle:base64Escape(xrhid_json)
-
-                      -- Inject X-Rh-Identity header (for standard identity-based systems)
-                      -- Use replace to avoid duplicate headers
-                      request_handle:headers():replace("X-Rh-Identity", xrhid_b64)
-
-                      -- Inject headers for insights-ros-ingress app (expects JWT token directly)
-                      request_handle:headers():replace("X-ROS-Authenticated", "true")
-
-                      -- Forward the original Authorization header as X-Bearer-Token
-                      -- Try both capitalization variants for case-insensitive lookup
-                      local auth_header = request_handle:headers():get("authorization")
-                      if not auth_header then
-                        auth_header = request_handle:headers():get("Authorization")
-                      end
-
-                      if auth_header then
-                        -- Extract Bearer token from Authorization header
-                        local bearer_token = string.match(auth_header, "^[Bb]earer%s+(.+)$")
-                        if bearer_token and bearer_token ~= "" then
-                          request_handle:headers():replace("X-Bearer-Token", bearer_token)
+                        if jwt_metadata == nil then
+                          request_handle:logWarn("No JWT metadata found")
+                          request_handle:respond(
+                            {[":status"] = "401"},
+                            "Unauthorized: No JWT metadata found"
+                          )
+                          return
                         end
-                      end
+
+                        -- Extract JWT payload from the keycloak provider
+                        local jwt_data = jwt_metadata["keycloak"]
+                        if jwt_data == nil then
+                          request_handle:logWarn("No JWT data found for keycloak provider in metadata")
+                          request_handle:respond(
+                            {[":status"] = "401"},
+                            "Unauthorized: No JWT data found for keycloak provider"
+                          )
+                          return
+                        end
+
+                        -- Extract org_id (required claim)
+                        local org_id = jwt_data["org_id"]
+                        if org_id == nil or org_id == "" then
+                          request_handle:logWarn("Missing org_id in JWT claims")
+                          request_handle:respond(
+                            {[":status"] = "401"},
+                            "Unauthorized: Missing org_id in JWT claims"
+                          )
+                          return
+                        end
+                        org_id = tostring(org_id)
+
+                        -- Validate org_id
+                        local valid, err_msg = validate_identifier(org_id, "org_id")
+                        if not valid then
+                          request_handle:logWarn("Invalid org_id: " .. err_msg)
+                          request_handle:respond(
+                            {[":status"] = "401"},
+                            "Unauthorized: Invalid org_id"
+                          )
+                          return
+                        end
+
+                        -- Extract account_number (required claim)
+                        local account_number = jwt_data["account_number"]
+                        if account_number == nil or account_number == "" then
+                          request_handle:logWarn("Missing account_number in JWT claims")
+                          request_handle:respond(
+                            {[":status"] = "401"},
+                            "Unauthorized: Missing account_number in JWT claims"
+                          )
+                          return
+                        end
+                        account_number = tostring(account_number)
+
+                        -- Validate account_number
+                        local valid, err_msg = validate_identifier(account_number, "account_number")
+                        if not valid then
+                          request_handle:logWarn("Invalid account_number: " .. err_msg)
+                          request_handle:respond(
+                            {[":status"] = "401"},
+                            "Unauthorized: Invalid account_number"
+                          )
+                          return
+                        end
+
+                        -- Extract username (optional - use preferred_username or sub, default to "user")
+                        local username = jwt_data["preferred_username"] or jwt_data["sub"] or "user"
+                        username = tostring(username)
+
+                        -- Extract email (required by Koku for user creation)
+                        local email = jwt_data["email"]
+                        if email then
+                          email = tostring(email)
+                        end
+                        -- If email not in JWT, generate from username
+                        if not email or email == "" then
+                          email = username .. "@example.com"
+                        end
+
+                        -- Build and encode X-Rh-Identity header
+                        -- Note: is_org_admin=true is hardcoded for ENHANCED_ORG_ADMIN mode
+                        local xrhid_json = build_xrhid_json(org_id, account_number, "User", username, email)
+                        local xrhid_b64 = request_handle:base64Escape(xrhid_json)
+
+                        -- Inject X-Rh-Identity header (for standard identity-based systems)
+                        -- Use replace to avoid duplicate headers
+                        request_handle:headers():replace("X-Rh-Identity", xrhid_b64)
+
+                        -- Inject headers for ingress app (expects JWT token directly)
+                        request_handle:headers():replace("X-ROS-Authenticated", "true")
+
+                        -- Forward the original Authorization header as X-Bearer-Token
+                        -- Try both capitalization variants for case-insensitive lookup
+                        local auth_header = request_handle:headers():get("authorization")
+                        if not auth_header then
+                          auth_header = request_handle:headers():get("Authorization")
+                        end
+
+                        if auth_header then
+                          -- Extract Bearer token from Authorization header
+                          local bearer_token = string.match(auth_header, "^[Bb]earer%s+(.+)$")
+                          if bearer_token and bearer_token ~= "" then
+                            request_handle:headers():replace("X-Bearer-Token", bearer_token)
+                          end
+                        end
 
                         -- Log for debugging (redact sensitive data)
                         local masked_org = string.sub(org_id, 1, 4) .. "***"
@@ -311,11 +384,11 @@ data:
 
       clusters:
       # Ingress backend (port 8081 when JWT enabled)
-      - name: ros-ingress-backend
+      - name: ingress-backend
         connect_timeout: 5s
         type: STATIC
         load_assignment:
-          cluster_name: ros-ingress-backend
+          cluster_name: ingress-backend
           endpoints:
           - lb_endpoints:
             - endpoint:
@@ -336,10 +409,54 @@ data:
           unhealthy_threshold: 3
           healthy_threshold: 2
           http_health_check:
-            path: "/health"
+            path: "/"
             expected_statuses:
             - start: 200
               end: 299
+
+      # Koku API backend for Cost Management endpoints
+      - name: koku-api-backend
+        connect_timeout: 5s
+        type: STRICT_DNS
+        dns_refresh_rate: 30s
+        load_assignment:
+          cluster_name: koku-api-backend
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: {{ include "cost-onprem.fullname" . }}-koku-api.{{ .Release.Namespace }}.svc.cluster.local
+                    port_value: 8000
+        circuit_breakers:
+          thresholds:
+          - priority: DEFAULT
+            max_connections: 1024
+            max_pending_requests: 1024
+            max_requests: 1024
+            max_retries: 3
+
+      # Sources API backend for provider management
+      - name: sources-api-backend
+        connect_timeout: 5s
+        type: STRICT_DNS
+        dns_refresh_rate: 30s
+        load_assignment:
+          cluster_name: sources-api-backend
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: {{ include "cost-onprem.fullname" . }}-sources-api.{{ .Release.Namespace }}.svc.cluster.local
+                    port_value: 8000
+        circuit_breakers:
+          thresholds:
+          - priority: DEFAULT
+            max_connections: 512
+            max_pending_requests: 512
+            max_requests: 512
+            max_retries: 3
 
       # Keycloak JWKS endpoint for JWT signature verification
       - name: keycloak_jwks
