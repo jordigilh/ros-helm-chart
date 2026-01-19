@@ -549,7 +549,7 @@ $now_date,$now_date,$interval_start_3,$interval_end_3,test-container,test-pod-12
 
     # MinIO is deployed in application namespace with Helm labels
     # Labels: app.kubernetes.io/instance=<release>, app.kubernetes.io/name=minio, app.kubernetes.io/component=storage
-    local minio_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/instance=$HELM_RELEASE_NAME,app.kubernetes.io/name=minio" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local minio_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/instance=$HELM_RELEASE_NAME,app.kubernetes.io/component=storage" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     # Kafka is deployed by Strimzi in 'kafka' namespace
     local kafka_namespace="kafka"
@@ -724,7 +724,7 @@ verify_processing() {
 
     # Check processor logs
     echo_info "Checking processor logs..."
-    local processor_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=ross-processor" -o jsonpath='{.items[0].metadata.name}')
+    local processor_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=processor" -o jsonpath='{.items[0].metadata.name}')
 
     if [ -n "$processor_pod" ]; then
         echo_info "Recent processor logs:"
@@ -733,7 +733,7 @@ verify_processing() {
 
     # Check database for workload records
     echo_info "Checking database for workload records..."
-    local db_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=database" -o jsonpath='{.items[0].metadata.name}')
+    local db_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=database" -o jsonpath='{.items[0].metadata.name}')
 
     if [ -n "$db_pod" ]; then
         # Extract ROS database credentials from secret
@@ -765,7 +765,7 @@ verify_processing() {
 
     # Check Kruize experiments via database (listExperiments API has known issue with KruizeLMExperimentEntry)
     echo_info "Checking Kruize experiments via database..."
-    local kruize_db_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=database" -o jsonpath='{.items[0].metadata.name}')
+    local kruize_db_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=database" -o jsonpath='{.items[0].metadata.name}')
 
     if [ -n "$kruize_db_pod" ]; then
         # Extract Kruize database credentials from secret
@@ -804,7 +804,7 @@ verify_recommendations() {
 
     # Ensure ros-api pods are ready
     echo_info "Verifying ros-api pods are ready..."
-    kubectl wait --for=condition=ready pod -l "app.kubernetes.io/name=ros-api,app.kubernetes.io/instance=$HELM_RELEASE_NAME" \
+    kubectl wait --for=condition=ready pod -l "app.kubernetes.io/component=ros-api,app.kubernetes.io/instance=$HELM_RELEASE_NAME" \
         --namespace "$NAMESPACE" \
         --timeout=60s || echo_warning "ros-api pods may not be fully ready yet"
 
@@ -840,7 +840,7 @@ verify_recommendations() {
         echo_error "ROSs API status endpoint not accessible after $max_retries attempts (HTTP $status_http_code)"
         echo_info "Debugging information:"
         echo_info "Checking ros-api pods:"
-        kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=ros-api" || true
+        kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=ros-api" || true
         echo_info "Checking ros-api service:"
         kubectl get service -n "$NAMESPACE" "${HELM_RELEASE_NAME}-ros-api" || true
         echo_info "Checking ingress configuration:"
@@ -864,7 +864,7 @@ verify_recommendations() {
         echo_info ""
         echo_info "=== PORT CONNECTIVITY TEST ==="
         echo_info "Testing if port 32061 is accessible from within cluster:"
-        local test_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=ros-api" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        local test_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=ros-api" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
         if [ -n "$test_pod" ]; then
             echo_info "Testing direct pod access to /status:"
             kubectl exec -n "$NAMESPACE" "$test_pod" -- curl -s localhost:8000/status || true
@@ -938,7 +938,7 @@ verify_recommendations() {
                 echo_info "This may indicate:"
                 echo_info "  - Kruize is still processing the recent data (may need more time)"
                 echo_info "  - Fresh timestamps generated valid data but recommendations aren't ready yet"
-                echo_info "  - Check Kruize logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=kruize --tail=50"
+                echo_info "  - Check Kruize logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=optimization --tail=50"
                 echo_info "  - Check processor logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=ross-processor --tail=20"
             fi
 
@@ -989,7 +989,7 @@ verify_workloads_in_db() {
 
     # Check database for workload records with detailed analysis
     echo_info "Checking workloads table in ROS database..."
-    local db_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=database" -o jsonpath='{.items[0].metadata.name}')
+    local db_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=database" -o jsonpath='{.items[0].metadata.name}')
 
     if [ -z "$db_pod" ]; then
         echo_error "ROS database pod not found"

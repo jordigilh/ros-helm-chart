@@ -941,7 +941,7 @@ EOF
     # The Sources API publishes to Kafka, then sources-listener creates the provider
     echo_info "Waiting for Koku to process the new source via Kafka..."
 
-    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=database" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=database" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [ -z "$db_pod" ]; then
         # Try default database pod name
         db_pod="cost-onprem-database-0"
@@ -1156,7 +1156,7 @@ verify_upload_processing() {
     # Step 7a: Check ingress logs for upload activity
     echo_info "--- Step 7a: Ingress Upload Verification ---"
     echo_info "Checking ingress logs for upload processing..."
-    local ingress_pod=$(oc get pods -n "$NAMESPACE" -l app.kubernetes.io/name=ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local ingress_pod=$(oc get pods -n "$NAMESPACE" -l app.kubernetes.io/component=ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -n "$ingress_pod" ]; then
         # Get container names to find the right one
@@ -1173,7 +1173,7 @@ verify_upload_processing() {
             oc logs -n "$NAMESPACE" "$ingress_pod" -c "$first_container" --tail=10 2>/dev/null | grep -i "upload\|jwt\|auth\|kafka\|error" || echo "No relevant log messages found"
         fi
     else
-        echo_warning "Ingress pod not found (tried label: app.kubernetes.io/name=ingress)"
+        echo_warning "Ingress pod not found (tried label: app.kubernetes.io/component=ingress)"
     fi
 
     # Step 7b: Check Koku Listener logs for Kafka message consumption
@@ -1189,7 +1189,7 @@ verify_upload_processing() {
     else
         echo_warning "Koku listener pod not found (tried label: app.kubernetes.io/component=listener)"
         echo_info "Trying alternative label..."
-        listener_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=listener" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        listener_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=listener" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
         if [ -n "$listener_pod" ]; then
             echo_info "Found Koku listener pod: $listener_pod"
             oc logs -n "$NAMESPACE" "$listener_pod" --tail=15 2>/dev/null | grep -i "kafka\|message\|upload\|announce\|processing\|error" || echo "No relevant log messages found"
@@ -1223,7 +1223,7 @@ verify_upload_processing() {
     # Step 7d: Check ROS Processor for downstream processing
     echo_info ""
     echo_info "--- Step 7d: ROS Processor Verification ---"
-    local processor_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=ros-processor" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local processor_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=processor" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -n "$processor_pod" ]; then
         echo_info "Found ROS processor pod: $processor_pod"
@@ -1251,7 +1251,7 @@ verify_koku_manifest_processing() {
     echo_info "Checking manifest and file processing status for cluster: $cluster_id"
 
     # Find postgres pod
-    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=database" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=database" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [ -z "$db_pod" ]; then
         db_pod="cost-onprem-database-0"
     fi
@@ -1380,7 +1380,7 @@ verify_koku_summary_tables() {
     echo_info "Checking OCP usage summary data for cluster: $cluster_id"
 
     # Find postgres pod
-    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=database" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=database" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [ -z "$db_pod" ]; then
         db_pod="cost-onprem-database-0"
     fi
@@ -1564,7 +1564,7 @@ check_for_recommendations() {
     sleep 120
 
     # Check if Kruize is accessible
-    local kruize_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=kruize" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local kruize_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=optimization" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -z "$kruize_pod" ]; then
         echo_error "Kruize pod not found"
@@ -1576,7 +1576,7 @@ check_for_recommendations() {
 
     # Check Kruize database for experiments (listExperiments API has known issues)
     echo_info "Checking Kruize experiments via database..."
-    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=database" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=database" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -z "$db_pod" ]; then
         echo_error "Database pod not found"
