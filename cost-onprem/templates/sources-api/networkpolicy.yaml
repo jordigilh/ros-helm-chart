@@ -24,6 +24,10 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: housekeeper
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
               app.kubernetes.io/component: sources-listener
       ports:
         - protocol: TCP
