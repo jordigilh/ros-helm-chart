@@ -1,4 +1,8 @@
 {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
+{{- /* Define a common host for all API routes that go through the ingress service */}}
+{{- $clusterDomain := include "cost-onprem.platform.clusterDomain" . }}
+{{- $defaultApiHost := printf "%s-ingress-%s.%s" (include "cost-onprem.fullname" .) .Release.Namespace $clusterDomain }}
+{{- $apiHost := (index .Values.serviceRoute.hosts 0).host | default $defaultApiHost }}
 {{- /*
 ROUTES CONFIGURATION
 
@@ -66,11 +70,7 @@ metadata:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: ingress
 spec:
-  {{- with (index .Values.serviceRoute.hosts 0) }}
-  {{- if .host }}
-  host: {{ .host | quote }}
-  {{- end }}
-  {{- end }}
+  host: {{ $apiHost | quote }}
   path: /api/ingress
   to:
     kind: Service
@@ -96,11 +96,7 @@ metadata:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
 spec:
-  {{- with (index .Values.serviceRoute.hosts 0) }}
-  {{- if .host }}
-  host: {{ .host | quote }}
-  {{- end }}
-  {{- end }}
+  host: {{ $apiHost | quote }}
   path: /api/cost-management
   to:
     kind: Service
@@ -126,11 +122,7 @@ metadata:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: sources-api
 spec:
-  {{- with (index .Values.serviceRoute.hosts 0) }}
-  {{- if .host }}
-  host: {{ .host | quote }}
-  {{- end }}
-  {{- end }}
+  host: {{ $apiHost | quote }}
   path: /api/sources
   to:
     kind: Service
