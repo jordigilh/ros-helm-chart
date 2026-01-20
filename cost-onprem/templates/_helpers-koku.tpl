@@ -190,7 +190,11 @@ This helper is kept for backwards compatibility but should not be used
 MinIO ROS bucket name
 */}}
 {{- define "cost-onprem.koku.s3.rosBucket" -}}
+{{- if and .Values.odf .Values.odf.useExternalOBC -}}
+{{- .Values.odf.bucket | default "ros-data" -}}
+{{- else -}}
 {{- .Values.costManagement.api.reads.env.REQUESTED_ROS_BUCKET | default "ros-report" -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
@@ -348,7 +352,13 @@ Common environment variables for Koku API and Celery
 - name: S3_ENDPOINT
   value: {{ include "cost-onprem.storage.endpointWithProtocol" . | quote }}
 - name: REQUESTED_BUCKET
+  {{- if and .Values.odf .Values.odf.useExternalOBC }}
+  value: {{ .Values.odf.bucket | default "ros-data" | quote }}
+  {{- else }}
   value: {{ required "costManagement.storage.bucketName is required" .Values.costManagement.storage.bucketName | quote }}
+  {{- end }}
+- name: REQUESTED_ROS_BUCKET
+  value: {{ include "cost-onprem.koku.s3.rosBucket" . | quote }}
 {{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: AWS_CA_BUNDLE
   value: /etc/pki/ca-trust/combined/ca-bundle.crt
@@ -365,6 +375,13 @@ Common environment variables for Koku API and Celery
     secretKeyRef:
       name: {{ include "cost-onprem.storage.secretName" . }}
       key: secret-key
+# S3 Region for signature generation (required for S3v4 signatures)
+# NooBaa/MinIO don't use regions, but boto3 requires it for signature calculation
+- name: S3_REGION
+  value: "us-east-1"
+# AWS SDK configuration for S3v4 signatures
+- name: AWS_CONFIG_FILE
+  value: /etc/aws/config
 - name: DJANGO_SECRET_KEY
   valueFrom:
     secretKeyRef:
@@ -413,6 +430,9 @@ Includes tmp mount and combined CA bundle when on OpenShift
 {{- define "cost-onprem.koku.volumeMounts" -}}
 - name: tmp
   mountPath: /tmp
+- name: aws-config
+  mountPath: /etc/aws
+  readOnly: true
 {{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: combined-ca-bundle
   mountPath: /etc/pki/ca-trust/combined
@@ -427,6 +447,9 @@ Includes tmp volume and CA bundle volumes for OpenShift
 {{- define "cost-onprem.koku.volumes" -}}
 - name: tmp
   emptyDir: {}
+- name: aws-config
+  configMap:
+    name: {{ include "cost-onprem.fullname" . }}-aws-config
 {{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: ca-scripts
   configMap:
