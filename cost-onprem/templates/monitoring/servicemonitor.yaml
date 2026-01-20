@@ -7,7 +7,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: api
+    app.kubernetes.io/component: ros-api
 spec:
   namespaceSelector:
     matchNames:
@@ -15,7 +15,7 @@ spec:
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: api
+      app.kubernetes.io/component: ros-api
   endpoints:
     - port: metrics
       interval: {{ .Values.monitoring.scrapeInterval }}
@@ -29,7 +29,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: processor
+    app.kubernetes.io/component: ros-processor
 spec:
   namespaceSelector:
     matchNames:
@@ -37,7 +37,7 @@ spec:
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: processor
+      app.kubernetes.io/component: ros-processor
   endpoints:
     - port: metrics
       interval: {{ .Values.monitoring.scrapeInterval }}
@@ -73,7 +73,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: optimization
+    app.kubernetes.io/component: ros-optimization
 spec:
   namespaceSelector:
     matchNames:
@@ -81,7 +81,7 @@ spec:
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: optimization
+      app.kubernetes.io/component: ros-optimization
   endpoints:
     - port: http
       interval: {{ .Values.monitoring.scrapeInterval }}
@@ -95,7 +95,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: api
+    app.kubernetes.io/component: cost-management-api
 spec:
   namespaceSelector:
     matchNames:
@@ -103,7 +103,7 @@ spec:
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: api
+      app.kubernetes.io/component: cost-management-api
   endpoints:
     - port: http
       interval: {{ .Values.monitoring.scrapeInterval }}

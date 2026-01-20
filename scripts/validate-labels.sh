@@ -83,7 +83,7 @@ TOTAL_RESOURCES=$(grep -c "^# Source: cost-onprem/templates/" "$RENDERED_FILE" |
 # Exclude resources that don't need component labels
 MISSING_COMPONENT=$(awk '
   BEGIN { in_metadata = 0; in_spec = 0; resource_kind = ""; has_component = 0; current_file = "" }
-  
+
   /^# Source: cost-onprem\/templates\// {
     # Start of new resource
     if (current_file && resource_kind && !has_component) {
@@ -101,34 +101,34 @@ MISSING_COMPONENT=$(awk '
     in_spec = 0
     next
   }
-  
+
   /^kind:/ {
     resource_kind = $2
     next
   }
-  
+
   /^metadata:/ {
     in_metadata = 1
     in_spec = 0
     next
   }
-  
+
   /^spec:/ {
     in_metadata = 0
     in_spec = 1
     next
   }
-  
+
   # Check for component in metadata section (most common location)
   in_metadata && /app\.kubernetes\.io\/component:/ {
     has_component = 1
   }
-  
+
   # Also check in labels section anywhere in the resource
   /app\.kubernetes\.io\/component:/ {
     has_component = 1
   }
-  
+
   END {
     # Check last resource
     if (current_file && resource_kind && !has_component) {
@@ -157,9 +157,15 @@ echo "📋 Check 4: Checking component naming standards..."
 echo "   (Looking for non-standard component names)"
 
 # Check for old-style component names that should be updated per the spec
-# Note: We allow specific API names (cost-management-api, sources-api, ros-api) to prevent service selector collisions
+# Allowed component names:
+#   - cost-* prefix: cost-management-api, cost-processor, cost-scheduler, cost-worker
+#   - ros-* prefix: ros-api, ros-processor, ros-housekeeper, ros-recommendation-poller, ros-optimization, ros-optimization-maintenance, ros-database-maintenance
+#   - sources-* prefix: sources-api, sources-listener
+#   - Shared infrastructure: database, cache, storage, ingress, ui, networkpolicy
+# Flag deprecated names that should no longer be used
 OLD_COMPONENT_NAMES=$(grep -n "app.kubernetes.io/component:" "$RENDERED_FILE" | \
-  grep -E "(cost-management-celery|partition-cleaner)" || true)
+  grep -E "(cost-management-celery|partition-cleaner|\\boptimization\\b|\\bprocessor\\b|\\bmaintenance\\b)" | \
+  grep -Ev "(cost-processor|ros-processor|ros-optimization|ros-optimization-maintenance|ros-database-maintenance)" || true)
 
 if [[ -n "$OLD_COMPONENT_NAMES" ]]; then
   add_issue "ERROR" "Found non-standard component names (see label-standardization-task.md):"
@@ -207,7 +213,7 @@ if [[ ${#ISSUES[@]} -eq 0 ]]; then
 else
   ERROR_COUNT=$(printf '%s\n' "${ISSUES[@]}" | grep -c "^\[ERROR\]" || echo "0")
   WARNING_COUNT=$(printf '%s\n' "${ISSUES[@]}" | grep -c "^\[WARNING\]" || echo "0")
-  
+
   if [[ "$ERROR_COUNT" -eq 0 ]]; then
     # No errors, only warnings
     echo -e "${YELLOW}⚠️  Found ${WARNING_COUNT} warnings (no errors)${NC}"
@@ -230,14 +236,14 @@ else
     echo ""
     echo "Issues found:"
     echo "-------------"
-    
+
     # Show errors first
     for issue in "${ISSUES[@]}"; do
       if [[ "$issue" == \[ERROR\]* ]]; then
         echo -e "${RED}$issue${NC}"
       fi
     done
-    
+
     # Then warnings
     if [[ "$WARNING_COUNT" -gt 0 ]]; then
       echo ""
@@ -248,11 +254,11 @@ else
         fi
       done
     fi
-    
+
     echo ""
     echo "📚 See label-standardization-task.md for remediation guidance"
     echo ""
-    
+
     exit 1
   fi
 fi

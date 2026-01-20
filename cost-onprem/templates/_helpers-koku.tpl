@@ -222,10 +222,10 @@ Labels
 {{/*
 Common labels for Koku resources
 Note: We don't override part-of here to keep consistency with selectorLabels
+Note: We don't add component here - each resource defines its own specific component
 */}}
 {{- define "cost-onprem.koku.labels" -}}
 {{ include "cost-onprem.labels" . }}
-app.kubernetes.io/component: cost-management
 {{- end -}}
 
 {{/*
@@ -251,7 +251,7 @@ Selector labels for Celery Beat
 */}}
 {{- define "cost-onprem.koku.celery.beat.selectorLabels" -}}
 {{ include "cost-onprem.selectorLabels" . }}
-app.kubernetes.io/component: scheduler
+app.kubernetes.io/component: cost-scheduler
 cost-onprem.io/celery-type: beat
 {{- end -}}
 
@@ -263,7 +263,7 @@ Usage: {{ include "cost-onprem.koku.celery.worker.selectorLabels" (dict "context
 {{- $context := .context -}}
 {{- $type := .type -}}
 {{ include "cost-onprem.selectorLabels" $context }}
-app.kubernetes.io/component: worker
+app.kubernetes.io/component: cost-worker
 cost-onprem.io/celery-type: worker
 cost-onprem.io/worker-queue: {{ $type }}
 {{- end -}}

@@ -6,7 +6,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: maintenance
+    app.kubernetes.io/component: ros-optimization-maintenance
 spec:
   schedule: {{ .Values.kruize.partitions.deleteSchedule | quote }}
   concurrencyPolicy: Forbid
@@ -18,7 +18,7 @@ spec:
         metadata:
           labels:
             {{- include "cost-onprem.selectorLabels" . | nindent 12 }}
-            app.kubernetes.io/component: maintenance
+            app.kubernetes.io/component: ros-optimization-maintenance
         spec:
           restartPolicy: OnFailure
           {{- with .Values.global.imagePullSecrets }}

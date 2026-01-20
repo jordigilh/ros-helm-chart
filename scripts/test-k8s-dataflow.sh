@@ -682,7 +682,7 @@ $now_date,$now_date,$interval_start_3,$interval_end_3,test-container,test-pod-12
 
         # Check processor logs for successful processing (not validation errors)
         echo_info "Checking processor logs for message processing:"
-        local recent_logs=$(kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/component=processor --tail=20 --since=60s)
+        local recent_logs=$(kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/component=ros-processor --tail=20 --since=60s)
 
         if echo "$recent_logs" | grep -q "request_id.*$request_id"; then
             echo_success "✓ Message with request ID $request_id found in processor logs"
@@ -724,7 +724,7 @@ verify_processing() {
 
     # Check processor logs
     echo_info "Checking processor logs..."
-    local processor_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=processor" -o jsonpath='{.items[0].metadata.name}')
+    local processor_pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=ros-processor" -o jsonpath='{.items[0].metadata.name}')
 
     if [ -n "$processor_pod" ]; then
         echo_info "Recent processor logs:"
@@ -921,7 +921,7 @@ verify_recommendations() {
                         echo_info "Recommendation details available:"
                         local rec_data=$(jq -r '.recommendations.data // empty' /tmp/recommendation_detail.json 2>/dev/null)
                         if [ -n "$rec_data" ] && [ "$rec_data" != "null" ] && [ "$rec_data" != "" ]; then
-                            jq -r '.recommendations.data | 
+                            jq -r '.recommendations.data |
                                 "  Current CPU request: \(.requests.cpu.amount // "N/A")\n  Recommended CPU request: \(.requests.cpu.recommendation.amount // "N/A")\n  Current Memory request: \(.requests.memory.amount // "N/A")\n  Recommended Memory request: \(.requests.memory.recommendation.amount // "N/A")"' \
                                 /tmp/recommendation_detail.json 2>/dev/null || echo "  Unable to parse recommendation details"
                         else
@@ -938,7 +938,7 @@ verify_recommendations() {
                 echo_info "This may indicate:"
                 echo_info "  - Kruize is still processing the recent data (may need more time)"
                 echo_info "  - Fresh timestamps generated valid data but recommendations aren't ready yet"
-                echo_info "  - Check Kruize logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=optimization --tail=50"
+                echo_info "  - Check Kruize logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=ros-optimization --tail=50"
                 echo_info "  - Check processor logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=ross-processor --tail=20"
             fi
 

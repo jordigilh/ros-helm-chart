@@ -1223,7 +1223,7 @@ verify_upload_processing() {
     # Step 7d: Check ROS Processor for downstream processing
     echo_info ""
     echo_info "--- Step 7d: ROS Processor Verification ---"
-    local processor_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=processor" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local processor_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=ros-processor" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -n "$processor_pod" ]; then
         echo_info "Found ROS processor pod: $processor_pod"
@@ -1564,7 +1564,7 @@ check_for_recommendations() {
     sleep 120
 
     # Check if Kruize is accessible
-    local kruize_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=optimization" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local kruize_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=ros-optimization" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -z "$kruize_pod" ]; then
         echo_error "Kruize pod not found"

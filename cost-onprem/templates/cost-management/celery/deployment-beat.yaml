@@ -6,7 +6,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.koku.labels" . | nindent 4 }}
-    app.kubernetes.io/component: scheduler
+    app.kubernetes.io/component: cost-scheduler
     cost-onprem.io/celery-type: beat
 spec:
   replicas: {{ .Values.costManagement.celery.beat.replicas }}
@@ -17,7 +17,7 @@ spec:
     metadata:
       labels:
         {{- include "cost-onprem.koku.labels" . | nindent 8 }}
-        app.kubernetes.io/component: scheduler
+        app.kubernetes.io/component: cost-scheduler
         cost-onprem.io/celery-type: beat
     spec:
       serviceAccountName: {{ include "cost-onprem.koku.serviceAccountName" . }}

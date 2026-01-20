@@ -6,19 +6,19 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.koku.labels" . | nindent 4 }}
-    app.kubernetes.io/component: processor
+    app.kubernetes.io/component: cost-processor
 spec:
   replicas: {{ .Values.costManagement.masu.replicas }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "cost-onprem.name" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
-      app.kubernetes.io/component: processor
+      app.kubernetes.io/component: cost-processor
   template:
     metadata:
       labels:
         {{- include "cost-onprem.koku.labels" . | nindent 8 }}
-        app.kubernetes.io/component: processor
+        app.kubernetes.io/component: cost-processor
     spec:
       serviceAccountName: {{ .Values.costManagement.serviceAccount.name }}
       initContainers:

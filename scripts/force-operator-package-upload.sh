@@ -193,7 +193,7 @@ if [[ "$UPLOAD_STATUS" == *"202"* ]]; then
   echo ""
   echo "Next steps:"
   echo "  1. Check ingress logs: kubectl logs -n cost-onprem -l app.kubernetes.io/component=ingress -c ingress --tail=50"
-  echo "  2. Check processor logs: kubectl logs -n cost-onprem -l app.kubernetes.io/component=processor --tail=50"
+  echo "  2. Check processor logs: kubectl logs -n cost-onprem -l app.kubernetes.io/component=ros-processor --tail=50"
   echo "  3. Check Kruize logs: kubectl logs -n cost-onprem -l app.kubernetes.io/name=kruize --tail=50"
 else
   echo "⚠️  Upload may have failed or is still in progress."
