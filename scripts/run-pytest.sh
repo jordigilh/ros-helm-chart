@@ -11,15 +11,23 @@
 # Usage:
 #   ./run-pytest.sh [OPTIONS] [PYTEST_ARGS...]
 #
-# Options:
-#   --smoke           Run only smoke tests
-#   --auth            Run only authentication tests
-#   --upload          Run only upload tests
-#   --e2e             Run end-to-end tests
-#   --all             Run all tests (default)
-#   --setup-only      Only setup the environment, don't run tests
-#   --no-venv         Skip virtual environment (use system Python)
-#   --help            Show this help message
+# Suite Options (run specific test suites):
+#   --helm              Run Helm chart validation tests
+#   --auth              Run JWT authentication tests
+#   --infrastructure    Run infrastructure health tests (DB, S3, Kafka)
+#   --cost-management   Run Cost Management (Koku) pipeline tests
+#   --ros               Run ROS/Kruize recommendation tests
+#   --e2e               Run end-to-end tests
+#
+# Filter Options:
+#   --smoke             Run only smoke tests (quick validation)
+#   --slow              Include slow tests (processing, recommendations)
+#   --all               Run all tests (default)
+#
+# Setup Options:
+#   --setup-only        Only setup the environment, don't run tests
+#   --no-venv           Skip virtual environment (use system Python)
+#   --help              Show this help message
 #
 # Environment Variables:
 #   NAMESPACE              Target namespace (default: cost-onprem)
@@ -28,10 +36,14 @@
 #   PYTHON                 Python interpreter (default: python3)
 #
 # Examples:
-#   ./run-pytest.sh                    # Run all tests
-#   ./run-pytest.sh --smoke            # Run smoke tests only
-#   ./run-pytest.sh --auth --upload    # Run auth and upload tests
-#   ./run-pytest.sh -k "test_jwt"      # Run tests matching pattern
+#   ./run-pytest.sh                         # Run all tests
+#   ./run-pytest.sh --smoke                 # Run smoke tests only
+#   ./run-pytest.sh --helm                  # Run Helm suite only
+#   ./run-pytest.sh --auth --ros            # Run auth and ROS suites
+#   ./run-pytest.sh --e2e --smoke           # Run E2E smoke tests
+#   ./run-pytest.sh -k "test_jwt"           # Run tests matching pattern
+#   ./run-pytest.sh suites/helm/            # Run specific suite directory
+#   ./run-pytest.sh -m "smoke and auth"     # Custom marker expression
 
 set -e
 
@@ -72,6 +84,18 @@ log_error() {
 
 show_help() {
     sed -n '/^# Usage:/,/^set -e$/p' "$0" | grep '^#' | sed 's/^# \?//'
+    echo ""
+    echo "Available Test Suites:"
+    echo "  helm              Helm chart lint, template, deployment health"
+    echo "  auth              Keycloak, JWT ingress/backend authentication"
+    echo "  infrastructure    Database, S3, Kafka health checks"
+    echo "  cost-management   Sources API, upload, Koku processing"
+    echo "  ros               Kruize, recommendations API"
+    echo "  e2e               Complete end-to-end data flow"
+    echo ""
+    echo "Markers:"
+    echo "  smoke             Quick validation tests (~1 min)"
+    echo "  slow              Long-running tests (processing, recommendations)"
     exit 0
 }
 
@@ -168,8 +192,9 @@ main() {
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --smoke)
-                pytest_markers+=("smoke")
+            # Suite options
+            --helm)
+                pytest_markers+=("helm")
                 run_all=false
                 shift
                 ;;
@@ -178,13 +203,18 @@ main() {
                 run_all=false
                 shift
                 ;;
-            --upload)
-                pytest_markers+=("upload")
+            --infrastructure)
+                pytest_markers+=("infrastructure")
                 run_all=false
                 shift
                 ;;
-            --recommendations)
-                pytest_markers+=("recommendations")
+            --cost-management)
+                pytest_markers+=("cost_management")
+                run_all=false
+                shift
+                ;;
+            --ros)
+                pytest_markers+=("ros")
                 run_all=false
                 shift
                 ;;
@@ -193,10 +223,22 @@ main() {
                 run_all=false
                 shift
                 ;;
+            # Filter options
+            --smoke)
+                pytest_markers+=("smoke")
+                run_all=false
+                shift
+                ;;
+            --slow)
+                pytest_markers+=("slow")
+                run_all=false
+                shift
+                ;;
             --all)
                 run_all=true
                 shift
                 ;;
+            # Setup options
             --setup-only)
                 SETUP_ONLY=true
                 shift
@@ -246,7 +288,9 @@ main() {
     fi
 
     # Add any extra arguments
-    pytest_args+=("${pytest_extra_args[@]}")
+    if [[ ${#pytest_extra_args[@]} -gt 0 ]]; then
+        pytest_args+=("${pytest_extra_args[@]}")
+    fi
 
     # Run tests
     local exit_code=0
@@ -265,4 +309,3 @@ main() {
 }
 
 main "$@"
-

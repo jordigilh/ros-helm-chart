@@ -1,7 +1,13 @@
-# Test dependencies for cost-onprem-chart
-pytest>=8.0.0
-pytest-timeout>=2.3.0
-requests>=2.31.0
-PyYAML>=6.0
-kubernetes>=29.0.0
+# Pytest and plugins
+pytest>=7.0.0
+pytest-timeout>=2.0.0
 
+# HTTP requests
+requests>=2.28.0
+urllib3>=1.26.0
+
+# YAML parsing (for Helm chart validation)
+PyYAML>=6.0
+
+# Kubernetes client (optional, for advanced k8s operations)
+kubernetes>=25.0.0

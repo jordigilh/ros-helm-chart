@@ -1,24 +1,30 @@
 """
 Pytest fixtures and configuration for cost-onprem-chart tests.
 
-These fixtures provide shared resources for testing JWT authentication,
-data uploads, and recommendation verification on OpenShift.
+This is the root conftest.py that provides shared fixtures used across all test suites.
+Suite-specific fixtures are defined in each suite's conftest.py.
 """
 
 import os
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import pytest
 import requests
 import urllib3
 
-from utils import get_route_url, get_secret_value
+from utils import get_route_url, get_secret_value, run_oc_command
 
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+# =============================================================================
+# Data Classes
+# =============================================================================
 
 
 @dataclass
@@ -29,6 +35,7 @@ class ClusterConfig:
     helm_release_name: str
     keycloak_namespace: str
     platform: str = "openshift"
+    project_root: str = field(default_factory=lambda: os.path.dirname(os.path.dirname(__file__)))
 
 
 @dataclass
@@ -65,7 +72,31 @@ class JWTToken:
         return {"Authorization": f"{self.token_type} {self.access_token}"}
 
 
-# --- Fixtures ---
+@dataclass
+class DatabaseConfig:
+    """Database connection configuration."""
+
+    pod_name: str
+    namespace: str
+    database: str = "koku"
+    user: str = "koku"
+    password: Optional[str] = None
+
+
+@dataclass
+class S3Config:
+    """S3/Object storage configuration."""
+
+    endpoint: str
+    access_key: str
+    secret_key: str
+    bucket: str = "koku-bucket"
+    verify_ssl: bool = False
+
+
+# =============================================================================
+# Session-Scoped Fixtures (shared across all tests)
+# =============================================================================
 
 
 @pytest.fixture(scope="session")
@@ -150,12 +181,21 @@ def jwt_token(keycloak_config: KeycloakConfig) -> JWTToken:
 
 @pytest.fixture(scope="session")
 def ingress_url(cluster_config: ClusterConfig) -> str:
-    """Get the ingress service URL."""
+    """Get the ingress service URL including the route path."""
     route_name = f"{cluster_config.helm_release_name}-ingress"
     url = get_route_url(cluster_config.namespace, route_name)
     if not url:
         pytest.skip(f"Ingress route '{route_name}' not found")
-    return url
+    
+    # Get the route path (e.g., /api/ingress)
+    result = run_oc_command([
+        "get", "route", route_name, "-n", cluster_config.namespace,
+        "-o", "jsonpath={.spec.path}"
+    ], check=False)
+    route_path = result.stdout.strip().rstrip("/")
+    
+    # Return URL with path
+    return f"{url}{route_path}" if route_path else url
 
 
 @pytest.fixture(scope="session")
@@ -169,6 +209,147 @@ def backend_api_url(cluster_config: ClusterConfig) -> str:
             return url
 
     pytest.skip("Backend API route not found")
+
+
+@pytest.fixture(scope="session")
+def database_config(cluster_config: ClusterConfig) -> DatabaseConfig:
+    """Get database configuration for Koku."""
+    # Find database pod
+    result = run_oc_command([
+        "get", "pods", "-n", cluster_config.namespace,
+        "-l", "app.kubernetes.io/name=database",
+        "-o", "jsonpath={.items[0].metadata.name}"
+    ], check=False)
+    
+    db_pod = result.stdout.strip()
+    if not db_pod:
+        # Try fallback pod name
+        db_pod = f"{cluster_config.helm_release_name}-database-0"
+    
+    # Get credentials from secret
+    secret_name = f"{cluster_config.helm_release_name}-db-credentials"
+    db_user = get_secret_value(cluster_config.namespace, secret_name, "koku-user")
+    db_password = get_secret_value(cluster_config.namespace, secret_name, "koku-password")
+    
+    if not db_user:
+        db_user = "koku"
+    
+    return DatabaseConfig(
+        pod_name=db_pod,
+        namespace=cluster_config.namespace,
+        database="koku",
+        user=db_user,
+        password=db_password,
+    )
+
+
+@pytest.fixture(scope="session")
+def s3_config(cluster_config: ClusterConfig) -> Optional[S3Config]:
+    """Get S3/Object storage configuration."""
+    # Try to get S3 route (OpenShift ODF)
+    s3_endpoint = None
+    
+    # Try external route first
+    result = run_oc_command([
+        "get", "route", "-n", "openshift-storage", "s3",
+        "-o", "jsonpath={.spec.host}"
+    ], check=False)
+    
+    if result.stdout.strip():
+        s3_endpoint = f"https://{result.stdout.strip()}"
+    else:
+        # Fallback to internal service
+        s3_endpoint = "https://s3.openshift-storage.svc:443"
+    
+    # Get credentials - try multiple secret name patterns
+    # The helm chart uses 'cost-onprem-storage-credentials' (release name prefix)
+    # but the namespace might be different (e.g., cost-onprem-ocp)
+    storage_secret_patterns = [
+        f"{cluster_config.helm_release_name}-storage-credentials",  # Helm release name
+        f"{cluster_config.namespace}-storage-credentials",  # Namespace-based
+        "cost-onprem-storage-credentials",  # Default helm release name
+        "koku-storage-credentials",  # Legacy name
+        f"{cluster_config.helm_release_name}-odf-credentials",  # ODF credentials
+    ]
+    
+    access_key = None
+    secret_key = None
+    
+    for secret_name in storage_secret_patterns:
+        access_key = get_secret_value(cluster_config.namespace, secret_name, "access-key")
+        secret_key = get_secret_value(cluster_config.namespace, secret_name, "secret-key")
+        if access_key and secret_key:
+            break
+    
+    if not access_key or not secret_key:
+        return None
+    
+    return S3Config(
+        endpoint=s3_endpoint,
+        access_key=access_key,
+        secret_key=secret_key,
+    )
+
+
+@pytest.fixture(scope="session")
+def org_id(cluster_config: ClusterConfig, keycloak_config: KeycloakConfig) -> str:
+    """Get org_id from Keycloak test user or use default."""
+    import base64
+    
+    try:
+        # Get admin credentials
+        admin_pass_result = run_oc_command([
+            "get", "secret", "-n", cluster_config.keycloak_namespace,
+            "keycloak-initial-admin", "-o", "jsonpath={.data.password}"
+        ], check=False)
+        
+        if not admin_pass_result.stdout.strip():
+            return "org1234567"
+        
+        admin_password = base64.b64decode(admin_pass_result.stdout.strip()).decode("utf-8")
+        
+        # Get admin token
+        token_response = requests.post(
+            f"{keycloak_config.url}/realms/master/protocol/openid-connect/token",
+            data={
+                "client_id": "admin-cli",
+                "grant_type": "password",
+                "username": "admin",
+                "password": admin_password,
+            },
+            verify=False,
+            timeout=30,
+        )
+        
+        if token_response.status_code != 200:
+            return "org1234567"
+        
+        admin_token = token_response.json().get("access_token")
+        
+        # Get test user's org_id
+        users_response = requests.get(
+            f"{keycloak_config.url}/admin/realms/kubernetes/users",
+            params={"username": "test", "exact": "true"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+            verify=False,
+            timeout=30,
+        )
+        
+        if users_response.status_code == 200:
+            users = users_response.json()
+            if users:
+                org_id_value = users[0].get("attributes", {}).get("org_id", [None])[0]
+                if org_id_value:
+                    return org_id_value
+        
+        return "org1234567"
+    except Exception:
+        return "org1234567"
+
+
+# =============================================================================
+# Function-Scoped Fixtures (fresh for each test)
+# =============================================================================
 
 
 @pytest.fixture
@@ -235,4 +416,3 @@ def http_session() -> requests.Session:
     session = requests.Session()
     session.verify = False
     return session
-

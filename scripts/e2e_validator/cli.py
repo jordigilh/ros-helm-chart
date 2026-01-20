@@ -445,15 +445,25 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
         else:
             from .clients.s3 import S3Client
 
-            # Get S3 credentials (try helm chart secret name first, then fallback)
-            storage_secret_name = f'{namespace}-storage-credentials'
-            s3_access_key = k8s.get_secret(storage_secret_name, 'access-key')
-            s3_secret_key = k8s.get_secret(storage_secret_name, 'secret-key')
-
-            # Fallback to old secret name for backwards compatibility
-            if not s3_access_key or not s3_secret_key:
-                s3_access_key = k8s.get_secret('koku-storage-credentials', 'access-key')
-                s3_secret_key = k8s.get_secret('koku-storage-credentials', 'secret-key')
+            # Get S3 credentials - try multiple secret name patterns
+            # The helm chart uses 'cost-onprem-storage-credentials' (release name prefix)
+            # but the namespace might be different (e.g., cost-onprem-ocp)
+            storage_secret_patterns = [
+                'cost-onprem-storage-credentials',  # Default helm release name
+                f'{namespace}-storage-credentials',  # Namespace-based
+                'koku-storage-credentials',  # Legacy name
+                'cost-onprem-odf-credentials',  # ODF credentials
+            ]
+            
+            s3_access_key = None
+            s3_secret_key = None
+            
+            for secret_name in storage_secret_patterns:
+                s3_access_key = k8s.get_secret(secret_name, 'access-key')
+                s3_secret_key = k8s.get_secret(secret_name, 'secret-key')
+                if s3_access_key and s3_secret_key:
+                    print(f"  ✓ Found S3 credentials in secret: {secret_name}")
+                    break
 
             if not s3_access_key or not s3_secret_key:
                 print("\n❌ Failed to get S3 credentials")

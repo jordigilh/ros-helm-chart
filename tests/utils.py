@@ -1,18 +1,64 @@
 """
 Utility functions for cost-onprem-chart tests.
 
-These are helper functions that can be imported by test modules.
+These are helper functions that can be imported by test modules across all suites.
 """
 
 import base64
+import json
 import subprocess
-from typing import Optional
+import tarfile
+import tempfile
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
 
 
-def run_oc_command(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
-    """Run an oc command and return the result."""
+# =============================================================================
+# Kubernetes/OpenShift Commands
+# =============================================================================
+
+
+def run_oc_command(
+    args: list[str],
+    check: bool = True,
+    timeout: int = 60,
+) -> subprocess.CompletedProcess:
+    """Run an oc command and return the result.
+    
+    Args:
+        args: Command arguments (without 'oc' prefix)
+        check: Raise exception on non-zero exit code
+        timeout: Command timeout in seconds
+    
+    Returns:
+        CompletedProcess with stdout, stderr, returncode
+    """
     cmd = ["oc"] + args
-    return subprocess.run(cmd, capture_output=True, text=True, check=check)
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=check,
+        timeout=timeout,
+    )
+
+
+def run_kubectl_command(
+    args: list[str],
+    check: bool = True,
+    timeout: int = 60,
+) -> subprocess.CompletedProcess:
+    """Run a kubectl command and return the result."""
+    cmd = ["kubectl"] + args
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=check,
+        timeout=timeout,
+    )
 
 
 def get_route_url(namespace: str, route_name: str) -> Optional[str]:
@@ -67,3 +113,233 @@ def get_secret_value(namespace: str, secret_name: str, key: str) -> Optional[str
     except (subprocess.CalledProcessError, ValueError):
         return None
 
+
+def get_pod_by_label(namespace: str, label: str) -> Optional[str]:
+    """Get the first pod name matching a label selector."""
+    try:
+        result = run_oc_command([
+            "get", "pods", "-n", namespace,
+            "-l", label,
+            "-o", "jsonpath={.items[0].metadata.name}"
+        ], check=False)
+        pod_name = result.stdout.strip()
+        return pod_name if pod_name else None
+    except subprocess.CalledProcessError:
+        return None
+
+
+def exec_in_pod(
+    namespace: str,
+    pod_name: str,
+    command: list[str],
+    container: Optional[str] = None,
+    timeout: int = 60,
+) -> Optional[str]:
+    """Execute a command in a pod and return stdout."""
+    try:
+        args = ["exec", "-n", namespace, pod_name]
+        if container:
+            args.extend(["-c", container])
+        args.append("--")
+        args.extend(command)
+        
+        result = run_oc_command(args, check=False, timeout=timeout)
+        return result.stdout if result.returncode == 0 else None
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None
+
+
+# =============================================================================
+# Database Utilities
+# =============================================================================
+
+
+def execute_db_query(
+    namespace: str,
+    pod_name: str,
+    database: str,
+    user: str,
+    query: str,
+    password: Optional[str] = None,
+) -> Optional[list[tuple]]:
+    """Execute a SQL query via kubectl exec and return results."""
+    try:
+        env_prefix = []
+        if password:
+            env_prefix = ["env", f"PGPASSWORD={password}"]
+        
+        cmd = env_prefix + [
+            "psql", "-U", user, "-d", database,
+            "-t", "-A", "-F", "|",
+            "-c", query
+        ]
+        
+        result = exec_in_pod(namespace, pod_name, cmd, timeout=120)
+        if not result:
+            return None
+        
+        # Parse pipe-delimited output
+        rows = []
+        for line in result.strip().split("\n"):
+            if line:
+                rows.append(tuple(line.split("|")))
+        return rows
+    except Exception:
+        return None
+
+
+# =============================================================================
+# Upload Package Creation
+# =============================================================================
+
+
+def create_upload_package(csv_data: str, cluster_id: str) -> str:
+    """Create a tar.gz upload package with CSV and manifest.
+    
+    Args:
+        csv_data: CSV content as string
+        cluster_id: Unique cluster identifier
+    
+    Returns:
+        Path to the created tar.gz file
+    """
+    temp_dir = tempfile.mkdtemp()
+    csv_file = Path(temp_dir) / "openshift_usage_report.csv"
+    manifest_file = Path(temp_dir) / "manifest.json"
+    tar_file = Path(temp_dir) / "cost-mgmt.tar.gz"
+
+    # Write CSV
+    csv_file.write_text(csv_data)
+
+    # Write manifest
+    manifest = {
+        "uuid": str(uuid.uuid4()),
+        "cluster_id": cluster_id,
+        "cluster_alias": "test-cluster",
+        "date": datetime.now(timezone.utc).isoformat(),
+        "files": ["openshift_usage_report.csv"],
+        "resource_optimization_files": ["openshift_usage_report.csv"],
+        "certified": True,
+        "operator_version": "1.0.0",
+        "daily_reports": False,
+    }
+    manifest_file.write_text(json.dumps(manifest, indent=2))
+
+    # Create tar.gz
+    with tarfile.open(tar_file, "w:gz") as tar:
+        tar.add(csv_file, arcname="openshift_usage_report.csv")
+        tar.add(manifest_file, arcname="manifest.json")
+
+    return str(tar_file)
+
+
+# =============================================================================
+# Helm Utilities
+# =============================================================================
+
+
+def run_helm_command(
+    args: list[str],
+    check: bool = True,
+    timeout: int = 120,
+) -> subprocess.CompletedProcess:
+    """Run a helm command and return the result."""
+    cmd = ["helm"] + args
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=check,
+        timeout=timeout,
+    )
+
+
+def helm_lint(chart_path: str) -> tuple[bool, str]:
+    """Run helm lint on a chart.
+    
+    Returns:
+        Tuple of (success, output)
+    """
+    try:
+        result = run_helm_command(["lint", chart_path], check=False)
+        success = result.returncode == 0
+        output = result.stdout + result.stderr
+        return success, output
+    except subprocess.TimeoutExpired:
+        return False, "Helm lint timed out"
+
+
+def helm_template(
+    chart_path: str,
+    release_name: str = "test-release",
+    values_file: Optional[str] = None,
+    set_values: Optional[dict] = None,
+) -> tuple[bool, str]:
+    """Run helm template on a chart.
+    
+    Returns:
+        Tuple of (success, rendered_yaml)
+    """
+    try:
+        args = ["template", release_name, chart_path]
+        if values_file:
+            args.extend(["-f", values_file])
+        if set_values:
+            for key, value in set_values.items():
+                args.extend(["--set", f"{key}={value}"])
+        
+        result = run_helm_command(args, check=False)
+        success = result.returncode == 0
+        return success, result.stdout if success else result.stderr
+    except subprocess.TimeoutExpired:
+        return False, "Helm template timed out"
+
+
+# =============================================================================
+# Validation Helpers
+# =============================================================================
+
+
+def check_pod_exists(namespace: str, label: str) -> bool:
+    """Check if a pod with the given label exists."""
+    return get_pod_by_label(namespace, label) is not None
+
+
+def check_pod_ready(namespace: str, label: str) -> bool:
+    """Check if a pod with the given label is ready."""
+    try:
+        result = run_oc_command([
+            "get", "pods", "-n", namespace,
+            "-l", label,
+            "-o", "jsonpath={.items[0].status.conditions[?(@.type=='Ready')].status}"
+        ], check=False)
+        return result.stdout.strip() == "True"
+    except subprocess.CalledProcessError:
+        return False
+
+
+def wait_for_condition(
+    check_func,
+    timeout: int = 300,
+    interval: int = 10,
+    description: str = "condition",
+) -> bool:
+    """Wait for a condition to become true.
+    
+    Args:
+        check_func: Callable that returns True when condition is met
+        timeout: Maximum wait time in seconds
+        interval: Check interval in seconds
+        description: Description for logging
+    
+    Returns:
+        True if condition was met, False if timeout
+    """
+    import time
+    
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if check_func():
+            return True
+        time.sleep(interval)
+    return False
