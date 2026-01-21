@@ -472,7 +472,7 @@ setup_tls() {
     log_success "TLS certificate setup completed"
 }
 
-test_jwt_flow() {
+run_tests() {
     if [[ "${SKIP_TEST}" == "true" ]]; then
         log_warning "Skipping JWT authentication test (--skip-test)"
         return 0
@@ -507,21 +507,22 @@ test_jwt_flow() {
         exit 1
     fi
     
-    log_info "Running pytest test suite..."
+    log_info "Running pytest test suite (with extended tests)..."
     
     if [[ "${DRY_RUN}" == "true" ]]; then
-        log_info "DRY RUN: Would execute: ${pytest_script}"
+        log_info "DRY RUN: Would execute: ${pytest_script} --extended"
         return 0
     fi
     
+    # TODO: Remove --extended flag after validating E2E tests in CI
     if [[ "${VERBOSE}" == "true" ]]; then
-        if ! "${pytest_script}" -v; then
+        if ! "${pytest_script}" --extended -v; then
             log_error "Pytest test suite failed"
             log_info "JUnit report available at: tests/reports/junit.xml"
             exit 1
         fi
     else
-        if ! "${pytest_script}"; then
+        if ! "${pytest_script}" --extended; then
             log_error "Pytest test suite failed"
             log_info "JUnit report available at: tests/reports/junit.xml"
             exit 1
@@ -662,7 +663,7 @@ main() {
 
     deploy_helm_chart
     setup_tls
-    test_jwt_flow
+    run_tests
 
     # Print completion message
     if [[ "${DRY_RUN}" == "false" ]]; then
