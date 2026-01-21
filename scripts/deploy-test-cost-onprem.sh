@@ -507,22 +507,21 @@ run_tests() {
         exit 1
     fi
     
-    log_info "Running pytest test suite (with extended tests)..."
+    log_info "Running pytest test suite..."
     
     if [[ "${DRY_RUN}" == "true" ]]; then
-        log_info "DRY RUN: Would execute: ${pytest_script} --extended"
+        log_info "DRY RUN: Would execute: ${pytest_script}"
         return 0
     fi
     
-    # TODO: Remove --extended flag after validating E2E tests in CI
     if [[ "${VERBOSE}" == "true" ]]; then
-        if ! "${pytest_script}" --extended -v; then
+        if ! "${pytest_script}" -v; then
             log_error "Pytest test suite failed"
             log_info "JUnit report available at: tests/reports/junit.xml"
             exit 1
         fi
     else
-        if ! "${pytest_script}" --extended; then
+        if ! "${pytest_script}"; then
             log_error "Pytest test suite failed"
             log_info "JUnit report available at: tests/reports/junit.xml"
             exit 1
