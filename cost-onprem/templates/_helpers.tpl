@@ -147,23 +147,10 @@ Sources credentials are in the postgres-credentials secret from the infra chart.
 */}}
 
 {{/*
-Detect if running on OpenShift by checking for OpenShift-specific API resources
-Returns true if OpenShift is detected, false otherwise
+Returns true - this chart is OpenShift-only
 */}}
 {{- define "cost-onprem.platform.isOpenShift" -}}
-  {{- if .Values.global.storageType -}}
-    {{- if eq .Values.global.storageType "odf" -}}
 true
-    {{- else -}}
-false
-    {{- end -}}
-  {{- else -}}
-    {{- if .Capabilities.APIVersions.Has "route.openshift.io/v1" -}}
-true
-    {{- else -}}
-false
-    {{- end -}}
-  {{- end -}}
 {{- end }}
 
 {{/*
@@ -295,34 +282,23 @@ Usage: {{ include "cost-onprem.platform.clusterName" . }}
 {{- end }}
 
 {{/*
-Generate external URL for a service based on deployment platform (OpenShift Routes vs Kubernetes Ingress)
+Generate external URL for a service using OpenShift Routes
 Usage: {{ include "cost-onprem.externalUrl" (list . "service-name" "/path") }}
 */}}
 {{- define "cost-onprem.externalUrl" -}}
   {{- $root := index . 0 -}}
   {{- $service := index . 1 -}}
   {{- $path := index . 2 -}}
-  {{- if eq (include "cost-onprem.platform.isOpenShift" $root) "true" -}}
-    {{- /* OpenShift: Use Route configuration */ -}}
-    {{- $scheme := "http" -}}
-    {{- if $root.Values.serviceRoute.tls.termination -}}
-      {{- $scheme = "https" -}}
-    {{- end -}}
-    {{- with (index $root.Values.serviceRoute.hosts 0) -}}
-      {{- if .host -}}
+  {{- /* OpenShift: Use Route configuration */ -}}
+  {{- $scheme := "http" -}}
+  {{- if $root.Values.serviceRoute.tls.termination -}}
+    {{- $scheme = "https" -}}
+  {{- end -}}
+  {{- with (index $root.Values.serviceRoute.hosts 0) -}}
+    {{- if .host -}}
 {{- printf "%s://%s%s" $scheme .host $path -}}
-      {{- else -}}
+    {{- else -}}
 {{- printf "%s://%s-%s.%s%s" $scheme $service $root.Release.Namespace (include "cost-onprem.platform.clusterDomain" $root) $path -}}
-      {{- end -}}
-    {{- end -}}
-  {{- else -}}
-    {{- /* Kubernetes: Use Ingress configuration */ -}}
-    {{- $scheme := "http" -}}
-    {{- if $root.Values.serviceIngress.tls -}}
-      {{- $scheme = "https" -}}
-    {{- end -}}
-    {{- with (index $root.Values.serviceIngress.hosts 0) -}}
-{{- printf "%s://%s%s" $scheme .host $path -}}
     {{- end -}}
   {{- end -}}
 {{- end }}
@@ -391,15 +367,10 @@ Returns the storage class name if defined, empty string otherwise
 {{- end }}
 
 {{/*
-Get platform-specific default storage class
-Returns appropriate default storage class based on platform
+Get default storage class for OpenShift ODF
 */}}
 {{- define "cost-onprem.storage.getPlatformDefault" -}}
-  {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" -}}
 ocs-storagecluster-ceph-rbd
-  {{- else -}}
-standard
-  {{- end -}}
 {{- end }}
 
 {{/*
@@ -631,37 +602,29 @@ valkey-cli
 {{- end }}
 
 {{/*
-Storage service name (minio or odf based on platform)
+Storage service name (always ODF for OpenShift)
 */}}
 {{- define "cost-onprem.storage.name" -}}
-{{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" -}}
 odf
-{{- else -}}
-minio
-{{- end -}}
 {{- end }}
 
 {{/*
-Storage configuration (returns the appropriate config object)
+Storage configuration (returns ODF config)
 */}}
 {{- define "cost-onprem.storage.config" -}}
-{{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" -}}
 {{- .Values.odf | toYaml -}}
-{{- else -}}
-{{- .Values.minio | toYaml -}}
-{{- end -}}
 {{- end }}
 
 {{/*
-Storage endpoint (MinIO service or ODF endpoint)
-Supports: ODF (production) and MinIO standalone (CI)
+Storage endpoint (ODF endpoint)
+Requires: ODF (OpenShift Data Foundation) with NooBaa
 */}}
 {{- define "cost-onprem.storage.endpoint" -}}
 {{- /* 1. Check for explicit override */ -}}
 {{- if and .Values.odf .Values.odf.endpoint -}}
 {{- .Values.odf.endpoint -}}
 {{- else -}}
-  {{- /* 2. Detect ODF vs MinIO by checking NooBaa CRD */ -}}
+  {{- /* 2. Discover ODF S3 endpoint from NooBaa CRD */ -}}
   {{- $noobaaList := lookup "noobaa.io/v1alpha1" "NooBaa" "" "" -}}
   {{- if and $noobaaList $noobaaList.items (gt (len $noobaaList.items) 0) -}}
     {{- /* ODF detected - discover S3 endpoint from NooBaa CRD */ -}}
@@ -686,33 +649,20 @@ Supports: ODF (production) and MinIO standalone (CI)
       {{- fail "ODF detected but unable to discover S3 endpoint from NooBaa CRD. Please specify 'odf.endpoint' in values.yaml" -}}
     {{- end -}}
   {{- else -}}
-    {{- /* MinIO standalone (CI pattern) - check for proxy service */ -}}
-    {{- $minioProxy := lookup "v1" "Service" .Release.Namespace "minio-storage" -}}
-    {{- if $minioProxy -}}
-      {{- /* CI pattern: minio-storage proxy service in same namespace */ -}}
-minio-storage
-    {{- else -}}
-      {{- /* Fallback: MinIO in minio namespace */ -}}
-minio.minio.svc
-    {{- end -}}
+    {{- /* ODF not detected - fail with helpful error */ -}}
+    {{- fail "ODF (OpenShift Data Foundation) not detected. This chart requires ODF with NooBaa for S3 storage. Please either install ODF or specify 'odf.endpoint' in values.yaml" -}}
   {{- end -}}
 {{- end -}}
 {{- end }}
 
 {{/*
-Storage port (MinIO port or ODF port)
+Storage port (ODF S3 port)
 */}}
 {{- define "cost-onprem.storage.port" -}}
 {{- if and .Values.odf .Values.odf.port -}}
 {{- .Values.odf.port -}}
 {{- else -}}
-  {{- /* Auto-detect based on ODF NooBaa CRD */ -}}
-  {{- $noobaaList := lookup "noobaa.io/v1alpha1" "NooBaa" "" "" -}}
-  {{- if and $noobaaList $noobaaList.items (gt (len $noobaaList.items) 0) -}}
 443
-  {{- else -}}
-9000
-  {{- end -}}
 {{- end -}}
 {{- end }}
 
@@ -724,7 +674,6 @@ No lookup() calls - relies on values passed via --set flags.
 
 Returns:
   - ODF (useSSL=true):  https://s3.openshift-storage.svc:443
-  - MinIO (useSSL=false): http://minio-storage:9000
 */}}
 {{- define "cost-onprem.storage.endpointWithProtocol" -}}
 {{- $endpoint := include "cost-onprem.storage.endpoint" . -}}
@@ -752,31 +701,31 @@ http://{{ $endpoint }}:{{ $port }}
 {{- end }}
 
 {{/*
-Storage access key (MinIO root user - ODF uses noobaa-admin secret directly)
+Storage access key (ODF uses credentials secret)
 */}}
 {{- define "cost-onprem.storage.accessKey" -}}
-{{- .Values.minio.rootUser -}}
+{{- if and .Values.odf .Values.odf.credentials .Values.odf.credentials.accessKey -}}
+{{- .Values.odf.credentials.accessKey -}}
+{{- end -}}
 {{- end }}
 
 {{/*
-Storage secret key (MinIO root password - ODF uses noobaa-admin secret directly)
+Storage secret key (ODF uses credentials secret)
 */}}
 {{- define "cost-onprem.storage.secretKey" -}}
-{{- .Values.minio.rootPassword -}}
+{{- if and .Values.odf .Values.odf.credentials .Values.odf.credentials.secretKey -}}
+{{- .Values.odf.credentials.secretKey -}}
+{{- end -}}
 {{- end }}
 
 {{/*
 Storage bucket name (staging bucket for ingress uploads)
 */}}
 {{- define "cost-onprem.storage.bucket" -}}
-{{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" -}}
 {{- if .Values.odf -}}
 {{- .Values.odf.bucket -}}
 {{- else -}}
 insights-upload-perma
-{{- end -}}
-{{- else -}}
-{{- .Values.ingress.storage.bucket -}}
 {{- end -}}
 {{- end }}
 

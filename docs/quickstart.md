@@ -1,6 +1,6 @@
-# Cost Management On-Premise Kubernetes Quick Start Guide
+# Cost Management On-Premise OpenShift Quick Start Guide
 
-This guide walks you through deploying and testing the Cost Management On-Premise backend services on both Kubernetes and OpenShift clusters using the Helm chart from the [cost-onprem-chart repository](https://github.com/insights-onprem/cost-onprem-chart).
+This guide walks you through deploying and testing the Cost Management On-Premise backend services on OpenShift clusters using the Helm chart from the [cost-onprem-chart repository](https://github.com/insights-onprem/cost-onprem-chart).
 
 ## Helm Chart Location
 
@@ -8,52 +8,35 @@ The Cost Management On-Premise Helm chart is maintained in a separate repository
 
 ### Deployment Methods
 
-The deployment scripts provide flexible options for both Kubernetes and OpenShift:
+The deployment scripts provide flexible options for OpenShift:
 
-1. **KIND Cluster Setup** (Development): The `deploy-kind.sh` script creates and configures a KIND cluster with ingress controller
-2. **Helm Chart Deployment**: The `install-helm-chart.sh` script deploys the Cost Management On-Premise services with automatic platform detection
-3. **Development Mode**: Use `USE_LOCAL_CHART=true` to install from a local chart directory
+1. **Helm Chart Deployment**: The `install-helm-chart.sh` script deploys the Cost Management On-Premise services
+2. **Development Mode**: Use `USE_LOCAL_CHART=true` to install from a local chart directory
 
 ### Chart Features
 
-- **46 Kubernetes templates** for complete Cost Management On-Premise stack deployment
-- **Platform detection** (Kubernetes vs OpenShift) with appropriate resource selection
+- **46 OpenShift templates** for complete Cost Management On-Premise stack deployment
 - **Automated CI/CD** with lint validation, version checking, and deployment testing
 - **Comprehensive documentation** and troubleshooting guides
 
 ## Prerequisites
 
 ### System Resources
-Ensure your system has adequate resources for the deployment:
-- **Memory**: At least 8GB RAM (12GB+ recommended)
-- **CPU**: 4+ cores
-- **Storage**: 10GB+ free disk space
+Ensure your cluster has adequate resources for the deployment:
+- **Memory**: At least 16GB RAM (24GB+ recommended)
+- **CPU**: 8+ cores
+- **Storage**: 150GB+ (ODF)
 
 The deployment includes:
-- 3 PostgreSQL databases (256Mi each)
-- Kafka + Zookeeper (512Mi + 256Mi)
+- PostgreSQL databases (unified)
+- Kafka cluster (via Strimzi)
 - Kruize optimization engine (1-2Gi - most memory intensive)
-- Various application services (256-512Mi each)
+- Celery workers
+- Various application services
 
 ### Required Tools
 Install these tools on your system:
 
-**For Kubernetes/KIND Development:**
-```bash
-# macOS
-brew install kind kubectl helm podman
-
-# Linux (Ubuntu/Debian)
-# Install KIND
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
-chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind
-
-# Install kubectl, helm, podman via package manager
-sudo apt-get update
-sudo apt-get install -y kubectl helm podman
-```
-
-**For OpenShift:**
 ```bash
 # Install OpenShift CLI
 # Download from: https://mirror.openshift.com/pub/openshift-v4/clients/ocp/
@@ -63,13 +46,6 @@ brew install openshift-cli  # macOS
 
 ### Verify Installation
 ```bash
-# For Kubernetes/KIND
-kind --version
-kubectl version --client
-helm version
-podman --version
-
-# For OpenShift
 oc version
 kubectl version --client
 helm version
@@ -77,60 +53,39 @@ helm version
 
 ## Quick Deployment
 
-### Option 1: Kubernetes/KIND Development
-
-#### 1. Navigate to Scripts Directory
+### 1. Navigate to Scripts Directory
 ```bash
 cd /path/to/cost-onprem-chart/scripts/
 ```
 
-#### 2. Setup KIND Cluster
+### 2. Deploy Kafka Infrastructure (Strimzi)
 ```bash
-# Create KIND cluster with ingress controller
-./deploy-kind.sh
+# Deploy Strimzi operator and Kafka cluster
+./deploy-strimzi.sh
 ```
 
-The script will:
-- ✅ Check prerequisites (kubectl, kind, container runtime)
-- ✅ Create KIND cluster with proper networking
-- ✅ Install NGINX ingress controller
-- ✅ Configure port mapping (32061 for HTTP access)
-
-#### 3. Deploy Cost Management On-Premise Services
+### 3. Deploy Cost Management On-Premise Services
 ```bash
-# Deploy using latest GitHub release (recommended)
-./install-helm-chart.sh
-```
-
-### Option 2: OpenShift Production
-
-#### 1. Navigate to Scripts Directory
-```bash
-cd /path/to/cost-onprem-chart/scripts/
-```
-
-#### 2. Deploy Cost Management On-Premise Services
-```bash
-# Deploy with auto-platform detection (recommended)
+# Deploy with auto-configuration (recommended)
 ./install-helm-chart.sh
 ```
 
 The script will:
 - ✅ Download latest Helm chart release from GitHub
-- ✅ Deploy all services with platform detection
+- ✅ Deploy all services with OpenShift configuration
+- ✅ Configure ODF storage integration
 - ✅ Run comprehensive health checks
 - ✅ Verify connectivity and authentication
 
 **Expected Output:**
 ```
 [INFO] Running health checks...
-[SUCCESS] ✓ Ingress API is accessible via http://localhost:32061/ready
-[SUCCESS] ✓ Cost Management On-Premise API is accessible via http://localhost:32061/status
-[SUCCESS] ✓ Kruize API is accessible via http://localhost:32061/api/kruize/listPerformanceProfiles
+[SUCCESS] ✓ All pods are ready
+[SUCCESS] ✓ Routes are accessible
 [SUCCESS] All core services are healthy and operational!
 ```
 
-#### 4. Verify Deployment
+### 4. Verify Deployment
 ```bash
 # Check deployment status
 ./install-helm-chart.sh status
@@ -143,13 +98,7 @@ The script will:
 
 If you prefer to manually install the Helm chart or need a specific version:
 
-#### 1. Create KIND Cluster
-```bash
-# Create KIND cluster with ingress support
-./deploy-kind.sh
-```
-
-#### 2. Install Latest Chart Release
+#### Install Latest Chart Release
 ```bash
 # Download and install latest chart release
 LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/cost-onprem-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
@@ -157,7 +106,7 @@ curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
 helm install cost-onprem cost-onprem-latest.tgz -n cost-onprem --create-namespace
 ```
 
-#### 3. Install Specific Chart Version
+#### Install Specific Chart Version
 ```bash
 # Install a specific version (e.g., v0.1.0)
 VERSION="v0.1.0"
@@ -165,9 +114,9 @@ curl -L -o cost-onprem-${VERSION}.tgz "https://github.com/insights-onprem/cost-o
 helm install cost-onprem cost-onprem-${VERSION}.tgz -n cost-onprem --create-namespace
 ```
 
-#### 4. Development Mode (Local Chart)
+#### Development Mode (Local Chart)
 ```bash
-# Use local chart source (auto-detects platform)
+# Use local chart source
 USE_LOCAL_CHART=true LOCAL_CHART_PATH=../cost-onprem ./install-helm-chart.sh
 
 # Or direct Helm installation
@@ -176,130 +125,94 @@ helm install cost-onprem ./cost-onprem -n cost-onprem --create-namespace
 
 ## Access Points
 
-After successful deployment, these services are available via the ingress controller on **port 32061**:
+After successful deployment, services are accessible via OpenShift Routes:
 
-| Service | URL | Description |
-|---------|-----|-------------|
-| **Ingress Health** | http://localhost:32061/ready | Health check endpoint |
-| **Cost Management On-Premise API** | http://localhost:32061/status | Main REST API status |
-| **Cost Management On-Premise API** | http://localhost:32061/api/ros/* | Recommendations API |
-| **Kruize API** | http://localhost:32061/api/kruize/* | Optimization engine |
-| **Sources API** | http://localhost:32061/api/sources/* | Source management |
-| **File Upload** | http://localhost:32061/api/ingress/* | Data upload endpoint |
-| **MinIO Console** | http://localhost:32061/minio | Storage admin UI (minioaccesskey/miniosecretkey) |
+```bash
+# List all routes
+oc get routes -n cost-onprem
+```
+
+| Service | Route | Description |
+|---------|-------|-------------|
+| **ROS API** | `cost-onprem-main-cost-onprem.apps...` | Main REST API |
+| **Cost Management API** | `cost-onprem-api-cost-onprem.apps...` | Cost reports API |
+| **Ingress** | `cost-onprem-ingress-cost-onprem.apps...` | File upload endpoint |
+| **UI** | `cost-onprem-ui-cost-onprem.apps...` | Web interface |
+| **Kruize API** | `cost-onprem-kruize-cost-onprem.apps...` | Optimization engine |
 
 ### Quick Access Test
 ```bash
-# Test Ingress health
-curl http://localhost:32061/ready
+# Get route hostnames
+MAIN_ROUTE=$(oc get route cost-onprem-main -n cost-onprem -o jsonpath='{.spec.host}')
+INGRESS_ROUTE=$(oc get route cost-onprem-ingress -n cost-onprem -o jsonpath='{.spec.host}')
 
-# Test Cost Management On-Premise API
-curl http://localhost:32061/status
+# Test ROS API health
+curl -k https://$MAIN_ROUTE/ready
 
-# Test Kruize API
-curl http://localhost:32061/api/kruize/listPerformanceProfiles
+# Test Ingress version
+curl -k https://$INGRESS_ROUTE/api/ingress/v1/version
 ```
 
 ## End-to-End Data Flow Testing
 
-### 1. Run Complete Test
+### Run Complete Test
 ```bash
 # This tests the full data pipeline
-# Note: Run from ros-ocp-backend repository
-git clone https://github.com/gciavarrini/ros-ocp-backend.git
-cd ros-ocp-backend/deployment/kubernetes/scripts/
-./test-k8s-dataflow.sh
+./cost-mgmt-ocp-dataflow.sh
 ```
 
 The test will:
-- ✅ Upload test CSV data via Ingress API
-- ✅ Simulate Koku service processing
-- ✅ Copy data to MinIO ros-data bucket
-- ✅ Publish Kafka event for processor
-- ✅ Verify data processing and database storage
-- ✅ Check Kruize experiment creation
+- ✅ Create OCP provider via Sources API
+- ✅ Generate test data with NISE
+- ✅ Upload data to ODF S3 bucket
+- ✅ Publish Kafka event for processing
+- ✅ Verify data processing in PostgreSQL
+- ✅ Validate cost calculations
 
 **Expected Output:**
 ```
-[INFO] Cost Management On-Premise Kubernetes Data Flow Test
-==================================
-[SUCCESS] Step 1: Upload completed successfully
-[SUCCESS] Steps 2-3: Koku simulation and Kafka event completed successfully
-[SUCCESS] Found 1 workload records in database
-[SUCCESS] All health checks passed!
-[SUCCESS] Data flow test completed!
+======================================================================
+  ✅ SMOKE VALIDATION PASSED
+======================================================================
+
+  📊 DATA PROOF - Actual rows from PostgreSQL:
+  ------------------------------------------------------------------
+  Date         Namespace            CPU(h)     CPU Req    Mem(GB)
+  ------------------------------------------------------------------
+  2025-12-01   test-namespace           6.00     12.00     12.00
+  ------------------------------------------------------------------
+
+Phases: 7/7 passed
+  ✅ preflight
+  ✅ migrations
+  ✅ kafka_validation
+  ✅ provider
+  ✅ data_upload
+  ✅ processing
+  ✅ validation
+
+✅ E2E SMOKE TEST PASSED
 ```
 
-### 2. View Service Logs
+### View Service Logs
 ```bash
-# List available services
-# Note: Run from cost-onprem-backend repository
-git clone https://github.com/gciavarrini/ros-ocp-backend.git
-cd ros-ocp-backend/deployment/kubernetes/scripts/
-
-# For Kubernetes/KIND deployments
-./test-k8s-dataflow.sh logs
-
-# For OpenShift deployments
-./test-ocp-dataflow.sh logs
-
 # View specific service logs
-./test-k8s-dataflow.sh logs ros-processor    # Kubernetes
-./test-ocp-dataflow.sh logs ros-processor    # OpenShift
+oc logs -n cost-onprem -l app.kubernetes.io/component=processor -f
+
+# View all pods
+oc get pods -n cost-onprem
 ```
 
-### 3. Monitor Processing
+### Monitor Processing
 ```bash
 # Watch pods in real-time
-kubectl get pods -n cost-onprem -w
+oc get pods -n cost-onprem -w
 
 # Check persistent volumes
-kubectl get pvc -n cost-onprem
+oc get pvc -n cost-onprem
 
 # View all services
-kubectl get svc -n cost-onprem
-```
-
-## Manual Testing
-
-### Upload Test File
-```bash
-# Create test CSV file
-cat > test-data.csv << 'EOF'
-report_period_start,report_period_end,interval_start,interval_end,container_name,pod,owner_name,owner_kind,workload,workload_type,namespace,image_name,node,resource_id,cpu_request_container_avg,cpu_request_container_sum,cpu_limit_container_avg,cpu_limit_container_sum,cpu_usage_container_avg,cpu_usage_container_min,cpu_usage_container_max,cpu_usage_container_sum,cpu_throttle_container_avg,cpu_throttle_container_max,cpu_throttle_container_sum,memory_request_container_avg,memory_request_container_sum,memory_limit_container_avg,memory_limit_container_sum,memory_usage_container_avg,memory_usage_container_min,memory_usage_container_max,memory_usage_container_sum,memory_rss_usage_container_avg,memory_rss_usage_container_min,memory_rss_usage_container_max,memory_rss_usage_container_sum
-2024-01-01,2024-01-01,2024-01-01 00:00:00 -0000 UTC,2024-01-01 00:15:00 -0000 UTC,test-container,test-pod-123,test-deployment,Deployment,test-workload,deployment,test-namespace,quay.io/test/image:latest,worker-node-1,resource-123,100,100,200,200,50,10,90,50,0,0,0,512,512,1024,1024,256,128,384,256,200,100,300,200
-EOF
-
-# Important: For Kruize compatibility, ensure:
-# - report_period_start and report_period_end should match for short intervals
-# - Use timezone format '-0000 UTC' instead of 'Z' for Go time parsing compatibility
-# - Keep interval duration under 30 minutes for optimal Kruize validation
-
-# Upload via Ingress API
-curl -X POST \
-  -F "file=@test-data.csv" \
-  -H "x-rh-identity: eyJpZGVudGl0eSI6eyJhY2NvdW50X251bWJlciI6IjEyMzQ1IiwidHlwZSI6IlVzZXIiLCJpbnRlcm5hbCI6eyJvcmdfaWQiOiIxMjM0NSJ9fX0K" \
-  -H "x-rh-request-id: manual-test-$(date +%s)" \
-  http://localhost:32061/api/ingress/v1/upload
-```
-
-### Check Database
-```bash
-# Connect to ROS database
-kubectl exec -it -n cost-onprem deployment/cost-onprem-db-ros -- \
-  psql -U postgres -d postgres -c "SELECT COUNT(*) FROM workloads;"
-```
-
-### Monitor Kafka Topics
-```bash
-# List topics
-kubectl exec -n cost-onprem deployment/cost-onprem-kafka -- \
-  kafka-topics --list --bootstrap-server localhost:29092
-
-# Monitor events
-kubectl exec -n cost-onprem deployment/cost-onprem-kafka -- \
-  kafka-console-consumer --bootstrap-server localhost:29092 \
-  --topic hccm.ros.events --from-beginning
+oc get svc -n cost-onprem
 ```
 
 ## Configuration
@@ -307,12 +220,11 @@ kubectl exec -n cost-onprem deployment/cost-onprem-kafka -- \
 ### Environment Variables
 ```bash
 # Customize deployment
-export KIND_CLUSTER_NAME=my-ros-cluster
 export HELM_RELEASE_NAME=my-cost-onprem
 export NAMESPACE=my-namespace
 
 # Deploy with custom settings
-./deploy-kind.sh
+./install-helm-chart.sh
 ```
 
 ### Helm Values Override
@@ -320,11 +232,10 @@ export NAMESPACE=my-namespace
 # Create custom values file
 cat > my-values.yaml << EOF
 global:
-  storageClass: "fast-ssd"
+  storageClass: "ocs-storagecluster-ceph-rbd"
 database:
-  ros:
-    storage:
-      size: 20Gi
+  storage:
+    size: 20Gi
 resources:
   application:
     requests:
@@ -332,10 +243,8 @@ resources:
       cpu: "200m"
 EOF
 
-# Deploy with custom values (using latest release from cost-onprem-chart repository)
-LATEST_URL=$(curl -s https://api.github.com/repos/insights-onprem/cost-onprem-chart/releases/latest | jq -r '.assets[] | select(.name | endswith(".tgz")) | .browser_download_url')
-curl -L -o cost-onprem-latest.tgz "$LATEST_URL"
-helm upgrade --install cost-onprem cost-onprem-latest.tgz \
+# Deploy with custom values
+helm upgrade --install cost-onprem ./cost-onprem \
   --namespace cost-onprem \
   --create-namespace \
   -f my-values.yaml
@@ -349,22 +258,13 @@ helm upgrade --install cost-onprem cost-onprem-latest.tgz \
 ./install-helm-chart.sh cleanup
 ```
 
-### Remove Everything
-```bash
-# Delete entire KIND cluster
-./deploy-kind.sh cleanup --all
-```
-
 ### Manual Cleanup
 ```bash
 # Delete Helm release
 helm uninstall cost-onprem -n cost-onprem
 
 # Delete namespace
-kubectl delete namespace cost-onprem
-
-# Delete KIND cluster
-kind delete cluster --name cost-onprem-cluster
+oc delete namespace cost-onprem
 ```
 
 ## Quick Status Check
@@ -377,41 +277,40 @@ echo "=== Cost Management On-Premise Status Check ==="
 
 # Check pod status
 echo "Pod Status:"
-kubectl get pods -n cost-onprem
+oc get pods -n cost-onprem
 
 # Check services with issues
 echo -e "\nPods with issues:"
-kubectl get pods -n cost-onprem --field-selector=status.phase!=Running
+oc get pods -n cost-onprem --field-selector=status.phase!=Running
 
-# Check Kafka connectivity
-echo -e "\nKafka connectivity test:"
-kubectl exec -n cost-onprem deployment/cost-onprem-ros-processor -- nc -zv cost-onprem-kafka 29092 2>/dev/null && echo "✓ Kafka accessible" || echo "✗ Kafka connection failed"
+# Check routes
+echo -e "\nRoutes:"
+oc get routes -n cost-onprem
 
 # Check API endpoints
 echo -e "\nAPI Health Checks:"
-curl -s http://localhost:32061/ready >/dev/null && echo "✓ Ingress API" || echo "✗ Ingress API failed"
-curl -s http://localhost:32061/status >/dev/null && echo "✓ Cost Management On-Premise API" || echo "✗ Cost Management On-Premise API failed"
-curl -s http://localhost:32061/api/kruize/listPerformanceProfiles >/dev/null && echo "✓ Kruize API" || echo "✗ Kruize API failed"
+MAIN_ROUTE=$(oc get route cost-onprem-main -n cost-onprem -o jsonpath='{.spec.host}' 2>/dev/null)
+if [ -n "$MAIN_ROUTE" ]; then
+    curl -sk https://$MAIN_ROUTE/ready >/dev/null && echo "✓ ROS API" || echo "✗ ROS API failed"
+fi
 
-echo -e "\nFor detailed troubleshooting, run: ./test-k8s-dataflow.sh health"
+echo -e "\nFor detailed troubleshooting, run: ./cost-mgmt-ocp-dataflow.sh --diagnose"
 ```
 
 ## Next Steps
 
 After successful deployment:
 
-1. **Explore APIs**: Use the access points to interact with services
-2. **Load Test Data**: Upload your own cost management files
-3. **Monitor Metrics**: Check Kruize recommendations and optimizations
-4. **Scale Services**: Modify Helm values to scale deployments
-5. **Production Setup**: Adapt for real Kubernetes clusters
+1. **Configure JWT Authentication**: See [Keycloak Setup Guide](keycloak-jwt-authentication-setup.md)
+2. **Set Up TLS**: See [TLS Certificate Options](tls-certificate-options.md)
+3. **Explore APIs**: Use the access points to interact with services
+4. **Load Test Data**: Upload your own cost management files
+5. **Monitor Metrics**: Check Kruize recommendations and optimizations
 
 ## Support
 
 For issues or questions:
 - Check [Troubleshooting Guide](troubleshooting.md)
-- Review test output: Clone [cost-onprem-backend](https://github.com/insights-onprem/ros-ocp-backend) and run:
-  - Kubernetes: `./deployment/kubernetes/scripts/test-k8s-dataflow.sh`
-  - OpenShift: `./deployment/kubernetes/scripts/test-ocp-dataflow.sh`
-- Check pod logs: `kubectl logs -n cost-onprem <pod-name>`
+- Run E2E test: `./scripts/cost-mgmt-ocp-dataflow.sh`
+- Check pod logs: `oc logs -n cost-onprem <pod-name>`
 - Verify configuration: `helm get values cost-onprem -n cost-onprem`

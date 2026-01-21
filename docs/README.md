@@ -295,7 +295,7 @@ Welcome to the Resource Optimization Service (ROS) for OpenShift Container Platf
 ---
 
 #### [Helm Templates Reference](helm-templates-reference.md)
-**Purpose:** Documentation of all Kubernetes resources created by the Helm chart and their relationships.
+**Purpose:** Documentation of all OpenShift resources created by the Helm chart and their relationships.
 
 **Use when:**
 - Understanding what resources are deployed

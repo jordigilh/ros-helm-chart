@@ -60,9 +60,6 @@ Usage: {{ include "cost-onprem.securityContext.nonRoot" . | nindent 6 }}
 */}}
 {{- define "cost-onprem.securityContext.nonRoot" -}}
 runAsNonRoot: true
-{{- if eq (include "cost-onprem.platform.isOpenShift" .) "false" }}
-runAsUser: 1000
-{{- end }}
 allowPrivilegeEscalation: false
 capabilities:
   drop:
@@ -77,9 +74,6 @@ Usage: {{ include "cost-onprem.securityContext.readOnlyRoot" . | nindent 6 }}
 */}}
 {{- define "cost-onprem.securityContext.readOnlyRoot" -}}
 runAsNonRoot: true
-{{- if eq (include "cost-onprem.platform.isOpenShift" .) "false" }}
-runAsUser: 1000
-{{- end }}
 allowPrivilegeEscalation: false
 readOnlyRootFilesystem: true
 capabilities:

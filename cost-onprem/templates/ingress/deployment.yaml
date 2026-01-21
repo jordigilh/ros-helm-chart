@@ -137,10 +137,8 @@ spec:
             - name: INGRESS_AUTH
               {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
               value: "false"  # Auth is handled by Envoy sidecar, backend trusts X-Rh-Identity
-              {{- else if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
-              value: {{ .Values.ingress.auth.enabled | quote }}
               {{- else }}
-              value: "false"
+              value: {{ .Values.ingress.auth.enabled | quote }}
               {{- end }}
 
             # Logging configuration
@@ -201,11 +199,9 @@ spec:
         - name: aws-config
           configMap:
             name: {{ include "cost-onprem.fullname" . }}-aws-config
-        {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
         - name: service-ca-cert
           configMap:
             name: {{ include "cost-onprem.fullname" . }}-service-ca
             items:
               - key: service-ca.crt
                 path: service-ca.crt
-        {{- end }}

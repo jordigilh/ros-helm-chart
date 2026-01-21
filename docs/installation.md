@@ -98,7 +98,7 @@ The script deploys a unified chart containing all components:
 - ✅ Two-phase deployment (infrastructure first, then application)
 - ✅ Automatic secret creation (Django, Sources, S3 credentials)
 - ✅ Auto-discovers ODF S3 credentials
-- ✅ Platform detection (Kubernetes/OpenShift)
+- ✅ OpenShift platform verification
 - ✅ Automatic upgrade detection
 - ✅ Perfect for CI/CD pipelines
 - ✅ Automatic fallback to local chart if GitHub unavailable
@@ -110,7 +110,7 @@ The script deploys a unified chart containing all components:
 - `USE_LOCAL_CHART`: Use local chart instead of GitHub release (default: `false`)
 - `LOCAL_CHART_PATH`: Path to local chart directory (default: `../cost-onprem`)
 
-**Note**: JWT authentication is automatically enabled on OpenShift and disabled on KIND/K8s via platform detection.
+**Note**: JWT authentication is automatically enabled on OpenShift.
 
 ---
 
@@ -182,30 +182,6 @@ helm install cost-onprem ./cost-onprem \
   --create-namespace \
   --values custom-values.yaml
 ```
-
----
-
-### Method 5: KIND Development Environment
-
-Complete local development setup:
-
-```bash
-# Step 1: Create KIND cluster with ingress
-./scripts/deploy-kind.sh
-
-# Step 2: Deploy Cost Management On-Premise services
-./scripts/install-helm-chart.sh
-
-# Access: All services at http://localhost:32061
-```
-
-**KIND features:**
-- Container runtime support (Docker/Podman)
-- Automated ingress controller setup
-- Fixed resource allocation (6GB)
-- Perfect for CI/CD testing
-
-**See [Scripts Reference](../scripts/README.md) for KIND details**
 
 ---
 
@@ -372,7 +348,7 @@ Kafka is required for the Cost Management data pipeline (OCP metrics ingestion).
 # Script will:
 # - Install Strimzi operator (version 0.45.1)
 # - Deploy Kafka cluster (version 3.8.0)
-# - Auto-detect platform (Kubernetes/OpenShift)
+# - Verify OpenShift platform
 # - Configure appropriate storage class
 # - Wait for cluster to be ready
 ```
@@ -534,8 +510,7 @@ kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cost-onprem
 ./scripts/install-helm-chart.sh health
 
 # Test ingress endpoint
-curl http://localhost:32061/ready  # KIND
-curl http://<route-host>/ready      # OpenShift
+curl -k https://<route-host>/ready
 
 # Check API endpoints
 curl http://localhost:32061/api/ros/status
@@ -565,9 +540,9 @@ kubectl exec -it deployment/cost-onprem-ros-api -n cost-onprem -- \
 kubectl exec -it statefulset/cost-onprem-kafka -n cost-onprem -- \
   kafka-topics.sh --list --bootstrap-server localhost:29092
 
-# Test MinIO/ODF access (Kubernetes)
-kubectl exec -it statefulset/cost-onprem-minio -n cost-onprem -- \
-  mc admin info local
+# Test ODF access
+oc rsh -n cost-onprem deployment/cost-onprem-ingress -- \
+  aws s3 ls --endpoint-url https://s3.openshift-storage.svc.cluster.local
 ```
 
 ---
