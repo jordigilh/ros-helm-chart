@@ -20,7 +20,7 @@ set -euo pipefail
 #   --skip-tls                Skip TLS certificate setup
 #   --skip-test               Skip JWT authentication test
 #   --skip-image-override     Skip creating custom values file for image override
-#   --namespace NAME          Target namespace (default: cost-onprem-ocp)
+#   --namespace NAME          Target namespace (default: cost-onprem)
 #   --image-tag TAG           Custom image tag for cost-onprem-ocp-backend services
 #   --use-local-chart         Use local Helm chart instead of GitHub release
 #   --verbose                 Enable verbose output
@@ -66,7 +66,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Default configuration
-NAMESPACE="${NAMESPACE:-cost-onprem-ocp}"
+NAMESPACE="${NAMESPACE:-cost-onprem}"
 USE_LOCAL_CHART="${USE_LOCAL_CHART:-false}"
 VERBOSE="${VERBOSE:-false}"
 DRY_RUN="${DRY_RUN:-false}"
