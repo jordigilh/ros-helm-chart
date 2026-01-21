@@ -11,8 +11,11 @@ Data Generation Options:
   - Simple (fallback): Uses simplified CSV format (may not populate summary tables)
 
 Environment Variables:
-  - E2E_USE_SIMPLE_DATA=1: Use simple CSV format instead of NISE
+  - E2E_USE_SIMPLE_DATA=true: Use simple CSV format instead of NISE
   - E2E_NISE_STATIC_REPORT: Path to custom NISE static report file
+  - E2E_CLEANUP_BEFORE=true/false: Run cleanup before tests (default: true)
+  - E2E_CLEANUP_AFTER=true/false: Run cleanup after tests (default: true)
+  - E2E_RESTART_SERVICES=true: Restart Redis/listener during cleanup (slower but thorough)
 """
 
 import os
@@ -36,6 +39,7 @@ from utils import (
     wait_for_condition,
     run_oc_command,
 )
+from cleanup import full_cleanup
 
 
 # =============================================================================
@@ -329,12 +333,12 @@ class TestCompleteDataFlow:
         """Generate test data for E2E validation.
         
         By default, uses NISE to generate proper OCP cost data format.
-        Set E2E_USE_SIMPLE_DATA=1 to use simplified format (may not populate summary tables).
+        Set E2E_USE_SIMPLE_DATA=true to use simplified format (may not populate summary tables).
         """
-        use_simple = os.environ.get("E2E_USE_SIMPLE_DATA", "").lower() in ("1", "true", "yes")
+        use_simple = os.environ.get("E2E_USE_SIMPLE_DATA", "false").lower() == "true"
         
         if use_simple:
-            print("\n  ⚠️  Using SIMPLE data format (E2E_USE_SIMPLE_DATA=1)")
+            print("\n  ⚠️  Using SIMPLE data format (E2E_USE_SIMPLE_DATA=true)")
             print("     Warning: Summary tables may not be populated with this format")
             return generate_simple_ocp_data(e2e_cluster_id)
         
@@ -417,10 +421,54 @@ class TestCompleteDataFlow:
         cluster_config,
         org_id: str,
         e2e_cluster_id: str,
+        s3_config,
     ):
-        """Register a source for E2E testing and clean up after."""
+        """Register a source for E2E testing with cleanup before and after.
+        
+        Cleanup includes:
+          - S3 data files from previous runs
+          - Database processing records
+          - Optionally Redis cache and listener restart (if E2E_RESTART_SERVICES=1)
+        """
         from utils import exec_in_pod, get_pod_by_label
         import json
+        
+        # Check cleanup settings
+        cleanup_before = os.environ.get("E2E_CLEANUP_BEFORE", "true").lower() == "true"
+        cleanup_after = os.environ.get("E2E_CLEANUP_AFTER", "true").lower() == "true"
+        restart_services = os.environ.get("E2E_RESTART_SERVICES", "false").lower() == "true"
+        
+        # Get database pod for cleanup
+        db_pod = get_pod_by_label(
+            cluster_config.namespace,
+            "app.kubernetes.io/name=database"
+        )
+        
+        # Prepare S3 config dict for cleanup
+        s3_config_dict = None
+        if s3_config:
+            s3_config_dict = {
+                "endpoint": s3_config.endpoint,
+                "access_key": s3_config.access_key,
+                "secret_key": s3_config.secret_key,
+                "bucket": s3_config.bucket,
+                "verify_ssl": s3_config.verify_ssl,
+            }
+        
+        # Pre-test cleanup
+        if cleanup_before and db_pod:
+            print("\n" + "=" * 60)
+            print("PRE-TEST CLEANUP")
+            print("=" * 60)
+            full_cleanup(
+                namespace=cluster_config.namespace,
+                db_pod=db_pod,
+                org_id=org_id,
+                s3_config=s3_config_dict,
+                cluster_id=None,  # Clean all clusters for this org
+                restart_services=restart_services,
+                verbose=True,
+            )
         
         sources_api_url = (
             f"http://{cluster_config.helm_release_name}-sources-api."
@@ -485,8 +533,46 @@ class TestCompleteDataFlow:
                 cost_mgmt_app_id = at.get("id")
                 break
         
-        # Create source
+        # Create source with unique name
         source_name = f"e2e-source-{e2e_cluster_id[:8]}"
+        
+        # Check for existing e2e sources and delete them
+        print(f"  🔍 Checking for existing e2e sources...")
+        result = exec_in_pod(
+            cluster_config.namespace,
+            listener_pod,
+            [
+                "curl", "-s", f"{sources_api_url}/sources",
+                "-H", "Content-Type: application/json",
+                "-H", f"x-rh-sources-org-id: {org_id}",
+            ],
+            container="sources-listener",
+        )
+        
+        if result:
+            try:
+                existing_sources = json.loads(result)
+                for existing in existing_sources.get("data", []):
+                    existing_name = existing.get("name", "")
+                    existing_id = existing.get("id")
+                    # Delete any e2e test sources
+                    if existing_id and existing_name.startswith("e2e-source-"):
+                        print(f"     🗑️  Deleting existing source '{existing_name}' (id={existing_id})...")
+                        exec_in_pod(
+                            cluster_config.namespace,
+                            listener_pod,
+                            [
+                                "curl", "-s", "-X", "DELETE",
+                                f"{sources_api_url}/sources/{existing_id}",
+                                "-H", f"x-rh-sources-org-id: {org_id}",
+                            ],
+                            container="sources-listener",
+                        )
+                        time.sleep(2)  # Brief pause for deletion to propagate
+            except (json.JSONDecodeError, TypeError):
+                pass  # No existing sources or error in response
+        
+        # Create the new source
         payload = json.dumps({
             "name": source_name,
             "source_type_id": ocp_type_id,
@@ -540,9 +626,17 @@ class TestCompleteDataFlow:
             "org_id": org_id,
             "listener_pod": listener_pod,
             "sources_api_url": sources_api_url,
+            "db_pod": db_pod,
+            "s3_config_dict": s3_config_dict,
         }
         
-        # Cleanup
+        # Post-test cleanup
+        print("\n" + "=" * 60)
+        print("POST-TEST CLEANUP")
+        print("=" * 60)
+        
+        # Delete the source
+        print("  🗑️  Deleting test source...")
         exec_in_pod(
             cluster_config.namespace,
             listener_pod,
@@ -553,6 +647,19 @@ class TestCompleteDataFlow:
             ],
             container="sources-listener",
         )
+        print(f"     ✅ Deleted source {source_id}")
+        
+        # Full cleanup if enabled
+        if cleanup_after and db_pod:
+            full_cleanup(
+                namespace=cluster_config.namespace,
+                db_pod=db_pod,
+                org_id=org_id,
+                s3_config=s3_config_dict,
+                cluster_id=e2e_cluster_id,  # Only clean this test's cluster
+                restart_services=False,  # Don't restart services after tests
+                verbose=True,
+            )
 
     # =========================================================================
     # Test Steps - Ordered to validate the complete pipeline
@@ -758,7 +865,7 @@ class TestCompleteDataFlow:
             pytest --all -k "TestCompleteDataFlow" -v
         
         IMPORTANT: Summary table population requires proper OCP data format.
-        If using simple data (E2E_USE_SIMPLE_DATA=1), this test may fail because
+        If using simple data (E2E_USE_SIMPLE_DATA=true), this test may fail because
         the simplified CSV format may not contain all required fields for Koku
         to populate summary tables.
         
@@ -769,9 +876,9 @@ class TestCompleteDataFlow:
         if data_generator == "simple":
             pytest.skip(
                 "Summary table population requires NISE-generated data. "
-                "Simple data format (E2E_USE_SIMPLE_DATA=1) may not contain "
+                "Simple data format (E2E_USE_SIMPLE_DATA=true) may not contain "
                 "all required fields for Koku summary processing. "
-                "Run without E2E_USE_SIMPLE_DATA to use NISE."
+                "Run with E2E_USE_SIMPLE_DATA=false to use NISE."
             )
         
         if e2e_test_data.get("nise_install_failed"):
