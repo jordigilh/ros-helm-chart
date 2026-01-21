@@ -298,19 +298,33 @@ Phases: 7/7 passed
 ---
 
 ### `test-ocp-dataflow-jwt.sh`
-End-to-end test of JWT authentication flow with sample cost data.
+End-to-end ROS-only test with JWT authentication and NISE-generated data.
+
+**Features:**
+- Automatic NISE installation in Python virtual environment
+- Production-like test data generation (73 lines vs 4 hardcoded)
+- ROS-only mode (skips Koku processing for faster validation)
+- CRLF line ending conversion (Go CSV parser compatibility)
+- Actual CPU/memory recommendations displayed
 
 **Test flow:**
-1. Auto-detects Keycloak configuration
-2. Obtains JWT token using client credentials
-3. Creates test payload (CSV + manifest.json)
-4. Uploads data via JWT-authenticated endpoint
-5. Validates ingress processing
-6. Checks for recommendations
+1. Prerequisites check (python3, python3-venv, jq, kubectl)
+2. Auto-detects Keycloak configuration
+3. Obtains JWT token using client credentials
+4. **Generates production-like data with NISE** (new)
+5. Creates test payload (CSV + manifest.json)
+6. Uploads data via JWT-authenticated endpoint
+7. Validates ROS processing (S3 download, CSV parsing)
+8. Waits for Kruize recommendations (30-minute timeout with retry)
+9. Displays actual CPU/memory recommendations
 
 **Usage:**
 ```bash
-# Test JWT authentication
+# Prerequisites (auto-installs NISE in virtual environment)
+sudo apt-get install python3 python3-venv  # Ubuntu/Debian
+sudo yum install python3 python3-venv      # RHEL/CentOS
+
+# Run test
 ./test-ocp-dataflow-jwt.sh
 
 # Custom namespace
@@ -320,11 +334,39 @@ End-to-end test of JWT authentication flow with sample cost data.
 ./test-ocp-dataflow-jwt.sh --verbose
 ```
 
+**Expected Output:**
+```
+[SUCCESS] ===== ROS E2E Test Summary =====
+
+Upload Status: ✅ HTTP 202 Accepted
+Koku Processing: ⏭️  Skipped (ROS-only test)
+ROS Processing: ✅ CSV downloaded and parsed successfully
+Kruize Status: ✅ Recommendations generated
+
+Recommendation details (short_term cost optimization):
+ experiment_name | interval_end_time | cpu_request | cpu_limit | memory_request | memory_limit
+----------------+-------------------+-------------+-----------+----------------+--------------
+ org123|test... | 2026-01-21 20:00  | 1.78 cores  | 1.78 cores| 3.64 GB        | 3.64 GB
+
+[SUCCESS] ✅ ROS-ONLY TEST PASSED!
+Test Duration: ~5 minutes
+```
+
+**What's New:**
+- ✅ NISE integration for production-like data
+- ✅ Automatic NISE installation (no pre-installation needed)
+- ✅ CRLF → LF conversion (Go CSV parser compatibility)
+- ✅ ROS-only mode (faster, isolated testing)
+- ✅ Actual recommendations displayed (not just experiment names)
+- ✅ Enhanced retry logic (30-minute timeout)
+
 **Requirements:**
 - JWT authentication enabled in CoP deployment
 - Red Hat Build of Keycloak (RHBK) with `cost-management-operator` client
+- **python3** and **python3-venv** (auto-installs NISE)
+- Network access (for pip install koku-nise)
 
-**Best for:** CI/CD pipelines, complete E2E validation including recommendations
+**Best for:** CI/CD pipelines, ROS-only validation, recommendation verification
 
 ---
 
@@ -518,6 +560,8 @@ For detailed troubleshooting, see [Troubleshooting Guide](../docs/troubleshootin
 - `jq` (JSON processor)
 - `curl` (HTTP client)
 - `openssl` (Certificate tools)
+- `python3` (Python 3 interpreter - required for `test-ocp-dataflow-jwt.sh`)
+- `python3-venv` (Virtual environment module - required for `test-ocp-dataflow-jwt.sh`)
 
 ### Logging Conventions
 All scripts use color-coded output:
