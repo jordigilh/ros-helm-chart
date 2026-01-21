@@ -1,3 +1,5 @@
+{{- /* Skip bucket creation job if using external ObjectBucketClaim */ -}}
+{{- if not .Values.odf.useExternalOBC }}
 {{- $isOpenShift := eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
 {{- $storageEndpoint := include "cost-onprem.storage.endpoint" . }}
 {{- $storagePort := include "cost-onprem.storage.port" . }}
@@ -96,7 +98,7 @@ spec:
           args:
             - |
               echo "Configuring S3 storage at ${S3_URL}..."
-              
+
               # Set up mc alias with appropriate SSL handling
               {{- if $useSSL }}
               # TODO: Remove --insecure flag in production environments with proper certificates.
@@ -105,7 +107,7 @@ spec:
               {{- else }}
               MC_INSECURE=""
               {{- end }}
-              
+
               # Wait for S3 to be ready and set alias
               for i in $(seq 1 10); do
                 if /usr/bin/mc ${MC_INSECURE} alias set s3storage ${S3_URL} ${S3_ACCESS_KEY} ${S3_SECRET_KEY} >/dev/null 2>&1; then
@@ -116,10 +118,10 @@ spec:
                   sleep 3
                 fi
               done
-              
+
               # Final alias setup (fail if not working)
               /usr/bin/mc ${MC_INSECURE} alias set s3storage ${S3_URL} ${S3_ACCESS_KEY} ${S3_SECRET_KEY} || exit 1
-              
+
               # Create buckets
               {{- range .Values.minio.buckets }}
               echo "Creating bucket: {{ . }}"
@@ -129,9 +131,10 @@ spec:
               /usr/bin/mc ${MC_INSECURE} anonymous set public s3storage/{{ . }}
               {{- end }}
               {{- end }}
-              
+
               echo "S3 bucket setup completed successfully"
               /usr/bin/mc ${MC_INSECURE} ls s3storage/
       volumes:
         - name: mc-config
           emptyDir: {}
+{{- end }}

@@ -345,6 +345,85 @@ verify_strimzi_and_kafka() {
     return 0
 }
 
+# Function to detect and configure external ObjectBucketClaim (OBC)
+# Used for Direct Ceph RGW deployments
+detect_external_obc() {
+    local obc_name="${1:-ros-data-ceph}"
+    local obc_namespace="${2:-$NAMESPACE}"
+
+    echo_info "Checking for external ObjectBucketClaim..."
+
+    # Check if OBC exists
+    if ! kubectl get obc "$obc_name" -n "$obc_namespace" >/dev/null 2>&1; then
+        echo_info "No external OBC found, using standard bucket provisioning"
+        return 1
+    fi
+
+    # Check if OBC is bound
+    local obc_phase=$(kubectl get obc "$obc_name" -n "$obc_namespace" -o jsonpath='{.status.phase}' 2>/dev/null)
+    if [ "$obc_phase" != "Bound" ]; then
+        echo_warning "External OBC '$obc_name' found but not bound (phase: $obc_phase)"
+        return 1
+    fi
+
+    echo_success "✓ Detected external ObjectBucketClaim: $obc_name"
+
+    # Extract configuration from OBC
+    local bucket_name=$(kubectl get configmap "$obc_name" -n "$obc_namespace" -o jsonpath='{.data.BUCKET_NAME}' 2>/dev/null)
+    local bucket_host=$(kubectl get configmap "$obc_name" -n "$obc_namespace" -o jsonpath='{.data.BUCKET_HOST}' 2>/dev/null)
+    local bucket_port=$(kubectl get configmap "$obc_name" -n "$obc_namespace" -o jsonpath='{.data.BUCKET_PORT}' 2>/dev/null || echo "443")
+
+    if [ -z "$bucket_name" ] || [ -z "$bucket_host" ]; then
+        echo_error "Failed to extract bucket configuration from OBC"
+        return 1
+    fi
+
+    echo_info "  Bucket Name: $bucket_name"
+    echo_info "  Bucket Host: $bucket_host"
+    echo_info "  Bucket Port: $bucket_port"
+
+    # Export configuration for use in Helm deployment
+    export EXTERNAL_OBC_BUCKET_NAME="$bucket_name"
+    export EXTERNAL_OBC_ENDPOINT="$bucket_host"
+    export EXTERNAL_OBC_PORT="$bucket_port"
+    export EXTERNAL_OBC_NAME="$obc_name"
+
+    # Create or update storage credentials secret from OBC
+    # Use HELM_RELEASE_NAME (set by main()) or fall back to NAMESPACE
+    local secret_name="${HELM_RELEASE_NAME:-cost-onprem}-storage-credentials"
+
+    echo_info "Extracting credentials from OBC..."
+    local access_key=$(kubectl get secret "$obc_name" -n "$obc_namespace" -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' 2>/dev/null | base64 -d)
+    local secret_key=$(kubectl get secret "$obc_name" -n "$obc_namespace" -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' 2>/dev/null | base64 -d)
+
+    if [ -z "$access_key" ] || [ -z "$secret_key" ]; then
+        echo_error "Failed to extract credentials from OBC secret"
+        return 1
+    fi
+
+    if kubectl get secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_info "Storage credentials secret '$secret_name' already exists, replacing with OBC credentials..."
+        kubectl delete secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1
+    fi
+
+    echo_info "Creating storage credentials from OBC..."
+    kubectl create secret generic "$secret_name" \
+        -n "$NAMESPACE" \
+        --from-literal=access-key="$access_key" \
+        --from-literal=secret-key="$secret_key" \
+        >/dev/null 2>&1
+
+    if [ $? -eq 0 ]; then
+        echo_success "✓ Storage credentials created from OBC"
+    else
+        echo_error "Failed to create storage credentials secret"
+        return 1
+    fi
+
+    echo_info "External OBC configuration ready for deployment"
+    return 0
+}
+
 # Function to create storage credentials secret
 create_storage_credentials_secret() {
     echo_info "Creating storage credentials secret..."
@@ -878,6 +957,28 @@ deploy_helm_chart() {
     if [ ${#detected_values[@]} -gt 0 ]; then
         echo_info "Adding pre-detected values to Helm command (${#detected_values[@]} flags)"
         helm_cmd="$helm_cmd ${detected_values[*]}"
+    fi
+
+    # Add external OBC configuration to Helm if detected in main()
+    if [ "$USING_EXTERNAL_OBC" = "true" ]; then
+        echo_info "Configuring Helm deployment for external OBC (Direct Ceph RGW)"
+        helm_cmd="$helm_cmd --set odf.endpoint=\"$EXTERNAL_OBC_ENDPOINT\""
+        helm_cmd="$helm_cmd --set odf.port=\"$EXTERNAL_OBC_PORT\""
+        helm_cmd="$helm_cmd --set odf.useExternalOBC=true"
+        helm_cmd="$helm_cmd --set odf.bucket=\"$EXTERNAL_OBC_BUCKET_NAME\""  # For ingress INGRESS_STAGEBUCKET
+        
+        # Set bucket names for Koku and ROS (via dynamic helpers in _helpers-koku.tpl)
+        helm_cmd="$helm_cmd --set costManagement.storage.bucketName=\"$EXTERNAL_OBC_BUCKET_NAME\""
+        helm_cmd="$helm_cmd --set costManagement.storage.rosBucketName=\"$EXTERNAL_OBC_BUCKET_NAME\""
+        
+        # Also set ROS bucket name for ROS components
+        helm_cmd="$helm_cmd --set ros.storage.bucketName=\"$EXTERNAL_OBC_BUCKET_NAME\""
+
+        echo_success "✓ External OBC configuration added to Helm deployment"
+        echo_info "  Endpoint: https://$EXTERNAL_OBC_ENDPOINT:$EXTERNAL_OBC_PORT"
+        echo_info "  Bucket: $EXTERNAL_OBC_BUCKET_NAME"
+        echo_info "  Bucket configured for ingress, Koku, and ROS components"
+        echo_info "  Bucket creation job will be skipped"
     fi
 
     # Add additional Helm arguments passed to the script
@@ -1931,14 +2032,33 @@ main() {
         exit 1
     fi
 
-    # Create storage credentials secret
-    if ! create_storage_credentials_secret; then
-        exit 1
+    # Detect external ObjectBucketClaim (OBC) for Direct Ceph RGW deployments
+    # This must happen BEFORE creating storage credentials
+    export USING_EXTERNAL_OBC="false"
+    if [ "$PLATFORM" = "openshift" ]; then
+        if detect_external_obc "ros-data-ceph" "$NAMESPACE"; then
+            USING_EXTERNAL_OBC="true"
+            echo_info "Direct Ceph RGW deployment detected via external OBC"
+            echo_info "  Storage credentials and bucket creation will be skipped"
+        fi
     fi
 
-    # Create S3 buckets (required for data storage)
-    if ! create_s3_buckets; then
-        echo_warning "Failed to create S3 buckets. Data storage may not work correctly."
+    # Create storage credentials secret (only if not using external OBC)
+    if [ "$USING_EXTERNAL_OBC" = "false" ]; then
+        if ! create_storage_credentials_secret; then
+            exit 1
+        fi
+    else
+        echo_info "Skipping storage credentials creation (using OBC credentials)"
+    fi
+
+    # Create S3 buckets (only if not using external OBC)
+    if [ "$USING_EXTERNAL_OBC" = "false" ]; then
+        if ! create_s3_buckets; then
+            echo_warning "Failed to create S3 buckets. Data storage may not work correctly."
+        fi
+    else
+        echo_info "Skipping bucket creation (bucket provided by external OBC)"
     fi
 
     # Create UI secrets (cookie + OAuth client) - required before helm install

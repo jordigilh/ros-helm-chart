@@ -190,13 +190,8 @@ This helper is kept for backwards compatibility but should not be used
 MinIO ROS bucket name
 */}}
 {{- define "cost-onprem.koku.s3.rosBucket" -}}
-{{- if and .Values.odf .Values.odf.useExternalOBC -}}
-{{- .Values.odf.bucket | default "ros-data" -}}
-{{- else -}}
-{{- .Values.costManagement.api.reads.env.REQUESTED_ROS_BUCKET | default "ros-report" -}}
+{{- .Values.costManagement.storage.rosBucketName | default "ros-data-ceph" -}}
 {{- end -}}
-{{- end -}}
-
 {{/*
 =============================================================================
 Secret Names
