@@ -107,13 +107,19 @@ list_recommendations() {
     echo_success "Found $count recommendation(s)"
     echo ""
 
-    echo_info "Recent recommendations:"
+    echo_info "Recent recommendations (short_term cost recommendations):"
     oc exec -n "$NAMESPACE" "$db_pod" -- \
         env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -c \
-        "SELECT experiment_name, interval_end_time, cluster_name
+        "SELECT
+            experiment_name,
+            interval_end_time,
+            extended_data->'kubernetes_objects'->0->'containers'->0->'recommendations'->'data'->to_char(interval_end_time, 'YYYY-MM-DD\"T\"HH24:MI:SS\".000Z\"')->'recommendation_terms'->'short_term'->'recommendation_engines'->'cost'->'config'->'requests'->'cpu'->>'amount' || ' cores' as cpu_request_rec,
+            extended_data->'kubernetes_objects'->0->'containers'->0->'recommendations'->'data'->to_char(interval_end_time, 'YYYY-MM-DD\"T\"HH24:MI:SS\".000Z\"')->'recommendation_terms'->'short_term'->'recommendation_engines'->'cost'->'config'->'limits'->'cpu'->>'amount' || ' cores' as cpu_limit_rec,
+            extended_data->'kubernetes_objects'->0->'containers'->0->'recommendations'->'data'->to_char(interval_end_time, 'YYYY-MM-DD\"T\"HH24:MI:SS\".000Z\"')->'recommendation_terms'->'short_term'->'recommendation_engines'->'cost'->'config'->'requests'->'memory'->>'amount' || ' bytes' as memory_request_rec,
+            extended_data->'kubernetes_objects'->0->'containers'->0->'recommendations'->'data'->to_char(interval_end_time, 'YYYY-MM-DD\"T\"HH24:MI:SS\".000Z\"')->'recommendation_terms'->'short_term'->'recommendation_engines'->'cost'->'config'->'limits'->'memory'->>'amount' || ' bytes' as memory_limit_rec
          FROM kruize_recommendations
          ORDER BY interval_end_time DESC
-         LIMIT 20;" 2>/dev/null || echo_error "Failed to query recommendations"
+         LIMIT 10;" 2>/dev/null || echo_error "Failed to query recommendations"
 }
 
 # Function to query by experiment name/pattern
@@ -170,17 +176,31 @@ query_by_cluster() {
         env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -c \
         "SELECT experiment_id, experiment_name, status, mode
          FROM kruize_experiments
-         WHERE cluster_name = '${cluster_id}'
+         WHERE cluster_name LIKE '%${cluster_id}%'
          ORDER BY experiment_id DESC;" 2>/dev/null || echo_error "Failed to query experiments"
 
     echo ""
-    echo_info "Recommendation count for cluster:"
+    echo_info "Recommendations for cluster (short_term cost recommendations):"
+    oc exec -n "$NAMESPACE" "$db_pod" -- \
+        env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -c \
+        "SELECT
+            experiment_name,
+            interval_end_time,
+            extended_data->'kubernetes_objects'->0->'containers'->0->'recommendations'->'data'->to_char(interval_end_time, 'YYYY-MM-DD\"T\"HH24:MI:SS\".000Z\"')->'recommendation_terms'->'short_term'->'recommendation_engines'->'cost'->'config'->'requests'->'cpu'->>'amount' || ' cores' as cpu_request_rec,
+            extended_data->'kubernetes_objects'->0->'containers'->0->'recommendations'->'data'->to_char(interval_end_time, 'YYYY-MM-DD\"T\"HH24:MI:SS\".000Z\"')->'recommendation_terms'->'short_term'->'recommendation_engines'->'cost'->'config'->'limits'->'cpu'->>'amount' || ' cores' as cpu_limit_rec,
+            extended_data->'kubernetes_objects'->0->'containers'->0->'recommendations'->'data'->to_char(interval_end_time, 'YYYY-MM-DD\"T\"HH24:MI:SS\".000Z\"')->'recommendation_terms'->'short_term'->'recommendation_engines'->'cost'->'config'->'requests'->'memory'->>'amount' || ' bytes' as memory_request_rec,
+            extended_data->'kubernetes_objects'->0->'containers'->0->'recommendations'->'data'->to_char(interval_end_time, 'YYYY-MM-DD\"T\"HH24:MI:SS\".000Z\"')->'recommendation_terms'->'short_term'->'recommendation_engines'->'cost'->'config'->'limits'->'memory'->>'amount' || ' bytes' as memory_limit_rec
+         FROM kruize_recommendations
+         WHERE cluster_name LIKE '%${cluster_id}%'
+         ORDER BY interval_end_time DESC
+         LIMIT 5;" 2>/dev/null || echo_error "Failed to query recommendations"
+
+    echo ""
     local rec_count=$(oc exec -n "$NAMESPACE" "$db_pod" -- \
         env PGPASSWORD="$KRUIZE_PASSWORD" psql -U "$KRUIZE_USER" -d "$KRUIZE_DB" -t -c \
         "SELECT COUNT(*)
-         FROM kruize_recommendations r
-         JOIN kruize_experiments e ON r.experiment_name = e.experiment_name
-         WHERE e.cluster_name = '${cluster_id}';" 2>/dev/null | tr -d ' ' || echo "0")
+         FROM kruize_recommendations
+         WHERE cluster_name LIKE '%${cluster_id}%';" 2>/dev/null | tr -d ' ' || echo "0")
 
     echo_success "Found $rec_count recommendation(s) for cluster $cluster_id"
 }
