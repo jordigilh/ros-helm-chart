@@ -5,22 +5,282 @@ These tests validate the entire pipeline:
   Generated Data → Upload via Ingress (JWT) → Koku Processing → ROS/Kruize
 
 This is the canonical E2E test that covers the full production data flow.
+
+Data Generation Options:
+  - NISE (default): Uses koku-nise to generate proper OCP cost data format
+  - Simple (fallback): Uses simplified CSV format (may not populate summary tables)
+
+Environment Variables:
+  - E2E_USE_SIMPLE_DATA=1: Use simple CSV format instead of NISE
+  - E2E_NISE_STATIC_REPORT: Path to custom NISE static report file
 """
 
 import os
+import shutil
+import subprocess
+import tempfile
 import time
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Optional
 
 import pytest
 import requests
 
 from utils import (
     create_upload_package,
+    create_upload_package_from_files,
     execute_db_query,
     get_pod_by_label,
     get_secret_value,
     wait_for_condition,
     run_oc_command,
 )
+
+
+# =============================================================================
+# Data Generation Utilities
+# =============================================================================
+
+def is_nise_available() -> bool:
+    """Check if NISE is available for data generation."""
+    try:
+        result = subprocess.run(
+            ["nise", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def install_nise() -> bool:
+    """Attempt to install NISE via pip."""
+    try:
+        print("  Installing koku-nise...")
+        result = subprocess.run(
+            ["pip", "install", "koku-nise"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        return result.returncode == 0
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return False
+
+
+def generate_dynamic_static_report(start_date: datetime, end_date: datetime, output_dir: str) -> str:
+    """Generate a dynamic NISE static report YAML with current dates.
+    
+    This ensures the dates in the nise-generated data match the current billing period,
+    which is required for Koku to process and summarize the data correctly.
+    
+    Args:
+        start_date: Start date for data generation
+        end_date: End date for data generation
+        output_dir: Directory to write the YAML file
+        
+    Returns:
+        Path to the generated YAML file
+    """
+    yaml_content = f"""---
+# Dynamic OCP Static Report - Generated for E2E Testing
+# Generated: {datetime.utcnow().isoformat()}
+# Date Range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}
+
+generators:
+  - OCPGenerator:
+      start_date: {start_date.strftime('%Y-%m-%d')}
+      end_date: {end_date.strftime('%Y-%m-%d')}
+      nodes:
+        - node:
+          node_name: test-node-1
+          cpu_cores: 2
+          memory_gig: 8
+          resource_id: test-resource-1
+          namespaces:
+            test-namespace:
+              pods:
+                - pod:
+                  pod_name: test-pod-1
+                  cpu_request: 0.5
+                  mem_request_gig: 1
+                  cpu_limit: 1
+                  mem_limit_gig: 2
+                  pod_seconds: 3600
+                  cpu_usage:
+                    full_period: 0.25
+                  mem_usage_gig:
+                    full_period: 0.5
+                  labels: environment:test|app:e2e-pytest
+"""
+    
+    yaml_path = os.path.join(output_dir, "dynamic_ocp_static_report.yml")
+    with open(yaml_path, "w") as f:
+        f.write(yaml_content)
+    
+    return yaml_path
+
+
+def generate_nise_ocp_data(
+    cluster_id: str,
+    start_date: datetime,
+    end_date: datetime,
+    output_dir: str,
+    static_report_file: Optional[str] = None,
+) -> dict:
+    """Generate OCP data using NISE.
+    
+    Args:
+        cluster_id: Cluster identifier for the data
+        start_date: Start date for data generation
+        end_date: End date for data generation
+        output_dir: Directory to write generated files
+        static_report_file: Optional path to NISE static report YAML
+        
+    Returns:
+        Dict with paths to generated files and metadata
+        
+    IMPORTANT: If no static_report_file is provided, a dynamic one will be generated
+    with the correct dates. This is critical because:
+    1. NISE static reports have hardcoded dates that override command-line dates
+    2. Koku requires data in the current billing period to process summaries
+    3. Using outdated dates will cause "missing start or end dates" errors
+    """
+    # Generate dynamic static report if none provided
+    # This ensures dates match the current billing period
+    if not static_report_file:
+        static_report_file = generate_dynamic_static_report(start_date, end_date, output_dir)
+        print(f"  Generated dynamic static report: {static_report_file}")
+    
+    cmd = [
+        "nise",
+        "report", "ocp",
+        "--start-date", start_date.strftime("%Y-%m-%d"),
+        "--end-date", end_date.strftime("%Y-%m-%d"),
+        "--ocp-cluster-id", cluster_id,
+        "--write-monthly",
+        "--file-row-limit", "10000",
+        "--ros-ocp-info",  # Generate ROS container-level data for resource optimization
+        "--static-report-file", static_report_file,
+    ]
+    
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        cwd=output_dir,
+        timeout=300,
+    )
+    
+    if result.returncode != 0:
+        raise RuntimeError(f"NISE failed: {result.stderr}")
+    
+    # Find generated files
+    all_csv_files = list(Path(output_dir).rglob("*.csv"))
+    pod_usage_files = [f for f in all_csv_files if "pod_usage" in f.name]
+    ros_usage_files = [f for f in all_csv_files if "ros_usage" in f.name and "namespace" not in f.name]
+    manifest_files = list(Path(output_dir).rglob("*manifest.json"))
+    
+    # Prioritize pod_usage files (for Koku summary tables), then ROS files
+    csv_files = pod_usage_files + [f for f in all_csv_files if f not in pod_usage_files]
+    
+    return {
+        "output_dir": output_dir,
+        "csv_files": [str(f) for f in csv_files],
+        "pod_usage_files": [str(f) for f in pod_usage_files],
+        "ros_usage_files": [str(f) for f in ros_usage_files],  # Container-level data for ROS
+        "manifest_files": [str(f) for f in manifest_files],
+        "cluster_id": cluster_id,
+        "start_date": start_date,
+        "end_date": end_date,
+        "generator": "nise",
+    }
+
+
+def generate_simple_ocp_data(cluster_id: str) -> dict:
+    """Generate simple OCP data (legacy format - may not populate summary tables).
+    
+    WARNING: This format may not be fully processed by Koku. Use NISE for
+    complete E2E validation.
+    
+    Args:
+        cluster_id: Cluster identifier
+        
+    Returns:
+        Dict with CSV content and metadata
+    """
+    now = datetime.utcnow()
+    
+    # Generate 4 intervals of data
+    intervals = []
+    for i in range(4):
+        start = now - timedelta(minutes=75 - (i * 15))
+        end = now - timedelta(minutes=60 - (i * 15))
+        intervals.append((start, end))
+    
+    # CSV header matching OCP ROS format
+    header = (
+        "report_period_start,report_period_end,interval_start,interval_end,"
+        "container_name,pod,owner_name,owner_kind,workload,workload_type,"
+        "namespace,image_name,node,resource_id,"
+        "cpu_request_container_avg,cpu_request_container_sum,"
+        "cpu_limit_container_avg,cpu_limit_container_sum,"
+        "cpu_usage_container_avg,cpu_usage_container_min,cpu_usage_container_max,cpu_usage_container_sum,"
+        "cpu_throttle_container_avg,cpu_throttle_container_max,cpu_throttle_container_sum,"
+        "memory_request_container_avg,memory_request_container_sum,"
+        "memory_limit_container_avg,memory_limit_container_sum,"
+        "memory_usage_container_avg,memory_usage_container_min,memory_usage_container_max,memory_usage_container_sum,"
+        "memory_rss_usage_container_avg,memory_rss_usage_container_min,memory_rss_usage_container_max,memory_rss_usage_container_sum"
+    )
+    
+    rows = [header]
+    date_str = now.strftime("%Y-%m-%d")
+    
+    cpu_usages = [0.247832, 0.265423, 0.289567, 0.234567]
+    mem_usages = [413587266, 427891456, 445678901, 398765432]
+    
+    for i, (start, end) in enumerate(intervals):
+        start_str = start.strftime("%Y-%m-%d %H:%M:%S -0000 UTC")
+        end_str = end.strftime("%Y-%m-%d %H:%M:%S -0000 UTC")
+        cpu = cpu_usages[i]
+        mem = mem_usages[i]
+        
+        row = (
+            f"{date_str},{date_str},{start_str},{end_str},"
+            f"test-container,test-pod-{cluster_id[:8]},test-deployment,Deployment,test-workload,deployment,"
+            f"test-namespace,quay.io/test/image:latest,worker-node-1,resource-{cluster_id[:8]},"
+            f"0.5,0.5,1.0,1.0,"
+            f"{cpu},{cpu*0.75},{cpu*1.3},{cpu},"
+            f"0.001,0.002,0.001,"
+            f"536870912,536870912,1073741824,1073741824,"
+            f"{mem},{mem*0.99},{mem*1.02},{mem},"
+            f"{mem*0.95},{mem*0.94},{mem*0.96},{mem*0.95}"
+        )
+        rows.append(row)
+    
+    # Calculate start/end dates for manifest
+    start_date = now - timedelta(days=1)
+    end_date = now
+    
+    return {
+        "csv_content": "\n".join(rows),
+        "cluster_id": cluster_id,
+        "expected_cpu_request": 0.5,
+        "expected_memory_request_bytes": 536870912,
+        "expected_rows": 4,
+        "namespace": "test-namespace",
+        "node": "worker-node-1",
+        "generator": "simple",
+        "start_date": start_date,
+        "end_date": end_date,
+        "warning": (
+            "Simple data format may not populate Koku summary tables. "
+            "Use NISE for complete E2E validation."
+        ),
+    }
 
 
 @pytest.mark.e2e
@@ -66,67 +326,90 @@ class TestCompleteDataFlow:
 
     @pytest.fixture(scope="class")
     def e2e_test_data(self, e2e_cluster_id: str) -> dict:
-        """Generate realistic test data matching NISE format."""
-        from datetime import datetime, timedelta
+        """Generate test data for E2E validation.
+        
+        By default, uses NISE to generate proper OCP cost data format.
+        Set E2E_USE_SIMPLE_DATA=1 to use simplified format (may not populate summary tables).
+        """
+        use_simple = os.environ.get("E2E_USE_SIMPLE_DATA", "").lower() in ("1", "true", "yes")
+        
+        if use_simple:
+            print("\n  ⚠️  Using SIMPLE data format (E2E_USE_SIMPLE_DATA=1)")
+            print("     Warning: Summary tables may not be populated with this format")
+            return generate_simple_ocp_data(e2e_cluster_id)
+        
+        # Try NISE first
+        if not is_nise_available():
+            print("\n  NISE not found, attempting to install...")
+            if not install_nise():
+                print("  ⚠️  NISE installation failed, falling back to simple data")
+                print("     Warning: Summary tables may not be populated with this format")
+                data = generate_simple_ocp_data(e2e_cluster_id)
+                data["nise_install_failed"] = True
+                return data
+        
+        # Generate NISE data
+        print(f"\n  Generating OCP data with NISE for cluster: {e2e_cluster_id}")
         
         now = datetime.utcnow()
-        # Generate 4 intervals of data (like the shell script)
-        intervals = []
-        for i in range(4):
-            start = now - timedelta(minutes=75 - (i * 15))
-            end = now - timedelta(minutes=60 - (i * 15))
-            intervals.append((start, end))
+        # Use current date range - this is CRITICAL for Koku to process summaries
+        # Data must be in the current billing period
+        start_date = now - timedelta(days=1)
+        end_date = now + timedelta(days=1)
         
-        # CSV header matching OCP ROS format
-        header = (
-            "report_period_start,report_period_end,interval_start,interval_end,"
-            "container_name,pod,owner_name,owner_kind,workload,workload_type,"
-            "namespace,image_name,node,resource_id,"
-            "cpu_request_container_avg,cpu_request_container_sum,"
-            "cpu_limit_container_avg,cpu_limit_container_sum,"
-            "cpu_usage_container_avg,cpu_usage_container_min,cpu_usage_container_max,cpu_usage_container_sum,"
-            "cpu_throttle_container_avg,cpu_throttle_container_max,cpu_throttle_container_sum,"
-            "memory_request_container_avg,memory_request_container_sum,"
-            "memory_limit_container_avg,memory_limit_container_sum,"
-            "memory_usage_container_avg,memory_usage_container_min,memory_usage_container_max,memory_usage_container_sum,"
-            "memory_rss_usage_container_avg,memory_rss_usage_container_min,memory_rss_usage_container_max,memory_rss_usage_container_sum"
-        )
+        # Create temp directory for NISE output
+        temp_dir = tempfile.mkdtemp(prefix="e2e-nise-")
         
-        rows = [header]
-        date_str = now.strftime("%Y-%m-%d")
+        # Check for custom static report (only use if explicitly set)
+        # NOTE: Do NOT use the default static report file as it has hardcoded dates
+        # that will cause "missing start or end dates" errors in Koku
+        static_report = os.environ.get("E2E_NISE_STATIC_REPORT")
         
-        # Generate rows with varying but realistic metrics
-        cpu_usages = [0.247832, 0.265423, 0.289567, 0.234567]
-        mem_usages = [413587266, 427891456, 445678901, 398765432]
-        
-        for i, (start, end) in enumerate(intervals):
-            start_str = start.strftime("%Y-%m-%d %H:%M:%S -0000 UTC")
-            end_str = end.strftime("%Y-%m-%d %H:%M:%S -0000 UTC")
-            cpu = cpu_usages[i]
-            mem = mem_usages[i]
-            
-            row = (
-                f"{date_str},{date_str},{start_str},{end_str},"
-                f"test-container,test-pod-{e2e_cluster_id[:8]},test-deployment,Deployment,test-workload,deployment,"
-                f"test-namespace,quay.io/test/image:latest,worker-node-1,resource-{e2e_cluster_id[:8]},"
-                f"0.5,0.5,1.0,1.0,"
-                f"{cpu},{cpu*0.75},{cpu*1.3},{cpu},"
-                f"0.001,0.002,0.001,"
-                f"536870912,536870912,1073741824,1073741824,"
-                f"{mem},{mem*0.99},{mem*1.02},{mem},"
-                f"{mem*0.95},{mem*0.94},{mem*0.96},{mem*0.95}"
+        try:
+            nise_data = generate_nise_ocp_data(
+                cluster_id=e2e_cluster_id,
+                start_date=start_date,
+                end_date=end_date,
+                output_dir=temp_dir,
+                static_report_file=static_report,  # Will generate dynamic report if None
             )
-            rows.append(row)
-        
-        return {
-            "csv_content": "\n".join(rows),
-            "cluster_id": e2e_cluster_id,
-            "expected_cpu_request": 0.5,
-            "expected_memory_request_bytes": 536870912,
-            "expected_rows": 4,
-            "namespace": "test-namespace",
-            "node": "worker-node-1",
-        }
+            
+            pod_usage_count = len(nise_data.get('pod_usage_files', []))
+            total_count = len(nise_data.get('csv_files', []))
+            print(f"  ✅ NISE generated {total_count} CSV files ({pod_usage_count} pod_usage)")
+            
+            # Read the pod_usage CSV file for upload (required for summary tables)
+            pod_usage_files = nise_data.get("pod_usage_files", [])
+            csv_files = nise_data.get("csv_files", [])
+            
+            if pod_usage_files:
+                # Prefer pod_usage files - these are required for summary tables
+                with open(pod_usage_files[0], "r") as f:
+                    csv_content = f.read()
+                nise_data["csv_content"] = csv_content
+                print(f"  📄 Using pod_usage file: {Path(pod_usage_files[0]).name}")
+            elif csv_files:
+                # Fall back to any CSV file
+                with open(csv_files[0], "r") as f:
+                    csv_content = f.read()
+                nise_data["csv_content"] = csv_content
+                print(f"  ⚠️  No pod_usage files, using: {Path(csv_files[0]).name}")
+            else:
+                # No CSV files generated - fall back to simple
+                print("  ⚠️  NISE generated no CSV files, falling back to simple data")
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return generate_simple_ocp_data(e2e_cluster_id)
+            
+            nise_data["temp_dir"] = temp_dir
+            return nise_data
+            
+        except Exception as e:
+            print(f"  ⚠️  NISE generation failed: {e}")
+            print("     Falling back to simple data format")
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            data = generate_simple_ocp_data(e2e_cluster_id)
+            data["nise_error"] = str(e)
+            return data
 
     @pytest.fixture(scope="class")
     def registered_source(
@@ -326,7 +609,33 @@ class TestCompleteDataFlow:
     ):
         """Step 3: Upload test data via JWT-authenticated ingress."""
         cluster_id = registered_source["cluster_id"]
-        tar_path = create_upload_package(e2e_test_data["csv_content"], cluster_id)
+        
+        # Get date range from NISE data or use defaults
+        start_date = e2e_test_data.get("start_date")
+        end_date = e2e_test_data.get("end_date")
+        
+        # Check if we have NISE-generated files with separate ROS data
+        pod_usage_files = e2e_test_data.get("pod_usage_files", [])
+        ros_usage_files = e2e_test_data.get("ros_usage_files", [])
+        
+        if pod_usage_files and ros_usage_files:
+            # Use NISE files with proper separation of cost and ROS data
+            print(f"  📦 Creating package with {len(pod_usage_files)} pod_usage + {len(ros_usage_files)} ros_usage files")
+            tar_path = create_upload_package_from_files(
+                pod_usage_files,
+                ros_usage_files,
+                cluster_id,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        else:
+            # Fall back to simple CSV content
+            tar_path = create_upload_package(
+                e2e_test_data["csv_content"],
+                cluster_id,
+                start_date=start_date,
+                end_date=end_date,
+            )
         
         try:
             with open(tar_path, "rb") as f:
@@ -351,12 +660,16 @@ class TestCompleteDataFlow:
             )
         finally:
             # Clean up temp files
-            import shutil
             tar_dir = os.path.dirname(tar_path)
             if os.path.exists(tar_path):
                 os.unlink(tar_path)
             if os.path.exists(tar_dir):
                 shutil.rmtree(tar_dir, ignore_errors=True)
+            
+            # Clean up NISE temp directory if present
+            nise_temp_dir = e2e_test_data.get("temp_dir")
+            if nise_temp_dir and os.path.exists(nise_temp_dir):
+                shutil.rmtree(nise_temp_dir, ignore_errors=True)
 
     def test_04_manifest_created_in_koku(self, cluster_config, registered_source):
         """Step 4: Verify manifest was created in Koku database."""
@@ -429,11 +742,50 @@ class TestCompleteDataFlow:
         
         assert success, "File processing not completed"
 
-    @pytest.mark.timeout(600)  # 10 minutes for summary tables
+    @pytest.mark.extended
+    @pytest.mark.timeout(900)  # 15 minutes for summary tables
     def test_06_summary_tables_populated(
         self, cluster_config, registered_source, e2e_test_data: dict
     ):
-        """Step 6: Verify Koku summary tables are populated with correct data."""
+        """Step 6: Verify Koku summary tables are populated with correct data.
+        
+        Note: This test is marked 'extended' and skipped by default in CI.
+        
+        To run extended tests, you must first run the prerequisite tests:
+            pytest -k "TestCompleteDataFlow" -v
+        
+        Or run all E2E tests including extended:
+            pytest --all -k "TestCompleteDataFlow" -v
+        
+        IMPORTANT: Summary table population requires proper OCP data format.
+        If using simple data (E2E_USE_SIMPLE_DATA=1), this test may fail because
+        the simplified CSV format may not contain all required fields for Koku
+        to populate summary tables.
+        
+        For reliable results, use NISE-generated data (the default).
+        """
+        # Check if using simple data format
+        data_generator = e2e_test_data.get("generator", "unknown")
+        if data_generator == "simple":
+            pytest.skip(
+                "Summary table population requires NISE-generated data. "
+                "Simple data format (E2E_USE_SIMPLE_DATA=1) may not contain "
+                "all required fields for Koku summary processing. "
+                "Run without E2E_USE_SIMPLE_DATA to use NISE."
+            )
+        
+        if e2e_test_data.get("nise_install_failed"):
+            pytest.skip(
+                "NISE installation failed - cannot validate summary tables. "
+                "Install koku-nise manually: pip install koku-nise"
+            )
+        
+        if e2e_test_data.get("nise_error"):
+            pytest.skip(
+                f"NISE data generation failed: {e2e_test_data['nise_error']}. "
+                "Cannot validate summary tables without proper OCP data format."
+            )
+        
         db_pod = get_pod_by_label(
             cluster_config.namespace,
             "app.kubernetes.io/name=database"
@@ -460,7 +812,40 @@ class TestCompleteDataFlow:
         )
         
         if not schema_result or not schema_result[0][0]:
-            pytest.skip("Could not find tenant schema - manifest may not be linked to provider yet")
+            # Provide detailed diagnostic information
+            manifest_check = execute_db_query(
+                cluster_config.namespace,
+                db_pod,
+                "koku",
+                "koku",
+                f"""
+                SELECT m.id, m.provider_id, m.num_total_files, m.num_processed_files
+                FROM reporting_common_costusagereportmanifest m
+                WHERE m.cluster_id = '{cluster_id}'
+                ORDER BY m.creation_datetime DESC
+                LIMIT 1
+                """,
+            )
+            
+            if manifest_check and manifest_check[0]:
+                manifest_info = manifest_check[0]
+                assert False, (
+                    f"Manifest found (id={manifest_info[0]}) but not linked to provider. "
+                    f"Provider ID: {manifest_info[1]}, "
+                    f"Files: {manifest_info[3]}/{manifest_info[2]} processed. "
+                    "This may indicate:\n"
+                    "  1. Provider registration failed (check test_02)\n"
+                    "  2. Manifest-provider linking is pending\n"
+                    "  3. Data format issues preventing provider association"
+                )
+            else:
+                assert False, (
+                    f"No manifest found for cluster_id '{cluster_id}'. "
+                    "This may indicate:\n"
+                    "  1. Upload failed (check test_03)\n"
+                    "  2. Koku listener didn't process the Kafka message\n"
+                    "  3. Data format issues - ensure NISE-generated data is used"
+                )
         
         schema_name = schema_result[0][0].strip()
         
@@ -482,21 +867,77 @@ class TestCompleteDataFlow:
         
         success = wait_for_condition(
             check_summary,
-            timeout=540,  # 9 minutes (leave buffer for pytest timeout)
+            timeout=840,  # 14 minutes (leave buffer for pytest timeout)
             interval=30,
             description="summary table population",
         )
         
         if not success:
-            pytest.skip("Summary tables not populated within timeout - async processing may still be running")
+            # Get diagnostic info about what was processed
+            file_status = execute_db_query(
+                cluster_config.namespace,
+                db_pod,
+                "koku",
+                "koku",
+                f"""
+                SELECT rf.report_name, rf.completed_datetime, rf.status
+                FROM reporting_common_costusagereportmanifest m
+                JOIN reporting_common_costusagereportstatus rf ON m.id = rf.manifest_id
+                WHERE m.cluster_id = '{cluster_id}'
+                ORDER BY rf.completed_datetime DESC
+                LIMIT 5
+                """,
+            )
+            
+            file_info = ""
+            if file_status:
+                file_info = "\n  Processed files:\n"
+                for row in file_status:
+                    file_info += f"    - {row[0]}: status={row[2]}, completed={row[1]}\n"
+            
+            assert False, (
+                f"Summary tables not populated within timeout for cluster '{cluster_id}'.\n"
+                f"Schema: {schema_name}\n"
+                f"{file_info}"
+                "\nPossible causes:\n"
+                "  1. Koku listener 'missing start or end dates' bug - summary task not triggered\n"
+                "     (Check listener logs for this message)\n"
+                "  2. Celery workers not processing summary tasks\n"
+                "  3. Data format incompatible with summary processing\n"
+                "  4. Processing still in progress (try increasing timeout)\n"
+                "\nTo debug:\n"
+                "  - Check listener logs: oc logs -l app.kubernetes.io/component=listener | grep 'missing start'\n"
+                "  - Check OCP worker logs: oc logs -l app.kubernetes.io/component=worker-ocp\n"
+                "  - Check summary worker logs: oc logs -l app.kubernetes.io/component=worker-summary\n"
+                "\nKNOWN ISSUE: Ingress-based uploads may not trigger summary tasks due to\n"
+                "date extraction issues in Koku. Direct S3 upload (bash test) may work."
+            )
 
-    @pytest.mark.timeout(180)  # 3 minutes - Kruize may not have data yet
-    def test_07_kruize_experiments_created(self, cluster_config, registered_source):
+    @pytest.mark.extended
+    @pytest.mark.timeout(300)  # 5 minutes for Kruize experiments
+    def test_07_kruize_experiments_created(
+        self, cluster_config, registered_source, e2e_test_data: dict
+    ):
         """Step 7: Verify Kruize experiments were created from ROS events.
         
-        Note: Kruize typically needs multiple data uploads over time to create
-        experiments. A single upload may not be sufficient.
+        Note: This test is marked 'extended' and skipped by default in CI.
+        Kruize typically needs multiple data uploads over time to create experiments.
+        Run with: pytest -m extended
+        
+        IMPORTANT: Kruize experiment creation requires:
+        1. Summary tables to be populated (test_06 must pass)
+        2. ROS events to be emitted by Koku
+        3. ROS Processor to consume events and send to Kruize
+        4. Proper OCP data format with resource metrics
         """
+        # Check data format
+        data_generator = e2e_test_data.get("generator", "unknown")
+        if data_generator == "simple":
+            pytest.skip(
+                "Kruize experiments require NISE-generated data with proper resource metrics. "
+                "Simple data format may not contain required fields for ROS processing."
+            )
+        
         db_pod = get_pod_by_label(
             cluster_config.namespace,
             "app.kubernetes.io/name=database"
@@ -509,7 +950,7 @@ class TestCompleteDataFlow:
         kruize_password = get_secret_value(cluster_config.namespace, secret_name, "kruize-password")
         
         if not kruize_user:
-            pytest.skip("Kruize credentials not found")
+            pytest.skip("Kruize credentials not found - ROS may not be deployed")
         
         cluster_id = registered_source["cluster_id"]
         
@@ -528,24 +969,71 @@ class TestCompleteDataFlow:
             return result is not None and int(result[0][0]) > 0
         
         # Kruize processing takes time - ROS events must flow through
-        # Use shorter timeout since this is expected to skip for single uploads
         success = wait_for_condition(
             check_experiments,
-            timeout=120,  # 2 minutes
+            timeout=240,  # 4 minutes
             interval=20,
             description="Kruize experiment creation",
         )
         
         if not success:
-            pytest.skip("Kruize experiments not yet created - typically needs multiple data uploads")
+            # Get diagnostic info
+            ros_events_check = None
+            try:
+                # Check if ROS events topic has messages
+                result = run_oc_command([
+                    "exec", "-n", cluster_config.namespace,
+                    "kafka-cluster-kafka-0", "--",
+                    "bin/kafka-console-consumer.sh",
+                    "--bootstrap-server", "localhost:9092",
+                    "--topic", "hccm.ros.events",
+                    "--from-beginning",
+                    "--max-messages", "1",
+                    "--timeout-ms", "5000",
+                ], check=False)
+                ros_events_check = "ROS events topic has messages" if result.returncode == 0 else "No messages in ROS events topic"
+            except Exception:
+                ros_events_check = "Could not check ROS events topic"
+            
+            assert False, (
+                f"Kruize experiments not created for cluster '{cluster_id}'.\n"
+                f"ROS Events: {ros_events_check}\n"
+                "\nPossible causes:\n"
+                "  1. Summary tables not populated (test_06 must pass first)\n"
+                "  2. ROS events not being emitted by Koku\n"
+                "  3. ROS Processor not consuming events\n"
+                "  4. Kruize not processing ROS data\n"
+                "  5. Data format missing required resource metrics\n"
+                "\nTo debug:\n"
+                "  - Check ROS Processor logs: oc logs -l app.kubernetes.io/component=ros-processor\n"
+                "  - Check Kruize logs: oc logs -l app.kubernetes.io/name=kruize\n"
+                "  - Verify ROS events topic: oc exec kafka-cluster-kafka-0 -- bin/kafka-topics.sh --list --bootstrap-server localhost:9092"
+            )
 
-    @pytest.mark.timeout(180)  # 3 minutes - recommendations may not exist yet
-    def test_08_recommendations_generated(self, cluster_config, registered_source):
+    @pytest.mark.extended
+    @pytest.mark.timeout(300)  # 5 minutes for recommendations
+    def test_08_recommendations_generated(
+        self, cluster_config, registered_source, e2e_test_data: dict
+    ):
         """Step 8: Verify recommendations were generated by Kruize.
         
-        Note: Kruize typically needs multiple data uploads over time to generate
-        meaningful recommendations. A single upload may not be sufficient.
+        Note: This test is marked 'extended' and skipped by default in CI.
+        Kruize typically needs multiple data uploads over time to generate recommendations.
+        Run with: pytest -m extended
+        
+        IMPORTANT: Recommendation generation requires:
+        1. Kruize experiments to exist (test_07 must pass)
+        2. Sufficient data points for Kruize to generate recommendations
+        3. Proper OCP data format with CPU/memory usage metrics
         """
+        # Check data format
+        data_generator = e2e_test_data.get("generator", "unknown")
+        if data_generator == "simple":
+            pytest.skip(
+                "Recommendation generation requires NISE-generated data with proper metrics. "
+                "Simple data format may not contain sufficient data for Kruize recommendations."
+            )
+        
         db_pod = get_pod_by_label(
             cluster_config.namespace,
             "app.kubernetes.io/name=database"
@@ -558,9 +1046,29 @@ class TestCompleteDataFlow:
         kruize_password = get_secret_value(cluster_config.namespace, secret_name, "kruize-password")
         
         if not kruize_user:
-            pytest.skip("Kruize credentials not found")
+            pytest.skip("Kruize credentials not found - ROS may not be deployed")
         
         cluster_id = registered_source["cluster_id"]
+        
+        # First check if experiments exist
+        experiment_result = execute_db_query(
+            cluster_config.namespace,
+            db_pod,
+            "kruize_db",
+            kruize_user,
+            f"""
+            SELECT COUNT(*) FROM kruize_experiments
+            WHERE cluster_name LIKE '%{cluster_id}%'
+            """,
+            password=kruize_password,
+        )
+        
+        experiment_count = int(experiment_result[0][0]) if experiment_result else 0
+        if experiment_count == 0:
+            pytest.skip(
+                f"No Kruize experiments found for cluster '{cluster_id}'. "
+                "test_07 must pass before recommendations can be generated."
+            )
         
         def check_recommendations():
             result = execute_db_query(
@@ -576,18 +1084,50 @@ class TestCompleteDataFlow:
             )
             return result is not None and int(result[0][0]) > 0
         
-        # Use shorter timeout since this is expected to skip for single uploads
         success = wait_for_condition(
             check_recommendations,
-            timeout=120,  # 2 minutes
+            timeout=240,  # 4 minutes
             interval=20,
             description="recommendation generation",
         )
         
         if not success:
-            pytest.skip(
-                "Recommendations not yet generated - "
-                "Kruize typically needs multiple data uploads over time"
+            # Get experiment details for diagnostics
+            exp_details = execute_db_query(
+                cluster_config.namespace,
+                db_pod,
+                "kruize_db",
+                kruize_user,
+                f"""
+                SELECT experiment_name, status, created_at
+                FROM kruize_experiments
+                WHERE cluster_name LIKE '%{cluster_id}%'
+                ORDER BY created_at DESC
+                LIMIT 3
+                """,
+                password=kruize_password,
+            )
+            
+            exp_info = ""
+            if exp_details:
+                exp_info = "\n  Experiments found:\n"
+                for row in exp_details:
+                    exp_info += f"    - {row[0]}: status={row[1]}, created={row[2]}\n"
+            
+            assert False, (
+                f"Recommendations not generated for cluster '{cluster_id}'.\n"
+                f"Experiments found: {experiment_count}\n"
+                f"{exp_info}"
+                "\nPossible causes:\n"
+                "  1. Insufficient data points - Kruize needs multiple data uploads\n"
+                "  2. Experiments exist but haven't been processed yet\n"
+                "  3. Data format missing required CPU/memory usage metrics\n"
+                "  4. Kruize recommendation engine not running\n"
+                "\nTo debug:\n"
+                "  - Check Kruize logs: oc logs -l app.kubernetes.io/name=kruize\n"
+                "  - Query experiments: oc exec <db-pod> -- psql -U kruize -d kruize_db -c \"SELECT * FROM kruize_experiments;\"\n"
+                "\nNote: In a single E2E test run, recommendations may not be generated.\n"
+                "Kruize typically requires multiple data uploads over several hours."
             )
 
     def test_09_recommendations_accessible_via_api(

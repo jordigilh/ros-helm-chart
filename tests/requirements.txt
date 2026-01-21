@@ -11,3 +11,8 @@ PyYAML>=6.0
 
 # Kubernetes client (optional, for advanced k8s operations)
 kubernetes>=25.0.0
+
+# NISE - OCP cost data generator (for E2E tests)
+# Used by default for proper OCP data format
+# Set E2E_USE_SIMPLE_DATA=1 to skip NISE and use simplified format
+koku-nise>=4.0.0

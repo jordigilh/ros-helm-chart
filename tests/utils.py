@@ -193,16 +193,29 @@ def execute_db_query(
 # =============================================================================
 
 
-def create_upload_package(csv_data: str, cluster_id: str) -> str:
+def create_upload_package(
+    csv_data: str,
+    cluster_id: str,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+) -> str:
     """Create a tar.gz upload package with CSV and manifest.
     
     Args:
         csv_data: CSV content as string
         cluster_id: Unique cluster identifier
+        start_date: Start date for the report period (required for summary processing)
+        end_date: End date for the report period (required for summary processing)
     
     Returns:
         Path to the created tar.gz file
+        
+    IMPORTANT: The manifest.json MUST include 'start' and 'end' fields for Koku
+    to trigger summary processing. Without these fields, Koku will log:
+    "missing start or end dates - cannot summarize ocp reports"
     """
+    from datetime import timedelta
+    
     temp_dir = tempfile.mkdtemp()
     csv_file = Path(temp_dir) / "openshift_usage_report.csv"
     manifest_file = Path(temp_dir) / "manifest.json"
@@ -211,23 +224,117 @@ def create_upload_package(csv_data: str, cluster_id: str) -> str:
     # Write CSV
     csv_file.write_text(csv_data)
 
-    # Write manifest
+    # Calculate date range if not provided
+    now = datetime.now(timezone.utc)
+    if start_date is None:
+        # Default to yesterday
+        start_date = now - timedelta(days=1)
+    if end_date is None:
+        # Default to today
+        end_date = now
+    
+    # Ensure dates are timezone-aware
+    if start_date.tzinfo is None:
+        start_date = start_date.replace(tzinfo=timezone.utc)
+    if end_date.tzinfo is None:
+        end_date = end_date.replace(tzinfo=timezone.utc)
+
+    # Write manifest - MUST include start and end for summary processing
     manifest = {
         "uuid": str(uuid.uuid4()),
         "cluster_id": cluster_id,
-        "cluster_alias": "test-cluster",
-        "date": datetime.now(timezone.utc).isoformat(),
+        "cluster_alias": f"e2e-source-{cluster_id[:12]}",
+        "date": now.isoformat(),
         "files": ["openshift_usage_report.csv"],
         "resource_optimization_files": ["openshift_usage_report.csv"],
         "certified": True,
         "operator_version": "1.0.0",
         "daily_reports": False,
+        # CRITICAL: These fields are required for Koku to trigger summary processing
+        "start": start_date.isoformat(),
+        "end": end_date.isoformat(),
     }
     manifest_file.write_text(json.dumps(manifest, indent=2))
 
     # Create tar.gz
     with tarfile.open(tar_file, "w:gz") as tar:
         tar.add(csv_file, arcname="openshift_usage_report.csv")
+        tar.add(manifest_file, arcname="manifest.json")
+
+    return str(tar_file)
+
+
+def create_upload_package_from_files(
+    pod_usage_files: list[str],
+    ros_usage_files: list[str],
+    cluster_id: str,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+) -> str:
+    """Create a tar.gz upload package from NISE-generated files.
+    
+    This function creates a proper upload package with separate file lists
+    for cost management (pod_usage) and resource optimization (ros_usage).
+    
+    Args:
+        pod_usage_files: List of paths to pod_usage CSV files (for Koku cost management)
+        ros_usage_files: List of paths to ros_usage CSV files (for ROS processor)
+        cluster_id: Unique cluster identifier
+        start_date: Start date for the report period
+        end_date: End date for the report period
+    
+    Returns:
+        Path to the created tar.gz file
+    """
+    from datetime import timedelta
+    import os
+    
+    temp_dir = tempfile.mkdtemp()
+    manifest_file = Path(temp_dir) / "manifest.json"
+    tar_file = Path(temp_dir) / "cost-mgmt.tar.gz"
+
+    # Calculate date range if not provided
+    now = datetime.now(timezone.utc)
+    if start_date is None:
+        start_date = now - timedelta(days=1)
+    if end_date is None:
+        end_date = now
+    
+    # Ensure dates are timezone-aware
+    if start_date.tzinfo is None:
+        start_date = start_date.replace(tzinfo=timezone.utc)
+    if end_date.tzinfo is None:
+        end_date = end_date.replace(tzinfo=timezone.utc)
+
+    # Get just the filenames for the manifest
+    pod_filenames = [os.path.basename(f) for f in pod_usage_files]
+    ros_filenames = [os.path.basename(f) for f in ros_usage_files]
+
+    # Write manifest with separate file lists
+    manifest = {
+        "uuid": str(uuid.uuid4()),
+        "cluster_id": cluster_id,
+        "cluster_alias": f"e2e-source-{cluster_id[:12]}",
+        "date": now.isoformat(),
+        "files": pod_filenames,  # Pod-level data for Koku cost management
+        "resource_optimization_files": ros_filenames,  # Container-level data for ROS
+        "certified": True,
+        "operator_version": "1.0.0",
+        "daily_reports": False,
+        "start": start_date.isoformat(),
+        "end": end_date.isoformat(),
+    }
+    manifest_file.write_text(json.dumps(manifest, indent=2))
+
+    # Create tar.gz with all files
+    with tarfile.open(tar_file, "w:gz") as tar:
+        # Add pod usage files
+        for filepath in pod_usage_files:
+            tar.add(filepath, arcname=os.path.basename(filepath))
+        # Add ROS usage files
+        for filepath in ros_usage_files:
+            tar.add(filepath, arcname=os.path.basename(filepath))
+        # Add manifest
         tar.add(manifest_file, arcname="manifest.json")
 
     return str(tar_file)

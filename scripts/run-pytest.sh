@@ -22,7 +22,8 @@
 # Filter Options:
 #   --smoke             Run only smoke tests (quick validation)
 #   --slow              Include slow tests (processing, recommendations)
-#   --all               Run all tests (default)
+#   --extended          Run E2E tests INCLUDING extended (summary tables, Kruize)
+#   --all               Run all tests including extended (overrides default exclusions)
 #
 # Setup Options:
 #   --setup-only        Only setup the environment, don't run tests
@@ -36,11 +37,13 @@
 #   PYTHON                 Python interpreter (default: python3)
 #
 # Examples:
-#   ./run-pytest.sh                         # Run all tests
+#   ./run-pytest.sh                         # Run all tests (excluding extended)
 #   ./run-pytest.sh --smoke                 # Run smoke tests only
 #   ./run-pytest.sh --helm                  # Run Helm suite only
 #   ./run-pytest.sh --auth --ros            # Run auth and ROS suites
 #   ./run-pytest.sh --e2e --smoke           # Run E2E smoke tests
+#   ./run-pytest.sh --extended              # Run full E2E flow INCLUDING extended tests
+#   ./run-pytest.sh --all                   # Run ALL tests including extended
 #   ./run-pytest.sh -k "test_jwt"           # Run tests matching pattern
 #   ./run-pytest.sh suites/helm/            # Run specific suite directory
 #   ./run-pytest.sh -m "smoke and auth"     # Custom marker expression
@@ -96,6 +99,10 @@ show_help() {
     echo "Markers:"
     echo "  smoke             Quick validation tests (~1 min)"
     echo "  slow              Long-running tests (processing, recommendations)"
+    echo "  extended          Tests requiring extended processing (skipped by default)"
+    echo ""
+    echo "Note: Extended tests (summary tables, Kruize recommendations) are skipped"
+    echo "      by default. Use --extended or --all to include them."
     exit 0
 }
 
@@ -187,7 +194,8 @@ run_pytest() {
 main() {
     local pytest_markers=()
     local pytest_extra_args=()
-    local run_all=true
+    local run_all=false
+    local include_extended=false
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -231,11 +239,16 @@ main() {
                 ;;
             --slow)
                 pytest_markers+=("slow")
-                run_all=false
+                shift
+                ;;
+            --extended)
+                include_extended=true
+                pytest_markers+=("extended")
                 shift
                 ;;
             --all)
                 run_all=true
+                include_extended=true
                 shift
                 ;;
             # Setup options
@@ -280,12 +293,24 @@ main() {
     # Build pytest arguments
     local pytest_args=()
 
-    # Add marker filter if specific tests requested
-    if [[ "$run_all" != "true" ]] && [[ ${#pytest_markers[@]} -gt 0 ]]; then
+    # Handle marker filtering
+    # By default, pytest.ini excludes 'extended' tests via addopts
+    # We need to override this when --extended or --all is specified
+    if [[ "$run_all" == "true" ]]; then
+        # Run all tests including extended - override the default exclusion
+        pytest_args+=("-o" "addopts=-v --tb=short --strict-markers --junit-xml=reports/junit.xml")
+    elif [[ "$include_extended" == "true" ]]; then
+        # Run E2E tests INCLUDING extended - override default exclusion and filter to E2E
+        # This ensures prerequisite tests (source registration, upload) run before extended tests
+        pytest_args+=("-o" "addopts=-v --tb=short --strict-markers --junit-xml=reports/junit.xml")
+        pytest_args+=("-k" "TestCompleteDataFlow")
+    elif [[ ${#pytest_markers[@]} -gt 0 ]]; then
+        # Run specific markers (default exclusion of extended still applies)
         local marker_expr
         marker_expr=$(IFS=" or "; echo "${pytest_markers[*]}")
         pytest_args+=("-m" "$marker_expr")
     fi
+    # If no markers specified and not --all, default pytest.ini addopts applies (excludes extended)
 
     # Add any extra arguments
     if [[ ${#pytest_extra_args[@]} -gt 0 ]]; then

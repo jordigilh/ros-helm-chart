@@ -40,6 +40,16 @@ spec:
             - |
               echo 'Waiting for dependencies (Kafka, Kruize) to be ready...'
               sleep 60
+              
+              {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
+              # Combine system CAs with OpenShift service CA for S3 TLS verification
+              echo 'Creating combined CA bundle...'
+              cat /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem > /tmp/combined-ca.crt
+              cat /etc/pki/ca-trust/source/anchors/openshift-service-ca.crt >> /tmp/combined-ca.crt
+              export SSL_CERT_FILE=/tmp/combined-ca.crt
+              echo "Combined CA bundle created with $(grep -c 'BEGIN CERTIFICATE' /tmp/combined-ca.crt) certificates"
+              {{- end }}
+              
               echo 'Starting processor...'
               ./rosocp db migrate up
               ./rosocp start processor
@@ -52,8 +62,10 @@ spec:
               mountPath: /cdapp
               readOnly: true
             {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
-            - name: service-ca-cert
-              mountPath: /etc/ssl/certs/service-ca.crt
+            # Mount OpenShift service-serving CA for ODF S3 endpoint
+            # Go's x509 package reads from SSL_CERT_DIR in addition to SSL_CERT_FILE
+            - name: service-ca-bundle
+              mountPath: /etc/pki/ca-trust/source/anchors/openshift-service-ca.crt
               subPath: service-ca.crt
               readOnly: true
             {{- end }}
@@ -102,10 +114,8 @@ spec:
               value: http://{{ include "cost-onprem.fullname" . }}-sources-api:{{ .Values.sourcesApi.port }}
             - name: PROMETHEUS_PORT
               value: {{ .Values.ros.processor.metricsPort | quote }}
-            {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
-            - name: STORAGE_SSL_CA_CERT_PATH
-              value: "/etc/ssl/certs/service-ca.crt"
-            {{- end }}
+            # SSL_CERT_FILE is set dynamically in the startup script
+            # after combining system CAs with OpenShift service CA
           # Re-enable probes now that PROMETHEUS_PORT environment variable is correctly set
           livenessProbe:
             httpGet:
@@ -130,7 +140,9 @@ spec:
           configMap:
             name: {{ include "cost-onprem.fullname" . }}-cdapp-config
         {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
-        - name: service-ca-cert
+        # OpenShift automatically injects the service-serving CA into this ConfigMap
+        # See: https://docs.openshift.com/container-platform/latest/security/certificates/service-serving-certificate.html
+        - name: service-ca-bundle
           configMap:
             name: {{ include "cost-onprem.fullname" . }}-service-ca
             items:
