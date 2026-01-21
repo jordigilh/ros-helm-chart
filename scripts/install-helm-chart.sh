@@ -506,38 +506,75 @@ create_storage_credentials_secret() {
 # This function MUST succeed for the installation to continue.
 # - If buckets already exist: prints notification and continues
 # - If buckets don't exist and creation fails: exits with error
+#
+# Environment Variables:
+#   SKIP_S3_SETUP=true       - Skip bucket creation entirely (for CI/testing)
+#   S3_ENDPOINT              - Manual S3 endpoint override (e.g., "s3.test.example.com")
+#   S3_ACCESS_KEY            - Manual S3 access key override
+#   S3_SECRET_KEY            - Manual S3 secret key override
 create_s3_buckets() {
     echo_info "Creating S3 buckets..."
 
+    # Check if S3 setup should be skipped entirely
+    if [ "${SKIP_S3_SETUP:-false}" = "true" ]; then
+        echo_info "Skipping S3 bucket creation (SKIP_S3_SETUP=true)"
+        echo_info "This is typically used in CI environments or when S3 is managed externally"
+        return 0
+    fi
+
     local secret_name="${HELM_RELEASE_NAME}-storage-credentials"
 
-    # Get S3 credentials from the storage credentials secret
-    local access_key=$(kubectl get secret "$secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}' 2>/dev/null | base64 -d)
-    local secret_key=$(kubectl get secret "$secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}' 2>/dev/null | base64 -d)
+    # Get S3 credentials from environment variables or secret
+    local access_key="${S3_ACCESS_KEY:-}"
+    local secret_key="${S3_SECRET_KEY:-}"
+
+    # If credentials not provided via environment variables, get from secret
+    if [ -z "$access_key" ] || [ -z "$secret_key" ]; then
+        echo_info "Getting S3 credentials from secret: $secret_name"
+        access_key=$(kubectl get secret "$secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}' 2>/dev/null | base64 -d)
+        secret_key=$(kubectl get secret "$secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}' 2>/dev/null | base64 -d)
+    else
+        echo_info "Using S3 credentials from environment variables"
+    fi
 
     if [ -z "$access_key" ] || [ -z "$secret_key" ]; then
-        echo_error "S3 credentials not found in secret $secret_name"
+        echo_error "S3 credentials not found in secret $secret_name or environment variables"
         echo_error "Cannot proceed without S3 storage. Aborting installation."
+        echo_error ""
+        echo_error "To bypass this requirement for CI environments, set:"
+        echo_error "  export SKIP_S3_SETUP=true"
         exit 1
     fi
 
-    # Detect ODF storage backend
+    # Determine S3 endpoint and configuration
     local s3_url mc_insecure
-    echo_info "Detecting ODF storage backend..."
 
-    if kubectl get crd noobaas.noobaa.io >/dev/null 2>&1 && \
-       kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
-        # ODF NooBaa detected
-        s3_url="https://s3.openshift-storage.svc:443"
+    # Check for manual S3 endpoint override
+    if [ -n "${S3_ENDPOINT:-}" ]; then
+        s3_url="https://${S3_ENDPOINT}"
         mc_insecure="--insecure"
-        echo_info "  ✓ Detected: ODF (NooBaa S3)"
+        echo_info "Using manual S3 endpoint: $s3_url"
     else
-        echo_error "Could not detect ODF storage backend"
-        echo_error "Checked for:"
-        echo_error "  - ODF NooBaa CRD in openshift-storage namespace"
-        echo_error ""
-        echo_error "Please ensure ODF (OpenShift Data Foundation) is properly deployed."
-        exit 1
+        # Detect ODF storage backend (fallback for backward compatibility)
+        echo_info "Detecting ODF storage backend..."
+
+        if kubectl get crd noobaas.noobaa.io >/dev/null 2>&1 && \
+           kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
+            # ODF NooBaa detected
+            s3_url="https://s3.openshift-storage.svc:443"
+            mc_insecure="--insecure"
+            echo_info "  ✓ Detected: ODF (NooBaa S3)"
+        else
+            echo_error "Could not detect ODF storage backend"
+            echo_error "Checked for:"
+            echo_error "  - ODF NooBaa CRD in openshift-storage namespace"
+            echo_error ""
+            echo_error "Solutions:"
+            echo_error "  1. Deploy ODF: Ensure OpenShift Data Foundation is properly deployed"
+            echo_error "  2. Manual override: Set S3_ENDPOINT environment variable (e.g., export S3_ENDPOINT=s3.test.example.com)"
+            echo_error "  3. Skip setup: Set SKIP_S3_SETUP=true for CI environments"
+            exit 1
+        fi
     fi
 
     echo_info "Creating buckets at ${s3_url}..."
@@ -1933,6 +1970,14 @@ case "${1:-}" in
         echo "  LOCAL_CHART_PATH        - Path to local chart directory (default: ../cost-onprem)"
         echo "  KAFKA_BOOTSTRAP_SERVERS - Bootstrap servers for existing Kafka (skips verification)"
         echo "                            Example: my-kafka-bootstrap.kafka:9092"
+        echo ""
+        echo "S3/ODF Configuration (for CI or custom storage):"
+        echo "  SKIP_S3_SETUP           - Skip S3 bucket creation entirely (default: false)"
+        echo "                            Set to 'true' for CI environments or external S3 management"
+        echo "  S3_ENDPOINT             - Manual S3 endpoint override (bypasses ODF detection)"
+        echo "                            Example: s3.test.example.com"
+        echo "  S3_ACCESS_KEY           - Manual S3 access key (used with S3_ENDPOINT)"
+        echo "  S3_SECRET_KEY           - Manual S3 secret key (used with S3_ENDPOINT)"
         echo ""
         echo "Chart Source Options:"
         echo "  - Default: Downloads latest release from GitHub (recommended)"
