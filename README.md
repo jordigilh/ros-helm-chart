@@ -233,12 +233,24 @@ Key requirements:
 
 ### Test Suite
 ```bash
-# Run all tests
+# Run all tests (excludes extended by default)
 ./scripts/run-pytest.sh
 
-# Run specific test categories
-./scripts/run-pytest.sh --auth    # JWT authentication tests
-./scripts/run-pytest.sh --e2e     # End-to-end data flow tests
+# Run specific test suites
+./scripts/run-pytest.sh --helm              # Helm chart validation
+./scripts/run-pytest.sh --auth              # JWT authentication tests
+./scripts/run-pytest.sh --infrastructure    # DB, S3, Kafka health
+./scripts/run-pytest.sh --e2e               # End-to-end data flow
+
+# Run E2E with extended tests (summary tables, Kruize)
+./scripts/run-pytest.sh --extended
+
+# Run ALL tests including extended
+./scripts/run-pytest.sh --all
+
+# Run by test type
+./scripts/run-pytest.sh -m component        # Single-component tests
+./scripts/run-pytest.sh -m integration      # Multi-component tests
 ```
 
 **See [Test Suite Documentation](tests/README.md) for detailed usage**
@@ -247,6 +259,7 @@ Key requirements:
 - **Lint & Validate**: Chart validation on every PR
 - **Full Deployment Test**: E2E testing with KIND cluster
 - **Automated Releases**: Version-tagged releases with packaged charts
+- **Version Tracking**: `--save-versions` flag generates `version_info.json` for traceability
 
 ## 🚨 Troubleshooting
 

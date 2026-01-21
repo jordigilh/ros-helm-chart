@@ -33,6 +33,16 @@ tests/
 | **ros** | ROS health | Kruize, ROS Processor, API health |
 | **e2e** | Complete pipeline | **Full flow: Data → Ingress → Koku → ROS** |
 
+### Test Type Markers
+
+Tests are categorized by scope:
+
+| Marker | Description | Count |
+|--------|-------------|-------|
+| `component` | Tests validating a single component in isolation | ~34 |
+| `integration` | Tests validating interactions between multiple components | ~20 |
+| `extended` | Long-running tests requiring extended processing (skipped by default) | 3 |
+
 ### E2E Test Coverage
 
 The `e2e` suite validates the **complete production data flow**:
@@ -71,7 +81,7 @@ The `e2e` suite validates the **complete production data flow**:
 ## Quick Start
 
 ```bash
-# Run all tests
+# Run all tests (excludes extended by default)
 ./scripts/run-pytest.sh
 
 # Run smoke tests only (quick validation)
@@ -79,6 +89,12 @@ The `e2e` suite validates the **complete production data flow**:
 
 # Run the complete E2E pipeline test
 ./scripts/run-pytest.sh --e2e
+
+# Run E2E with extended tests (summary tables, Kruize)
+./scripts/run-pytest.sh --extended
+
+# Run ALL tests including extended
+./scripts/run-pytest.sh --all
 
 # Run specific suite
 ./scripts/run-pytest.sh --helm
@@ -147,6 +163,7 @@ pytest -x
 
 ## Test Markers
 
+### Suite Markers
 | Marker | Description |
 |--------|-------------|
 | `helm` | Helm chart validation tests |
@@ -155,8 +172,19 @@ pytest -x
 | `cost_management` | Koku component tests |
 | `ros` | ROS/Kruize tests |
 | `e2e` | End-to-end pipeline tests |
+
+### Type Markers
+| Marker | Description |
+|--------|-------------|
+| `component` | Single-component tests (isolation) |
+| `integration` | Multi-component tests (interactions) |
+
+### Filter Markers
+| Marker | Description |
+|--------|-------------|
 | `smoke` | Quick validation tests (~1 min) |
 | `slow` | Long-running tests |
+| `extended` | Tests requiring extended processing (skipped by default in CI) |
 
 ## Configuration
 
@@ -170,6 +198,28 @@ pytest -x
 | `PLATFORM` | `openshift` | Platform type |
 | `PYTHON` | `python3` | Python interpreter |
 
+## Data Generation
+
+The E2E test suite supports two data generation methods:
+
+### NISE Data Generation (Default)
+Uses [koku-nise](https://github.com/project-koku/nise) to generate realistic OCP cost data:
+- Generates pod-level metrics for Koku processing
+- Generates container-level metrics for ROS processing (via `--ros-ocp-info`)
+- Creates proper manifest with `files` and `resource_optimization_files` sections
+
+```bash
+# E2E tests use NISE by default
+./scripts/run-pytest.sh --e2e
+```
+
+### Simple Data Generation (Fallback)
+For quick testing without NISE dependencies:
+```bash
+# Use simple CSV generation
+USE_SIMPLE_DATA=true ./scripts/run-pytest.sh --e2e
+```
+
 ## Relationship to e2e_validator
 
 The `scripts/e2e_validator/` module provides a **CLI-based** E2E validation tool that:
@@ -180,6 +230,7 @@ The `scripts/e2e_validator/` module provides a **CLI-based** E2E validation tool
 The **pytest E2E suite** (`tests/suites/e2e/`) provides:
 - The same validation as a **pytest test**
 - Upload via **ingress** (production path)
+- NISE integration for realistic data generation
 - Integration with JUnit reporting
 - Runnable alongside other test suites
 
@@ -239,3 +290,31 @@ pytest -x --pdb
 # Show print statements
 pytest -s
 ```
+
+## Extended Tests
+
+Extended tests (`test_06_summary_tables_populated`, `test_07_kruize_experiments_created`, `test_08_recommendations_generated`) are **skipped by default** in CI because they:
+- Require longer processing times (5-15 minutes)
+- Depend on asynchronous Koku/Kruize processing
+- May require multiple data uploads for Kruize recommendations
+
+### Running Extended Tests
+
+```bash
+# Run full E2E flow INCLUDING extended tests
+./scripts/run-pytest.sh --extended
+
+# Run ALL tests including extended
+./scripts/run-pytest.sh --all
+
+# Run only extended tests (not recommended - missing prerequisites)
+pytest -m extended
+```
+
+**Note:** When using `--extended`, the entire `TestCompleteDataFlow` class runs to ensure prerequisites (source registration, data upload) complete before extended tests execute.
+
+### Known Issues with Extended Tests
+
+1. **Summary tables**: Require `start`/`end` dates in manifest (fixed in `tests/utils.py`)
+2. **Kruize experiments**: Require `ros-ocp-backend` fixes for S3 URL encoding
+3. **Recommendations**: May require multiple data uploads over time

@@ -225,6 +225,7 @@ Complete orchestration script for deploying and testing Cost On-Prem with JWT au
 3. Installs Cost On-Prem Helm chart
 4. Configures TLS certificates
 5. Runs pytest test suite
+6. Optionally saves deployment version info
 
 **Usage:**
 ```bash
@@ -237,9 +238,19 @@ Complete orchestration script for deploying and testing Cost On-Prem with JWT au
 # Skip specific steps
 ./deploy-test-cost-onprem.sh --skip-rhbk --skip-strimzi
 
+# Save deployment version info for CI traceability
+./deploy-test-cost-onprem.sh --save-versions
+./deploy-test-cost-onprem.sh --save-versions custom-versions.json
+
 # Dry run to preview actions
 ./deploy-test-cost-onprem.sh --dry-run --verbose
 ```
+
+**Version tracking:** The `--save-versions` flag generates a `version_info.json` file containing:
+- Helm chart version (source and deployed)
+- Git SHA and branch
+- Deployment timestamp
+- Component image details
 
 **Best for:** CI/CD pipelines, complete E2E deployment and validation
 
@@ -248,24 +259,44 @@ Complete orchestration script for deploying and testing Cost On-Prem with JWT au
 ### `run-pytest.sh`
 Run the pytest test suite for JWT authentication and data flow validation.
 
-**Test categories:**
-- `smoke` - Quick smoke tests
-- `auth` - JWT authentication tests
-- `upload` - Data upload tests
-- `e2e` - End-to-end data flow tests
+**Suite options:**
+- `--helm` - Helm chart validation tests
+- `--auth` - JWT authentication tests
+- `--infrastructure` - Infrastructure health tests (DB, S3, Kafka)
+- `--cost-management` - Cost Management (Koku) pipeline tests
+- `--ros` - ROS/Kruize recommendation tests
+- `--e2e` - End-to-end data flow tests
+
+**Filter options:**
+- `--smoke` - Quick smoke tests only
+- `--extended` - Run E2E tests INCLUDING extended (summary tables, Kruize)
+- `--all` - Run ALL tests including extended
+
+**Test type markers:**
+- `-m component` - Single-component tests
+- `-m integration` - Multi-component tests
 
 **Usage:**
 ```bash
-# Run all tests
+# Run all tests (excludes extended by default)
 ./run-pytest.sh
 
-# Run specific test categories
-./run-pytest.sh --smoke
+# Run specific test suites
+./run-pytest.sh --helm
 ./run-pytest.sh --auth
 ./run-pytest.sh --e2e
 
+# Run E2E with extended tests (summary tables, Kruize)
+./run-pytest.sh --extended
+
+# Run ALL tests including extended
+./run-pytest.sh --all
+
 # Run tests matching a pattern
 ./run-pytest.sh -k "test_jwt"
+
+# Run only component tests
+./run-pytest.sh -m component
 
 # Setup environment only
 ./run-pytest.sh --setup-only
@@ -600,7 +631,7 @@ All scripts use color-coded output:
 
 ---
 
-**Last Updated**: October 2025
+**Last Updated**: January 2026
 **Maintainer**: CoP Engineering Team
 **Supported Platforms**: OpenShift 4.18+ (Kubernetes 1.31+), KIND (CI/CD)
 **Tested With**: OpenShift 4.18.24
