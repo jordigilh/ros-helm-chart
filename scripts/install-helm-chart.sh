@@ -582,10 +582,34 @@ create_s3_buckets() {
     # Use kubectl run --rm for one-shot bucket creation (auto-cleanup)
     # Using alpine image since minio/mc doesn't have a shell
     # Real failures (connectivity, permissions) will cause non-zero exit
+    # Security context overrides required for OpenShift Pod Security Standards
     local output
     if output=$(kubectl run bucket-setup --rm -i --restart=Never \
         --image=alpine:latest \
         -n "$NAMESPACE" \
+        --overrides='{
+            "spec": {
+                "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 1001,
+                    "seccompProfile": {
+                        "type": "RuntimeDefault"
+                    }
+                },
+                "containers": [{
+                    "name": "bucket-setup",
+                    "image": "alpine:latest",
+                    "securityContext": {
+                        "allowPrivilegeEscalation": false,
+                        "capabilities": {
+                            "drop": ["ALL"]
+                        },
+                        "runAsNonRoot": true,
+                        "runAsUser": 1001
+                    }
+                }]
+            }
+        }' \
         -- sh -c "
             set -e
             wget -q https://dl.min.io/client/mc/release/linux-amd64/mc -O /usr/local/bin/mc && chmod +x /usr/local/bin/mc

@@ -1,17 +1,14 @@
 apiVersion: v2
 name: cost-onprem
-description: Cost Management On-Premise solution for Kubernetes/OpenShift
+description: Cost Management On-Premise solution for OpenShift
 type: application
 version: 0.3.0
-appVersion: "postgres"
+appVersion: "0.3.0"
 
 keywords:
-  - insights
   - cost-management
   - resource-optimization
-  - ros
   - openshift
-  - kubernetes
   - on-premise
 
 maintainers:
@@ -19,6 +16,3 @@ maintainers:
 
 dependencies: []
 
-annotations:
-  # Enable Helm hooks
-  "helm.sh/hook-weight": "1"
