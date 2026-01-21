@@ -251,7 +251,7 @@ Tests automatically generate JUnit XML reports at `tests/reports/junit.xml`.
   run: |
     ./scripts/run-pytest.sh --smoke
   env:
-    NAMESPACE: cost-onprem-ocp
+    NAMESPACE: cost-onprem
     KEYCLOAK_NAMESPACE: keycloak
 
 - name: Upload Test Results

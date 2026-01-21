@@ -263,7 +263,7 @@ def s3_config(cluster_config: ClusterConfig) -> Optional[S3Config]:
     
     # Get credentials - try multiple secret name patterns
     # The helm chart uses 'cost-onprem-storage-credentials' (release name prefix)
-    # but the namespace might be different (e.g., cost-onprem-ocp)
+    # but the namespace might be different from the helm release name
     storage_secret_patterns = [
         f"{cluster_config.helm_release_name}-storage-credentials",  # Helm release name
         f"{cluster_config.namespace}-storage-credentials",  # Namespace-based

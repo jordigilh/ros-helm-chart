@@ -447,7 +447,7 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
 
             # Get S3 credentials - try multiple secret name patterns
             # The helm chart uses 'cost-onprem-storage-credentials' (release name prefix)
-            # but the namespace might be different (e.g., cost-onprem-ocp)
+            # but the namespace might be different from the helm release name
             storage_secret_patterns = [
                 'cost-onprem-storage-credentials',  # Default helm release name
                 f'{namespace}-storage-credentials',  # Namespace-based
