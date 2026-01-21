@@ -27,3 +27,5 @@ test-logs/
 *~
 .DS_Store
 *.csv
+version_info.json
+.digest-cache/*.digest
