@@ -55,7 +55,7 @@ ros:
   # All ROS services (api, processor, recommendationPoller, housekeeper, partitionCleaner)
   # use the same image
   image:
-    repository: quay.io/insights-onprem/ros-ocp-backend
+    repository: quay.io/ehendler/ros-ocp-backend
     tag: "latest"
     pullPolicy: Always
 
@@ -153,7 +153,7 @@ costManagement:
     enabled: true
 
     image:
-      repository: quay.io/insights-onprem/koku
+      repository: quay.io/ehendler/koku
       tag: "postgres"
       pullPolicy: Always
 
