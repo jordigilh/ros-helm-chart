@@ -729,7 +729,8 @@ generators:
                           start_date: datetime,
                           end_date: datetime,
                           force: bool = False,
-                          smoke_test: bool = False) -> Dict[str, any]:
+                          smoke_test: bool = False,
+                          cluster_id: str = "test-cluster-123") -> Dict[str, any]:
         """Upload OCP cost and usage data in TAR.GZ format
 
         This method creates OCP reports matching the koku-metrics-operator format:
@@ -744,6 +745,7 @@ generators:
             end_date: End date for data
             force: Force regeneration even if data exists
             smoke_test: Use minimal nise scenario (faster) vs full scenario (more comprehensive)
+            cluster_id: OpenShift cluster ID (default: test-cluster-123)
 
         Returns:
             Upload results dict
@@ -787,7 +789,7 @@ generators:
                 print(f"     - Deleted {cleanup_result['files_deleted']} S3 files")
 
         prefix_path = f'{self.report_prefix}/' if self.report_prefix else ''
-        cluster_id = 'test-cluster-123'
+        # cluster_id is now passed as a parameter (unique per test run for data isolation)
         request_id = f"e2e-test-{uuid.uuid4()}"
 
         # Adjust date range for smoke test to minimize data generation
@@ -965,7 +967,8 @@ generators:
                             start_date: datetime,
                             end_date: datetime,
                             force: bool = False,
-                            smoke_test: bool = False) -> Dict[str, any]:
+                            smoke_test: bool = False,
+                            cluster_id: str = "test-cluster-123") -> Dict[str, any]:
         """Generic multi-provider upload method
 
         Routes to the appropriate provider-specific upload method.
@@ -976,6 +979,7 @@ generators:
             end_date: End date for data
             force: Force regeneration even if data exists
             smoke_test: Use fast hardcoded CSV (smoke tests) instead of nise
+            cluster_id: Cluster ID for OCP provider (ignored for other providers)
 
         Returns:
             Upload results dict
@@ -987,7 +991,7 @@ generators:
         elif provider_type == 'GCP':
             return self.upload_gcp_export_format(start_date, end_date, force)
         elif provider_type == 'OCP':
-            return self.upload_ocp_format(start_date, end_date, force, smoke_test)
+            return self.upload_ocp_format(start_date, end_date, force, smoke_test, cluster_id=cluster_id)
         else:
             return {
                 'success': False,
