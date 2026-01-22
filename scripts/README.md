@@ -487,7 +487,7 @@ Most scripts support these variables:
 ./test-ocp-dataflow-jwt.sh --verbose
 
 # Check Envoy sidecar logs
-oc logs -n cost-onprem -l app.kubernetes.io/name=ingress -c envoy-proxy
+oc logs -n cost-onprem -l app.kubernetes.io/component=ingress -c envoy-proxy
 ```
 
 **Cost Management Operator Issues**

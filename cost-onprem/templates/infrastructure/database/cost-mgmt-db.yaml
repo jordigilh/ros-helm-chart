@@ -14,6 +14,5 @@ When Cost Management service is implemented, uncomment this template.
 {{/*   labels: */}}
 {{/*     {{- include "cost-onprem.labels" . | nindent 4 }} */}}
 {{/*     app.kubernetes.io/component: database */}}
-{{/*     app.kubernetes.io/name: db-cost-mgmt */}}
 {{/* ... */}}
 {{- end }}

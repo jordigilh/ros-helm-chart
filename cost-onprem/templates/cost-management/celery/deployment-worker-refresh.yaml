@@ -5,9 +5,9 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.koku.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cost-management-celery
-    celery-type: worker
-    worker-queue: refresh
+    app.kubernetes.io/component: cost-worker
+    cost-onprem.io/celery-type: worker
+    cost-onprem.io/worker-queue: refresh
 spec:
   replicas: {{ .Values.costManagement.celery.workers.refresh.replicas }}
   selector:
@@ -17,9 +17,9 @@ spec:
     metadata:
       labels:
         {{- include "cost-onprem.koku.labels" . | nindent 8 }}
-        app.kubernetes.io/component: cost-management-celery
-        celery-type: worker
-        worker-queue: refresh
+        app.kubernetes.io/component: cost-worker
+        cost-onprem.io/celery-type: worker
+        cost-onprem.io/worker-queue: refresh
     spec:
       serviceAccountName: {{ include "cost-onprem.koku.serviceAccountName" . }}
 

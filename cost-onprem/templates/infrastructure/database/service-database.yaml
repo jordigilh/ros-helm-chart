@@ -6,7 +6,6 @@ metadata:
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: database
-    app.kubernetes.io/name: database
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -17,4 +16,3 @@ spec:
   selector:
     {{- include "cost-onprem.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: database
-    app.kubernetes.io/name: database

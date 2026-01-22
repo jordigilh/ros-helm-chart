@@ -7,20 +7,17 @@ metadata:
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: ingress
-    app.kubernetes.io/name: ingress
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: ingress
-      app.kubernetes.io/name: ingress
   template:
     metadata:
       labels:
         {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: ingress
-        app.kubernetes.io/name: ingress
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:

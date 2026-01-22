@@ -5,21 +5,18 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: optimization
-    app.kubernetes.io/name: kruize
+    app.kubernetes.io/component: ros-optimization
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: optimization
-      app.kubernetes.io/name: kruize
+      app.kubernetes.io/component: ros-optimization
   template:
     metadata:
       labels:
         {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: optimization
-        app.kubernetes.io/name: kruize
+        app.kubernetes.io/component: ros-optimization
     spec:
       serviceAccountName: kruize
       {{- with .Values.global.imagePullSecrets }}

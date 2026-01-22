@@ -577,7 +577,7 @@ print_completion() {
     log_info "Next steps:"
     echo "  1. Verify: oc get pods -n ${NAMESPACE}"
     echo "  2. Check route: oc get route -n ${NAMESPACE}"
-    echo "  3. View logs: oc logs -n ${NAMESPACE} -l app.kubernetes.io/name=ingress -f"
+    echo "  3. View logs: oc logs -n ${NAMESPACE} -l app.kubernetes.io/component=ingress -f"
     echo ""
 }
 

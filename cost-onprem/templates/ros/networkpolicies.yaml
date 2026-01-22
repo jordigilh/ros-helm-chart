@@ -1,11 +1,11 @@
 {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
 ---
-# NetworkPolicy to secure metrics endpoints for ROS backend components
+# NetworkPolicy to secure metrics endpoints for ROS API
 # Allows access only from OpenShift monitoring namespace (Prometheus)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "cost-onprem.fullname" . }}-api-metrics
+  name: {{ include "cost-onprem.fullname" . }}-ros-api-metrics
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
@@ -14,7 +14,7 @@ spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/instance: {{ .Release.Name }}
-      app.kubernetes.io/component: api
+      app.kubernetes.io/component: ros-api
   policyTypes:
     - Ingress
   ingress:
@@ -34,6 +34,40 @@ spec:
           port: 9000  # Metrics port
 
 ---
+# NetworkPolicy to secure metrics endpoints for Cost Management API
+# Allows access only from OpenShift monitoring namespace (Prometheus)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-cost-api-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: networkpolicy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: cost-management-api
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow Prometheus from openshift-monitoring namespace to scrape metrics
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: openshift-monitoring
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-monitoring
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080  # Cost Management API metrics port
+
+---
 # NetworkPolicy for processor metrics
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -47,7 +81,7 @@ spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/instance: {{ .Release.Name }}
-      app.kubernetes.io/component: processor
+      app.kubernetes.io/component: ros-processor
   policyTypes:
     - Ingress
   ingress:
@@ -80,7 +114,7 @@ spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/instance: {{ .Release.Name }}
-      app.kubernetes.io/component: ros-recommendation-pollers
+      app.kubernetes.io/component: ros-recommendation-poller
   policyTypes:
     - Ingress
   ingress:
@@ -100,11 +134,11 @@ spec:
           port: 9000  # Metrics port
 
 ---
-# NetworkPolicy to allow REST API traffic via Envoy sidecar (from ingress/router)
+# NetworkPolicy to allow REST API traffic to ROS API via Envoy sidecar (from ingress/router)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "cost-onprem.fullname" . }}-api-access
+  name: {{ include "cost-onprem.fullname" . }}-ros-api-access
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
@@ -113,7 +147,7 @@ spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/instance: {{ .Release.Name }}
-      app.kubernetes.io/component: api
+      app.kubernetes.io/component: ros-api
   policyTypes:
     - Ingress
   ingress:
@@ -146,4 +180,52 @@ spec:
       ports:
         - protocol: TCP
           port: 8000  # Koku API port (used by ingress envoy)
+
+---
+# NetworkPolicy to allow REST API traffic to Cost Management API via Envoy sidecar (from ingress/router)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-cost-api-access
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: networkpolicy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: cost-management-api
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow traffic from OpenShift router/ingress to Envoy sidecar
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-ingress
+      ports:
+        - protocol: TCP
+          port: 9080  # Envoy sidecar port (jwt_auth.envoy.port)
+    # Allow traffic from UI component in the same namespace
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: ui
+      ports:
+        - protocol: TCP
+          port: 9080  # Envoy sidecar port (when JWT enabled, service routes to Envoy)
+          # Allow traffic from ingress (envoy proxy) to Cost Management API REST endpoints
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: ingress
+      ports:
+        - protocol: TCP
+          port: 8000  # Cost Management API port (used by ingress envoy)
 {{- end }}

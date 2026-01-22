@@ -46,7 +46,7 @@ echo_info() {
 
 # Function to check if we can access Kruize database
 check_kruize_access() {
-    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=database" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local db_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=database" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -z "$db_pod" ]; then
         echo_error "Kruize database pod not found in namespace: $NAMESPACE"
@@ -295,7 +295,7 @@ DATABASE ACCESS:
     - Database Name: kruize_db (on unified database server)
     - User Credentials: Retrieved from secret {{ release-name }}-db-credentials
     - Secret Keys: kruize-user, kruize-password
-    - Database Pod: Identified by label app.kubernetes.io/name=database
+    - Database Pod: Identified by label app.kubernetes.io/component=database
 
   Available tables:
     - kruize_experiments: Experiment definitions and status

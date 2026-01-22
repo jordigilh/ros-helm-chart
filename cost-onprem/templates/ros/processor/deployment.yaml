@@ -5,21 +5,18 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: processor
-    app.kubernetes.io/name: ros-processor
+    app.kubernetes.io/component: ros-processor
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: processor
-      app.kubernetes.io/name: ros-processor
+      app.kubernetes.io/component: ros-processor
   template:
     metadata:
       labels:
         {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: processor
-        app.kubernetes.io/name: ros-processor
+        app.kubernetes.io/component: ros-processor
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:

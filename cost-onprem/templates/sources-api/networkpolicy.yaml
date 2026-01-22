@@ -11,7 +11,7 @@ spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/instance: {{ .Release.Name }}
-      app.kubernetes.io/name: sources-api
+      app.kubernetes.io/component: sources-api
   policyTypes:
     - Ingress
   ingress:

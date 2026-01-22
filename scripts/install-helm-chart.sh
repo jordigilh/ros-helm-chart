@@ -1168,7 +1168,7 @@ run_health_checks() {
         echo_info "Testing internal service connectivity..."
 
         # Test ROS API internally
-        local api_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=ros-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        local api_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/component=ros-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
         if [ -n "$api_pod" ]; then
             if kubectl exec -n "$NAMESPACE" "$api_pod" -- curl -f -s http://localhost:8000/status >/dev/null 2>&1; then
                 echo_success "✓ ROS API service is healthy (internal)"
@@ -1188,7 +1188,7 @@ run_health_checks() {
         # Note: We port-forward to the pod's internal port (8081 with JWT, 8080 without)
         # to bypass Envoy and avoid JWT authentication requirements on health endpoints
         echo_info "Testing Ingress API via port-forward..."
-        local ingress_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        local ingress_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/component=ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
         if [ -n "$ingress_pod" ]; then
             # Determine the internal port (8081 with JWT auth, 8080 without)
             local ingress_internal_port="8081"  # Default to JWT-enabled port
