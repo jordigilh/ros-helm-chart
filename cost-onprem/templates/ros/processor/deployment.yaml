@@ -97,8 +97,6 @@ spec:
               value: {{ .Values.ros.processor.serviceName | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.ros.processor.logLevel | quote }}
-            - name: SOURCES_API_BASE_URL
-              value: http://{{ include "cost-onprem.fullname" . }}-sources-api:{{ .Values.sourcesApi.port }}
             - name: PROMETHEUS_PORT
               value: {{ .Values.ros.processor.metricsPort | quote }}
             {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
