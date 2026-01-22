@@ -154,7 +154,7 @@ costManagement:
 
     image:
       repository: quay.io/ehendler/koku
-      tag: "postgres"
+      tag: "latest"
       pullPolicy: Always
 
     reads:
