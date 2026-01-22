@@ -2114,8 +2114,8 @@ main() {
         echo_info "This may indicate:"
         echo_info "  - Koku is still processing the upload (Kafka lag)"
         echo_info "  - ROS processor hasn't consumed the Kafka message yet"
-        echo_info "Waiting 30 seconds for ROS to process..."
-        sleep 30
+        echo_info "Waiting 90 seconds for ROS to process (extended for CI environments)..."
+        sleep 90
 
         # Check again
         ros_log_count=$(kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=ros-processor --tail=200 2>/dev/null | grep "$UPLOAD_CLUSTER_ID" | wc -l | tr -d ' ')
