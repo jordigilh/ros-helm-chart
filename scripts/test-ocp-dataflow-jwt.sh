@@ -2103,12 +2103,12 @@ main() {
 
     # Show recent ROS activity to help diagnose issues
     echo_info "Recent ROS processor activity (all clusters):"
-    kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=ros-processor --tail=20 | grep -E "Message received|Recommendation request sent|Unable to read" | tail -5 || echo "  No recent activity"
+    kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/component=ros-processor --tail=20 | grep -E "Message received|Recommendation request sent|Unable to read" | tail -5 || echo "  No recent activity"
     echo ""
 
     # Check ROS processor logs for this specific cluster
     echo_info "Checking ROS processor logs for cluster $UPLOAD_CLUSTER_ID..."
-    local ros_log_count=$(kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=ros-processor --tail=200 2>/dev/null | grep "$UPLOAD_CLUSTER_ID" | wc -l | tr -d ' ')
+    local ros_log_count=$(kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/component=ros-processor --tail=200 2>/dev/null | grep "$UPLOAD_CLUSTER_ID" | wc -l | tr -d ' ')
 
     if [ "$ros_log_count" -eq 0 ]; then
         echo_warning "⚠ ROS processor has not yet processed data for cluster $UPLOAD_CLUSTER_ID"
@@ -2119,25 +2119,25 @@ main() {
         sleep 90
 
         # Check again
-        ros_log_count=$(kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=ros-processor --tail=200 2>/dev/null | grep "$UPLOAD_CLUSTER_ID" | wc -l | tr -d ' ')
+        ros_log_count=$(kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/component=ros-processor --tail=200 2>/dev/null | grep "$UPLOAD_CLUSTER_ID" | wc -l | tr -d ' ')
         if [ "$ros_log_count" -eq 0 ]; then
             echo_error "❌ ROS processor still has no logs for cluster $UPLOAD_CLUSTER_ID"
             echo_error "The data may not have reached ROS yet. Check:"
             echo_error "  1. Koku logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=listener --tail=100"
-            echo_error "  2. ROS logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=ros-processor --tail=100"
+            echo_error "  2. ROS logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=ros-processor --tail=100"
             echo_error "  3. Kafka: kubectl exec -n $NAMESPACE kafka-0 -- bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic hccm.ros.events --from-beginning --max-messages 5"
             exit 1
         fi
     fi
 
     # Check if ROS processing was successful
-    local ros_success=$(kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=ros-processor --tail=200 2>/dev/null | grep "$UPLOAD_CLUSTER_ID" | grep "Recommendation request sent" | wc -l | tr -d ' ')
-    local ros_error=$(kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=ros-processor --tail=200 2>/dev/null | grep "$UPLOAD_CLUSTER_ID" | grep -E "Unable to read CSV|error|Error" | wc -l | tr -d ' ')
+    local ros_success=$(kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/component=ros-processor --tail=200 2>/dev/null | grep "$UPLOAD_CLUSTER_ID" | grep "Recommendation request sent" | wc -l | tr -d ' ')
+    local ros_error=$(kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/component=ros-processor --tail=200 2>/dev/null | grep "$UPLOAD_CLUSTER_ID" | grep -E "Unable to read CSV|error|Error" | wc -l | tr -d ' ')
 
     if [ "$ros_error" -gt 0 ] && [ "$ros_success" -eq 0 ]; then
         echo_error "❌ ROS processor encountered errors for cluster $UPLOAD_CLUSTER_ID"
         echo_error "Showing ROS error logs:"
-        kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=ros-processor --tail=200 | grep "$UPLOAD_CLUSTER_ID" | grep -i "error\|unable\|fail" || true
+        kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/component=ros-processor --tail=200 | grep "$UPLOAD_CLUSTER_ID" | grep -i "error\|unable\|fail" || true
         echo ""
         echo_error "This indicates the S3 pre-signed URL or CSV download failed"
         echo_error "Check S3 endpoint configuration and bucket permissions"

@@ -190,7 +190,7 @@ This helper is kept for backwards compatibility but should not be used
 MinIO ROS bucket name
 */}}
 {{- define "cost-onprem.koku.s3.rosBucket" -}}
-{{- .Values.costManagement.storage.rosBucketName | default "ros-data-ceph" -}}
+{{- .Values.costManagement.storage.rosBucketName | default "ros-data" -}}
 {{- end -}}
 {{/*
 =============================================================================
