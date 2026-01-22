@@ -198,7 +198,6 @@ costManagement:
         DJANGO_LOG_FORMATTER: simple
         DJANGO_LOG_HANDLERS: console
         PROMETHEUS_MULTIPROC_DIR: /tmp
-        REQUESTED_ROS_BUCKET: ros-data
         KOKU_ENABLE_SENTRY: "False"
         CACHED_VIEWS_DISABLED: "False"
         RETAIN_NUM_MONTHS: "3"
@@ -253,7 +252,6 @@ costManagement:
         DJANGO_LOG_FORMATTER: simple
         DJANGO_LOG_HANDLERS: console
         PROMETHEUS_MULTIPROC_DIR: /tmp
-        REQUESTED_ROS_BUCKET: ros-data
         KOKU_ENABLE_SENTRY: "False"
         GUNICORN_WORKERS: "1"
         GUNICORN_THREADS: "4"
@@ -282,7 +280,6 @@ costManagement:
       DJANGO_LOG_LEVEL: INFO
       GUNICORN_LOG_LEVEL: INFO
       PROMETHEUS_MULTIPROC_DIR: /tmp
-      REQUESTED_ROS_BUCKET: ros-data
 
   # ---------------------------------------------------------------------------
   # Kafka Listener
@@ -303,7 +300,6 @@ costManagement:
       KOKU_LOG_LEVEL: INFO
       DJANGO_LOG_LEVEL: INFO
       PROMETHEUS_MULTIPROC_DIR: /tmp
-      REQUESTED_ROS_BUCKET: ros-data
 
   # ---------------------------------------------------------------------------
   # Kafka Configuration
@@ -342,7 +338,6 @@ costManagement:
         KOKU_LOG_LEVEL: INFO
         DJANGO_LOG_LEVEL: INFO
         PROMETHEUS_MULTIPROC_DIR: /tmp
-        REQUESTED_ROS_BUCKET: ros-data
 
       default:
         replicas: 1

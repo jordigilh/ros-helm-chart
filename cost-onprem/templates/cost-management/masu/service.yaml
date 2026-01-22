@@ -6,7 +6,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.koku.labels" . | nindent 4 }}
-    app.kubernetes.io/component: masu
+    app.kubernetes.io/component: cost-processor
 spec:
   type: ClusterIP
   ports:
@@ -15,7 +15,6 @@ spec:
     protocol: TCP
     name: http
   selector:
-    app.kubernetes.io/name: {{ include "cost-onprem.name" . }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    app.kubernetes.io/component: masu
+    {{- include "cost-onprem.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cost-processor
 {{- end }}

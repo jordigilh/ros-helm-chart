@@ -5,8 +5,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: api
-    app.kubernetes.io/name: ros-api
+    app.kubernetes.io/component: ros-api
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -34,5 +33,4 @@ spec:
       name: metrics
   selector:
     {{- include "cost-onprem.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: api
-    app.kubernetes.io/name: ros-api
+    app.kubernetes.io/component: ros-api

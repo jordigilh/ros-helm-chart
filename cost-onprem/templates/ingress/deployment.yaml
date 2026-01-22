@@ -7,20 +7,17 @@ metadata:
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: ingress
-    app.kubernetes.io/name: ingress
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: ingress
-      app.kubernetes.io/name: ingress
   template:
     metadata:
       labels:
         {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: ingress
-        app.kubernetes.io/name: ingress
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -102,7 +99,7 @@ spec:
               value: {{ .Values.ingress.upload.maxMemory | int | quote }}
             - name: INGRESS_VALID_UPLOAD_TYPES
               value: {{ .Values.ingress.upload.validTypes | quote }}
- 
+
             # Storage configuration (MinIO/S3)
             - name: INGRESS_MINIOENDPOINT
               value: {{ include "cost-onprem.storage.endpoint" . }}
@@ -122,6 +119,9 @@ spec:
                 secretKeyRef:
                   name: {{ include "cost-onprem.fullname" . }}-storage-credentials
                   key: secret-key
+            # AWS SDK configuration for S3v4 signatures
+            - name: AWS_CONFIG_FILE
+              value: /etc/aws/config
 
             # Kafka configuration
             - name: INGRESS_KAFKA_BROKERS
@@ -165,13 +165,16 @@ spec:
             failureThreshold: {{ .Values.probes.failureThreshold }}
           resources:
             {{- toYaml .Values.resources.application | nindent 12 }}
-          {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
           volumeMounts:
+            - name: aws-config
+              mountPath: /etc/aws
+              readOnly: true
+            {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
             - name: service-ca-cert
               mountPath: /etc/ssl/certs/service-ca.crt
               subPath: service-ca.crt
               readOnly: true
-          {{- end }}
+            {{- end }}
       volumes:
         {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
         # Envoy configuration volume
@@ -195,6 +198,9 @@ spec:
         - name: ca-bundle
           emptyDir: {}
         {{- end }}
+        - name: aws-config
+          configMap:
+            name: {{ include "cost-onprem.fullname" . }}-aws-config
         {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
         - name: service-ca-cert
           configMap:

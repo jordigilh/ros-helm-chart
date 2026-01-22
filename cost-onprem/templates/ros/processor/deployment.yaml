@@ -5,21 +5,18 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: processor
-    app.kubernetes.io/name: ros-processor
+    app.kubernetes.io/component: ros-processor
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: processor
-      app.kubernetes.io/name: ros-processor
+      app.kubernetes.io/component: ros-processor
   template:
     metadata:
       labels:
         {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: processor
-        app.kubernetes.io/name: ros-processor
+        app.kubernetes.io/component: ros-processor
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -31,6 +28,9 @@ spec:
         {{- include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
         {{- end }}
         {{- include "cost-onprem.initContainer.waitForKruize" . | nindent 8 }}
+        {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
+        {{- include "cost-onprem.initContainer.prepareCABundle" . | nindent 8 }}
+        {{- end }}
       containers:
         - name: ros-processor
           image: "{{ .Values.ros.image.repository }}:{{ .Values.ros.image.tag }}"
@@ -52,9 +52,8 @@ spec:
               mountPath: /cdapp
               readOnly: true
             {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
-            - name: service-ca-cert
-              mountPath: /etc/ssl/certs/service-ca.crt
-              subPath: service-ca.crt
+            - name: ca-bundle
+              mountPath: /etc/ssl/certs/ca-bundle
               readOnly: true
             {{- end }}
           env:
@@ -103,8 +102,10 @@ spec:
             - name: PROMETHEUS_PORT
               value: {{ .Values.ros.processor.metricsPort | quote }}
             {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
-            - name: STORAGE_SSL_CA_CERT_PATH
-              value: "/etc/ssl/certs/service-ca.crt"
+            # SSL_CERT_FILE is used by Go's crypto/x509 to load CA certificates
+            # Points to combined bundle with system CAs + OpenShift cluster CA + Service CA
+            - name: SSL_CERT_FILE
+              value: "/etc/ssl/certs/ca-bundle/ca-bundle.crt"
             {{- end }}
           # Re-enable probes now that PROMETHEUS_PORT environment variable is correctly set
           livenessProbe:
@@ -130,10 +131,17 @@ spec:
           configMap:
             name: {{ include "cost-onprem.fullname" . }}-cdapp-config
         {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
-        - name: service-ca-cert
+        # Volumes for CA bundle preparation
+        - name: ca-scripts
+          configMap:
+            name: {{ include "cost-onprem.fullname" . }}-ca-combine
+            items:
+              - key: combine-ca.sh
+                path: combine-ca.sh
+                mode: 0755
+        - name: ca-source
           configMap:
             name: {{ include "cost-onprem.fullname" . }}-service-ca
-            items:
-              - key: service-ca.crt
-                path: service-ca.crt
+        - name: ca-bundle
+          emptyDir: {}
         {{- end }}

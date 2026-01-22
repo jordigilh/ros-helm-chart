@@ -9,7 +9,6 @@ metadata:
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: cache
-    app.kubernetes.io/name: valkey
 spec:
   accessModes:
     - ReadWriteOnce

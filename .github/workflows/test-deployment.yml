@@ -260,7 +260,7 @@ jobs:
           kubectl logs -n kafka -l strimzi.io/name=onprem-kafka-kafka --tail=30 || true
           
           echo "=== Ingress Service Logs ==="
-          kubectl logs -n ${{ env.NAMESPACE }} -l app.kubernetes.io/name=ingress --tail=30 || true
+          kubectl logs -n ${{ env.NAMESPACE }} -l app.kubernetes.io/component=ingress --tail=30 || true
           echo "=== Recent Logs ==="
           for pod in $(kubectl get pods -n ${{ env.NAMESPACE }} -o name | head -5); do
             echo "--- Logs for $pod ---"

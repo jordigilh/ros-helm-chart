@@ -190,9 +190,8 @@ This helper is kept for backwards compatibility but should not be used
 MinIO ROS bucket name
 */}}
 {{- define "cost-onprem.koku.s3.rosBucket" -}}
-{{- .Values.costManagement.api.reads.env.REQUESTED_ROS_BUCKET | default "ros-report" -}}
+{{- .Values.costManagement.storage.rosBucketName | default "ros-data" -}}
 {{- end -}}
-
 {{/*
 =============================================================================
 Secret Names
@@ -222,10 +221,10 @@ Labels
 {{/*
 Common labels for Koku resources
 Note: We don't override part-of here to keep consistency with selectorLabels
+Note: We don't add component here - each resource defines its own specific component
 */}}
 {{- define "cost-onprem.koku.labels" -}}
 {{ include "cost-onprem.labels" . }}
-app.kubernetes.io/component: cost-management
 {{- end -}}
 
 {{/*
@@ -234,7 +233,7 @@ Selector labels for Koku API reads
 {{- define "cost-onprem.koku.api.reads.selectorLabels" -}}
 {{ include "cost-onprem.selectorLabels" . }}
 app.kubernetes.io/component: cost-management-api
-api-type: reads
+cost-onprem.io/api-type: reads
 {{- end -}}
 
 {{/*
@@ -243,7 +242,7 @@ Selector labels for Koku API writes
 {{- define "cost-onprem.koku.api.writes.selectorLabels" -}}
 {{ include "cost-onprem.selectorLabels" . }}
 app.kubernetes.io/component: cost-management-api
-api-type: writes
+cost-onprem.io/api-type: writes
 {{- end -}}
 
 {{/*
@@ -251,8 +250,8 @@ Selector labels for Celery Beat
 */}}
 {{- define "cost-onprem.koku.celery.beat.selectorLabels" -}}
 {{ include "cost-onprem.selectorLabels" . }}
-app.kubernetes.io/component: cost-management-celery
-celery-type: beat
+app.kubernetes.io/component: cost-scheduler
+cost-onprem.io/celery-type: beat
 {{- end -}}
 
 {{/*
@@ -263,9 +262,9 @@ Usage: {{ include "cost-onprem.koku.celery.worker.selectorLabels" (dict "context
 {{- $context := .context -}}
 {{- $type := .type -}}
 {{ include "cost-onprem.selectorLabels" $context }}
-app.kubernetes.io/component: cost-management-celery
-celery-type: worker
-worker-queue: {{ $type }}
+app.kubernetes.io/component: cost-worker
+cost-onprem.io/celery-type: worker
+cost-onprem.io/worker-queue: {{ $type }}
 {{- end -}}
 
 {{/*
@@ -348,7 +347,13 @@ Common environment variables for Koku API and Celery
 - name: S3_ENDPOINT
   value: {{ include "cost-onprem.storage.endpointWithProtocol" . | quote }}
 - name: REQUESTED_BUCKET
+  {{- if and .Values.odf .Values.odf.useExternalOBC }}
+  value: {{ .Values.odf.bucket | default "ros-data" | quote }}
+  {{- else }}
   value: {{ required "costManagement.storage.bucketName is required" .Values.costManagement.storage.bucketName | quote }}
+  {{- end }}
+- name: REQUESTED_ROS_BUCKET
+  value: {{ include "cost-onprem.koku.s3.rosBucket" . | quote }}
 {{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: AWS_CA_BUNDLE
   value: /etc/pki/ca-trust/combined/ca-bundle.crt
@@ -365,6 +370,13 @@ Common environment variables for Koku API and Celery
     secretKeyRef:
       name: {{ include "cost-onprem.storage.secretName" . }}
       key: secret-key
+# S3 Region for signature generation (required for S3v4 signatures)
+# NooBaa/MinIO don't use regions, but boto3 requires it for signature calculation
+- name: S3_REGION
+  value: "us-east-1"
+# AWS SDK configuration for S3v4 signatures
+- name: AWS_CONFIG_FILE
+  value: /etc/aws/config
 - name: DJANGO_SECRET_KEY
   valueFrom:
     secretKeyRef:
@@ -413,6 +425,9 @@ Includes tmp mount and combined CA bundle when on OpenShift
 {{- define "cost-onprem.koku.volumeMounts" -}}
 - name: tmp
   mountPath: /tmp
+- name: aws-config
+  mountPath: /etc/aws
+  readOnly: true
 {{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: combined-ca-bundle
   mountPath: /etc/pki/ca-trust/combined
@@ -427,6 +442,9 @@ Includes tmp volume and CA bundle volumes for OpenShift
 {{- define "cost-onprem.koku.volumes" -}}
 - name: tmp
   emptyDir: {}
+- name: aws-config
+  configMap:
+    name: {{ include "cost-onprem.fullname" . }}-aws-config
 {{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: ca-scripts
   configMap:

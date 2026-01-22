@@ -6,7 +6,6 @@ metadata:
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: database
-    app.kubernetes.io/name: database
 spec:
   serviceName: {{ include "cost-onprem.fullname" . }}-database
   replicas: 1
@@ -14,13 +13,11 @@ spec:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: database
-      app.kubernetes.io/name: database
   template:
     metadata:
       labels:
         {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: database
-        app.kubernetes.io/name: database
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:

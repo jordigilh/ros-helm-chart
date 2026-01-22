@@ -6,20 +6,17 @@ metadata:
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: ros-recommendation-poller
-    app.kubernetes.io/name: ros-rec-poller
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: ros-recommendation-poller
-      app.kubernetes.io/name: ros-rec-poller
   template:
     metadata:
       labels:
         {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: ros-recommendation-poller
-        app.kubernetes.io/name: ros-rec-poller
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:

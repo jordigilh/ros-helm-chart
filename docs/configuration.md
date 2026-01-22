@@ -162,25 +162,82 @@ ingress:
 
 **Prerequisites:**
 - ODF installed in `openshift-storage` namespace
-- NooBaa S3 service running
-- S3 credentials secret created (see [Installation Guide](installation.md#openshift-prerequisites))
+- **Direct Ceph RGW recommended** (strong consistency)
+- ObjectBucketClaim (OBC) provisioned OR S3 credentials secret created
+
+**Recommended Setup (Direct Ceph RGW with OBC):**
+
+```bash
+# Create ObjectBucketClaim for Ceph RGW
+cat <<EOF | oc apply -f -
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: ros-data-ceph
+  namespace: cost-onprem
+spec:
+  generateBucketName: ros-data-ceph
+  storageClassName: ocs-storagecluster-ceph-rgw  # Direct Ceph RGW
+EOF
+
+# Wait for provisioning
+oc wait --for=condition=Ready obc/ros-data-ceph -n cost-onprem --timeout=5m
+
+# OBC auto-detection happens automatically during Helm installation
+```
+
+**OBC Auto-Detection:**
+
+The installation script automatically:
+- Detects existing ObjectBucketClaims in the namespace
+- Extracts bucket name, endpoint, port, and credentials
+- Creates storage credentials secret from OBC
+- Configures Helm deployment with correct values
 
 **Configuration:**
 ```yaml
 odf:
-  endpoint: "s3.openshift-storage.svc.cluster.local"
+  endpoint: ""  # Auto-detected from OBC or specify manually
+  port: 443
+  useSSL: true
+  bucket: "ros-data"  # Auto-detected from OBC
+  
+  # External ObjectBucketClaim configuration
+  useExternalOBC: false  # Set to true when using pre-created OBC
+```
+
+**Manual Configuration (if not using OBC auto-detection):**
+```yaml
+odf:
+  endpoint: "rook-ceph-rgw-ocs-storagecluster-cephobjectstore.openshift-storage.svc"
   region: "us-east-1"
-  bucket: "ros-data"
+  bucket: "ros-data-ceph-bfe1f304-xxx"  # From OBC ConfigMap
   pathStyle: true
   useSSL: true
   port: 443
   credentials:
-    secretName: "cost-onprem-odf-credentials"
+    secretName: "cost-onprem-storage-credentials"  # Auto-created from OBC
 ```
 
+**Storage Class Comparison:**
+
+| Storage Backend | StorageClass | Consistency | Status |
+|----------------|--------------|-------------|--------|
+| **Direct Ceph RGW** | `ocs-storagecluster-ceph-rgw` | Strong | ✅ **Recommended** |
+| **NooBaa** | `ocs-storagecluster-ceph-rbd` | Eventual | ⚠️ Not Recommended |
+| **MinIO** | Any | Strong | ✅ Supported |
+| **AWS S3** | N/A (external) | Strong | ✅ Supported |
+
+**Why Direct Ceph RGW?**
+- Strong read-after-write consistency
+- No 403 errors on freshly uploaded files
+- Immediate availability of objects
+- Better performance for ROS processing
+
 **Access:**
-- **Internal**: `s3.openshift-storage.svc.cluster.local:443`
-- **External**: Via OpenShift routes (check `openshift-storage` namespace)
+- **Internal**: `rook-ceph-rgw-ocs-storagecluster-cephobjectstore.openshift-storage.svc`
+- **Port**: 443 (HTTPS)
+- **Credentials**: Auto-extracted from OBC or manually created secret
 
 ### Storage Class Configuration
 

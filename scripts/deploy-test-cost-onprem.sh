@@ -26,6 +26,7 @@ set -euo pipefail
 #   --verbose                 Enable verbose output
 #   --dry-run                 Show what would be executed without running
 #   --tests-only              Run only JWT authentication tests (skip all deployments)
+#   --save-versions [FILE]    Save deployment version info to JSON file (default: version_info.json)
 #   --help                    Display this help message
 #
 # Environment Variables:
@@ -70,6 +71,8 @@ USE_LOCAL_CHART="${USE_LOCAL_CHART:-false}"
 VERBOSE="${VERBOSE:-false}"
 DRY_RUN="${DRY_RUN:-false}"
 TESTS_ONLY="${TESTS_ONLY:-false}"
+SAVE_VERSIONS="${SAVE_VERSIONS:-false}"
+VERSION_INFO_FILE="${VERSION_INFO_FILE:-version_info.json}"
 
 # OpenShift authentication
 KUBECONFIG="${KUBECONFIG:-${HOME}/.kube/config}"
@@ -532,6 +535,46 @@ run_tests() {
 }
 
 ################################################################################
+# Version tracking
+################################################################################
+
+save_version_info() {
+    log_step "Saving deployment version information"
+    
+    local check_components_script="${LOCAL_SCRIPTS_DIR}/qe/check-components.sh"
+    
+    if [[ ! -x "${check_components_script}" ]]; then
+        log_warning "check-components.sh not found at: ${check_components_script}"
+        log_warning "Skipping version info generation"
+        return 0
+    fi
+    
+    if [[ "${DRY_RUN}" == "true" ]]; then
+        log_info "DRY RUN: Would execute: MODE=deployment-info NAMESPACE=${NAMESPACE} ${check_components_script}"
+        log_info "DRY RUN: Would save version info to: ${VERSION_INFO_FILE}"
+        return 0
+    fi
+    
+    # Export environment variables for check-components.sh
+    export NAMESPACE="${NAMESPACE}"
+    export HELM_RELEASE_NAME="${HELM_RELEASE_NAME:-cost-onprem}"
+    export VERSION_INFO_FILE="${VERSION_INFO_FILE}"
+    export MODE="deployment-info"
+    
+    if "${check_components_script}"; then
+        log_success "Version info saved to: ${VERSION_INFO_FILE}"
+        
+        # Display summary if verbose
+        if [[ "${VERBOSE}" == "true" ]] && [[ -f "${VERSION_INFO_FILE}" ]]; then
+            log_verbose "Version info contents:"
+            cat "${VERSION_INFO_FILE}"
+        fi
+    else
+        log_warning "Failed to generate version info"
+    fi
+}
+
+################################################################################
 # Main deployment workflow
 ################################################################################
 
@@ -559,7 +602,7 @@ print_completion() {
     log_info "Next steps:"
     echo "  1. Verify: oc get pods -n ${NAMESPACE}"
     echo "  2. Check route: oc get route -n ${NAMESPACE}"
-    echo "  3. View logs: oc logs -n ${NAMESPACE} -l app.kubernetes.io/name=ingress -f"
+    echo "  3. View logs: oc logs -n ${NAMESPACE} -l app.kubernetes.io/component=ingress -f"
     echo ""
 }
 
@@ -615,6 +658,15 @@ main() {
                 TESTS_ONLY=true
                 shift
                 ;;
+            --save-versions)
+                SAVE_VERSIONS=true
+                # Check if next argument is a file path (not another flag)
+                if [[ -n "${2:-}" ]] && [[ ! "$2" =~ ^-- ]]; then
+                    VERSION_INFO_FILE="$2"
+                    shift
+                fi
+                shift
+                ;;
             --help|-h)
                 show_help
                 ;;
@@ -663,6 +715,11 @@ main() {
     deploy_helm_chart
     setup_tls
     run_tests
+
+    # Save version information if requested
+    if [[ "${SAVE_VERSIONS}" == "true" ]]; then
+        save_version_info
+    fi
 
     # Print completion message
     if [[ "${DRY_RUN}" == "false" ]]; then

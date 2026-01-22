@@ -5,8 +5,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: optimization
-    app.kubernetes.io/name: kruize
+    app.kubernetes.io/component: ros-optimization
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -16,5 +15,4 @@ spec:
       name: http
   selector:
     {{- include "cost-onprem.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: optimization
-    app.kubernetes.io/name: kruize
+    app.kubernetes.io/component: ros-optimization

@@ -18,9 +18,9 @@ Complete Helm chart for deploying the full Cost Management stack with OCP cost a
 
 **📖 Documentation:**
 - **[Cost Management Installation Guide](docs/cost-management-installation.md)** - Complete deployment guide
-- **Prerequisites**: OpenShift 4.18+, ODF (150GB+), Kafka/Strimzi
+- **Prerequisites**: OpenShift 4.18+, ODF with Direct Ceph RGW (150GB+), Kafka/Strimzi
 - **Architecture**: Single unified chart with all components
-- **E2E Testing**: Automated validation with `./scripts/cost-mgmt-ocp-dataflow.sh`. Basic sanity with `./scripts/test-ocp-dataflow-jwt.sh`
+- **E2E Testing**: Automated validation with `./scripts/cost-mgmt-ocp-dataflow.sh` (full Cost Management test). ROS-only validation with `./scripts/test-ocp-dataflow-jwt.sh` (includes NISE data generation and recommendations)
 
 **Key Features:**
 - 📊 Complete OCP cost data pipeline (Kafka → CSV → PostgreSQL)
@@ -154,7 +154,9 @@ Complete Cost Management deployment requires significant cluster resources:
 
 ### Storage Options
 - **Kubernetes/KIND**: MinIO (automatically deployed)
-- **OpenShift**: ODF (OpenShift Data Foundation required)
+- **OpenShift**: ODF with Direct Ceph RGW (recommended for strong consistency)
+
+**Note**: Direct Ceph RGW (`ocs-storagecluster-ceph-rgw`) is recommended over NooBaa for ROS deployments due to strong read-after-write consistency requirements. NooBaa has eventual consistency issues that can cause ROS processing failures.
 
 **See [Configuration Guide](docs/configuration.md) for detailed requirements**
 

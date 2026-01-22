@@ -88,7 +88,7 @@ kubectl get costmanagementmetricsconfig -n costmanagement-metrics-operator \
 
 3. **Check Kruize Logs**:
    ```bash
-   kubectl logs -n cost-onprem -l app.kubernetes.io/name=kruize --tail=100 | grep experiment
+   kubectl logs -n cost-onprem -l app.kubernetes.io/component=ros-optimization --tail=100 | grep experiment
    # Look for: experiment_name with your cluster UUID
    ```
 
@@ -156,15 +156,15 @@ This is a common issue affecting multiple services (processor, recommendation-po
 
 ```bash
 # Step 1: Check current Kafka status
-kubectl get pods -n cost-onprem -l app.kubernetes.io/name=kafka
-kubectl logs -n cost-onprem -l app.kubernetes.io/name=kafka --tail=20
+kubectl get pods -n kafka -l app.kubernetes.io/name=kafka
+kubectl logs -n kafka -l app.kubernetes.io/name=kafka --tail=20
 
 # Step 2: Apply Kafka networking fix and restart
 ./install-helm-chart.sh
 kubectl rollout restart statefulset/cost-onprem-kafka -n cost-onprem
 
 # Step 3: Wait for Kafka to be ready
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=kafka -n cost-onprem --timeout=300s
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=kafka -n kafka --timeout=300s
 
 # Step 4: Restart all dependent services
 kubectl rollout restart deployment/cost-onprem-ros-processor -n cost-onprem
@@ -173,7 +173,7 @@ kubectl rollout restart deployment/cost-onprem-ros-housekeeper -n cost-onprem
 kubectl rollout restart deployment/cost-onprem-ingress -n cost-onprem
 
 # Step 5: Verify connectivity
-kubectl logs -n cost-onprem -l app.kubernetes.io/name=ros-processor --tail=10
+kubectl logs -n cost-onprem -l app.kubernetes.io/component=ros-processor --tail=10
 kubectl exec -n cost-onprem deployment/cost-onprem-ros-processor -- nc -zv cost-onprem-kafka 29092
 ```
 
@@ -353,7 +353,7 @@ kubectl get pods -n kafka -l name=strimzi-cluster-operator
 
 ```bash
 # 1. Clear Redis/Valkey cache (uses valkey-cli, Redis-compatible)
-REDIS_POD=$(kubectl get pod -n cost-onprem -l app.kubernetes.io/name=redis -o jsonpath='{.items[0].metadata.name}')
+REDIS_POD=$(kubectl get pod -n cost-onprem -l app.kubernetes.io/component=cache -o jsonpath='{.items[0].metadata.name}')
 kubectl exec -n cost-onprem $REDIS_POD -- valkey-cli FLUSHALL
 
 # 2. Restart Koku listener to clear in-memory state

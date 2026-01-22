@@ -737,9 +737,17 @@ Returns:
 {{- end -}}
 
 {{- if $useSSL -}}
+  {{- if eq $port "443" -}}
+https://{{ $endpoint }}
+  {{- else -}}
 https://{{ $endpoint }}:{{ $port }}
+  {{- end -}}
 {{- else -}}
+  {{- if eq $port "80" -}}
+http://{{ $endpoint }}
+  {{- else -}}
 http://{{ $endpoint }}:{{ $port }}
+  {{- end -}}
 {{- end -}}
 {{- end }}
 

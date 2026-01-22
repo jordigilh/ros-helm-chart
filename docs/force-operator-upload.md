@@ -260,7 +260,7 @@ Recommendation request sent for experiment - 12345|...|cost-onprem|statefulset|c
 Check Kruize logs for experiment creation:
 
 ```bash
-kubectl logs -n cost-onprem -l app.kubernetes.io/name=kruize \
+kubectl logs -n cost-onprem -l app.kubernetes.io/component=ros-optimization \
   --tail=100 --since=5m | grep -E "(experiment_name|CreateExperiment|UpdateResults)"
 ```
 

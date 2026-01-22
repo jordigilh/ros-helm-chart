@@ -11,7 +11,7 @@ spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/instance: {{ .Release.Name }}
-      app.kubernetes.io/name: kruize
+      app.kubernetes.io/component: ros-optimization
   policyTypes:
     - Ingress
   ingress:
@@ -20,7 +20,7 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/instance: {{ .Release.Name }}
-              app.kubernetes.io/component: processor
+              app.kubernetes.io/component: ros-processor
       ports:
         - protocol: TCP
           port: 8080

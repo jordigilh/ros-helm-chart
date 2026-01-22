@@ -5,21 +5,18 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: api
-    app.kubernetes.io/name: ros-api
+    app.kubernetes.io/component: ros-api
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: api
-      app.kubernetes.io/name: ros-api
+      app.kubernetes.io/component: ros-api
   template:
     metadata:
       labels:
         {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: api
-        app.kubernetes.io/name: ros-api
+        app.kubernetes.io/component: ros-api
     spec:
       serviceAccountName: {{ .Values.ros.serviceAccount.name }}
       {{- with .Values.global.imagePullSecrets }}

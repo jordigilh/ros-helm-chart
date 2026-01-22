@@ -40,8 +40,14 @@ jobs:
           --set odf.credentials.secretKey=test-secret-key \
           --set global.clusterDomain=test.example.com \
           --set global.clusterName=test-cluster \
-          --set jwtAuth.keycloak.url=https://keycloak.test.example.com
+          --set jwtAuth.keycloak.url=https://keycloak.test.example.com > /tmp/rendered.yaml
         echo "✓ Helm template validation completed successfully"
+
+    - name: Validate Label Standards
+      run: |
+        echo "=== Validating Kubernetes label standards ==="
+        chmod +x scripts/validate-labels.sh
+        ./scripts/validate-labels.sh /tmp/rendered.yaml
 
 
 

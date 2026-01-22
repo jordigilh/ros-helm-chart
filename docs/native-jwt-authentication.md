@@ -522,7 +522,7 @@ oc exec -n openshift-monitoring prometheus-k8s-0 -- \
 ### Check Envoy logs
 
 ```bash
-oc logs -n cost-onprem -l app.kubernetes.io/name=ingress -c envoy-proxy
+oc logs -n cost-onprem -l app.kubernetes.io/component=ingress -c envoy-proxy
 ```
 
 Look for:
@@ -533,7 +533,7 @@ Look for:
 ### Check ingress logs
 
 ```bash
-oc logs -n cost-onprem -l app.kubernetes.io/name=ingress -c ingress
+oc logs -n cost-onprem -l app.kubernetes.io/component=ingress -c ingress
 ```
 
 Look for:
