@@ -53,7 +53,7 @@ class TestMASUHealth:
         """Verify MASU pod is ready."""
         assert check_pod_ready(
             cluster_config.namespace,
-            "app.kubernetes.io/component=masu"
+            "app.kubernetes.io/component=cost-processor"
         ), "MASU pod is not ready"
 
     def test_celery_workers_ready(self, cluster_config):
@@ -61,7 +61,7 @@ class TestMASUHealth:
         # Check for any worker pods
         result = run_oc_command([
             "get", "pods", "-n", cluster_config.namespace,
-            "-l", "app.kubernetes.io/component=worker",
+            "-l", "app.kubernetes.io/component=cost-worker",
             "-o", "jsonpath={.items[*].status.phase}"
         ], check=False)
         

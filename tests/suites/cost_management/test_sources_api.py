@@ -22,7 +22,7 @@ class TestSourcesAPIHealth:
         """Verify Sources API pod is ready."""
         assert check_pod_ready(
             cluster_config.namespace,
-            "app.kubernetes.io/name=sources-api"
+            "app.kubernetes.io/component=sources-api"
         ), "Sources API pod is not ready"
 
     def test_sources_api_responds(

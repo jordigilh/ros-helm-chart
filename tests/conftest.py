@@ -217,7 +217,7 @@ def database_config(cluster_config: ClusterConfig) -> DatabaseConfig:
     # Find database pod
     result = run_oc_command([
         "get", "pods", "-n", cluster_config.namespace,
-        "-l", "app.kubernetes.io/name=database",
+        "-l", "app.kubernetes.io/component=database",
         "-o", "jsonpath={.items[0].metadata.name}"
     ], check=False)
     

@@ -10,7 +10,7 @@ from utils import get_pod_by_label, get_secret_value, get_route_url
 @pytest.fixture(scope="module")
 def kruize_pod(cluster_config) -> str:
     """Get Kruize pod name."""
-    pod = get_pod_by_label(cluster_config.namespace, "app.kubernetes.io/name=kruize")
+    pod = get_pod_by_label(cluster_config.namespace, "app.kubernetes.io/component=ros-optimization")
     if not pod:
         pytest.skip("Kruize pod not found")
     return pod

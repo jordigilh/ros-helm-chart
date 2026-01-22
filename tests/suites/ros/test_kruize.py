@@ -20,7 +20,7 @@ class TestKruizeHealth:
         """Verify Kruize pod is ready."""
         assert check_pod_ready(
             cluster_config.namespace,
-            "app.kubernetes.io/name=kruize"
+            "app.kubernetes.io/component=ros-optimization"
         ), "Kruize pod is not ready"
 
     def test_kruize_health_endpoint(self, cluster_config, kruize_pod: str):

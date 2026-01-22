@@ -41,7 +41,7 @@ class TestRecommendationsAPI:
         """Verify ROS API pod is ready."""
         assert check_pod_ready(
             cluster_config.namespace,
-            "app.kubernetes.io/name=ros-api"
+            "app.kubernetes.io/component=ros-api"
         ), "ROS API pod is not ready"
 
     def test_recommendations_endpoint_accessible(
@@ -78,14 +78,14 @@ class TestROSProcessor:
         """Verify ROS Processor pod is ready."""
         assert check_pod_ready(
             cluster_config.namespace,
-            "app.kubernetes.io/name=ros-processor"
+            "app.kubernetes.io/component=ros-processor"
         ), "ROS Processor pod is not ready"
 
     def test_ros_processor_no_critical_errors(self, cluster_config):
         """Verify ROS Processor logs don't show critical errors."""
         result = run_oc_command([
             "logs", "-n", cluster_config.namespace,
-            "-l", "app.kubernetes.io/name=ros-processor",
+            "-l", "app.kubernetes.io/component=ros-processor",
             "--tail=50"
         ], check=False)
         

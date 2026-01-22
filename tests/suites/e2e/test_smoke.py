@@ -39,10 +39,10 @@ class TestE2ESmoke:
     def test_all_critical_pods_running(self, cluster_config):
         """Verify all critical pods are running."""
         critical_components = [
-            ("database", "app.kubernetes.io/name=database"),
-            ("ingress", "app.kubernetes.io/name=ingress"),
-            ("kruize", "app.kubernetes.io/name=kruize"),
-            ("ros-api", "app.kubernetes.io/name=ros-api"),
+            ("database", "app.kubernetes.io/component=database"),
+            ("ingress", "app.kubernetes.io/component=ingress"),
+            ("kruize", "app.kubernetes.io/component=ros-optimization"),
+            ("ros-api", "app.kubernetes.io/component=ros-api"),
         ]
         
         failures = []

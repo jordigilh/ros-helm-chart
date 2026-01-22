@@ -288,7 +288,8 @@ main() {
     elif [[ "$include_extended" == "true" ]]; then
         # Run full E2E flow including extended tests
         # This runs the entire TestCompleteDataFlow class to ensure proper fixture setup
-        pytest_args+=("suites/e2e/test_complete_flow.py::TestCompleteDataFlow")
+        # Override the default -m "not extended" from pytest.ini
+        pytest_args+=("-m" "" "suites/e2e/test_complete_flow.py::TestCompleteDataFlow")
     elif [[ ${#pytest_markers[@]} -gt 0 ]]; then
         local marker_expr
         marker_expr=$(IFS=" or "; echo "${pytest_markers[*]}")

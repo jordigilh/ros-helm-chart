@@ -441,7 +441,7 @@ class TestCompleteDataFlow:
         # Get database pod for cleanup
         db_pod = get_pod_by_label(
             cluster_config.namespace,
-            "app.kubernetes.io/name=database"
+            "app.kubernetes.io/component=database"
         )
         
         # Prepare S3 config dict for cleanup
@@ -674,7 +674,7 @@ class TestCompleteDataFlow:
         """Step 2: Verify provider was created in Koku database via Kafka."""
         db_pod = get_pod_by_label(
             cluster_config.namespace,
-            "app.kubernetes.io/name=database"
+            "app.kubernetes.io/component=database"
         )
         if not db_pod:
             pytest.skip("Database pod not found")
@@ -782,7 +782,7 @@ class TestCompleteDataFlow:
         """Step 4: Verify manifest was created in Koku database."""
         db_pod = get_pod_by_label(
             cluster_config.namespace,
-            "app.kubernetes.io/name=database"
+            "app.kubernetes.io/component=database"
         )
         if not db_pod:
             pytest.skip("Database pod not found")
@@ -815,7 +815,7 @@ class TestCompleteDataFlow:
         """Step 5: Verify uploaded files were processed by MASU."""
         db_pod = get_pod_by_label(
             cluster_config.namespace,
-            "app.kubernetes.io/name=database"
+            "app.kubernetes.io/component=database"
         )
         if not db_pod:
             pytest.skip("Database pod not found")
@@ -890,7 +890,7 @@ class TestCompleteDataFlow:
         
         db_pod = get_pod_by_label(
             cluster_config.namespace,
-            "app.kubernetes.io/name=database"
+            "app.kubernetes.io/component=database"
         )
         if not db_pod:
             pytest.skip("Database pod not found")
@@ -1041,7 +1041,7 @@ class TestCompleteDataFlow:
         
         db_pod = get_pod_by_label(
             cluster_config.namespace,
-            "app.kubernetes.io/name=database"
+            "app.kubernetes.io/component=database"
         )
         if not db_pod:
             pytest.skip("Database pod not found")
@@ -1136,7 +1136,7 @@ class TestCompleteDataFlow:
         
         db_pod = get_pod_by_label(
             cluster_config.namespace,
-            "app.kubernetes.io/name=database"
+            "app.kubernetes.io/component=database"
         )
         if not db_pod:
             pytest.skip("Database pod not found")

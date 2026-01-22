@@ -24,28 +24,28 @@ class TestPodHealth:
         """Verify database pod exists."""
         assert check_pod_exists(
             cluster_config.namespace,
-            "app.kubernetes.io/name=database"
+            "app.kubernetes.io/component=database"
         ), "Database pod not found"
 
     def test_database_pod_ready(self, cluster_config):
         """Verify database pod is ready."""
         assert check_pod_ready(
             cluster_config.namespace,
-            "app.kubernetes.io/name=database"
+            "app.kubernetes.io/component=database"
         ), "Database pod is not ready"
 
     def test_ingress_pod_exists(self, cluster_config):
         """Verify ingress pod exists."""
         assert check_pod_exists(
             cluster_config.namespace,
-            "app.kubernetes.io/name=ingress"
+            "app.kubernetes.io/component=ingress"
         ), "Ingress pod not found"
 
     def test_masu_pod_exists(self, cluster_config):
         """Verify MASU pod exists."""
         assert check_pod_exists(
             cluster_config.namespace,
-            "app.kubernetes.io/component=masu"
+            "app.kubernetes.io/component=cost-processor"
         ), "MASU pod not found"
 
     def test_listener_pod_exists(self, cluster_config):
@@ -122,7 +122,7 @@ class TestS3Connectivity:
         
         # Find a pod to test from (use masu or listener)
         pod_name = None
-        for label in ["app.kubernetes.io/component=masu", "app.kubernetes.io/component=listener"]:
+        for label in ["app.kubernetes.io/component=cost-processor", "app.kubernetes.io/component=listener"]:
             result = run_oc_command([
                 "get", "pods", "-n", cluster_config.namespace,
                 "-l", label,

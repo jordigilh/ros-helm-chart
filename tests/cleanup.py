@@ -214,7 +214,7 @@ def restart_redis(namespace: str, timeout: int = 120) -> dict:
         result = subprocess.run(
             [
                 "oc", "delete", "pod", "-n", namespace,
-                "-l", "app.kubernetes.io/name=valkey",
+                "-l", "app.kubernetes.io/component=cache",
                 "--wait=false"
             ],
             capture_output=True,
@@ -227,7 +227,7 @@ def restart_redis(namespace: str, timeout: int = 120) -> dict:
             result = subprocess.run(
                 [
                     "oc", "delete", "pod", "-n", namespace,
-                    "-l", "app.kubernetes.io/name=redis",
+                    "-l", "app.kubernetes.io/component=cache",
                     "--wait=false"
                 ],
                 capture_output=True,
@@ -241,7 +241,7 @@ def restart_redis(namespace: str, timeout: int = 120) -> dict:
         result = subprocess.run(
             [
                 "oc", "wait", "--for=condition=ready", "pod",
-                "-l", "app.kubernetes.io/name=valkey",
+                "-l", "app.kubernetes.io/component=cache",
                 "-n", namespace,
                 f"--timeout={timeout}s"
             ],
@@ -255,7 +255,7 @@ def restart_redis(namespace: str, timeout: int = 120) -> dict:
             result = subprocess.run(
                 [
                     "oc", "wait", "--for=condition=ready", "pod",
-                    "-l", "app.kubernetes.io/name=redis",
+                    "-l", "app.kubernetes.io/component=cache",
                     "-n", namespace,
                     f"--timeout={timeout}s"
                 ],
