@@ -232,7 +232,7 @@ Selector labels for Koku API reads
 */}}
 {{- define "cost-onprem.koku.api.reads.selectorLabels" -}}
 {{ include "cost-onprem.selectorLabels" . }}
-app.kubernetes.io/component: cost-management-api
+app.kubernetes.io/component: cost-management-api-reads
 cost-onprem.io/api-type: reads
 {{- end -}}
 
@@ -241,7 +241,7 @@ Selector labels for Koku API writes
 */}}
 {{- define "cost-onprem.koku.api.writes.selectorLabels" -}}
 {{ include "cost-onprem.selectorLabels" . }}
-app.kubernetes.io/component: cost-management-api
+app.kubernetes.io/component: cost-management-api-writes
 cost-onprem.io/api-type: writes
 {{- end -}}
 
