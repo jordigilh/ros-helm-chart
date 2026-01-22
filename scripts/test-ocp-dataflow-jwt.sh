@@ -1283,8 +1283,9 @@ upload_test_data_jwt() {
     echo_info "Using registered cluster ID: $UPLOAD_CLUSTER_ID"
 
     # Create manifest.json (required by ingress service)
-    # NOTE: Only include file in resource_optimization_files (for ROS processing)
-    # Do NOT include in files array (to prevent Koku from processing)
+    # NOTE: Include file in BOTH arrays because Koku acts as the intermediary to forward
+    # ROS data to Kafka (hccm.ros.events). Even though Koku will process the data,
+    # the test validates the complete ROS pipeline including Kruize recommendations.
     local manifest_file="$test_dir/manifest.json"
     cat > "$manifest_file" << EOF
 {
@@ -1292,7 +1293,7 @@ upload_test_data_jwt() {
   "cluster_id": "$UPLOAD_CLUSTER_ID",
   "cluster_alias": "test-cluster",
   "date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "files": [],
+  "files": ["$csv_filename"],
   "resource_optimization_files": ["$csv_filename"],
   "certified": true,
   "operator_version": "1.0.0",
@@ -1300,7 +1301,7 @@ upload_test_data_jwt() {
 }
 EOF
 
-    echo_info "Manifest configured for ROS-only processing (Koku processing disabled)" >&2
+    echo_info "Manifest configured with Koku acting as intermediary to forward ROS data to Kafka" >&2
 
     # Create tar.gz file with both CSV and manifest.json
     echo_info "Creating tar.gz archive..."
@@ -2013,18 +2014,18 @@ main() {
     verify_upload_processing
     echo ""
 
-    # Step 8: Skip Koku cost management processing verification
-    # This test uploads ROS-only data (resource_optimization_files only, files array is empty)
-    # Koku will NOT process this data, only ROS will
-    echo_info "=== STEP 8: Koku Processing (SKIPPED - ROS-Only Test) ==="
-    echo_info "This test sends data ONLY to ROS, not to Koku"
-    echo_info "  Manifest 'files' array: [] (empty - no Koku processing)"
-    echo_info "  Manifest 'resource_optimization_files': [CSV] (ROS processing only)"
+    # Step 8: Koku acts as intermediary to forward ROS data to Kafka
+    # The file is included in both 'files' and 'resource_optimization_files' arrays
+    # Koku will process it AND forward it to hccm.ros.events for ROS
+    echo_info "=== STEP 8: Koku Processing & ROS Data Forwarding ==="
+    echo_info "Koku acts as intermediary: Upload → Koku → Kafka (hccm.ros.events) → ROS"
+    echo_info "  Manifest 'files': [CSV] (Koku processes for cost data)"
+    echo_info "  Manifest 'resource_optimization_files': [CSV] (Koku forwards to ROS via Kafka)"
     echo_info ""
     echo_info "This ensures:"
-    echo_info "  ✓ Koku does not consume resources processing test data"
-    echo_info "  ✓ ROS components are tested in isolation"
-    echo_info "  ✓ No summary tables are created (Koku database remains clean)"
+    echo_info "  ✓ Complete data pipeline is validated (Ingress → Koku → Kafka → ROS → Kruize)"
+    echo_info "  ✓ ROS receives data through production-like Kafka flow"
+    echo_info "  ✓ Full integration test of all components"
     echo ""
 
     # Step 9: Query ROS backend API with JWT token to verify authenticated access
@@ -2177,35 +2178,30 @@ main() {
 
     echo ""
     echo_success "=========================================="
-    echo_success "✅ ROS-ONLY TEST PASSED!"
+    echo_success "✅ E2E INTEGRATION TEST PASSED!"
     echo_success "=========================================="
     echo_success "Test Run Cluster ID: $UPLOAD_CLUSTER_ID"
     echo_success "=========================================="
     echo_info ""
-    echo_info "The test demonstrated the ROS-only data flow:"
+    echo_info "The test validated the complete ROS data pipeline:"
     echo_info ""
     echo_info "  Authentication & Upload:"
     echo_info "    ✓ Keycloak JWT token generation"
     echo_info "    ✓ OCP source registered via Sources API"
     echo_info "    ✓ Authenticated file upload using JWT Bearer token (ingress)"
-    echo_info "    ✓ Ingress: ROS file stored in S3 (ros-data bucket)"
-    echo_info "    ✓ Manifest: resource_optimization_files only (no Koku processing)"
+    echo_info "    ✓ Ingress: File stored in S3"
+    echo_info "    ✓ Manifest: Includes both cost and ROS data"
     echo_info ""
-    echo_info "  ROS Resource Optimization Pipeline:"
+    echo_info "  Data Processing Pipeline:"
+    echo_info "    ✓ Koku: Processed upload and forwarded to Kafka (hccm.ros.events)"
     echo_info "    ✓ ROS Processor: Downloaded CSV from S3 using pre-signed URL"
     echo_info "    ✓ ROS Processor: Parsed container-level usage data (NISE-generated)"
     echo_info "    ✓ ROS Processor: Sent recommendation request to Kruize"
     echo_info "    ✓ Kruize: Generated optimization recommendations"
     echo_info "    ✓ ROS API: Recommendations accessible via JWT-authenticated API"
     echo_info ""
-    echo_info "  Koku Processing: SKIPPED (by design)"
-    echo_info "    ⊗ Koku did not process this data (manifest 'files' array was empty)"
-    echo_info "    ⊗ No summary tables created"
-    echo_info "    ⊗ No Kafka messages to hccm.ros.events"
-    echo_info "    → This ensures ROS components are tested in isolation"
-    echo_info ""
-    echo_info "This confirms the ROS pipeline is working independently:"
-    echo_info "  Resource Optimization (ROS): Direct S3 → Parse → Kruize → Recommendations"
+    echo_info "This confirms the complete integration pipeline:"
+    echo_info "  Upload → Ingress → S3 → Koku → Kafka → ROS → Kruize → Recommendations"
     echo_info ""
     echo_info "To query recommendations for this specific upload later:"
     echo_info "  ./query-kruize.sh --cluster $UPLOAD_CLUSTER_ID"
