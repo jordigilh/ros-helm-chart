@@ -1,0 +1,33 @@
+---
+description: Kubernetes label conventions for pod selection - CRITICAL for test modifications
+globs: ["tests/**", "cost-onprem/templates/**", "scripts/**"]
+---
+
+# Kubernetes Label Conventions
+
+**IMPORTANT:** The chart uses `app.kubernetes.io/component` for pod selection, NOT `app.kubernetes.io/name`.
+
+## Component Labels
+| Component | Label Selector |
+|-----------|----------------|
+| Database | `app.kubernetes.io/component=database` |
+| Ingress | `app.kubernetes.io/component=ingress` |
+| Kruize | `app.kubernetes.io/component=ros-optimization` |
+| ROS API | `app.kubernetes.io/component=ros-api` |
+| ROS Processor | `app.kubernetes.io/component=ros-processor` |
+| Sources API | `app.kubernetes.io/component=sources-api` |
+| Cache (Valkey) | `app.kubernetes.io/component=cache` |
+| Koku Listener | `app.kubernetes.io/component=listener` |
+| MASU | `app.kubernetes.io/component=cost-processor` |
+| Celery Workers | `app.kubernetes.io/component=cost-worker` |
+
+## Common Commands
+```bash
+# Check pod status
+kubectl get pods -n cost-onprem-ocp -l app.kubernetes.io/instance=cost-onprem
+
+# View logs by component
+kubectl logs -n cost-onprem-ocp -l app.kubernetes.io/component=listener --tail=100
+kubectl logs -n cost-onprem-ocp -l app.kubernetes.io/component=ros-processor --tail=100
+kubectl logs -n cost-onprem-ocp -l app.kubernetes.io/component=ros-optimization --tail=100
+```

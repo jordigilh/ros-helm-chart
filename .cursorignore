@@ -1,0 +1,45 @@
+# Cursor AI Ignore File
+# Files and directories that should be excluded from AI context
+
+# Virtual environments
+tests/.venv/
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Test reports (generated)
+tests/reports/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Helm chart dependencies (if any)
+cost-onprem/charts/
+
+# Large generated files
+*.tar.gz
+*.tgz
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# NISE generated data (temporary test data)
+*-ocp_*.csv
+*-ocp-*.csv
+
+# Version info (generated)
+version_info.json

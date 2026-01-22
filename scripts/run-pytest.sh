@@ -181,6 +181,20 @@ run_pytest() {
     # Change to tests directory
     cd "$TESTS_DIR"
 
+    # Log the full pytest command being executed (critical for CI debugging)
+    echo ""
+    echo "============================================================"
+    echo "PYTEST COMMAND"
+    echo "============================================================"
+    echo "pytest ${pytest_args[*]}"
+    echo ""
+    echo "Working directory: $(pwd)"
+    echo "NAMESPACE=${NAMESPACE}"
+    echo "HELM_RELEASE_NAME=${HELM_RELEASE_NAME}"
+    echo "KEYCLOAK_NAMESPACE=${KEYCLOAK_NAMESPACE}"
+    echo "============================================================"
+    echo ""
+
     # Run pytest with JUnit XML output
     local exit_code=0
     pytest "${pytest_args[@]}" || exit_code=$?

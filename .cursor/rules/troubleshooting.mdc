@@ -1,0 +1,49 @@
+---
+description: Common issues and fixes for test failures and deployment problems
+globs: ["tests/**", "cost-onprem/**", "scripts/**"]
+---
+
+# Troubleshooting Guide
+
+## Tests Skipping with "Database pod not found"
+Tests use `app.kubernetes.io/component=database` label selector.
+```bash
+kubectl get pods -n cost-onprem-ocp -l app.kubernetes.io/component=database
+```
+
+## S3 SignatureDoesNotMatch Errors
+**Root Cause:** boto3 defaults to virtual-hosted style URLs which don't work with NooBaa/Ceph RGW.
+**Fix:** Chart configures boto3 for path-style S3 addressing via:
+- `cost-onprem-aws-config` ConfigMap (sets `addressing_style = path`)
+- `AWS_CONFIG_FILE=/etc/aws/config` environment variable
+
+## ROS Processor TLS Certificate Errors
+**Symptom:** "x509: certificate signed by unknown authority" or CSV parse errors.
+**Root Cause:** Go's `x509.SystemCertPool()` doesn't include OpenShift service CA.
+**Fix:** Chart uses `initContainer.prepareCABundle` to combine CAs.
+
+## Summary Tables Not Populated (test_06)
+**Root Cause:** `manifest.json` must include `start` and `end` date fields.
+**Fix:** `tests/utils.py` `create_upload_package()` includes these fields.
+
+## Kruize Experiments Not Created (test_07)
+**Possible Causes:**
+1. TLS certificate issues
+2. S3 URL encoding issues
+3. Wrong data format - NISE must use `--ros-ocp-info` flag
+
+**Verification:**
+```bash
+kubectl logs -n cost-onprem-ocp -l app.kubernetes.io/component=ros-processor --tail=50
+```
+
+## Helm Upgrade "field is immutable"
+**Root Cause:** Label changes require fresh install.
+```bash
+helm uninstall cost-onprem -n cost-onprem-ocp
+helm install cost-onprem ./cost-onprem -n cost-onprem-ocp -f openshift-values.yaml --wait
+```
+
+## JWT Token Expiry
+**Symptom:** 401 Unauthorized after several minutes.
+**Fix:** Use `get_fresh_token()` helper in tests.
