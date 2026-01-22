@@ -365,9 +365,6 @@ Common environment variables for Koku API and Celery
     secretKeyRef:
       name: {{ include "cost-onprem.storage.secretName" . }}
       key: secret-key
-# AWS config file for boto3 - forces path-style S3 addressing for NooBaa/Ceph RGW compatibility
-- name: AWS_CONFIG_FILE
-  value: /etc/aws/config
 - name: DJANGO_SECRET_KEY
   valueFrom:
     secretKeyRef:
@@ -411,14 +408,11 @@ Validate Celery Beat replicas (must be exactly 1)
 
 {{/*
 Standard volumeMounts for Koku containers
-Includes tmp mount, AWS config, and combined CA bundle when on OpenShift
+Includes tmp mount and combined CA bundle when on OpenShift
 */}}
 {{- define "cost-onprem.koku.volumeMounts" -}}
 - name: tmp
   mountPath: /tmp
-- name: aws-config
-  mountPath: /etc/aws
-  readOnly: true
 {{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: combined-ca-bundle
   mountPath: /etc/pki/ca-trust/combined
@@ -428,14 +422,11 @@ Includes tmp mount, AWS config, and combined CA bundle when on OpenShift
 
 {{/*
 Standard volumes for Koku pods
-Includes tmp volume, AWS config, and CA bundle volumes for OpenShift
+Includes tmp volume and CA bundle volumes for OpenShift
 */}}
 {{- define "cost-onprem.koku.volumes" -}}
 - name: tmp
   emptyDir: {}
-- name: aws-config
-  configMap:
-    name: {{ include "cost-onprem.fullname" . }}-aws-config
 {{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: ca-scripts
   configMap:
