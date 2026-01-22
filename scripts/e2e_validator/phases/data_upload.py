@@ -172,14 +172,14 @@ generators:
             # Restart Redis to clear cache
             print(f"  🗑️  Restarting Redis to clear cache...")
             subprocess.run(
-                ['kubectl', 'delete', 'pod', '-n', namespace, '-l', 'app.kubernetes.io/name=redis'],
+                ['kubectl', 'delete', 'pod', '-n', namespace, '-l', 'app.kubernetes.io/component=cache'],
                 capture_output=True, timeout=30
             )
 
             # Wait for Redis to come back
             subprocess.run(
                 ['kubectl', 'wait', '--for=condition=ready', 'pod',
-                 '-l', 'app.kubernetes.io/name=redis', '-n', namespace, '--timeout=60s'],
+                 '-l', 'app.kubernetes.io/component=cache', '-n', namespace, '--timeout=60s'],
                 capture_output=True, timeout=70
             )
             print(f"  ✅ Redis restarted")

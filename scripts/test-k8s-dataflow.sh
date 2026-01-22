@@ -939,7 +939,7 @@ verify_recommendations() {
                 echo_info "  - Kruize is still processing the recent data (may need more time)"
                 echo_info "  - Fresh timestamps generated valid data but recommendations aren't ready yet"
                 echo_info "  - Check Kruize logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=ros-optimization --tail=50"
-                echo_info "  - Check processor logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=ross-processor --tail=20"
+                echo_info "  - Check processor logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=ros-processor --tail=20"
             fi
 
             rm -f /tmp/recommendations_list.json
@@ -1252,11 +1252,11 @@ show_logs() {
 
     if [ -z "$service" ]; then
         echo_info "Available services:"
-        kubectl get pods -n "$NAMESPACE" -o custom-columns="NAME:.metadata.name,COMPONENT:.metadata.labels.app\.kubernetes\.io/name" --no-headers
+        kubectl get pods -n "$NAMESPACE" -o custom-columns="NAME:.metadata.name,COMPONENT:.metadata.labels.app\.kubernetes\.io/component" --no-headers
         return 0
     fi
 
-    local pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=$service" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=$service" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -n "$pod" ]; then
         echo_info "Logs for $service ($pod):"

@@ -15,7 +15,6 @@ spec:
     protocol: TCP
     name: http
   selector:
-    app.kubernetes.io/name: {{ include "cost-onprem.name" . }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
+    {{- include "cost-onprem.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: cost-processor
 {{- end }}

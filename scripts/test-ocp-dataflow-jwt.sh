@@ -987,7 +987,7 @@ EOF
         echo_error "Troubleshooting:"
         echo_error "  1. Check sources-listener logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=sources-listener --tail=50"
         echo_error "  2. Check Kafka topics: kubectl exec -n $NAMESPACE kafka-0 -- bin/kafka-topics.sh --list --bootstrap-server localhost:9092"
-        echo_error "  3. Verify Kafka is running: kubectl get pods -n $NAMESPACE -l app.kubernetes.io/name=kafka"
+        echo_error "  3. Verify Kafka is running: kubectl get pods -n kafka -l app.kubernetes.io/name=kafka"
         echo_error "  4. Check Koku database connectivity from sources-listener"
         echo_error "  5. Review full debug log: cat $debug_log"
         exit 1
