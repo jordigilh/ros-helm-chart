@@ -24,6 +24,10 @@ curl    # For downloading releases from GitHub
 jq      # For parsing JSON responses
 helm    # For installing Helm charts (v3+)
 kubectl # For Kubernetes cluster access
+
+# Required for E2E Testing
+python3      # Python 3 interpreter (for NISE data generation)
+python3-venv # Virtual environment module (for NISE isolation)
 ```
 
 ### Installation by Platform
@@ -31,10 +35,10 @@ kubectl # For Kubernetes cluster access
 ```bash
 # Ubuntu/Debian
 sudo apt-get update
-sudo apt-get install curl jq
+sudo apt-get install curl jq python3 python3-venv
 
 # RHEL/CentOS/Fedora
-sudo dnf install curl jq
+sudo dnf install curl jq python3 python3-venv
 
 # macOS
 brew install curl jq
@@ -224,7 +228,37 @@ oc get route s3 -n openshift-storage
 - Internal: `s3.openshift-storage.svc.cluster.local:443`
 - External: Check routes in `openshift-storage` namespace
 
-### 2. ODF S3 Credentials Secret
+**Storage Class Requirement:**
+
+⚠️ **Important**: Use **Direct Ceph RGW** (`ocs-storagecluster-ceph-rgw`) instead of NooBaa (`ocs-storagecluster-ceph-rbd`) for strong consistency. NooBaa has eventual consistency issues that can cause ROS processing failures with 403 errors.
+
+```bash
+# Verify Ceph RGW StorageClass is available
+oc get storageclass ocs-storagecluster-ceph-rgw
+
+# Create ObjectBucketClaim (OBC) for Direct Ceph RGW (Recommended)
+cat <<EOF | oc apply -f -
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: ros-data-ceph
+  namespace: cost-onprem
+spec:
+  generateBucketName: ros-data-ceph
+  storageClassName: ocs-storagecluster-ceph-rgw
+EOF
+
+# Wait for OBC to provision
+oc wait --for=condition=Ready obc/ros-data-ceph -n cost-onprem --timeout=5m
+```
+
+**Storage Class Selection:**
+- ✅ **Direct Ceph RGW**: `ocs-storagecluster-ceph-rgw` (recommended for ROS)
+- ⚠️ **NooBaa**: `ocs-storagecluster-ceph-rbd` (eventual consistency issues)
+
+**OBC Auto-Detection**: The installation script automatically detects ObjectBucketClaims, extracts configuration (bucket name, endpoint, credentials), and configures the Helm deployment. No manual credential management needed when using OBC.
+
+### 2. ODF S3 Credentials Secret (Alternative to OBC)
 
 Create credentials secret in deployment namespace:
 
@@ -584,19 +618,44 @@ kubectl exec -it statefulset/cost-onprem-minio -n cost-onprem -- \
 
 After installation, validate the complete data pipeline using the OCP dataflow test.
 
-### Running the Test
+### Prerequisites for E2E Testing
+
+```bash
+# Install Python dependencies (required for NISE data generation)
+# Ubuntu/Debian
+sudo apt-get install python3 python3-venv
+
+# RHEL/CentOS/Fedora
+sudo yum install python3 python3-venv
+
+# macOS
+brew install python3
+```
+
+**Note**: NISE (test data generator) is automatically installed in a Python virtual environment during test execution. No manual NISE installation required.
+
+### Running the Tests
 
 ```bash
 cd scripts
 
-# Run E2E test (uses NISE-generated test data)
-./cost-mgmt-ocp-dataflow.sh --namespace cost-onprem
+# Option 1: ROS-only E2E test with NISE-generated data (~5 minutes)
+./test-ocp-dataflow-jwt.sh
 
-# With force cleanup (recommended for repeated runs)
+# Option 2: Full Cost Management E2E test (~3 minutes)
 ./cost-mgmt-ocp-dataflow.sh --namespace cost-onprem --force
 ```
 
-### What the Test Validates
+### What the ROS E2E Test Validates
+
+1. ✅ **NISE Integration** - Automatic installation and production-like data generation (73 lines)
+2. ✅ **Data Upload** - Generates realistic test data and uploads via JWT auth
+3. ✅ **Ingress Processing** - CSV file uploaded to S3
+4. ✅ **ROS Processing** - CSV downloaded from S3, parsed successfully (CRLF conversion)
+5. ✅ **Kruize Integration** - Recommendations generated with actual CPU/memory values
+6. ✅ **ROS-Only Mode** - Skips Koku processing for faster validation
+
+### What the Cost Management Test Validates
 
 1. ✅ **Preflight** - Environment checks
 2. ✅ **Provider** - Creates OCP cost provider
@@ -607,7 +666,29 @@ cd scripts
 7. ✅ **Aggregation** - Summary table generation
 8. ✅ **Validation** - Verifies cost calculations
 
-### Expected Output
+### Expected Output (ROS E2E Test)
+
+```
+[SUCCESS] ===== ROS E2E Test Summary =====
+
+Upload Status: ✅ HTTP 202 Accepted
+Koku Processing: ⏭️  Skipped (ROS-only test)
+ROS Processing: ✅ CSV downloaded and parsed successfully
+Kruize Status: ✅ Recommendations generated
+
+Recommendation details (short_term cost optimization):
+ experiment_name                    | interval_end_time | cpu_request | cpu_limit | memory_request | memory_limit
+------------------------------------+-------------------+-------------+-----------+----------------+--------------
+ org1234567;test-cluster-1769027891 | 2026-01-21 20:00  | 1.78 cores  | 1.78 cores| 3.64 GB        | 3.64 GB
+
+[SUCCESS] ✅ ROS-ONLY TEST PASSED!
+[SUCCESS] Found 1 recommendation(s) for cluster test-cluster-1769027891
+
+Test Duration: ~5 minutes
+Pipeline Validated: Ingress → ROS → Kruize → Recommendations
+```
+
+### Expected Output (Cost Management Test)
 
 ```
 ✅ E2E SMOKE TEST PASSED

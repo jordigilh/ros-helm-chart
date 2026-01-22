@@ -14,10 +14,10 @@ global:
   # Cluster domain - auto-detected if empty, but providing it skips 4 API lookups
   # CI script will set this dynamically: $(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
   clusterDomain: ""  # Set by CI or leave empty for auto-detection
-  
+
   # Cluster name - auto-detected if empty, but providing it skips 2 API lookups
   clusterName: ""  # Set by CI or leave empty for auto-detection
-  
+
   # OpenShift Data Foundation (ODF) storage class
   # Common values: odf-storagecluster-ceph-rbd, ocs-storagecluster-ceph-rbd
   # When left empty, the cost-onprem.storage.class helper will auto-discover the default storage class from the cluster
@@ -91,23 +91,47 @@ valkey:
 
 # ODF (Production Storage - for OpenShift deployments)
 # Replaces MinIO on OpenShift
-# 
-# OPTIMIZATION: Auto-detection makes 5-6 API lookups to discover NooBaa credentials
-# For CI/testing, provide explicit credentials to skip lookups:
-# odf:
-#   credentials:
-#     accessKey: "access-key-from-noobaa-admin-secret"
-#     secretKey: "secret-key-from-noobaa-admin-secret"
 #
-# Production: Pre-create storage credentials Secret to skip all lookups:
-#   kubectl create secret generic cost-onprem-storage-credentials \
-#     --from-literal=AWS_ACCESS_KEY_ID=... \
-#     --from-literal=AWS_SECRET_ACCESS_KEY=...
+# RECOMMENDED APPROACH: Direct Ceph RGW (Required for Cost Management)
+# -----------------------------------------------------------------------
+# Cost Management requires strong read-after-write consistency for S3.
+# NooBaa's eventual consistency causes 403 errors when reading immediately after write.
+# Direct Ceph RGW provides strong consistency and is the REQUIRED storage backend.
+#
+# To use Direct Ceph RGW (RECOMMENDED):
+# 1. Create an ObjectBucketClaim BEFORE running the install script:
+#
+#    kubectl apply -f - <<EOF
+#    apiVersion: objectbucket.io/v1alpha1
+#    kind: ObjectBucketClaim
+#    metadata:
+#      name: ros-data-ceph
+#      namespace: cost-onprem
+#    spec:
+#      generateBucketName: ros-data-ceph
+#      storageClassName: ocs-storagecluster-ceph-rgw
+#    EOF
+#
+# 2. The install script will auto-detect the OBC and:
+#    - Extract bucket name, endpoint, and credentials
+#    - Configure all components to use Direct Ceph RGW
+#    - Skip the bucket creation job (bucket managed by OBC)
+#
+# FALLBACK: NooBaa (NOT RECOMMENDED for Cost Management)
+# -------------------------------------------------------
+# If no external OBC is detected, the chart falls back to NooBaa auto-detection.
+# WARNING: NooBaa's eventual consistency may cause data processing failures.
+#
 odf:
-  endpoint: ""  # Auto-detected from NooBaa CRD status
+  endpoint: ""  # Auto-detected: Ceph RGW (if OBC exists) or NooBaa (fallback)
   port: 443
   useSSL: true
-  bucket: "ros-data"
+  bucket: "ros-data"  # Only used for NooBaa fallback
+
+  # External ObjectBucketClaim (OBC) configuration
+  # Set to true when using pre-created OBC for Direct Ceph RGW
+  # The install script auto-detects OBC named "ros-data-ceph" and sets this automatically
+  useExternalOBC: false  # Auto-set to true by install script when OBC is detected
 
 # Kruize OpenShift-specific configuration
 kruize:
