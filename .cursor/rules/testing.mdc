@@ -41,6 +41,11 @@ pytest -m "not extended" --junit-xml=reports/junit.xml
 
 **CI runs ~88 tests in ~3 minutes** (excludes extended tests that require ODF/S3).
 
+## Requirements
+- **Python 3.10+** (CI uses Python 3.11)
+- OpenShift CLI (`oc`) with cluster access
+- Helm 3.x
+
 ## Running Tests Locally
 
 ```bash

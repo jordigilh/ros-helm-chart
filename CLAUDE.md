@@ -23,6 +23,12 @@ It includes comprehensive pytest-based testing infrastructure.
 - `scripts/` - Deployment and testing scripts
 - `docs/` - Documentation
 
+### Requirements
+- **Python 3.10+** (CI uses Python 3.11)
+- OpenShift CLI (`oc`) with cluster access
+- Helm 3.x
+- `gcloud` CLI (for downloading CI artifacts)
+
 ### Code Style
 - Python: Follow PEP 8, use type hints where helpful
 - Bash: Use `set -euo pipefail`, quote variables

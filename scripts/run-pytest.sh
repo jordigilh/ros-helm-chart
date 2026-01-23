@@ -109,7 +109,7 @@ check_prerequisites() {
     # Check Python
     if ! command -v "$PYTHON" &> /dev/null; then
         log_error "Python not found: $PYTHON"
-        log_error "Please install Python 3.9+ or set PYTHON environment variable"
+        log_error "Please install Python 3.10+ or set PYTHON environment variable"
         exit 1
     fi
 

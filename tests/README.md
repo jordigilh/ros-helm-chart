@@ -2,6 +2,12 @@
 
 Pytest-based test suite for validating Cost On-Prem deployments on OpenShift.
 
+## Requirements
+
+- **Python 3.10+** (CI uses Python 3.11)
+- OpenShift CLI (`oc`) with cluster access
+- Helm 3.x
+
 ## Test Architecture
 
 The test suite is organized into **focused suites** that avoid redundancy:

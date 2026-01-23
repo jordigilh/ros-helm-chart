@@ -324,7 +324,7 @@ pytest -m "not extended" --junit-xml=reports/junit.xml
 **Output:** JUnit XML report at `tests/reports/junit.xml`
 
 **Requirements:**
-- Python 3.9+
+- Python 3.10+
 - OpenShift CLI (`oc`) logged in
 - Cost On-Prem deployed with JWT authentication
 
