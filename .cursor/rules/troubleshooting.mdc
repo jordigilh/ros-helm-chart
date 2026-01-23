@@ -47,3 +47,11 @@ helm install cost-onprem ./cost-onprem -n cost-onprem-ocp -f openshift-values.ya
 ## JWT Token Expiry
 **Symptom:** 401 Unauthorized after several minutes.
 **Fix:** Use `get_fresh_token()` helper in tests.
+
+## Downloaded Artifacts Policy
+
+**IMPORTANT:** When downloading CI artifacts using `scripts/download-ci-artifacts.sh`:
+- Do NOT delete downloaded artifacts unless the user explicitly requests deletion
+- Artifacts are downloaded to `ci-artifacts-pr<PR>-<BUILD_ID>/` directories
+- These directories are gitignored and safe to keep locally
+- Users may want to inspect artifacts after download

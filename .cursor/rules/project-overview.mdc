@@ -16,9 +16,18 @@ It includes comprehensive pytest-based testing infrastructure.
 - `tests/` - Pytest test suite
 - `scripts/` - Deployment and testing scripts
 - `docs/` - Documentation
+- `.cursor/rules/` - AI context rules (auto-loaded by Cursor)
+- `.cursor/prompts/` - Task-specific guides (use with `@` in Cursor)
 
 ## Code Style
 - Python: Follow PEP 8, use type hints where helpful
 - Bash: Use `set -euo pipefail`, quote variables
 - YAML: 2-space indentation for Helm templates
 - Tests: Use descriptive names, include docstrings
+
+## Available Prompts
+Use `@<prompt-name>` in Cursor to include task-specific context:
+- `@run-tests` - Run pytest with various options
+- `@troubleshoot-tests` - Diagnose test failures  
+- `@connect-cluster` - Set up OpenShift cluster access
+- `@download-ci-artifacts` - Download CI artifacts from Prow/GCS

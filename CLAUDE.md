@@ -3,6 +3,15 @@
 This file provides project context for Claude-based development environments (Claude Code, claude.ai, etc.).
 For Cursor IDE users, see `.cursor/rules/` for auto-loaded context rules.
 
+**For non-Cursor environments:** See `.cursor/prompts/` for task-specific guides:
+- `run-tests.md` - Run pytest with various options
+- `troubleshoot-tests.md` - Diagnose test failures
+- `connect-cluster.md` - Set up OpenShift cluster access
+- `deploy-chart.md` - Deploy the Helm chart
+- `check-logs.md` - View component logs
+- `debug-e2e.md` - Debug E2E test failures
+- `download-ci-artifacts.md` - Download CI artifacts from Prow/GCS
+
 ## Project Overview
 
 This is a Helm chart for deploying Red Hat Cost Management on-premise (cost-onprem).
@@ -271,3 +280,14 @@ kubectl get events -n cost-onprem --sort-by='.lastTimestamp' | tail -20
 # Search for errors
 kubectl logs -n cost-onprem -l app.kubernetes.io/component=ros-processor | grep -i error
 ```
+
+### Download CI Artifacts
+```bash
+# Download from Prow URL
+./scripts/download-ci-artifacts.sh --url "<PROW_URL>"
+
+# Download by PR and build ID
+./scripts/download-ci-artifacts.sh <PR_NUMBER> <BUILD_ID>
+```
+
+**Note:** Downloaded artifacts are saved to `ci-artifacts-pr<PR>-<BUILD_ID>/` and should NOT be deleted unless explicitly requested by the user.

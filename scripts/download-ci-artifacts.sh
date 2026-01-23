@@ -34,7 +34,7 @@ Download CI artifacts from OpenShift CI
 
 Usage:
   ./download-ci-artifacts.sh <PR_NUMBER> <BUILD_ID> [OUTPUT_DIR]
-  ./download-ci-artifacts.sh --url <GCSWEB_URL> [OUTPUT_DIR]
+  ./download-ci-artifacts.sh --url <URL> [OUTPUT_DIR]
 
 Arguments:
   PR_NUMBER     Pull request number (e.g., 50)
@@ -42,16 +42,21 @@ Arguments:
   OUTPUT_DIR    Output directory (default: ./ci-artifacts-pr<PR>-<BUILD_ID>)
 
 Options:
-  --url         Parse PR and build ID from a gcsweb URL
-  --build-log   Download only build-log.txt
-  --junit       Download only JUnit XML reports
+  --url         Parse PR and build ID from a Prow or gcsweb URL
   --help        Show this help message
+
+Supported URL formats:
+  - Prow:   https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/insights-onprem_cost-onprem-chart/<PR>/<JOB>/<BUILD_ID>
+  - gcsweb: https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com/gcs/test-platform-results/pr-logs/pull/insights-onprem_cost-onprem-chart/<PR>/<JOB>/<BUILD_ID>/
 
 Examples:
   # Download all artifacts for PR #50
   ./download-ci-artifacts.sh 50 2014360404288868352
 
-  # Download from URL (copy from GitHub CI check)
+  # Download from Prow URL (copy from GitHub CI check "Details" link)
+  ./download-ci-artifacts.sh --url "https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/insights-onprem_cost-onprem-chart/50/pull-ci-insights-onprem-cost-onprem-chart-main-e2e/2014360404288868352"
+
+  # Download from gcsweb URL
   ./download-ci-artifacts.sh --url "https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com/gcs/test-platform-results/pr-logs/pull/insights-onprem_cost-onprem-chart/50/pull-ci-insights-onprem-cost-onprem-chart-main-e2e/2014360404288868352/"
 
   # Download to specific directory
@@ -68,12 +73,13 @@ check_prerequisites() {
     fi
 }
 
-# Parse gcsweb URL to extract PR and build ID
+# Parse Prow or gcsweb URL to extract PR and build ID
 parse_url() {
     local url="$1"
     
     # Extract from URL like:
-    # https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com/gcs/test-platform-results/pr-logs/pull/insights-onprem_cost-onprem-chart/50/pull-ci-insights-onprem-cost-onprem-chart-main-e2e/2014360404288868352/
+    # Prow:   https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/insights-onprem_cost-onprem-chart/50/pull-ci-insights-onprem-cost-onprem-chart-main-e2e/2014360404288868352
+    # gcsweb: https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com/gcs/test-platform-results/pr-logs/pull/insights-onprem_cost-onprem-chart/50/pull-ci-insights-onprem-cost-onprem-chart-main-e2e/2014360404288868352/
     
     if [[ "$url" =~ insights-onprem_cost-onprem-chart/([0-9]+)/([^/]+)/([0-9]+) ]]; then
         PR_NUMBER="${BASH_REMATCH[1]}"
@@ -81,7 +87,11 @@ parse_url() {
         BUILD_ID="${BASH_REMATCH[3]}"
     else
         log_error "Could not parse URL: $url"
-        log_error "Expected format: .../insights-onprem_cost-onprem-chart/<PR>/<JOB>/<BUILD_ID>/"
+        log_error "Expected format: .../insights-onprem_cost-onprem-chart/<PR>/<JOB>/<BUILD_ID>"
+        log_error ""
+        log_error "Supported URL formats:"
+        log_error "  Prow:   https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/insights-onprem_cost-onprem-chart/<PR>/<JOB>/<BUILD_ID>"
+        log_error "  gcsweb: https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com/gcs/test-platform-results/pr-logs/pull/insights-onprem_cost-onprem-chart/<PR>/<JOB>/<BUILD_ID>/"
         exit 1
     fi
 }
