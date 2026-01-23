@@ -32,12 +32,35 @@ class ProviderPhase:
         self.postgres_pod = postgres_pod or (k8s_client.get_pod_by_component('database') if k8s_client else None)
         self.database = 'koku'
 
-    def get_existing_provider(self) -> Optional[Dict]:
-        """Check for existing provider (using kubectl exec)"""
+    def get_existing_provider(self, cluster_id: str = None, provider_type: str = None) -> Optional[Dict]:
+        """Check for existing provider (using kubectl exec)
+
+        Args:
+            cluster_id: For OCP providers, check for provider with this specific cluster_id
+            provider_type: Provider type to filter by (OCP, AWS, etc.)
+
+        Returns:
+            Provider dict if found, None otherwise
+        """
         try:
             if self.k8s and self.postgres_pod:
-                # Use kubectl exec to get provider
-                query = "SELECT uuid, name, type, active FROM api_provider LIMIT 1"
+                # For OCP with cluster_id, check authentication credentials for matching cluster
+                if provider_type == 'OCP' and cluster_id:
+                    query = f"""
+                        SELECT p.uuid, p.name, p.type, p.active
+                        FROM api_provider p
+                        JOIN api_providerauthentication a ON p.authentication_id = a.id
+                        WHERE p.type = 'OCP'
+                        AND a.credentials->>'cluster_id' = '{cluster_id}'
+                        LIMIT 1
+                    """
+                else:
+                    # Generic query - get first provider of matching type (legacy behavior)
+                    if provider_type:
+                        query = f"SELECT uuid, name, type, active FROM api_provider WHERE type = '{provider_type}' LIMIT 1"
+                    else:
+                        query = "SELECT uuid, name, type, active FROM api_provider LIMIT 1"
+
                 result = self.k8s.postgres_exec(self.postgres_pod, self.database, query)
                 if result and result.strip() and result.strip() != '(0 rows)':
                     # Parse result: uuid|name|type|active
@@ -583,6 +606,42 @@ except Exception as e:
 
         print(f"\n📡 Using Sources API (Production Flow)")
 
+        # Clean up ALL authentication records for this cluster_id to avoid MultipleObjectsReturned errors
+        # This handles the case where previous test runs left multiple authentication records
+        # For E2E tests, we want a clean slate, so we delete all authentications for the test cluster
+        if provider_type == 'OCP':
+            try:
+                # First, delete any providers using these authentications (cascade will handle the rest)
+                providers_to_delete = self.db.execute_query("""
+                    SELECT p.uuid, p.name
+                    FROM api_provider p
+                    JOIN api_providerauthentication pa ON p.authentication_id = pa.id
+                    WHERE pa.credentials::jsonb->>'cluster_id' = %s
+                """, (cluster_id,))
+
+                if providers_to_delete and len(providers_to_delete) > 0:
+                    print(f"  🧹 Cleaning up {len(providers_to_delete)} existing provider(s) for cluster {cluster_id}")
+                    for provider_uuid, provider_name in providers_to_delete:
+                        # Delete provider (will cascade to authentication via foreign key)
+                        self.db.execute_query("DELETE FROM api_provider WHERE uuid = %s", (provider_uuid,))
+                        print(f"     ✓ Deleted provider {provider_name} ({provider_uuid})")
+
+                # Clean up any remaining orphaned authentications
+                remaining_auths = self.db.execute_query("""
+                    SELECT id, uuid
+                    FROM api_providerauthentication
+                    WHERE credentials::jsonb->>'cluster_id' = %s
+                """, (cluster_id,))
+
+                if remaining_auths and len(remaining_auths) > 0:
+                    print(f"  🧹 Cleaning up {len(remaining_auths)} remaining authentication record(s)")
+                    for auth_id, auth_uuid in remaining_auths:
+                        self.db.execute_query("DELETE FROM api_providerauthentication WHERE id = %s", (auth_id,))
+                        print(f"     ✓ Deleted authentication {auth_uuid}")
+            except Exception as e:
+                print(f"  ⚠️  Failed to clean up existing records: {e}")
+                # Continue anyway - this is a cleanup step, not critical
+
         if provider_type == 'OCP':
             result = self.sources_api.create_ocp_source_full(
                 name=name,
@@ -631,7 +690,7 @@ except Exception as e:
 
         if skip:
             print("⏭️  Skipped (--skip-provider)")
-            existing = self.get_existing_provider()
+            existing = self.get_existing_provider(provider_type=provider_type)
             if existing:
                 print(f"  ℹ️  Existing provider: {existing['name']}")
                 print(f"  ℹ️  UUID: {existing['uuid']}")
@@ -649,9 +708,11 @@ except Exception as e:
                     'error': 'No provider found and creation skipped'
                 }
 
-        # Check for existing provider
+        # Check for existing provider (for OCP, check by cluster_id for data isolation)
         print("🔍 Checking for existing provider...")
-        existing = self.get_existing_provider()
+        if provider_type == 'OCP':
+            print(f"  ℹ️  Looking for provider with cluster_id: {cluster_id}")
+        existing = self.get_existing_provider(cluster_id=cluster_id if provider_type == 'OCP' else None, provider_type=provider_type)
 
         if existing:
             print(f"  ✅ Provider exists: {existing['name']}")
@@ -906,7 +967,11 @@ except Exception as e:
                     }
 
         # Create new provider
-        provider_name = f"{provider_type} Test Provider E2E"
+        # For OCP, include cluster_id in name to ensure unique sources for each test run
+        if provider_type == 'OCP':
+            provider_name = f"E2E Test OCP Source {cluster_id.replace('test-cluster-', '')}"
+        else:
+            provider_name = f"{provider_type} Test Provider E2E"
         print(f"\n📝 Creating new {provider_type} provider...")
         try:
             provider_uuid = self.create_provider(

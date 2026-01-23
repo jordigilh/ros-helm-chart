@@ -5,7 +5,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.koku.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cost-management-api
+    app.kubernetes.io/component: cost-management-api-writes
     cost-onprem.io/api-type: writes
 spec:
   replicas: {{ .Values.costManagement.api.writes.replicas }}
@@ -16,7 +16,7 @@ spec:
     metadata:
       labels:
         {{- include "cost-onprem.koku.labels" . | nindent 8 }}
-        app.kubernetes.io/component: cost-management-api
+        app.kubernetes.io/component: cost-management-api-writes
         cost-onprem.io/api-type: writes
     spec:
       serviceAccountName: {{ include "cost-onprem.koku.serviceAccountName" . }}
