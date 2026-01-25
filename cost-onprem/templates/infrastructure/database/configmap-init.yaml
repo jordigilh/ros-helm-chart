@@ -11,7 +11,7 @@ data:
   # This script runs automatically on first database initialization
   # Uses PostgreSQL's /docker-entrypoint-initdb.d/ mechanism
   #
-  # Creates databases: ros_db, kruize_db, koku, sources
+  # Creates databases: ros_db, kruize_db, koku
   init-databases.sql: |
     -- ========================================
     -- Create Dedicated Database Users
@@ -109,27 +109,3 @@ data:
     -- Enable pg_stat_statements extension on koku database
     \c {{ .Values.database.koku.name }}
     CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
-
-    -- ========================================
-    -- Sources Database and User
-    -- ========================================
-    -- Sources API has its own dedicated database
-
-    \c {{ .Values.database.server.adminUser }}
-
-    -- Sources User
-    DO $$
-    BEGIN
-      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '{{ .Values.database.sources.user }}') THEN
-        CREATE USER {{ .Values.database.sources.user }} WITH PASSWORD '{{ .Values.database.sources.password }}';
-      END IF;
-    END
-    $$;
-
-    -- Sources Database
-    SELECT 'CREATE DATABASE {{ .Values.database.sources.name }}'
-    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ .Values.database.sources.name }}')
-    \gexec
-
-    GRANT ALL PRIVILEGES ON DATABASE {{ .Values.database.sources.name }} TO {{ .Values.database.sources.user }};
-    ALTER DATABASE {{ .Values.database.sources.name }} OWNER TO {{ .Values.database.sources.user }};

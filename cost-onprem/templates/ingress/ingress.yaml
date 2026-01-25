@@ -61,14 +61,6 @@ spec:
               name: {{ include "cost-onprem.fullname" $ }}-ros-api
               port:
                 number: {{ $.Values.ros.api.port }}
-        # Sources API (source management)
-        - path: /api/sources
-          pathType: Prefix
-          backend:
-            service:
-              name: {{ include "cost-onprem.fullname" $ }}-sources-api
-              port:
-                number: {{ $.Values.sourcesApi.port }}
         # MinIO Console (object storage UI) - only for Kubernetes
         {{- if (eq (include "cost-onprem.platform.isOpenShift" $) "false") }}
         - path: /minio
