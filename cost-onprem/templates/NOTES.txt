@@ -43,7 +43,7 @@ Health Check:
 
 🔐 AUTHENTICATION
 
-{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+{{- if .Values.jwtAuth.enabled }}
 
 ✅ JWT Authentication: ENABLED
 

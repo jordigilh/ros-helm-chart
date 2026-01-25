@@ -1,4 +1,4 @@
-{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+{{- if .Values.jwtAuth.enabled }}
 {{- $keycloakUrl := .Values.jwtAuth.keycloak.url | default (include "cost-onprem.keycloak.url" .) }}
 {{- $issuerUrl := include "cost-onprem.keycloak.issuerUrl" . }}
 {{- $jwksUrl := include "cost-onprem.keycloak.jwksUrl" . }}

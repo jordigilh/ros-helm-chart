@@ -354,12 +354,10 @@ Common environment variables for Koku API and Celery
   {{- end }}
 - name: REQUESTED_ROS_BUCKET
   value: {{ include "cost-onprem.koku.s3.rosBucket" . | quote }}
-{{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: AWS_CA_BUNDLE
   value: /etc/pki/ca-trust/combined/ca-bundle.crt
 - name: REQUESTS_CA_BUNDLE
   value: /etc/pki/ca-trust/combined/ca-bundle.crt
-{{- end }}
 - name: AWS_ACCESS_KEY_ID
   valueFrom:
     secretKeyRef:
@@ -420,7 +418,7 @@ Validate Celery Beat replicas (must be exactly 1)
 
 {{/*
 Standard volumeMounts for Koku containers
-Includes tmp mount and combined CA bundle when on OpenShift
+Includes tmp mount and combined CA bundle
 */}}
 {{- define "cost-onprem.koku.volumeMounts" -}}
 - name: tmp
@@ -428,16 +426,14 @@ Includes tmp mount and combined CA bundle when on OpenShift
 - name: aws-config
   mountPath: /etc/aws
   readOnly: true
-{{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: combined-ca-bundle
   mountPath: /etc/pki/ca-trust/combined
   readOnly: true
-{{- end }}
 {{- end -}}
 
 {{/*
 Standard volumes for Koku pods
-Includes tmp volume and CA bundle volumes for OpenShift
+Includes tmp volume and CA bundle volumes
 */}}
 {{- define "cost-onprem.koku.volumes" -}}
 - name: tmp
@@ -445,7 +441,6 @@ Includes tmp volume and CA bundle volumes for OpenShift
 - name: aws-config
   configMap:
     name: {{ include "cost-onprem.fullname" . }}-aws-config
-{{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: ca-scripts
   configMap:
     name: {{ include "cost-onprem.fullname" . }}-ca-combine
@@ -458,15 +453,13 @@ Includes tmp volume and CA bundle volumes for OpenShift
     name: {{ include "cost-onprem.fullname" . }}-service-ca
 - name: combined-ca-bundle
   emptyDir: {}
-{{- end }}
 {{- end -}}
 
 {{/*
-Init container to combine CA certificates (OpenShift only)
+Init container to combine CA certificates
 Combines system CA bundle with OpenShift cluster root CA and Service CA for Python SSL verification
 */}}
 {{- define "cost-onprem.koku.initContainer.combineCA" -}}
-{{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: prepare-ca-bundle
   image: {{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}
   command: ['bash', '/scripts/combine-ca.sh']
@@ -481,7 +474,6 @@ Combines system CA bundle with OpenShift cluster root CA and Service CA for Pyth
       mountPath: /ca-output
   securityContext:
     {{- include "cost-onprem.securityContext.container" . | nindent 4 }}
-{{- end }}
 {{- end -}}
 
 {{/*

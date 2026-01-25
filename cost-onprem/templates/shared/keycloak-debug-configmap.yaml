@@ -1,4 +1,4 @@
-{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+{{- if .Values.jwtAuth.enabled }}
 {{/*
 Debug ConfigMap to show Keycloak auto-detection results
 This will be created when JWT auth is enabled to help troubleshoot Keycloak detection
@@ -32,12 +32,9 @@ data:
     jwks_url: {{ include "cost-onprem.keycloak.jwksUrl" . | quote }}
 
     # Configuration Used:
-    jwt_auth_enabled: {{ include "cost-onprem.jwt.shouldEnable" . | quote }}
+    jwt_auth_enabled: {{ .Values.jwtAuth.enabled | quote }}
     manual_base_url: {{ .Values.jwtAuth.keycloak.url | quote }}
     realm: {{ .Values.jwtAuth.keycloak.realm | quote }}
-
-    # Platform Detection:
-    is_openshift: {{ include "cost-onprem.platform.isOpenShift" . | quote }}
 
     # JWT Authentication Method:
     auth_method: "Envoy Native JWT Filter"
@@ -65,6 +62,5 @@ data:
     # 1. Keycloak CRs (keycloaks.keycloak.org) - Most reliable
     # 2. CR status.externalURL - Direct from operator
     # 3. OpenShift Routes - Platform integration
-    # 4. Kubernetes Ingresses - Platform integration
-    # 5. Service discovery - Fallback method
+    # 4. Service discovery - Fallback method
 {{- end }}

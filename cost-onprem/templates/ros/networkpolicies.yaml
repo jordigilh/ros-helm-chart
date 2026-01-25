@@ -1,4 +1,4 @@
-{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+{{- if .Values.jwtAuth.enabled }}
 ---
 # NetworkPolicy to secure metrics endpoints for ROS API
 # Allows access only from OpenShift monitoring namespace (Prometheus)

@@ -28,11 +28,11 @@ spec:
         {{- if .Values.kafka.bootstrapServers }}
         {{- include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
         {{- end }}
-        {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+        {{- if .Values.jwtAuth.enabled }}
         {{- include "cost-onprem.initContainer.prepareCABundle" . | nindent 8 }}
         {{- end }}
       containers:
-        {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+        {{- if .Values.jwtAuth.enabled }}
         # Envoy sidecar for OAuth2 TokenReview authentication
         - name: envoy-proxy
           image: "{{ .Values.jwtAuth.envoy.image.repository }}:{{ .Values.jwtAuth.envoy.image.tag }}"
@@ -153,7 +153,7 @@ spec:
           resources:
             {{- toYaml .Values.resources.application | nindent 12 }}
       volumes:
-        {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+        {{- if .Values.jwtAuth.enabled }}
         # Envoy configuration volume
         - name: envoy-config
           configMap:

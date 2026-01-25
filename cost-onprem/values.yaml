@@ -27,8 +27,7 @@ global:
   # Storage class for persistent volumes (auto-detected if empty)
   storageClass: ""
 
-  # Storage type for platform detection (auto-detected if empty)
-  # "odf" for OpenShift, "minio" for Kubernetes
+  # Storage type (ODF is used for OpenShift)
   storageType: ""
 
   # Init container images (shared across all services)
@@ -673,7 +672,7 @@ kruize:
     dbConfigFile: /tmp/cdappconfig.json
     dbDriver: "jdbc:postgresql://"
     clusterType: kubernetes
-    k8sType: openshift  # Overridden on vanilla Kubernetes
+    k8sType: openshift
     authType: ""
     monitoringAgent: "prometheus"
     monitoringService: "prometheus"
@@ -767,13 +766,12 @@ ingress:
     topic: "platform.upload.announce"  # INGRESS_KAFKAANNOUNCETOPIC
     groupId: "ingress"                 # INGRESS_KAFKAGROUPID
 
-  # Authentication (OpenShift only)
-  # Note: Authentication is only available on OpenShift with Keycloak (RHBK).
-  # On vanilla Kubernetes/KIND, authentication is automatically disabled.
+  # Authentication configuration
+  # Note: Authentication is available with Keycloak (RHBK).
   # When JWT is enabled via Envoy sidecar, INGRESS_AUTH is set to false
   # because the backend trusts the X-Rh-Identity header injected by Envoy.
   auth:
-    enabled: true      # Auto-disabled on Kubernetes
+    enabled: true
 
   # Logging
   logging:

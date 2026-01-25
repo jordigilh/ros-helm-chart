@@ -223,27 +223,14 @@ ports:
 
 **Key Functions**:
 
-#### `cost-onprem.jwt.shouldEnable`
-Determines if JWT authentication should be enabled based on platform detection.
+#### JWT Authentication
+JWT authentication is controlled via `jwtAuth.enabled` in values.yaml. When enabled, Envoy sidecars handle JWT validation with Keycloak OIDC.
 
-**Logic**:
-```go
-{{- define "cost-onprem.jwt.shouldEnable" -}}
-{{- include "cost-onprem.isOpenShift" . -}}
-{{- end -}}
+**Configuration**:
+```yaml
+jwtAuth:
+  enabled: true  # Enable JWT authentication with Keycloak
 ```
-
-**Behavior**:
-- **Automatic platform detection** - No configuration needed
-- Returns `true` on OpenShift (Keycloak available)
-- Returns `false` on KIND/Vanilla K8s (Keycloak not deployed)
-- Uses Helm's `Capabilities.APIVersions` to detect `route.openshift.io/v1` API
-
-#### `cost-onprem.isOpenShift`
-Detects if running on OpenShift.
-
-**Detection Method**:
-- Checks for OpenShift-specific API groups (e.g., `route.openshift.io`)
 
 ---
 
@@ -251,11 +238,10 @@ Detects if running on OpenShift.
 
 ### Overview
 
-The UI component provides a web-based user interface for Cost Management On-Premise, available exclusively on OpenShift platforms. It uses an OAuth2 proxy sidecar with Keycloak OIDC for authentication and serves the Koku UI micro-frontend application.
+The UI component provides a web-based user interface for Cost Management On-Premise. It uses an OAuth2 proxy sidecar with Keycloak OIDC for authentication and serves the Koku UI micro-frontend application.
 
-**Platform Availability:**
-- ✅ **OpenShift**: Fully supported with Keycloak OAuth proxy authentication
-- ❌ **Kubernetes/KIND**: Not available (requires Keycloak OIDC infrastructure)
+**Requirements:**
+- ✅ OpenShift with Keycloak OAuth proxy authentication
 
 **Key Features:**
 - OAuth2 proxy sidecar for seamless Keycloak OIDC authentication
@@ -348,8 +334,8 @@ resources:
 ```
 
 **Deployment Conditions**:
-- Only deployed when `ui` values are defined AND platform is OpenShift
-- Template check: `{{- if and .Values.ui (eq (include "cost-onprem.platform.isOpenShift" .) "true") }}`
+- Only deployed when `ui` values are defined
+- Template check: `{{- if .Values.ui }}`
 
 ---
 
@@ -633,8 +619,7 @@ helm upgrade cost-onprem ./cost-onprem \
 
 1. **Pre-Install**: Helm validates values schema
 2. **Template Rendering**:
-   - Conditionals evaluate (`jwt_auth.enabled`)
-   - Helpers execute (`cost-onprem.jwt.shouldEnable`)
+   - Conditionals evaluate (`jwtAuth.enabled`)
    - Templates generate manifests
 3. **Manifest Application**:
    - ConfigMaps (Envoy config)

@@ -1,6 +1,5 @@
 {{- /* Skip bucket creation job if using external ObjectBucketClaim */ -}}
 {{- if not .Values.odf.useExternalOBC }}
-{{- $isOpenShift := eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
 {{- $storageEndpoint := include "cost-onprem.storage.endpoint" . }}
 {{- $storagePort := include "cost-onprem.storage.port" . }}
 {{- $useSSL := eq (include "cost-onprem.storage.useSSL" .) "true" }}

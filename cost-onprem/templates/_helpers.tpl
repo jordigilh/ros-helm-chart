@@ -147,13 +147,6 @@ Sources credentials are in the postgres-credentials secret from the infra chart.
 */}}
 
 {{/*
-Returns true - this chart is OpenShift-only
-*/}}
-{{- define "cost-onprem.platform.isOpenShift" -}}
-true
-{{- end }}
-
-{{/*
 Extract domain from cluster ingress configuration
 Returns domain if found, empty string otherwise
 */}}
@@ -420,41 +413,22 @@ Usage: {{ include "cost-onprem.storage.databaseClass" . }}
 {{/*
 Check if a provisioner supports filesystem volumes
 Returns true if the provisioner is known to support filesystem volumes
-Usage: {{ include "cost-onprem.storage.supportsFilesystem" (list . $provisioner $parameters $isOpenShift) }}
+Usage: {{ include "cost-onprem.storage.supportsFilesystem" (list . $provisioner $parameters) }}
 */}}
 {{- define "cost-onprem.storage.supportsFilesystem" -}}
   {{- $root := index . 0 -}}
   {{- $provisioner := index . 1 -}}
   {{- $parameters := index . 2 -}}
-  {{- $isOpenShift := index . 3 -}}
 
   {{- /* Check for explicit filesystem indicators */ -}}
   {{- if and $parameters $parameters.fstype -}}
 true
   {{- else -}}
-    {{- /* Platform-specific filesystem provisioner detection */ -}}
-    {{- if $isOpenShift -}}
-      {{- /* OpenShift filesystem provisioners */ -}}
-      {{- if or (contains "rbd" $provisioner) (contains "ceph-rbd" $provisioner) (contains "nfs" $provisioner) (contains "ebs" $provisioner) (contains "gce" $provisioner) (contains "azure" $provisioner) -}}
+    {{- /* OpenShift filesystem provisioners */ -}}
+    {{- if or (contains "rbd" $provisioner) (contains "ceph-rbd" $provisioner) (contains "nfs" $provisioner) (contains "ebs" $provisioner) (contains "gce" $provisioner) (contains "azure" $provisioner) -}}
 true
-      {{- else -}}
-false
-      {{- end -}}
     {{- else -}}
-      {{- /* Vanilla Kubernetes filesystem provisioners */ -}}
-      {{- if or (contains "local-path" $provisioner) (contains "hostpath" $provisioner) (contains "host-path" $provisioner) (contains "nfs" $provisioner) (contains "rgw" $provisioner) (contains "bucket" $provisioner) (contains "ebs" $provisioner) (contains "gce" $provisioner) (contains "azure" $provisioner) (contains "rbd" $provisioner) (contains "ceph-rbd" $provisioner) -}}
-true
-      {{- else if contains "no-provisioner" $provisioner -}}
-        {{- /* No provisioner - check if it's a local volume with filesystem support */ -}}
-        {{- if and $parameters $parameters.path -}}
-true
-        {{- else -}}
 false
-        {{- end -}}
-      {{- else -}}
-        {{- /* Default to filesystem for unknown provisioners (safer for most workloads) */ -}}
-true
-      {{- end -}}
     {{- end -}}
   {{- end -}}
 {{- end }}
@@ -462,49 +436,28 @@ true
 {{/*
 Check if a provisioner supports block volumes
 Returns true if the provisioner is known to support block volumes
-Usage: {{ include "cost-onprem.storage.supportsBlock" (list . $provisioner $parameters $isOpenShift) }}
+Usage: {{ include "cost-onprem.storage.supportsBlock" (list . $provisioner $parameters) }}
 */}}
 {{- define "cost-onprem.storage.supportsBlock" -}}
   {{- $root := index . 0 -}}
   {{- $provisioner := index . 1 -}}
   {{- $parameters := index . 2 -}}
-  {{- $isOpenShift := index . 3 -}}
 
-  {{- /* Platform-specific block provisioner detection */ -}}
-  {{- if $isOpenShift -}}
-    {{- /* OpenShift block provisioners - most OpenShift provisioners prefer filesystem */ -}}
-    {{- if or (contains "iscsi" $provisioner) (contains "fc" $provisioner) -}}
+  {{- /* OpenShift block provisioners - most OpenShift provisioners prefer filesystem */ -}}
+  {{- if or (contains "iscsi" $provisioner) (contains "fc" $provisioner) -}}
 true
-    {{- else -}}
-false
-    {{- end -}}
   {{- else -}}
-    {{- /* Vanilla Kubernetes block provisioners */ -}}
-    {{- if or (contains "iscsi" $provisioner) (contains "fc" $provisioner) -}}
-true
-    {{- else if contains "no-provisioner" $provisioner -}}
-      {{- /* No provisioner - check if it's not a local path volume */ -}}
-      {{- if not (and $parameters $parameters.path) -}}
-true
-      {{- else -}}
 false
-      {{- end -}}
-    {{- else -}}
-      {{- /* Most other provisioners prefer filesystem */ -}}
-false
-    {{- end -}}
   {{- end -}}
 {{- end }}
 
 {{/*
-Detect volume mode by platform-aware analysis of storage class capabilities
-Handles OpenShift, vanilla Kubernetes, KIND, and other distributions appropriately
+Detect volume mode by analysis of storage class capabilities
 Usage: {{ include "cost-onprem.storage.volumeModeForStorageClass" (list . "storage-class-name") }}
 */}}
 {{- define "cost-onprem.storage.volumeModeForStorageClass" -}}
   {{- $root := index . 0 -}}
   {{- $storageClassName := index . 1 -}}
-  {{- $isOpenShift := eq (include "cost-onprem.platform.isOpenShift" $root) "true" -}}
 
   {{- /* Strategy 1: Check existing PVs for this storage class to see what volume modes are actually working */ -}}
   {{- $existingPVs := lookup "v1" "PersistentVolume" "" "" -}}
@@ -530,7 +483,7 @@ Filesystem
     {{- /* Block volumes are working for this storage class */ -}}
 Block
   {{- else -}}
-    {{- /* Strategy 2: Platform-aware storage class analysis */ -}}
+    {{- /* Strategy 2: Storage class analysis */ -}}
     {{- $storageClass := lookup "storage.k8s.io/v1" "StorageClass" "" $storageClassName -}}
     {{- if $storageClass -}}
       {{- $provisioner := $storageClass.provisioner -}}
@@ -541,8 +494,8 @@ Block
 {{- $parameters.volumeMode -}}
       {{- else -}}
         {{- /* Strategy 3: Use helper functions to determine volume mode support */ -}}
-        {{- $supportsFilesystem := include "cost-onprem.storage.supportsFilesystem" (list $root $provisioner $parameters $isOpenShift) -}}
-        {{- $supportsBlock := include "cost-onprem.storage.supportsBlock" (list $root $provisioner $parameters $isOpenShift) -}}
+        {{- $supportsFilesystem := include "cost-onprem.storage.supportsFilesystem" (list $root $provisioner $parameters) -}}
+        {{- $supportsBlock := include "cost-onprem.storage.supportsBlock" (list $root $provisioner $parameters) -}}
 
         {{- /* Determine volume mode based on support */ -}}
         {{- if eq $supportsFilesystem "true" -}}
@@ -555,27 +508,8 @@ Filesystem
         {{- end -}}
       {{- end -}}
     {{- else -}}
-      {{- /* Strategy 4: Fallback based on platform and storage class name patterns */ -}}
-      {{- if $isOpenShift -}}
-        {{- /* OpenShift fallback - prefer filesystem */ -}}
+      {{- /* Strategy 4: Fallback - prefer filesystem */ -}}
 Filesystem
-      {{- else -}}
-        {{- /* Vanilla Kubernetes fallback - check storage class name patterns */ -}}
-        {{- if or (contains "local" $storageClassName) (contains "no-provisioner" $storageClassName) -}}
-          {{- /* Check if it's a local-path type by name */ -}}
-          {{- if contains "local-path" $storageClassName -}}
-Filesystem
-          {{- else -}}
-            {{- /* Other local storage - default to block but this is risky */ -}}
-Block
-          {{- end -}}
-        {{- else if or (contains "rbd" $storageClassName) (contains "ceph" $storageClassName) -}}
-Filesystem
-        {{- else -}}
-          {{- /* Default to filesystem for most storage classes */ -}}
-Filesystem
-        {{- end -}}
-      {{- end -}}
     {{- end -}}
   {{- end -}}
 {{- end }}
@@ -890,30 +824,6 @@ Returns empty string if not found
 {{- end }}
 
 {{/*
-Get Keycloak URL from Kubernetes Ingress
-Returns empty string if not found
-*/}}
-{{- define "cost-onprem.keycloak.getUrlFromIngress" -}}
-{{- $ns := include "cost-onprem.keycloak.namespace" . -}}
-{{- if $ns -}}
-  {{- $found := "" -}}
-  {{- range $ing := (lookup "networking.k8s.io/v1" "Ingress" $ns "").items -}}
-    {{- if or (contains "keycloak" $ing.metadata.name) (contains "sso" $ing.metadata.name) -}}
-      {{- if $ing.spec.rules -}}
-        {{- $host := (index $ing.spec.rules 0).host -}}
-        {{- $scheme := "http" -}}
-        {{- if $ing.spec.tls -}}
-          {{- $scheme = "https" -}}
-        {{- end -}}
-        {{- $found = printf "%s://%s" $scheme $host -}}
-      {{- end -}}
-    {{- end -}}
-  {{- end -}}
-  {{- $found -}}
-{{- end -}}
-{{- end }}
-
-{{/*
 Get Keycloak URL from Service (fallback - constructs internal cluster URL)
 Returns empty string if service not found
 */}}
@@ -927,8 +837,8 @@ Returns empty string if service not found
 {{- end }}
 
 {{/*
-Get Keycloak route URL (OpenShift) or construct service URL (Kubernetes)
-First try to get URL from Keycloak CR status, then fallback to route/ingress discovery
+Get Keycloak route URL from OpenShift Route
+First try to get URL from Keycloak CR status, then fallback to route discovery
 Only supports RHBK (v2alpha1) operator
 */}}
 {{- define "cost-onprem.keycloak.url" -}}
@@ -940,18 +850,9 @@ Only supports RHBK (v2alpha1) operator
   {{- $url := include "cost-onprem.keycloak.getUrlFromCR" . -}}
   {{- if $url -}}
     {{- $url -}}
-  {{- else if (include "cost-onprem.platform.isOpenShift" .) -}}
-    {{- /* 3. OpenShift: Try route discovery */ -}}
-    {{- $url = include "cost-onprem.keycloak.getUrlFromRoute" . -}}
-    {{- if $url -}}
-      {{- $url -}}
-    {{- else -}}
-      {{- /* 4. Final fallback: service URL */ -}}
-      {{- include "cost-onprem.keycloak.getUrlFromService" . -}}
-    {{- end -}}
   {{- else -}}
-    {{- /* 3. Kubernetes: Try ingress discovery */ -}}
-    {{- $url = include "cost-onprem.keycloak.getUrlFromIngress" . -}}
+    {{- /* 3. Try route discovery */ -}}
+    {{- $url = include "cost-onprem.keycloak.getUrlFromRoute" . -}}
     {{- if $url -}}
       {{- $url -}}
     {{- else -}}
@@ -978,8 +879,8 @@ Get complete Keycloak issuer URL with realm
   {{- /* RHBK v22+ uses /realms/ without /auth prefix */ -}}
   {{- printf "%s/realms/%s" $baseUrl .Values.jwtAuth.keycloak.realm -}}
 {{- else -}}
-  {{- /* No Keycloak URL found - fail with helpful message (OpenShift only) */ -}}
-  {{- fail "Keycloak URL not found on OpenShift cluster. JWT authentication requires Red Hat Build of Keycloak. Please either:\n  1. Set jwtAuth.keycloak.url in values.yaml, or\n  2. Ensure Keycloak is deployed with a Route in a common namespace (keycloak, sso), or\n  3. Deploy Keycloak using the provided scripts/deploy-rhbk.sh script\n\nNote: JWT authentication is only supported on OpenShift. For KIND/Kubernetes, authentication is automatically disabled." -}}
+  {{- /* No Keycloak URL found - fail with helpful message */ -}}
+  {{- fail "Keycloak URL not found on OpenShift cluster. JWT authentication requires Red Hat Build of Keycloak. Please either:\n  1. Set jwtAuth.keycloak.url in values.yaml, or\n  2. Ensure Keycloak is deployed with a Route in a common namespace (keycloak, sso), or\n  3. Deploy Keycloak using the provided scripts/deploy-rhbk.sh script" -}}
 {{- end -}}
 {{- end }}
 
@@ -1032,15 +933,6 @@ Only supports RHBK (v2alpha1) operator
   {{- $_ := set $info "crdAvailable" false -}}
 {{- end -}}
 {{- $info | toYaml -}}
-{{- end }}
-
-{{/*
-Check if JWT authentication should be enabled
-Auto-detects based on platform: true for OpenShift, false for KIND/K8s
-JWT authentication requires Keycloak, which is only deployed on OpenShift
-*/}}
-{{- define "cost-onprem.jwt.shouldEnable" -}}
-{{- include "cost-onprem.platform.isOpenShift" . -}}
 {{- end }}
 
 {{/*

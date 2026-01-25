@@ -1,4 +1,3 @@
-{{- $isOpenShift := eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
 {{- $cacheName := include "cost-onprem.cache.name" . }}
 apiVersion: v1
 kind: Service

@@ -48,7 +48,7 @@ Usage: {{ include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
 {{- end -}}
 
 {{/*
-Wait for Storage (MinIO/ODF) init container
+Wait for Storage (ODF) init container
 Usage: {{ include "cost-onprem.initContainer.waitForStorage" . | nindent 8 }}
 */}}
 {{- define "cost-onprem.initContainer.waitForStorage" -}}
@@ -58,15 +58,6 @@ Usage: {{ include "cost-onprem.initContainer.waitForStorage" . | nindent 8 }}
     {{- include "cost-onprem.securityContext.nonRoot" . | nindent 4 }}
   command: ['bash', '-c']
   args:
-    {{- if (eq (include "cost-onprem.platform.isOpenShift" .) "false") }}
-    - |
-      echo "Waiting for MinIO at {{ include "cost-onprem.fullname" . }}-minio:{{ .Values.minio.ports.api }}..."
-      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.fullname" . }}-minio/{{ .Values.minio.ports.api }}" 2>/dev/null; do
-        echo "MinIO not ready yet, retrying in 5 seconds..."
-        sleep 5
-      done
-      echo "MinIO is ready"
-    {{- else }}
     - |
       echo "Waiting for ODF S3 endpoint at {{ include "cost-onprem.storage.endpoint" . }}:{{ include "cost-onprem.storage.port" . }}..."
       until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.storage.endpoint" . }}/{{ include "cost-onprem.storage.port" . }}" 2>/dev/null; do
@@ -74,7 +65,6 @@ Usage: {{ include "cost-onprem.initContainer.waitForStorage" . | nindent 8 }}
         sleep 5
       done
       echo "ODF S3 endpoint is ready"
-    {{- end }}
 {{- end -}}
 
 {{/*

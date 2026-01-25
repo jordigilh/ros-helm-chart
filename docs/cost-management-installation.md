@@ -98,7 +98,6 @@ oc get pvc -n openshift-storage
 # Script will:
 # - Install Strimzi operator (version 0.45.1)
 # - Deploy Kafka cluster (version 3.8.0)
-# - Auto-detect platform (Kubernetes/OpenShift)
 # - Configure appropriate storage class
 # - Wait for cluster to be ready
 ```

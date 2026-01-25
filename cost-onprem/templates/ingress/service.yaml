@@ -1,4 +1,3 @@
-{{/* Deploy ingress service on both Kubernetes and OpenShift */}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -10,7 +9,7 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   ports:
-    {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
+    {{- if .Values.jwtAuth.enabled }}
     # When JWT auth is enabled, expose Envoy proxy port for external traffic
     - port: {{ .Values.ingress.server.port }}
       targetPort: http-proxy  # Route to Envoy sidecar
