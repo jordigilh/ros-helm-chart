@@ -1,7 +1,6 @@
-{{- if .Values.jwtAuth.enabled }}
 {{/*
 Debug ConfigMap to show Keycloak auto-detection results
-This will be created when JWT auth is enabled to help troubleshoot Keycloak detection
+This is created to help troubleshoot Keycloak detection
 */}}
 apiVersion: v1
 kind: ConfigMap
@@ -32,7 +31,7 @@ data:
     jwks_url: {{ include "cost-onprem.keycloak.jwksUrl" . | quote }}
 
     # Configuration Used:
-    jwt_auth_enabled: {{ .Values.jwtAuth.enabled | quote }}
+    jwt_auth_enabled: "true"
     manual_base_url: {{ .Values.jwtAuth.keycloak.url | quote }}
     realm: {{ .Values.jwtAuth.keycloak.realm | quote }}
 
@@ -63,4 +62,3 @@ data:
     # 2. CR status.externalURL - Direct from operator
     # 3. OpenShift Routes - Platform integration
     # 4. Service discovery - Fallback method
-{{- end }}

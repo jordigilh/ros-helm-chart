@@ -43,8 +43,6 @@ Health Check:
 
 🔐 AUTHENTICATION
 
-{{- if .Values.jwtAuth.enabled }}
-
 ✅ JWT Authentication: ENABLED
 
 Keycloak Configuration:
@@ -60,17 +58,6 @@ Verify Keycloak connectivity:
 
 For authentication setup details:
   https://github.com/insights-onprem/cost-onprem-chart/blob/main/docs/keycloak-jwt-authentication-setup.md
-
-{{- else }}
-
-⚠️  JWT Authentication: DISABLED
-
-To enable JWT authentication, ensure:
-  1. Red Hat Build of Keycloak (RHBK) is deployed
-  2. Keycloak is properly configured
-  3. Re-install the chart (auto-detection will enable JWT auth)
-
-{{- end }}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

@@ -11,11 +11,14 @@ from utils import helm_lint, helm_template
 
 # Mock values for offline template rendering (no cluster context)
 OFFLINE_MOCK_VALUES = {
-    # Provide mock ODF credentials to avoid lookup failures
+    # Provide mock cluster domain for route generation
+    "global.clusterDomain": "apps.example.com",
+    # Provide mock ODF endpoint and credentials to avoid lookup failures
+    "odf.endpoint": "https://s3.example.com",
     "odf.credentials.accessKey": "mock-access-key",
     "odf.credentials.secretKey": "mock-secret-key",
     # Provide mock Keycloak URL for JWT tests
-    "global.jwtAuth.keycloak.url": "https://keycloak.example.com",
+    "jwtAuth.keycloak.url": "https://keycloak.example.com",
 }
 
 
@@ -86,17 +89,15 @@ class TestChartTemplate:
         for kind in required_kinds:
             assert f"kind: {kind}" in output, f"Missing {kind} in rendered templates"
 
-    def test_template_with_jwt_enabled(self, chart_path: str):
-        """Verify chart templates render with JWT authentication enabled."""
-        jwt_values = {
-            **OFFLINE_MOCK_VALUES,
-            "global.jwtAuth.enabled": "true",
-        }
+    def test_template_with_jwt_auth(self, chart_path: str):
+        """Verify chart templates render with JWT authentication configuration."""
+        # JWT auth is always enabled; this test verifies the chart renders correctly
+        # with the standard mock values that include Keycloak URL
         success, output = helm_template(
             chart_path,
-            set_values=jwt_values,
+            set_values=OFFLINE_MOCK_VALUES,
         )
-        assert success, f"Helm template with JWT failed:\n{output}"
+        assert success, f"Helm template with JWT auth failed:\n{output}"
 
 
 @pytest.mark.helm

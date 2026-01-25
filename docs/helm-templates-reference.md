@@ -60,7 +60,6 @@ When JWT authentication is enabled (automatic on OpenShift):
 
 **Example Template Snippet**:
 ```yaml
-{{- if .Values.jwtAuth.enabled }}
 - name: envoy-proxy
   image: "{{ .Values.jwtAuth.envoy.image.repository }}:{{ .Values.jwtAuth.envoy.image.tag }}"
   ports:
@@ -72,7 +71,6 @@ When JWT authentication is enabled (automatic on OpenShift):
     - name: envoy-config
       mountPath: /etc/envoy
       readOnly: true
-{{- end }}
 ```
 
 ---
@@ -224,12 +222,15 @@ ports:
 **Key Functions**:
 
 #### JWT Authentication
-JWT authentication is controlled via `jwtAuth.enabled` in values.yaml. When enabled, Envoy sidecars handle JWT validation with Keycloak OIDC.
+JWT authentication is always enabled. Envoy sidecars handle JWT validation with Keycloak OIDC.
 
 **Configuration**:
 ```yaml
 jwtAuth:
-  enabled: true  # Enable JWT authentication with Keycloak
+  # JWT authentication is always enabled
+  keycloak:
+    url: ""  # Auto-detected from Keycloak CR, or set manually
+    realm: kubernetes
 ```
 
 ---
@@ -615,8 +616,7 @@ helm upgrade cost-onprem ./cost-onprem \
 
 1. **Pre-Install**: Helm validates values schema
 2. **Template Rendering**:
-   - Conditionals evaluate (`jwtAuth.enabled`)
-   - Templates generate manifests
+   - Templates generate manifests with JWT auth configuration
 3. **Manifest Application**:
    - ConfigMaps (Envoy config)
    - Deployments (Ingress + Envoy sidecar)

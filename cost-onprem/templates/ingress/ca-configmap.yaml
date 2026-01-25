@@ -1,6 +1,7 @@
-{{- if .Values.jwtAuth.enabled }}
 {{- $keycloakUrl := .Values.jwtAuth.keycloak.url | default (include "cost-onprem.keycloak.url" .) }}
 ---
+# ConfigMap for OpenShift service CA injection
+# Note: OpenShift will manage this configmap's data when inject-cabundle is true
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,6 +13,18 @@ metadata:
   annotations:
     # Auto-inject OpenShift service CA
     service.beta.openshift.io/inject-cabundle: "true"
+data: {}
+---
+# ConfigMap for CA bundle scripts and custom certificates
+# Separate from keycloak-ca to avoid OpenShift CA injection overwriting our data
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-ca-scripts
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ca-trust
 data:
   # Custom CA certificate for Keycloak (optional - will auto-fetch if not provided)
   {{- if and .Values.jwtAuth.keycloak .Values.jwtAuth.keycloak.tls .Values.jwtAuth.keycloak.tls.caCert }}
@@ -171,10 +184,3 @@ data:
     if grep -q "OpenShift Injected CA Bundle" /ca-output/ca-bundle.crt; then
         echo "   ✅ OpenShift Injected CA Bundle"
     fi
-{{- end }}
-
-
-
-
-
-

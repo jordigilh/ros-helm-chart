@@ -27,12 +27,9 @@ spec:
         {{- if .Values.kafka.bootstrapServers }}
         {{- include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
         {{- end }}
-        {{- if .Values.jwtAuth.enabled }}
         {{- include "cost-onprem.initContainer.prepareCABundle" . | nindent 8 }}
-        {{- end }}
       serviceAccountName: {{ .Values.ingress.serviceAccount.name }}
       containers:
-        {{- if .Values.jwtAuth.enabled }}
         # Envoy sidecar for native JWT authentication
         - name: envoy-proxy
           image: "{{ .Values.jwtAuth.envoy.image.repository }}:{{ .Values.jwtAuth.envoy.image.tag }}"
@@ -74,18 +71,17 @@ spec:
             timeoutSeconds: 3
           resources:
             {{- toYaml .Values.jwtAuth.envoy.resources | nindent 12 }}
-        {{- end }}
         - name: ingress
           image: "{{ .Values.ingress.image.repository }}:{{ .Values.ingress.image.tag }}"
           imagePullPolicy: {{ .Values.ingress.image.pullPolicy | default .Values.global.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{- if .Values.jwtAuth.enabled }} 8081 {{- else }} {{ .Values.ingress.server.port }} {{- end }}
+              containerPort: 8081
               protocol: TCP
           env:
             # Port configuration (insights-ingress-go uses INGRESS_ prefix)
             - name: INGRESS_WEBPORT
-              value: {{- if .Values.jwtAuth.enabled }} "8081" {{- else }} {{ .Values.ingress.server.port | quote }} {{- end }}
+              value: "8081"
             - name: INGRESS_METRICSPORT
               value: {{ .Values.ingress.metrics.port | quote }}
             - name: INGRESS_DEBUG
@@ -131,14 +127,9 @@ spec:
               value: {{ .Values.ingress.kafka.groupId | default "ingress" | quote }}
 
             # Authentication configuration
-            # When JWT is enabled via Envoy, the backend trusts X-Rh-Identity header
-            # When JWT is disabled, set INGRESS_AUTH=false to skip auth checks
+            # JWT is handled by Envoy sidecar, the backend trusts X-Rh-Identity header
             - name: INGRESS_AUTH
-              {{- if .Values.jwtAuth.enabled }}
               value: "false"  # Auth is handled by Envoy sidecar, backend trusts X-Rh-Identity
-              {{- else }}
-              value: {{ .Values.ingress.auth.enabled | quote }}
-              {{- end }}
 
             # Logging configuration
             - name: INGRESS_LOGLEVEL
@@ -147,7 +138,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /
-              port: {{- if .Values.jwtAuth.enabled }} 8081 {{- else }} {{ .Values.ingress.server.port }} {{- end }}
+              port: 8081
             initialDelaySeconds: {{ .Values.probes.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
@@ -155,7 +146,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /
-              port: {{- if .Values.jwtAuth.enabled }} 8081 {{- else }} {{ .Values.ingress.server.port }} {{- end }}
+              port: 8081
             initialDelaySeconds: 10
             periodSeconds: {{ .Values.probes.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
@@ -171,7 +162,6 @@ spec:
               subPath: service-ca.crt
               readOnly: true
       volumes:
-        {{- if .Values.jwtAuth.enabled }}
         # Envoy configuration volume
         - name: envoy-config
           configMap:
@@ -182,17 +172,16 @@ spec:
         # CA bundle preparation volumes
         - name: ca-scripts
           configMap:
-            name: {{ include "cost-onprem.fullname" . }}-keycloak-ca
+            name: {{ include "cost-onprem.fullname" . }}-ca-scripts
             items:
               - key: combine-ca.sh
                 path: combine-ca.sh
                 mode: 0755
         - name: ca-source
           configMap:
-            name: {{ include "cost-onprem.fullname" . }}-keycloak-ca
+            name: {{ include "cost-onprem.fullname" . }}-ca-scripts
         - name: ca-bundle
           emptyDir: {}
-        {{- end }}
         - name: aws-config
           configMap:
             name: {{ include "cost-onprem.fullname" . }}-aws-config
