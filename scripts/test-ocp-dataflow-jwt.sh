@@ -1186,10 +1186,10 @@ cleanup_test_source() {
                 curl -s -o /dev/null -w "%{http_code}" --max-time 30 -X DELETE "${KOKU_API_URL}/sources/${TEST_SOURCE_ID}" \
                 -H "X-Rh-Identity: $rh_identity" 2>/dev/null)
             
-            if [ "$delete_status" = "200" ]; then
+            if [ "$delete_status" = "204" ]; then
                 echo_success "Test source deleted successfully (HTTP $delete_status)"
             else
-                echo_error "Failed to delete test source (HTTP $delete_status, expected 200)"
+                echo_error "Failed to delete test source (HTTP $delete_status, expected 204)"
                 return 1
             fi
         fi
