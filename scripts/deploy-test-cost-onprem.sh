@@ -86,10 +86,8 @@ SHARED_DIR="${SHARED_DIR:-}"
 LOCAL_SCRIPTS_DIR="${SCRIPT_DIR}"
 SCRIPT_DEPLOY_RHBK="deploy-rhbk.sh"  # Red Hat Build of Keycloak (RHBK)
 SCRIPT_DEPLOY_STRIMZI="deploy-strimzi.sh"
-SCRIPT_INSTALL_AUTHORINO="install-authorino.sh"
 SCRIPT_INSTALL_HELM="install-helm-chart.sh"
 SCRIPT_SETUP_TLS="setup-cost-mgmt-tls.sh"
-SCRIPT_TEST_JWT="test-ocp-dataflow-jwt.sh"
 OPENSHIFT_VALUES_FILE="openshift-values.yaml"
 
 # Step flags (default: run all steps)
