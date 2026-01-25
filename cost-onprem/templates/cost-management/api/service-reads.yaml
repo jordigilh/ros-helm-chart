@@ -1,11 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "cost-onprem.koku.api.name" . }}
+  name: {{ include "cost-onprem.koku.api.name" . }}-reads
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.koku.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cost-management-api
+    app.kubernetes.io/component: cost-management-api-reads
 spec:
   type: {{ .Values.costManagement.api.service.type }}
   ports:
@@ -15,5 +15,5 @@ spec:
     protocol: TCP
   selector:
     {{- include "cost-onprem.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: cost-management-api
+    app.kubernetes.io/component: cost-management-api-reads
 

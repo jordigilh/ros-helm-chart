@@ -212,6 +212,12 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
             print("  ⚠️  Could not auto-fetch org_id, using default 'org1234567'")
             org_id = 'org1234567'
 
+    # Generate unique cluster ID for this test run to ensure data isolation
+    # This prevents conflicts from previous test runs and mimics production behavior
+    import time
+    cluster_id = f"test-cluster-{int(time.time())}"
+    print(f"  ✓ Generated unique cluster ID: {cluster_id}")
+
     # Quick mode skips slow operations but RUNS critical setup and data upload
     if quick:
         skip_migrations = True
@@ -430,7 +436,7 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                 sources_api_client=sources_api,
                 postgres_pod=postgres_pod
             )
-            results['provider'] = provider_phase.run(skip=skip_provider, provider_type=provider_type, cluster_id='test-cluster-123')
+            results['provider'] = provider_phase.run(skip=skip_provider, provider_type=provider_type, cluster_id=cluster_id)
             if not results['provider']['passed'] and not results['provider'].get('skipped'):
                 print("\n❌ Provider setup failed - skipping remaining phases")
                 should_skip_remaining = True
@@ -445,15 +451,25 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
         else:
             from .clients.s3 import S3Client
 
-            # Get S3 credentials (try helm chart secret name first, then fallback)
-            storage_secret_name = f'{namespace}-storage-credentials'
-            s3_access_key = k8s.get_secret(storage_secret_name, 'access-key')
-            s3_secret_key = k8s.get_secret(storage_secret_name, 'secret-key')
-
-            # Fallback to old secret name for backwards compatibility
-            if not s3_access_key or not s3_secret_key:
-                s3_access_key = k8s.get_secret('koku-storage-credentials', 'access-key')
-                s3_secret_key = k8s.get_secret('koku-storage-credentials', 'secret-key')
+            # Get S3 credentials - try multiple secret name patterns
+            # The helm chart uses 'cost-onprem-storage-credentials' (release name prefix)
+            # but the namespace might be different from the helm release name
+            storage_secret_patterns = [
+                'cost-onprem-storage-credentials',  # Default helm release name
+                f'{namespace}-storage-credentials',  # Namespace-based
+                'koku-storage-credentials',  # Legacy name
+                'cost-onprem-odf-credentials',  # ODF credentials
+            ]
+            
+            s3_access_key = None
+            s3_secret_key = None
+            
+            for secret_name in storage_secret_patterns:
+                s3_access_key = k8s.get_secret(secret_name, 'access-key')
+                s3_secret_key = k8s.get_secret(secret_name, 'secret-key')
+                if s3_access_key and s3_secret_key:
+                    print(f"  ✓ Found S3 credentials in secret: {secret_name}")
+                    break
 
             if not s3_access_key or not s3_secret_key:
                 print("\n❌ Failed to get S3 credentials")
@@ -564,7 +580,8 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                 start_date=start_date,
                 end_date=end_date,
                 force=force,
-                smoke_test=smoke_test
+                smoke_test=smoke_test,
+                cluster_id=cluster_id
             )
 
             # Check for S3 errors
@@ -606,7 +623,7 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                 org_id=org_id,
                 manifest_uuid=manifest_uuid,
                 provider_type=provider_type,
-                cluster_id='test-cluster-123'
+                cluster_id=cluster_id
             )
             results['processing'] = processing.run()
             if not results['processing']['passed'] and not results['processing'].get('skipped'):
@@ -639,7 +656,7 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                 db_client=db,
                 namespace=namespace,
                 org_id=tenant_schema,  # Use actual schema name (e.g., orgorg1234567)
-                cluster_id='test-cluster-123',
+                cluster_id=cluster_id,
                 start_date=val_start_date,
                 end_date=val_end_date
             )

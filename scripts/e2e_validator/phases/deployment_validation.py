@@ -159,7 +159,7 @@ class DeploymentValidationPhase:
             try:
                 deployments = self.k8s.apps_v1.list_namespaced_deployment(
                     namespace=self.k8s.namespace,
-                    label_selector=f"worker-queue={worker_type}"
+                    label_selector=f"cost-onprem.io/worker-queue={worker_type}"
                 )
 
                 if not deployments.items:

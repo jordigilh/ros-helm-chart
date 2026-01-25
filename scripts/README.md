@@ -6,12 +6,14 @@ Automation scripts for deploying, configuring, and testing the Cost Management O
 
 | Script | Purpose | Environment |
 |--------|---------|-------------|
+| `deploy-test-cost-onprem.sh` | **Full deployment + test orchestration** | OpenShift |
+| `run-pytest.sh` | Run pytest test suite | All environments |
 | `deploy-strimzi.sh` | Deploy Kafka infrastructure | All environments |
 | `install-helm-chart.sh` | Deploy CoP Helm chart | All environments |
 | `deploy-rhbk.sh` | Deploy Red Hat Build of Keycloak | OpenShift |
 | `setup-cost-mgmt-tls.sh` | Configure TLS certificates | OpenShift |
 | `cost-mgmt-ocp-dataflow.sh` | **E2E Cost Management test** | All environments |
-| `test-ocp-dataflow-jwt.sh` | Test JWT + recommendations | JWT-enabled clusters |
+| `test-ocp-dataflow-jwt.sh` | Legacy shell-based JWT test | OpenShift |
 | `query-kruize.sh` | Query Kruize database | All environments |
 | `deploy-kind.sh` | Create test cluster | CI/CD, Local dev |
 | `cleanup-kind-artifacts.sh` | Cleanup test environment | CI/CD, Local dev |
@@ -214,6 +216,103 @@ KAFKA_BOOTSTRAP_SERVERS=my-kafka:9092 ./deploy-strimzi.sh
 
 ---
 
+### `deploy-test-cost-onprem.sh`
+Complete orchestration script for deploying and testing Cost On-Prem with JWT authentication.
+
+**What it does:**
+1. Deploys Red Hat Build of Keycloak (RHBK)
+2. Deploys Kafka/Strimzi infrastructure
+3. Installs Cost On-Prem Helm chart
+4. Configures TLS certificates
+5. Runs pytest test suite
+6. Optionally saves deployment version info
+
+**Usage:**
+```bash
+# Full deployment + tests
+./deploy-test-cost-onprem.sh
+
+# Run tests only (skip deployments)
+./deploy-test-cost-onprem.sh --tests-only
+
+# Skip specific steps
+./deploy-test-cost-onprem.sh --skip-rhbk --skip-strimzi
+
+# Save deployment version info for CI traceability
+./deploy-test-cost-onprem.sh --save-versions
+./deploy-test-cost-onprem.sh --save-versions custom-versions.json
+
+# Dry run to preview actions
+./deploy-test-cost-onprem.sh --dry-run --verbose
+```
+
+**Version tracking:** The `--save-versions` flag generates a `version_info.json` file containing:
+- Helm chart version (source and deployed)
+- Git SHA and branch
+- Deployment timestamp
+- Component image details
+
+**Best for:** CI/CD pipelines, complete E2E deployment and validation
+
+---
+
+### `run-pytest.sh`
+Run the pytest test suite for JWT authentication and data flow validation.
+
+**Suite options:**
+- `--helm` - Helm chart validation tests
+- `--auth` - JWT authentication tests
+- `--infrastructure` - Infrastructure health tests (DB, S3, Kafka)
+- `--cost-management` - Cost Management (Koku) pipeline tests
+- `--ros` - ROS/Kruize recommendation tests
+- `--e2e` - End-to-end data flow tests
+
+**Filter options:**
+- `--smoke` - Quick smoke tests only
+- `--extended` - Run E2E tests INCLUDING extended (summary tables, Kruize)
+- `--all` - Run ALL tests including extended
+
+**Test type markers:**
+- `-m component` - Single-component tests
+- `-m integration` - Multi-component tests
+
+**Usage:**
+```bash
+# Run all tests (excludes extended by default)
+./run-pytest.sh
+
+# Run specific test suites
+./run-pytest.sh --helm
+./run-pytest.sh --auth
+./run-pytest.sh --e2e
+
+# Run E2E with extended tests (summary tables, Kruize)
+./run-pytest.sh --extended
+
+# Run ALL tests including extended
+./run-pytest.sh --all
+
+# Run tests matching a pattern
+./run-pytest.sh -k "test_jwt"
+
+# Run only component tests
+./run-pytest.sh -m component
+
+# Setup environment only
+./run-pytest.sh --setup-only
+```
+
+**Output:** JUnit XML report at `tests/reports/junit.xml`
+
+**Requirements:**
+- Python 3.9+
+- OpenShift CLI (`oc`) logged in
+- Cost On-Prem deployed with JWT authentication
+
+**See also:** [Test Suite Documentation](../tests/README.md)
+
+---
+
 ### `cost-mgmt-ocp-dataflow.sh`
 End-to-end validation of Cost Management data pipeline (OCP provider).
 
@@ -298,6 +397,11 @@ Phases: 7/7 passed
 ---
 
 ### `test-ocp-dataflow-jwt.sh`
+Legacy shell script for JWT authentication testing. **Superseded by pytest suite** but kept for reference.
+
+**Usage:**
+```bash
+# Run legacy shell test
 End-to-end ROS-only test with JWT authentication and NISE-generated data.
 
 **Features:**
@@ -366,6 +470,8 @@ Test Duration: ~5 minutes
 - **python3** and **python3-venv** (auto-installs NISE)
 - Network access (for pip install koku-nise)
 
+**Best for:** CI/CD pipelines, complete E2E validation including recommendations
+**Note:** The pytest suite (`run-pytest.sh`) is now the recommended approach for testing.
 **Best for:** CI/CD pipelines, ROS-only validation, recommendation verification
 
 ---
@@ -418,11 +524,12 @@ Query Kruize database for experiments and recommendations.
 ## 🧪 Test Strategy
 
 ### For CI/CD Pipelines
+Use the orchestration script for comprehensive E2E deployment and validation:
 
 **Cost Management Validation (recommended):**
 ```bash
-# 1. Deploy Kafka infrastructure
-./deploy-strimzi.sh
+# Full deployment + tests (recommended)
+./deploy-test-cost-onprem.sh
 
 # 2. Deploy Cost Management
 ./install-helm-chart.sh
@@ -444,13 +551,23 @@ The `cost-mgmt-ocp-dataflow.sh` script validates:
 ```bash
 # Validate JWT authentication flow
 ./test-ocp-dataflow-jwt.sh || exit 1
+# Or run tests only on existing deployment
+./deploy-test-cost-onprem.sh --tests-only
+
+# Or run pytest directly
+./run-pytest.sh
 ```
 
-The `test-ocp-dataflow-jwt.sh` script validates:
-- ✅ JWT authentication
+The pytest test suite validates:
+- ✅ Keycloak connectivity and JWT token generation
+- ✅ JWT authentication on ingress and backend APIs
+- ✅ Data upload with JWT authentication
 - ✅ Full data flow (ingress → processor → Kruize)
 - ✅ Recommendation generation
-- ✅ Complete E2E functionality in ~2 minutes
+
+**Test output:** JUnit XML report at `tests/reports/junit.xml`
+
+**See also:** [Test Suite Documentation](../tests/README.md)
 
 ---
 
@@ -572,7 +689,7 @@ All scripts use color-coded output:
 
 ---
 
-**Last Updated**: October 2025
+**Last Updated**: January 2026
 **Maintainer**: CoP Engineering Team
 **Supported Platforms**: OpenShift 4.18+ (Kubernetes 1.31+), KIND (CI/CD)
 **Tested With**: OpenShift 4.18.24
