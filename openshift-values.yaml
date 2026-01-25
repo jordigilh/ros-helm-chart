@@ -1,12 +1,14 @@
-# OpenShift-specific values for Cost Management On-Premise deployment
-# This file provides OpenShift-specific overrides with testing/development settings
-# Uses OpenShift Routes, ODF storage, and smaller resource allocations for testing
+# Testing/CI Values Overlay for Cost Management On-Premise
+# =========================================================
+# This file provides OVERRIDES for testing and CI environments only.
+# It is layered on top of the base values.yaml during helm install.
 #
-# OPTIMIZATION: This file reduces Helm lookup API calls from 29 to ~9 by providing
-# explicit values for auto-detection. This improves deployment speed and reduces
-# API server load, especially important in CI environments.
+# Purpose:
+# - Smaller resource allocations suitable for testing environments
+# - Reduced storage sizes (5Gi vs production sizes)
+# - CI optimization hints to reduce Helm API lookups
 #
-# For production deployments, override with larger values:
+# For production deployments, use larger values:
 #   --set database.ros.storage.size=100Gi
 #   --set resources.kruize.requests.memory=2Gi
 
@@ -18,15 +20,8 @@ global:
   # Cluster name - auto-detected if empty, but providing it skips 2 API lookups
   clusterName: ""  # Set by CI or leave empty for auto-detection
 
-  # OpenShift Data Foundation (ODF) storage class
-  # Common values: odf-storagecluster-ceph-rbd, ocs-storagecluster-ceph-rbd
-  # When left empty, the cost-onprem.storage.class helper will auto-discover the default storage class from the cluster
-  # Recommended: Leave empty for automatic detection
-  storageClass: ""
-  # Storage type for platform detection (odf for OpenShift, minio for Kubernetes)
+  # Storage type for platform detection (overrides empty default in values.yaml)
   storageType: "odf"
-  pullPolicy: IfNotPresent
-  imagePullSecrets: []
 
 # Explicit storage class names to avoid API lookups (optional but recommended for CI)
 # When provided, skips StorageClass list/get API calls (saves 2-4 lookups)
@@ -69,25 +64,6 @@ database:
   sources:
     storage:
       size: "5Gi"
-
-# Kafka configuration
-# IMPORTANT: Kafka/Strimzi deployment is NOT managed by this Helm chart!
-# The install-helm-chart.sh script installs Strimzi operator and creates Kafka cluster separately
-# This section only contains connection settings for the deployed application
-kafka:
-  # Bootstrap servers for Kafka cluster (auto-configured by script)
-  bootstrapServers: "cost-onprem-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
-  securityProtocol: "PLAINTEXT"
-
-# Valkey (Production Cache - for OpenShift deployments)
-# Replaces Redis on OpenShift
-valkey:
-  image:
-    repository: registry.redhat.io/rhel10/valkey-8
-    tag: "latest"
-  bindAddress: "0.0.0.0"
-  maxMemory: 512mb
-  maxMemoryPolicy: allkeys-lru
 
 # ODF (Production Storage - for OpenShift deployments)
 # Replaces MinIO on OpenShift
@@ -133,11 +109,6 @@ odf:
   # The install script auto-detects OBC named "ros-data-ceph" and sets this automatically
   useExternalOBC: false  # Auto-set to true by install script when OBC is detected
 
-# Kruize OpenShift-specific configuration
-kruize:
-  env:
-    k8sType: openshift  # Override default kubernetes value
-
 # JWT Authentication configuration (avoids Keycloak auto-discovery lookups)
 # Providing explicit Keycloak settings saves ~8 API lookups
 # CI script will set this dynamically: $(oc get route -n keycloak keycloak -o jsonpath='{.spec.host}')
@@ -156,19 +127,13 @@ ingress:
   upload:
     requireAuth: false  # Authentication handled by OpenShift Routes
 
-# OpenShift Routes configuration (automatically used when deploying to OpenShift)
+# OpenShift Routes configuration
+# Override: longer timeout (300s vs 30s default) for large file uploads
 serviceRoute:
   enabled: true
   annotations:
-    # OpenShift-specific route annotations
     haproxy.router.openshift.io/timeout: "300s"
-    haproxy.router.openshift.io/rewrite-target: ""
-  hosts:
-    - host: ""  # Empty host uses cluster's default route domain
-      paths:
-        - path: /
-          pathType: Prefix
   tls:
-    # Uncomment to enable TLS termination
+    # TLS disabled by default for testing; enable for production:
     # termination: edge
     # insecureEdgeTerminationPolicy: Redirect
