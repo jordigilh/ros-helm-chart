@@ -130,8 +130,8 @@ Usage: {{ include "cost-onprem.initContainer.waitForKoku" . | nindent 8 }}
   command: ['bash', '-c']
   args:
     - |
-      echo "Waiting for Koku API at {{ include "cost-onprem.fullname" . }}-koku-api:{{ .Values.costManagement.koku.api.port }}..."
-      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.fullname" . }}-koku-api/{{ .Values.costManagement.koku.api.port }}" 2>/dev/null; do
+      echo "Waiting for Koku API at {{ include "cost-onprem.fullname" . }}-koku-api:{{ .Values.costManagement.api.service.port }}..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.fullname" . }}-koku-api/{{ .Values.costManagement.api.service.port }}" 2>/dev/null; do
         echo "Koku API not ready yet, retrying in 5 seconds..."
         sleep 5
       done
