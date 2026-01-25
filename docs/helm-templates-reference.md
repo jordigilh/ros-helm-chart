@@ -526,19 +526,15 @@ ui:
 
 **Common Issues**:
 
-1. **UI not deployed on Kubernetes**:
-   - ✅ **Expected**: UI only available on OpenShift
-   - Check: `kubectl get deployment -n cost-onprem | grep ui` (should be empty on K8s)
-
-2. **OAuth redirect errors**:
+1. **OAuth redirect errors**:
    - Check ServiceAccount annotation: `oc get sa cost-onprem-ui -n cost-onprem -o yaml`
    - Verify Route name matches redirect reference
 
-3. **TLS certificate issues**:
+2. **TLS certificate issues**:
    - Check service annotation: `oc get svc cost-onprem-ui -n cost-onprem -o yaml`
    - Verify secret exists: `oc get secret cost-onprem-ui-tls -n cost-onprem`
 
-4. **UI cannot connect to API**:
+3. **UI cannot connect to API**:
    - Check `API_PROXY_URL` environment variable in app container
    - Verify ROS API service is accessible: `oc get svc cost-onprem-ros-api -n cost-onprem`
 

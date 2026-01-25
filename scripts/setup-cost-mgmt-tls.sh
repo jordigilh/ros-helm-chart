@@ -2,7 +2,6 @@
 
 # setup-cost-mgmt-tls.sh
 # Comprehensive automation script for Cost Management Operator with self-signed certificates
-# Similar to deploy-kind.sh but for Cost Management TLS setup
 #
 # Usage: ./setup-cost-mgmt-tls.sh [options]
 # Prerequisites: OpenShift cluster with Keycloak (RHBK) installed
@@ -382,7 +381,7 @@ show_usage() {
 Cost Management Operator TLS Setup Script
 
 This script automates the complete setup of the Cost Management Metrics Operator
-for environments with self-signed certificates, similar to deploy-kind.sh.
+for environments with self-signed certificates.
 
 USAGE:
     $0 [OPTIONS]
@@ -426,7 +425,7 @@ WHAT THIS SCRIPT DOES:
     7. ✅ Validate the complete setup
     8. ✅ Provide clear success/failure feedback
 
-Similar to deploy-kind.sh, this provides a one-command setup experience!
+This provides a one-command setup experience!
 
 EOF
 }

@@ -181,7 +181,6 @@ kubectl exec -n cost-onprem deployment/cost-onprem-ros-processor -- nc -zv cost-
 ```bash
 # Delete and redeploy if Kafka issues persist
 ./install-helm-chart.sh cleanup --complete
-./deploy-kind.sh
 ./install-helm-chart.sh
 ```
 

@@ -10,10 +10,8 @@ metadata:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: ca-trust
   annotations:
-    # Auto-inject OpenShift service CA if available
-    {{- if and .Values.global .Values.global.platform .Values.global.platform.openshift }}
+    # Auto-inject OpenShift service CA
     service.beta.openshift.io/inject-cabundle: "true"
-    {{- end }}
 data:
   # Custom CA certificate for Keycloak (optional - will auto-fetch if not provided)
   {{- if and .Values.jwtAuth.keycloak .Values.jwtAuth.keycloak.tls .Values.jwtAuth.keycloak.tls.caCert }}
