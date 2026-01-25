@@ -81,14 +81,6 @@ Get the kruize database host - returns unified database service name (alias for 
 {{- end }}
 
 {{/*
-Get the sources database host - now returns infra chart's PostgreSQL host
-Sources API shares the koku database with Koku because Sources provisions tables that Koku uses
-*/}}
-{{- define "cost-onprem.sources.databaseHost" -}}
-{{- include "cost-onprem.koku.database.host" . -}}
-{{- end }}
-
-{{/*
 Get the default database credentials secret name (chart-managed secret)
 Usage: {{ include "cost-onprem.database.defaultSecretName" . }}
 */}}
@@ -275,28 +267,6 @@ Usage: {{ include "cost-onprem.platform.clusterName" . }}
 {{- end }}
 
 {{/*
-Generate external URL for a service using OpenShift Routes
-Usage: {{ include "cost-onprem.externalUrl" (list . "service-name" "/path") }}
-*/}}
-{{- define "cost-onprem.externalUrl" -}}
-  {{- $root := index . 0 -}}
-  {{- $service := index . 1 -}}
-  {{- $path := index . 2 -}}
-  {{- /* OpenShift: Use Route configuration */ -}}
-  {{- $scheme := "http" -}}
-  {{- if $root.Values.serviceRoute.tls.termination -}}
-    {{- $scheme = "https" -}}
-  {{- end -}}
-  {{- with (index $root.Values.serviceRoute.hosts 0) -}}
-    {{- if .host -}}
-{{- printf "%s://%s%s" $scheme .host $path -}}
-    {{- else -}}
-{{- printf "%s://%s-%s.%s%s" $scheme $service $root.Release.Namespace (include "cost-onprem.platform.clusterDomain" $root) $path -}}
-    {{- end -}}
-  {{- end -}}
-{{- end }}
-
-{{/*
 Detect appropriate volume mode based on actual storage class provisioner
 Returns "Block" for block storage, "Filesystem" for filesystem storage
 Usage: {{ include "cost-onprem.storage.volumeMode" . }}
@@ -364,41 +334,6 @@ Get default storage class for OpenShift ODF
 */}}
 {{- define "cost-onprem.storage.getPlatformDefault" -}}
 ocs-storagecluster-ceph-rbd
-{{- end }}
-
-{{/*
-Find default storage class from cluster
-Returns the name of the default storage class if found, empty string otherwise
-*/}}
-{{- define "cost-onprem.storage.findDefault" -}}
-  {{- $storageClasses := lookup "storage.k8s.io/v1" "StorageClass" "" "" -}}
-  {{- $defaultFound := "" -}}
-  {{- if and $storageClasses $storageClasses.items -}}
-    {{- range $storageClasses.items -}}
-      {{- if and .metadata.annotations (eq (index .metadata.annotations "storageclass.kubernetes.io/is-default-class") "true") -}}
-        {{- $defaultFound = .metadata.name -}}
-      {{- end -}}
-    {{- end -}}
-  {{- end -}}
-{{- $defaultFound -}}
-{{- end }}
-
-{{/*
-Check if user-defined storage class exists in cluster
-Returns true if found, false otherwise
-*/}}
-{{- define "cost-onprem.storage.userClassExists" -}}
-  {{- $userDefinedClass := include "cost-onprem.storage.getUserDefinedClass" . -}}
-  {{- $storageClasses := lookup "storage.k8s.io/v1" "StorageClass" "" "" -}}
-  {{- $exists := false -}}
-  {{- if and $userDefinedClass $storageClasses $storageClasses.items -}}
-    {{- range $storageClasses.items -}}
-      {{- if eq .metadata.name $userDefinedClass -}}
-        {{- $exists = true -}}
-      {{- end -}}
-    {{- end -}}
-  {{- end -}}
-{{- $exists -}}
 {{- end }}
 
 {{/*
@@ -522,34 +457,6 @@ valkey
 {{- end }}
 
 {{/*
-Cache configuration (returns valkey config object)
-*/}}
-{{- define "cost-onprem.cache.config" -}}
-{{- .Values.valkey | toYaml -}}
-{{- end }}
-
-{{/*
-Cache CLI command (valkey-cli)
-*/}}
-{{- define "cost-onprem.cache.cli" -}}
-valkey-cli
-{{- end }}
-
-{{/*
-Storage service name (always ODF for OpenShift)
-*/}}
-{{- define "cost-onprem.storage.name" -}}
-odf
-{{- end }}
-
-{{/*
-Storage configuration (returns ODF config)
-*/}}
-{{- define "cost-onprem.storage.config" -}}
-{{- .Values.odf | toYaml -}}
-{{- end }}
-
-{{/*
 Storage endpoint (ODF endpoint)
 Requires: ODF (OpenShift Data Foundation) with NooBaa
 */}}
@@ -631,24 +538,6 @@ http://{{ $endpoint }}
   {{- else -}}
 http://{{ $endpoint }}:{{ $port }}
   {{- end -}}
-{{- end -}}
-{{- end }}
-
-{{/*
-Storage access key (ODF uses credentials secret)
-*/}}
-{{- define "cost-onprem.storage.accessKey" -}}
-{{- if and .Values.odf .Values.odf.credentials .Values.odf.credentials.accessKey -}}
-{{- .Values.odf.credentials.accessKey -}}
-{{- end -}}
-{{- end }}
-
-{{/*
-Storage secret key (ODF uses credentials secret)
-*/}}
-{{- define "cost-onprem.storage.secretKey" -}}
-{{- if and .Values.odf .Values.odf.credentials .Values.odf.credentials.secretKey -}}
-{{- .Values.odf.credentials.secretKey -}}
 {{- end -}}
 {{- end }}
 

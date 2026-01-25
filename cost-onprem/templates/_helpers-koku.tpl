@@ -86,19 +86,6 @@ Koku database user
 {{- end -}}
 
 {{/*
-Koku database connection URL (for Django)
-*/}}
-{{- define "cost-onprem.koku.database.url" -}}
-{{- printf "postgresql://%s:%s@%s:%v/%s"
-    (include "cost-onprem.koku.database.user" .)
-    "$(DATABASE_PASSWORD)"
-    (include "cost-onprem.koku.database.host" .)
-    (include "cost-onprem.koku.database.port" .)
-    (include "cost-onprem.koku.database.dbname" .)
--}}
-{{- end -}}
-
-{{/*
 =============================================================================
 Valkey Connection Helpers (cache/broker)
 =============================================================================
@@ -116,23 +103,6 @@ Valkey port
 */}}
 {{- define "cost-onprem.koku.redis.port" -}}
 {{- .Values.valkey.port | default 6379 -}}
-{{- end -}}
-
-{{/*
-Storage credentials secret name for S3/ODF access
-*/}}
-{{- define "cost-onprem.storage.secretName" -}}
-{{- printf "%s-storage-credentials" (include "cost-onprem.fullname" .) -}}
-{{- end -}}
-
-{{/*
-Redis URL for Koku (uses DB 1)
-*/}}
-{{- define "cost-onprem.koku.redis.url" -}}
-{{- printf "redis://%s:%v/1"
-    (include "cost-onprem.koku.redis.host" .)
-    (include "cost-onprem.koku.redis.port" .)
--}}
 {{- end -}}
 
 {{/*
@@ -163,27 +133,6 @@ Uses configurable value from .Values.costManagement.kafka.port
 */}}
 {{- define "cost-onprem.koku.kafka.port" -}}
 {{- .Values.costManagement.kafka.port | default "9092" -}}
-{{- end -}}
-
-{{/*
-=============================================================================
-MinIO/S3 Connection Helpers (uses shared storage from infrastructure)
-=============================================================================
-*/}}
-
-{{/*
-MinIO endpoint (uses shared MinIO from PR #27)
-*/}}
-{{- define "cost-onprem.koku.s3.endpoint" -}}
-{{- include "cost-onprem.storage.endpoint" . -}}
-{{- end -}}
-
-{{/*
-MinIO bucket name (DEPRECATED - use costManagement.storage.bucketName instead)
-This helper is kept for backwards compatibility but should not be used
-*/}}
-{{- define "cost-onprem.koku.s3.bucket" -}}
-{{- required "costManagement.storage.bucketName is required" .Values.costManagement.storage.bucketName -}}
 {{- end -}}
 
 {{/*
@@ -265,23 +214,6 @@ Usage: {{ include "cost-onprem.koku.celery.worker.selectorLabels" (dict "context
 app.kubernetes.io/component: cost-worker
 cost-onprem.io/celery-type: worker
 cost-onprem.io/worker-queue: {{ $type }}
-{{- end -}}
-
-{{/*
-=============================================================================
-Storage Class Helpers
-=============================================================================
-*/}}
-
-{{/*
-Storage class for Koku database (uses default if not specified)
-*/}}
-{{- define "cost-onprem.koku.database.storageClass" -}}
-{{- if .Values.costManagement.database.storage.storageClassName -}}
-  {{- .Values.costManagement.database.storage.storageClassName -}}
-{{- else -}}
-  {{- /* Use default storage class in cluster */ -}}
-{{- end -}}
 {{- end -}}
 
 {{/*
