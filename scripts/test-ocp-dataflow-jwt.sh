@@ -817,22 +817,6 @@ create_rh_identity_header() {
     echo -n "$identity_json" | base64 | tr -d '\n'
 }
 
-# Function to run curl via ingress pod in the cluster
-# The ingress pod has NetworkPolicy access to koku-api
-run_curl_in_cluster() {
-    local curl_args="$1"
-
-    # Find ingress pod (has NetworkPolicy access to koku-api)
-    local ingress_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=ingress" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-    if [ -z "$ingress_pod" ]; then
-        echo_error "Ingress pod not found for API calls"
-        return 1
-    fi
-
-    # Run curl from ingress pod (which has access to koku-api via NetworkPolicy)
-    oc exec -n "$NAMESPACE" "$ingress_pod" -c ingress -- sh -c "$curl_args" 2>&1 | grep -v "^Defaulted" || echo ""
-}
-
 # Function to fetch org_id from Keycloak for the test user
 # This ensures test data is uploaded with the same org_id that the UI user has
 fetch_org_id_from_keycloak() {
