@@ -815,7 +815,7 @@ spec:
     disable_metrics_collection_cost_management: false
     disable_metrics_collection_resource_optimization: false
 
-  # Source configuration (uses Koku API instead of Sources API for on-prem)
+  # Source configuration
   source:
     create_source: true
     check_cycle: 1440  # 24 hours
