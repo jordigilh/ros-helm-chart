@@ -1055,16 +1055,17 @@ run_health_checks() {
     echo_info "Testing services via port-forwarding..."
 
     # Test Ingress API via port-forward
-    # Note: The ingress container always listens on port 8080 regardless of JWT configuration.
-    # JWT authentication is handled by Envoy sidecar (if present), not by changing the ingress port.
+    # Note: The ingress container listens on port 8081. When JWT auth is enabled, Envoy sidecar
+    # listens on port 8080 and requires authentication. For health checks, connect directly to
+    # the ingress container on port 8081 to bypass JWT authentication.
     echo_info "Testing Ingress API via port-forward..."
     local ingress_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/component=ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [ -n "$ingress_pod" ]; then
         local ingress_pf_pid=""
-        kubectl port-forward -n "$NAMESPACE" pod/"$ingress_pod" 18080:8080 --request-timeout=90s >/dev/null 2>&1 &
+        kubectl port-forward -n "$NAMESPACE" pod/"$ingress_pod" 18081:8081 --request-timeout=90s >/dev/null 2>&1 &
         ingress_pf_pid=$!
         sleep 3
-        if kill -0 "$ingress_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18080/ >/dev/null 2>&1; then
+        if kill -0 "$ingress_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18081/ >/dev/null 2>&1; then
             echo_success "✓ Ingress API service is healthy (port-forward)"
         else
             echo_error "✗ Ingress API service is not responding (port-forward)"
