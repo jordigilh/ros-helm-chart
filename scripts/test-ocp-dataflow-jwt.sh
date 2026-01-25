@@ -1182,10 +1182,16 @@ cleanup_test_source() {
         local ingress_pod=$(oc get pods -n "$NAMESPACE" -l "app.kubernetes.io/component=ingress" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
         if [ -n "$ingress_pod" ]; then
             # Delete source via Koku API using ingress pod
-            oc exec -n "$NAMESPACE" "$ingress_pod" -c ingress -- \
-                curl -s --max-time 30 -X DELETE "${KOKU_API_URL}/sources/${TEST_SOURCE_ID}" \
-                -H "X-Rh-Identity: $rh_identity" 2>/dev/null || true
-            echo_info "Test source deleted"
+            local delete_status=$(oc exec -n "$NAMESPACE" "$ingress_pod" -c ingress -- \
+                curl -s -o /dev/null -w "%{http_code}" --max-time 30 -X DELETE "${KOKU_API_URL}/sources/${TEST_SOURCE_ID}" \
+                -H "X-Rh-Identity: $rh_identity" 2>/dev/null)
+            
+            if [ "$delete_status" = "200" ]; then
+                echo_success "Test source deleted successfully (HTTP $delete_status)"
+            else
+                echo_error "Failed to delete test source (HTTP $delete_status, expected 200)"
+                return 1
+            fi
         fi
     fi
 
