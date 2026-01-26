@@ -119,7 +119,7 @@ Usage: {{ include "cost-onprem.initContainer.waitForKruize" . | nindent 8 }}
 {{- end -}}
 
 {{/*
-Wait for Koku API init container
+Wait for Koku API init container (waits for both reads and writes services)
 Usage: {{ include "cost-onprem.initContainer.waitForKoku" . | nindent 8 }}
 */}}
 {{- define "cost-onprem.initContainer.waitForKoku" -}}
@@ -130,12 +130,19 @@ Usage: {{ include "cost-onprem.initContainer.waitForKoku" . | nindent 8 }}
   command: ['bash', '-c']
   args:
     - |
-      echo "Waiting for Koku API at {{ include "cost-onprem.fullname" . }}-koku-api:{{ .Values.costManagement.api.service.port }}..."
-      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.fullname" . }}-koku-api/{{ .Values.costManagement.api.service.port }}" 2>/dev/null; do
-        echo "Koku API not ready yet, retrying in 5 seconds..."
+      echo "Waiting for Koku API reads service at {{ include "cost-onprem.koku.api.name" . }}-reads:{{ .Values.costManagement.api.service.port }}..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.koku.api.name" . }}-reads/{{ .Values.costManagement.api.service.port }}" 2>/dev/null; do
+        echo "Koku API reads not ready yet, retrying in 5 seconds..."
         sleep 5
       done
-      echo "Koku API is ready"
+      echo "Koku API reads is ready"
+      
+      echo "Waiting for Koku API writes service at {{ include "cost-onprem.koku.api.name" . }}-writes:{{ .Values.costManagement.api.service.port }}..."
+      until timeout 3 bash -c "echo > /dev/tcp/{{ include "cost-onprem.koku.api.name" . }}-writes/{{ .Values.costManagement.api.service.port }}" 2>/dev/null; do
+        echo "Koku API writes not ready yet, retrying in 5 seconds..."
+        sleep 5
+      done
+      echo "Koku API writes is ready"
 {{- end -}}
 
 {{/*
