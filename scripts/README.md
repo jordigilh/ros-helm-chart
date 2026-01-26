@@ -15,8 +15,6 @@ Automation scripts for deploying, configuring, and testing the Cost Management O
 | `cost-mgmt-ocp-dataflow.sh` | **E2E Cost Management test** | All environments |
 | `test-ocp-dataflow-jwt.sh` | Legacy shell-based JWT test | OpenShift |
 | `query-kruize.sh` | Query Kruize database | All environments |
-| `deploy-kind.sh` | Create test cluster | CI/CD, Local dev |
-| `cleanup-kind-artifacts.sh` | Cleanup test environment | CI/CD, Local dev |
 
 ## 🚀 Quick Start
 
@@ -56,22 +54,6 @@ export JWT_AUTH_ENABLED=true
 
 # 5. Test JWT flow
 ./test-ocp-dataflow-jwt.sh
-```
-
-### Local Development (KIND)
-```bash
-# 1. Create KIND cluster
-./deploy-kind.sh
-
-# 2. Deploy Kafka infrastructure
-./deploy-strimzi.sh
-
-# 3. Deploy CoP from local chart
-export USE_LOCAL_CHART=true
-./install-helm-chart.sh
-
-# 4. Cleanup when done
-./cleanup-kind-artifacts.sh
 ```
 
 ## 📖 Script Documentation
@@ -209,10 +191,6 @@ KAFKA_BOOTSTRAP_SERVERS=my-kafka:9092 ./deploy-strimzi.sh
 - `KAFKA_ENVIRONMENT`: Environment type - `dev` or `ocp` (default: `dev`)
 - `STORAGE_CLASS`: Storage class name (auto-detected if empty)
 - `KAFKA_BOOTSTRAP_SERVERS`: Use external Kafka (skips deployment)
-
-**Platform detection:**
-- **Kubernetes/KIND**: Single-node Kafka with minimal resources
-- **OpenShift**: 3-node HA Kafka with production configuration
 
 ---
 
@@ -571,53 +549,6 @@ The pytest test suite validates:
 
 ---
 
-### `deploy-kind.sh`
-Create KIND (Kubernetes IN Docker) cluster for testing and development.
-
-**Features:**
-- Lightweight Kubernetes cluster in Docker
-- Fixed 6GB memory allocation
-- Automated ingress controller setup
-- Suitable for CI/CD pipelines
-
-**Usage:**
-```bash
-# Create default cluster
-./deploy-kind.sh
-
-# Custom cluster name
-export KIND_CLUSTER_NAME=cop-test
-./deploy-kind.sh
-
-# Use Docker instead of Podman
-export CONTAINER_RUNTIME=docker
-./deploy-kind.sh
-```
-
-**Resource requirements:** 6GB+ memory for container runtime
-
----
-
-### `cleanup-kind-artifacts.sh`
-Clean up KIND clusters and related resources.
-
-**Usage:**
-```bash
-# Cleanup default cluster
-./cleanup-kind-artifacts.sh
-
-# Cleanup custom cluster
-export KIND_CLUSTER_NAME=cop-test
-./cleanup-kind-artifacts.sh
-```
-
-**When to use:**
-- After CI/CD test runs (use `if: always()`)
-- Between test iterations
-- When troubleshooting cluster issues
-
----
-
 ## 🔧 Common Environment Variables
 
 Most scripts support these variables:
@@ -691,5 +622,5 @@ All scripts use color-coded output:
 
 **Last Updated**: January 2026
 **Maintainer**: CoP Engineering Team
-**Supported Platforms**: OpenShift 4.18+ (Kubernetes 1.31+), KIND (CI/CD)
+**Supported Platform**: OpenShift 4.18+
 **Tested With**: OpenShift 4.18.24

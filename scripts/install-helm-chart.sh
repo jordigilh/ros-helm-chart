@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Cost Management On Premise Helm Chart Installation Script
-# This script deploys the Cost Management On Premise Helm chart to a Kubernetes cluster
+# This script deploys the Cost Management On Premise Helm chart to an OpenShift cluster
 # By default, it downloads and uses the latest release from GitHub
 # Set USE_LOCAL_CHART=true to use local chart source instead
-# Requires: kubectl configured with target cluster context, helm installed, curl, jq
+# Requires: kubectl/oc configured with target cluster context, helm installed, curl, jq
 
 set -e  # Exit on any error
 
@@ -103,8 +103,7 @@ check_prerequisites() {
     echo_info "Checking kubectl context..."
     local current_context=$(kubectl config current-context 2>/dev/null || echo "none")
     if [ "$current_context" = "none" ]; then
-        echo_error "No kubectl context is set. Please configure kubectl to connect to your cluster."
-        echo_info "For KIND cluster: kubectl config use-context kind-cost-onprem-cluster"
+        echo_error "No kubectl context is set. Please configure kubectl to connect to your OpenShift cluster."
         echo_info "For OpenShift: oc login <cluster-url>"
         return 1
     fi
@@ -121,12 +120,12 @@ check_prerequisites() {
     return 0
 }
 
-# Function to detect platform (Kubernetes vs OpenShift)
+# Function to verify OpenShift platform
 detect_platform() {
-    echo_info "Detecting platform..."
+    echo_info "Verifying OpenShift platform..."
 
     if kubectl get routes.route.openshift.io >/dev/null 2>&1; then
-        echo_success "Detected OpenShift platform"
+        echo_success "Verified OpenShift platform"
         export PLATFORM="openshift"
         # Use OpenShift values if available and no custom values specified
         if [ -z "$VALUES_FILE" ] && [ -f "$SCRIPT_DIR/../../../openshift-values.yaml" ]; then
@@ -134,8 +133,9 @@ detect_platform() {
             VALUES_FILE="$SCRIPT_DIR/../../../openshift-values.yaml"
         fi
     else
-        echo_success "Detected Kubernetes platform"
-        export PLATFORM="kubernetes"
+        echo_error "OpenShift platform not detected. This chart requires OpenShift."
+        echo_error "Please ensure you are connected to an OpenShift cluster."
+        exit 1
     fi
 }
 
@@ -157,109 +157,6 @@ create_namespace() {
     echo_success "Cost management optimization label applied"
     echo_info "  Label: cost_management_optimizations=true"
     echo_info "  This enables the Cost Management Metrics Operator to collect resource optimization data"
-}
-
-# Function to cleanup existing Strimzi operators (delegates to deploy-strimzi.sh)
-cleanup_existing_strimzi() {
-    echo_info "Cleaning up Strimzi operators using deploy-strimzi.sh..."
-
-    local deploy_script="$SCRIPT_DIR/deploy-strimzi.sh"
-    if [ -f "$deploy_script" ]; then
-        # Call deploy-strimzi.sh cleanup (no interactive prompt needed anymore)
-        if timeout 300 bash "$deploy_script" cleanup; then
-            echo_success "Strimzi cleanup completed via deploy-strimzi.sh"
-        else
-            echo_error "Failed to run Strimzi cleanup via deploy-strimzi.sh"
-            return 1
-        fi
-    else
-        echo_error "deploy-strimzi.sh not found at: $deploy_script"
-        echo_error "Cannot perform Strimzi cleanup without deploy-strimzi.sh"
-        return 1
-    fi
-}
-
-# Function to verify existing Strimzi operator
-verify_existing_strimzi() {
-    local strimzi_namespace="$1"
-
-    echo_info "Verifying existing Strimzi operator in namespace: $strimzi_namespace"
-
-    # Check if Strimzi operator exists
-    if ! kubectl get pods -n "$strimzi_namespace" -l name=strimzi-cluster-operator >/dev/null 2>&1; then
-        echo_error "Strimzi operator not found in namespace: $strimzi_namespace"
-        return 1
-    fi
-
-    # Check Strimzi operator version compatibility
-    echo_info "Checking Strimzi operator version compatibility..."
-    local strimzi_pod=$(kubectl get pods -n "$strimzi_namespace" -l name=strimzi-cluster-operator -o jsonpath='{.items[0].metadata.name}')
-    if [ -n "$strimzi_pod" ]; then
-        local strimzi_image=$(kubectl get pod -n "$strimzi_namespace" "$strimzi_pod" -o jsonpath='{.spec.containers[0].image}')
-        echo_info "Found Strimzi operator image: $strimzi_image"
-
-        # Check if it's a compatible version (should contain 0.45.x for Kafka 3.8.0 support)
-        if [[ "$strimzi_image" =~ :0\.45\. ]] || [[ "$strimzi_image" =~ :0\.44\. ]] || [[ "$strimzi_image" =~ :0\.43\. ]]; then
-            echo_success "Strimzi operator version is compatible with Kafka 3.8.0"
-        else
-            echo_error "Strimzi operator version may not be compatible with Kafka 3.8.0"
-            echo_error "Found: $strimzi_image"
-            echo_error "Required: Strimzi 0.43.x, 0.44.x, or 0.45.x for Kafka 3.8.0 support"
-            echo_error "Please use a compatible Strimzi version or let the script install the correct version"
-            return 1
-        fi
-    fi
-
-    return 0
-}
-
-# Function to verify existing Kafka cluster
-verify_existing_kafka() {
-    local kafka_namespace="$1"
-
-    echo_info "Verifying existing Kafka cluster in namespace: $kafka_namespace"
-
-    # Check if Kafka cluster exists
-    if ! kubectl get kafka -n "$kafka_namespace" >/dev/null 2>&1; then
-        echo_error "Kafka cluster not found in namespace: $kafka_namespace"
-        return 1
-    fi
-
-    # Check Kafka cluster version
-    echo_info "Checking Kafka cluster version compatibility..."
-    local kafka_cluster=$(kubectl get kafka -n "$kafka_namespace" -o jsonpath='{.items[0].metadata.name}')
-    if [ -n "$kafka_cluster" ]; then
-        local kafka_version=$(kubectl get kafka -n "$kafka_namespace" "$kafka_cluster" -o jsonpath='{.spec.kafka.version}')
-        echo_info "Found Kafka cluster version: $kafka_version"
-
-        # Check if it's Kafka 3.8.0
-        if [ "$kafka_version" = "3.8.0" ]; then
-            echo_success "Kafka cluster version is compatible: $kafka_version"
-        else
-            echo_error "Kafka cluster version is not compatible"
-            echo_error "Found: $kafka_version"
-            echo_error "Required: 3.8.0"
-            echo_error "Please use Kafka 3.8.0 or let the script install the correct version"
-            return 1
-        fi
-    fi
-
-    return 0
-}
-
-# Function to configure cross-namespace Kafka connectivity
-configure_kafka_connectivity() {
-    local kafka_namespace="$1"
-
-    echo_info "Configuring Kafka bootstrap servers for cross-namespace communication..."
-    local kafka_cluster_name=$(kubectl get kafka -n "$kafka_namespace" -o jsonpath='{.items[0].metadata.name}')
-    local kafka_bootstrap_servers="${kafka_cluster_name}-kafka-bootstrap.${kafka_namespace}.svc.cluster.local:9092"
-
-    echo_info "Detected Kafka cluster: $kafka_cluster_name"
-    echo_info "Kafka bootstrap servers: $kafka_bootstrap_servers"
-
-    # Add Kafka bootstrap servers to Helm arguments
-    HELM_EXTRA_ARGS+=("--set" "kafka.bootstrapServers=$kafka_bootstrap_servers")
 }
 
 # Function to verify Strimzi and Kafka prerequisites
@@ -448,67 +345,57 @@ create_storage_credentials_secret() {
         return 0
     fi
 
-    if [ "$PLATFORM" = "openshift" ]; then
-        # For OpenShift, check if ODF credentials secret exists
-        local odf_secret_name="cost-onprem-odf-credentials"
-        if kubectl get secret "$odf_secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
-            echo_info "Found existing ODF credentials secret: $odf_secret_name"
-            echo_info "Creating storage credentials secret from ODF credentials..."
-                # Extract credentials from ODF secret
-            local access_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}')
-            local secret_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}')
-                # Create storage credentials secret
-            kubectl create secret generic "$secret_name" \
-                --namespace="$NAMESPACE" \
-                --from-literal=access-key="$(echo "$access_key" | base64 -d)" \
-                --from-literal=secret-key="$(echo "$secret_key" | base64 -d)"
-            echo_success "Storage credentials secret created from ODF credentials"
-        else
-            # Try to create ODF credentials from noobaa-admin secret (from create_secret_odf.sh logic)
-            echo_info "ODF credentials secret not found. Attempting to create from noobaa-admin secret..."
-
-            if kubectl get secret noobaa-admin -n openshift-storage >/dev/null 2>&1; then
-                echo_info "Found noobaa-admin secret, extracting ODF credentials..."
-
-                # Extract credentials from noobaa-admin secret (using create_secret_odf.sh logic)
-                local access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d)
-                local secret_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d)
-
-                # Create ODF credentials secret first
-                kubectl create secret generic "$odf_secret_name" \
-                    --namespace="$NAMESPACE" \
-                    --from-literal=access-key="$access_key" \
-                    --from-literal=secret-key="$secret_key"
-
-                echo_success "Created ODF credentials secret from noobaa-admin"
-
-                # Now create storage credentials secret
-                kubectl create secret generic "$secret_name" \
-                    --namespace="$NAMESPACE" \
-                    --from-literal=access-key="$access_key" \
-                    --from-literal=secret-key="$secret_key"
-
-                echo_success "Storage credentials secret created from noobaa-admin credentials"
-            else
-                echo_error "Neither ODF credentials secret '$odf_secret_name' nor noobaa-admin secret found"
-                echo_error "For OpenShift deployments, you must create the ODF credentials secret first:"
-                echo_info "  kubectl create secret generic $odf_secret_name \\"
-                echo_info "    --namespace=$NAMESPACE \\"
-                echo_info "    --from-literal=access-key=<your-odf-access-key> \\"
-                echo_info "    --from-literal=secret-key=<your-odf-secret-key>"
-                echo_info ""
-                echo_info "Or ensure noobaa-admin secret exists in openshift-storage namespace"
-                return 1
-            fi
-        fi
-    else
-        # For Kubernetes/KIND, create MinIO credentials for development
-        echo_info "Creating MinIO credentials for development environment..."
+    # For OpenShift, check if ODF credentials secret exists
+    local odf_secret_name="cost-onprem-odf-credentials"
+    if kubectl get secret "$odf_secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_info "Found existing ODF credentials secret: $odf_secret_name"
+        echo_info "Creating storage credentials secret from ODF credentials..."
+            # Extract credentials from ODF secret
+        local access_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}')
+        local secret_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}')
+            # Create storage credentials secret
         kubectl create secret generic "$secret_name" \
             --namespace="$NAMESPACE" \
-            --from-literal=access-key="minioaccesskey" \
-            --from-literal=secret-key="miniosecretkey"
-        echo_success "Storage credentials secret created with default MinIO credentials"
+            --from-literal=access-key="$(echo "$access_key" | base64 -d)" \
+            --from-literal=secret-key="$(echo "$secret_key" | base64 -d)"
+        echo_success "Storage credentials secret created from ODF credentials"
+    else
+        # Try to create ODF credentials from noobaa-admin secret (from create_secret_odf.sh logic)
+        echo_info "ODF credentials secret not found. Attempting to create from noobaa-admin secret..."
+
+        if kubectl get secret noobaa-admin -n openshift-storage >/dev/null 2>&1; then
+            echo_info "Found noobaa-admin secret, extracting ODF credentials..."
+
+            # Extract credentials from noobaa-admin secret (using create_secret_odf.sh logic)
+            local access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d)
+            local secret_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d)
+
+            # Create ODF credentials secret first
+            kubectl create secret generic "$odf_secret_name" \
+                --namespace="$NAMESPACE" \
+                --from-literal=access-key="$access_key" \
+                --from-literal=secret-key="$secret_key"
+
+            echo_success "Created ODF credentials secret from noobaa-admin"
+
+            # Now create storage credentials secret
+            kubectl create secret generic "$secret_name" \
+                --namespace="$NAMESPACE" \
+                --from-literal=access-key="$access_key" \
+                --from-literal=secret-key="$secret_key"
+
+            echo_success "Storage credentials secret created from noobaa-admin credentials"
+        else
+            echo_error "Neither ODF credentials secret '$odf_secret_name' nor noobaa-admin secret found"
+            echo_error "You must create the ODF credentials secret first:"
+            echo_info "  kubectl create secret generic $odf_secret_name \\"
+            echo_info "    --namespace=$NAMESPACE \\"
+            echo_info "    --from-literal=access-key=<your-odf-access-key> \\"
+            echo_info "    --from-literal=secret-key=<your-odf-secret-key>"
+            echo_info ""
+            echo_info "Or ensure noobaa-admin secret exists in openshift-storage namespace"
+            return 1
+        fi
     fi
 }
 
@@ -516,50 +403,75 @@ create_storage_credentials_secret() {
 # This function MUST succeed for the installation to continue.
 # - If buckets already exist: prints notification and continues
 # - If buckets don't exist and creation fails: exits with error
+#
+# Environment Variables:
+#   SKIP_S3_SETUP=true       - Skip bucket creation entirely (for CI/testing)
+#   S3_ENDPOINT              - Manual S3 endpoint override (e.g., "s3.test.example.com")
+#   S3_ACCESS_KEY            - Manual S3 access key override
+#   S3_SECRET_KEY            - Manual S3 secret key override
 create_s3_buckets() {
     echo_info "Creating S3 buckets..."
 
+    # Check if S3 setup should be skipped entirely
+    if [ "${SKIP_S3_SETUP:-false}" = "true" ]; then
+        echo_info "Skipping S3 bucket creation (SKIP_S3_SETUP=true)"
+        echo_info "This is typically used in CI environments or when S3 is managed externally"
+        return 0
+    fi
+
     local secret_name="${HELM_RELEASE_NAME}-storage-credentials"
 
-    # Get S3 credentials from the storage credentials secret
-    local access_key=$(kubectl get secret "$secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}' 2>/dev/null | base64 -d)
-    local secret_key=$(kubectl get secret "$secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}' 2>/dev/null | base64 -d)
+    # Get S3 credentials from environment variables or secret
+    local access_key="${S3_ACCESS_KEY:-}"
+    local secret_key="${S3_SECRET_KEY:-}"
+
+    # If credentials not provided via environment variables, get from secret
+    if [ -z "$access_key" ] || [ -z "$secret_key" ]; then
+        echo_info "Getting S3 credentials from secret: $secret_name"
+        access_key=$(kubectl get secret "$secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}' 2>/dev/null | base64 -d)
+        secret_key=$(kubectl get secret "$secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}' 2>/dev/null | base64 -d)
+    else
+        echo_info "Using S3 credentials from environment variables"
+    fi
 
     if [ -z "$access_key" ] || [ -z "$secret_key" ]; then
-        echo_error "S3 credentials not found in secret $secret_name"
+        echo_error "S3 credentials not found in secret $secret_name or environment variables"
         echo_error "Cannot proceed without S3 storage. Aborting installation."
+        echo_error ""
+        echo_error "To bypass this requirement for CI environments, set:"
+        echo_error "  export SKIP_S3_SETUP=true"
         exit 1
     fi
 
-    # Detect storage backend (ODF vs MinIO) - aligns with Helm template logic
+    # Determine S3 endpoint and configuration
     local s3_url mc_insecure
-    echo_info "Detecting storage backend..."
 
-    if kubectl get crd noobaas.noobaa.io >/dev/null 2>&1 && \
-       kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
-        # ODF NooBaa detected
-        s3_url="https://s3.openshift-storage.svc:443"
+    # Check for manual S3 endpoint override
+    if [ -n "${S3_ENDPOINT:-}" ]; then
+        s3_url="https://${S3_ENDPOINT}"
         mc_insecure="--insecure"
-        echo_info "  ✓ Detected: ODF (NooBaa S3)"
-    elif kubectl get service minio-storage -n "$NAMESPACE" >/dev/null 2>&1; then
-        # MinIO CI pattern (proxy service in cost-onprem namespace)
-        s3_url="http://minio-storage:9000"
-        mc_insecure=""
-        echo_info "  ✓ Detected: MinIO (CI pattern - proxy service)"
-    elif kubectl get service minio -n minio >/dev/null 2>&1; then
-        # MinIO standalone (in minio namespace)
-        s3_url="http://minio.minio.svc:9000"
-        mc_insecure=""
-        echo_info "  ✓ Detected: MinIO (minio namespace)"
+        echo_info "Using manual S3 endpoint: $s3_url"
     else
-        echo_error "Could not detect storage backend (ODF or MinIO)"
-        echo_error "Checked for:"
-        echo_error "  - ODF NooBaa CRD in openshift-storage"
-        echo_error "  - minio-storage service in $NAMESPACE"
-        echo_error "  - minio service in minio namespace"
-        echo_error ""
-        echo_error "Please ensure either ODF or MinIO is properly deployed."
-        exit 1
+        # Detect ODF storage backend (fallback for backward compatibility)
+        echo_info "Detecting ODF storage backend..."
+
+        if kubectl get crd noobaas.noobaa.io >/dev/null 2>&1 && \
+           kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
+            # ODF NooBaa detected
+            s3_url="https://s3.openshift-storage.svc:443"
+            mc_insecure="--insecure"
+            echo_info "  ✓ Detected: ODF (NooBaa S3)"
+        else
+            echo_error "Could not detect ODF storage backend"
+            echo_error "Checked for:"
+            echo_error "  - ODF NooBaa CRD in openshift-storage namespace"
+            echo_error ""
+            echo_error "Solutions:"
+            echo_error "  1. Deploy ODF: Ensure OpenShift Data Foundation is properly deployed"
+            echo_error "  2. Manual override: Set S3_ENDPOINT environment variable (e.g., export S3_ENDPOINT=s3.test.example.com)"
+            echo_error "  3. Skip setup: Set SKIP_S3_SETUP=true for CI environments"
+            exit 1
+        fi
     fi
 
     echo_info "Creating buckets at ${s3_url}..."
@@ -567,10 +479,34 @@ create_s3_buckets() {
     # Use kubectl run --rm for one-shot bucket creation (auto-cleanup)
     # Using alpine image since minio/mc doesn't have a shell
     # Real failures (connectivity, permissions) will cause non-zero exit
+    # Security context overrides required for OpenShift Pod Security Standards
     local output
     if output=$(kubectl run bucket-setup --rm -i --restart=Never \
         --image=alpine:latest \
         -n "$NAMESPACE" \
+        --overrides='{
+            "spec": {
+                "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 1001,
+                    "seccompProfile": {
+                        "type": "RuntimeDefault"
+                    }
+                },
+                "containers": [{
+                    "name": "bucket-setup",
+                    "image": "alpine:latest",
+                    "securityContext": {
+                        "allowPrivilegeEscalation": false,
+                        "capabilities": {
+                            "drop": ["ALL"]
+                        },
+                        "runAsNonRoot": true,
+                        "runAsUser": 1001
+                    }
+                }]
+            }
+        }' \
         -- sh -c "
             set -e
             wget -q https://dl.min.io/client/mc/release/linux-amd64/mc -O /usr/local/bin/mc && chmod +x /usr/local/bin/mc
@@ -1055,207 +991,41 @@ show_status() {
     kubectl get pvc -n "$NAMESPACE"
     echo ""
 
-    # Show access points based on platform
-    if [ "$PLATFORM" = "openshift" ]; then
-        echo_info "OpenShift Routes:"
-        kubectl get routes -n "$NAMESPACE" 2>/dev/null || echo "  No routes found"
-        echo ""
+    # Show access points via OpenShift Routes
+    echo_info "OpenShift Routes:"
+    kubectl get routes -n "$NAMESPACE" 2>/dev/null || echo "  No routes found"
+    echo ""
 
-        # Get route hosts for access
-        local main_route=$(kubectl get route -n "$NAMESPACE" -o jsonpath='{.items[?(@.spec.path=="/")].spec.host}' 2>/dev/null)
-        local ingress_route=$(kubectl get route -n "$NAMESPACE" -o jsonpath='{.items[?(@.spec.path=="/api/ingress")].spec.host}' 2>/dev/null)
-        local kruize_route=$(kubectl get route -n "$NAMESPACE" -o jsonpath='{.items[?(@.spec.path=="/api/kruize")].spec.host}' 2>/dev/null)
+    # Get route hosts for access
+    local main_route=$(kubectl get route -n "$NAMESPACE" -o jsonpath='{.items[?(@.spec.path=="/")].spec.host}' 2>/dev/null)
+    local ingress_route=$(kubectl get route -n "$NAMESPACE" -o jsonpath='{.items[?(@.spec.path=="/api/ingress")].spec.host}' 2>/dev/null)
+    local kruize_route=$(kubectl get route -n "$NAMESPACE" -o jsonpath='{.items[?(@.spec.path=="/api/kruize")].spec.host}' 2>/dev/null)
 
-        if [ -n "$main_route" ]; then
-            echo_info "Access Points (via OpenShift Routes):"
-            echo_info "  - Main API: http://$main_route/status"
-            if [ -n "$ingress_route" ]; then
-                echo_info "  - Ingress API: http://$ingress_route/api/ingress/ready"
-            fi
-            if [ -n "$kruize_route" ]; then
-                echo_info "  - Kruize API: http://$kruize_route/api/kruize/listPerformanceProfiles"
-            fi
-        else
-            echo_warning "Routes not found. Use port-forwarding or check route configuration."
+    if [ -n "$main_route" ]; then
+        echo_info "Access Points (via OpenShift Routes):"
+        echo_info "  - Main API: http://$main_route/status"
+        if [ -n "$ingress_route" ]; then
+            echo_info "  - Ingress API: http://$ingress_route/api/ingress/ready"
+        fi
+        if [ -n "$kruize_route" ]; then
+            echo_info "  - Kruize API: http://$kruize_route/api/kruize/listPerformanceProfiles"
         fi
     else
-        echo_info "Ingress:"
-        kubectl get ingress -n "$NAMESPACE" 2>/dev/null || echo "  No ingress found"
-        echo ""
-
-        # For Kubernetes/KIND, use hardcoded port from extraPortMappings (KIND-mapped port)
-        local http_port="32061"
-        local hostname="localhost:$http_port"
-        echo_info "Access Points (via Ingress - for KIND):"
-        echo_info "  - Ingress API: http://$hostname/ready"
-        echo_info "  - ROS API: http://$hostname/status"
-        echo_info "  - Kruize API: http://$hostname/api/kruize/listPerformanceProfiles"
-        echo_info "  - MinIO Console: http://$hostname/minio (minioaccesskey/miniosecretkey)"
+        echo_warning "Routes not found. Use port-forwarding or check route configuration."
     fi
     echo ""
 
     echo_info "Useful Commands:"
     echo_info "  - View logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/instance=$HELM_RELEASE_NAME"
     echo_info "  - Delete deployment: kubectl delete namespace $NAMESPACE"
-    echo_info "  - Run tests: ./test-k8s-dataflow.sh"
+    echo_info "  - Run tests: ./cost-mgmt-ocp-dataflow.sh"
 }
 
-# Function to check ingress controller readiness
+# Function to check ingress controller readiness (OpenShift uses Routes, not Ingress)
 check_ingress_readiness() {
-    echo_info "Checking ingress controller readiness before health checks..."
-
-    # Check if we're on Kubernetes (not OpenShift)
-    if [ "$PLATFORM" != "kubernetes" ]; then
-        echo_info "Skipping ingress readiness check for OpenShift platform"
-        return 0
-    fi
-
-    # Check if ingress controller pod is running and ready
-    local pod_status=$(kubectl get pods -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx -o jsonpath='{.items[0].status.phase}' 2>/dev/null)
-    local pod_ready=$(kubectl get pods -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)
-
-    if [ "$pod_status" != "Running" ] || [ "$pod_ready" != "True" ]; then
-        echo_warning "Ingress controller pod not ready (status: $pod_status, ready: $pod_ready)"
-        echo_info "Waiting for ingress controller to be ready..."
-
-        # Wait for pod to be ready
-        kubectl wait --namespace ingress-nginx \
-            --for=condition=ready pod \
-            --selector=app.kubernetes.io/name=ingress-nginx \
-            --timeout=300s
-    fi
-
-    # Get pod name for log checks
-    local pod_name=$(kubectl get pods -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-    if [ -n "$pod_name" ]; then
-        echo_info "Checking ingress controller logs for readiness indicators..."
-        local log_output=$(kubectl logs -n ingress-nginx "$pod_name" --tail=20 2>/dev/null)
-
-        # Look for key readiness indicators in logs
-        if echo "$log_output" | grep -q "Starting NGINX Ingress controller" && \
-           echo "$log_output" | grep -q "Configuration changes detected"; then
-            echo_success "✓ Ingress controller logs show proper initialization"
-        else
-            echo_warning "⚠ Ingress controller logs don't show complete initialization yet"
-            echo_info "Recent logs:"
-            echo "$log_output" | tail -5
-        fi
-    fi
-
-    # Check if service endpoints are ready
-    local endpoints_ready=$(kubectl get endpoints ingress-nginx-controller -n ingress-nginx -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null)
-    if [ -n "$endpoints_ready" ]; then
-        echo_success "✓ Ingress controller service has ready endpoints"
-    else
-        echo_warning "⚠ Ingress controller service endpoints not ready yet"
-    fi
-
-    # Test actual connectivity to the ingress controller
-    # Use hardcoded port from extraPortMappings (KIND-mapped port)
-    local http_port="32061"
-    echo_info "Testing connectivity to ingress controller on port $http_port..."
-    local connectivity_ok=false
-    for i in {1..10}; do
-        if curl -f -s --connect-timeout 60 --max-time 90 "http://localhost:$http_port/ready" >/dev/null 2>&1; then
-            echo_success "✓ Ingress controller is accessible via HTTP"
-            connectivity_ok=true
-            break
-        fi
-        echo_info "Testing connectivity... ($i/10)"
-        sleep 3
-    done
-
-    if [ "$connectivity_ok" = false ]; then
-        echo_error "✗ Ingress controller is NOT accessible via HTTP despite readiness checks passing"
-        echo_error "This indicates a deeper networking issue. Running diagnostics..."
-
-        # Enhanced diagnostics for connectivity failures
-        echo_info "=== DIAGNOSTICS: Ingress Controller Connectivity Issue ==="
-
-        # Check service details
-        echo_info "Service details:"
-        kubectl get service ingress-nginx-controller -n ingress-nginx -o yaml | grep -A 10 -B 5 "nodePort\|type\|ports"
-
-        # Check endpoints
-        echo_info "Service endpoints:"
-        kubectl get endpoints ingress-nginx-controller -n ingress-nginx -o wide
-
-        # Check if the port is actually listening on the host
-        echo_info "Checking if port $http_port is listening on localhost..."
-        if command -v netstat >/dev/null 2>&1; then
-            netstat -tlnp | grep ":$http_port " || echo "Port $http_port not found in netstat output"
-        elif command -v ss >/dev/null 2>&1; then
-            ss -tlnp | grep ":$http_port " || echo "Port $http_port not found in ss output"
-        fi
-
-        # Check KIND cluster port mapping
-        echo_info "Checking KIND cluster port mapping..."
-        # Use environment variable for container runtime (defaults to podman)
-        local container_runtime="${CONTAINER_RUNTIME:-podman}"
-
-        if command -v "$container_runtime" >/dev/null 2>&1; then
-            echo "${container_runtime^} port mapping for KIND cluster:"
-            local kind_mappings=$($container_runtime port "${KIND_CLUSTER_NAME:-kind}-control-plane" 2>/dev/null)
-            echo "$kind_mappings"
-
-            if echo "$kind_mappings" | grep -q "$http_port"; then
-                echo_info "✓ Port $http_port is mapped in KIND cluster"
-            else
-                echo_error "✗ Port $http_port is NOT mapped in KIND cluster"
-                echo_error "This is likely the root cause of the connectivity issue"
-                echo_info "Expected mapping should be: 0.0.0.0:$http_port->80/tcp"
-            fi
-        else
-            echo_warning "Container runtime '$container_runtime' not found for port mapping check"
-            echo_info "Set CONTAINER_RUNTIME environment variable (e.g., 'docker' or 'podman')"
-        fi
-
-        # Test with verbose curl and check if requests reach the controller
-        echo_info "Testing with verbose curl to see detailed error:"
-        curl -v "http://localhost:$http_port/ready" 2>&1 | head -20 || true
-
-        # Check if the request reached the ingress controller by examining logs
-        echo_info "Checking ingress controller logs for incoming requests..."
-        echo_info "Looking for request logs in the last 30 seconds..."
-
-        # Get current timestamp for log filtering
-        local current_time=$(date +%s)
-        local log_start_time=$((current_time - 30))
-
-        # Check logs for HTTP requests
-        local request_logs=$(kubectl logs -n ingress-nginx "$pod_name" --since=30s 2>/dev/null | grep -E "(GET|POST|PUT|DELETE|HEAD)" || echo "No HTTP request logs found")
-
-        if [ -n "$request_logs" ] && [ "$request_logs" != "No HTTP request logs found" ]; then
-            echo_info "✓ Found HTTP request logs in ingress controller:"
-            echo "$request_logs" | head -10
-        else
-            echo_warning "⚠ No HTTP request logs found in ingress controller"
-            echo_warning "This suggests requests are not reaching the controller"
-
-            # Check if there are any access logs at all
-            echo_info "Checking for any access logs in the last 5 minutes..."
-            local all_logs=$(kubectl logs -n ingress-nginx "$pod_name" --since=5m 2>/dev/null | grep -i "access\|request\|GET\|POST" || echo "No access logs found")
-            if [ -n "$all_logs" ] && [ "$all_logs" != "No access logs found" ]; then
-                echo_info "Found some access logs:"
-                echo "$all_logs" | tail -5
-            else
-                echo_warning "No access logs found at all - controller may not be processing any requests"
-            fi
-        fi
-
-        # Check if there are any network policies blocking traffic
-        echo_info "Checking for network policies that might block traffic:"
-        kubectl get networkpolicies -A 2>/dev/null || echo "No network policies found"
-
-        # Check ingress controller logs for any errors
-        echo_info "Checking ingress controller logs for errors:"
-        kubectl logs -n ingress-nginx "$pod_name" --tail=50 | grep -i error || echo "No obvious errors in recent logs"
-
-        echo_error "=== END DIAGNOSTICS ==="
-        echo_warning "This may cause health checks to fail, but deployment will continue"
-    fi
-
-    echo_info "Ingress readiness check completed"
+    # OpenShift uses Routes managed by the router, not nginx-ingress controller
+    echo_info "OpenShift Routes are managed by the built-in router - no additional ingress check needed"
+    return 0
 }
 
 # Function to run health checks
@@ -1264,153 +1034,101 @@ run_health_checks() {
 
     local failed_checks=0
 
-    if [ "$PLATFORM" = "openshift" ]; then
-        # For OpenShift, test internal connectivity first (this should always work)
-        echo_info "Testing internal service connectivity..."
+    # Test internal service connectivity first (this should always work)
+    echo_info "Testing internal service connectivity..."
 
-        # Test ROS API internally
-        local api_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/component=ros-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-        if [ -n "$api_pod" ]; then
-            if kubectl exec -n "$NAMESPACE" "$api_pod" -- curl -f -s http://localhost:8000/status >/dev/null 2>&1; then
-                echo_success "✓ ROS API service is healthy (internal)"
-            else
-                echo_error "✗ ROS API service is not responding (internal)"
-                failed_checks=$((failed_checks + 1))
-            fi
+    # Test ROS API internally
+    local api_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/component=ros-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [ -n "$api_pod" ]; then
+        if kubectl exec -n "$NAMESPACE" "$api_pod" -- curl -f -s http://localhost:8000/status >/dev/null 2>&1; then
+            echo_success "✓ ROS API service is healthy (internal)"
         else
-            echo_error "✗ ROS API pod not found"
+            echo_error "✗ ROS API service is not responding (internal)"
             failed_checks=$((failed_checks + 1))
         fi
+    else
+        echo_error "✗ ROS API pod not found"
+        failed_checks=$((failed_checks + 1))
+    fi
 
-        # Test services via port-forwarding (OpenShift approach)
-        echo_info "Testing services via port-forwarding (OpenShift approach)..."
+    # Test services via port-forwarding
+    echo_info "Testing services via port-forwarding..."
 
-        # Test Ingress API via port-forward
-        # Note: We port-forward to the pod's internal port (8081 with JWT, 8080 without)
-        # to bypass Envoy and avoid JWT authentication requirements on health endpoints
-        echo_info "Testing Ingress API via port-forward..."
-        local ingress_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/component=ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-        if [ -n "$ingress_pod" ]; then
-            # Determine the internal port (8081 with JWT auth, 8080 without)
-            local ingress_internal_port="8081"  # Default to JWT-enabled port
-            if [ "$JWT_AUTH_ENABLED" != "true" ]; then
-                ingress_internal_port="8080"
-            fi
-
-            local ingress_pf_pid=""
-            kubectl port-forward -n "$NAMESPACE" pod/"$ingress_pod" 18080:${ingress_internal_port} --request-timeout=90s >/dev/null 2>&1 &
-            ingress_pf_pid=$!
-            sleep 3
-            if kill -0 "$ingress_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18080/ >/dev/null 2>&1; then
-                echo_success "✓ Ingress API service is healthy (port-forward, internal port ${ingress_internal_port})"
-            else
-                echo_error "✗ Ingress API service is not responding (port-forward)"
-                failed_checks=$((failed_checks + 1))
-            fi
-            # Cleanup ingress port-forward
-            if [ -n "$ingress_pf_pid" ] && kill -0 "$ingress_pf_pid" 2>/dev/null; then
-                kill "$ingress_pf_pid" 2>/dev/null || true
-                # Wait a moment for process to terminate
-                sleep 1
-            fi
-        else
-            echo_error "✗ Ingress pod not found"
-            failed_checks=$((failed_checks + 1))
-        fi
-        # Test Kruize API via port-forward
-        echo_info "Testing Kruize API via port-forward..."
-        local kruize_pf_pid=""
-        kubectl port-forward -n "$NAMESPACE" svc/cost-onprem-kruize 18081:8080 --request-timeout=90s >/dev/null 2>&1 &
-        kruize_pf_pid=$!
+    # Test Ingress API via port-forward
+    # Note: The ingress container listens on port 8081. When JWT auth is enabled, Envoy sidecar
+    # listens on port 8080 and requires authentication. For health checks, connect directly to
+    # the ingress container on port 8081 to bypass JWT authentication.
+    echo_info "Testing Ingress API via port-forward..."
+    local ingress_pod=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/component=ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [ -n "$ingress_pod" ]; then
+        local ingress_pf_pid=""
+        kubectl port-forward -n "$NAMESPACE" pod/"$ingress_pod" 18081:8081 --request-timeout=90s >/dev/null 2>&1 &
+        ingress_pf_pid=$!
         sleep 3
-        if kill -0 "$kruize_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18081/listPerformanceProfiles >/dev/null 2>&1; then
-            echo_success "✓ Kruize API service is healthy (port-forward)"
+        if kill -0 "$ingress_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18081/ >/dev/null 2>&1; then
+            echo_success "✓ Ingress API service is healthy (port-forward)"
         else
-            echo_error "✗ Kruize API service is not responding (port-forward)"
+            echo_error "✗ Ingress API service is not responding (port-forward)"
             failed_checks=$((failed_checks + 1))
         fi
-        # Cleanup kruize port-forward
-        if [ -n "$kruize_pf_pid" ] && kill -0 "$kruize_pf_pid" 2>/dev/null; then
-            kill "$kruize_pf_pid" 2>/dev/null || true
+        # Cleanup ingress port-forward
+        if [ -n "$ingress_pf_pid" ] && kill -0 "$ingress_pf_pid" 2>/dev/null; then
+            kill "$ingress_pf_pid" 2>/dev/null || true
             # Wait a moment for process to terminate
             sleep 1
         fi
-
-        # Test external route accessibility (informational only - not counted as failure)
-        echo_info "Testing external route accessibility (informational)..."
-        local main_route=$(kubectl get route -n "$NAMESPACE" -o jsonpath='{.items[?(@.spec.path=="/")].spec.host}' 2>/dev/null)
-        local ingress_route=$(kubectl get route -n "$NAMESPACE" -o jsonpath='{.items[?(@.spec.path=="/api/ingress")].spec.host}' 2>/dev/null)
-        local kruize_route=$(kubectl get route -n "$NAMESPACE" -o jsonpath='{.items[?(@.spec.path=="/api/kruize")].spec.host}' 2>/dev/null)
-
-        local external_accessible=0
-
-        if [ -n "$main_route" ] && curl -f -s "http://$main_route/status" >/dev/null 2>&1; then
-            echo_success "  → ROS API externally accessible: http://$main_route/status"
-            external_accessible=$((external_accessible + 1))
-        fi
-
-        if [ -n "$ingress_route" ] && curl -f -s "http://$ingress_route/ready" >/dev/null 2>&1; then
-            echo_success "  → Ingress API externally accessible: http://$ingress_route/ready"
-            external_accessible=$((external_accessible + 1))
-        fi
-
-        if [ -n "$kruize_route" ] && curl -f -s "http://$kruize_route/api/kruize/listPerformanceProfiles" >/dev/null 2>&1; then
-            echo_success "  → Kruize API externally accessible: http://$kruize_route/api/kruize/listPerformanceProfiles"
-            external_accessible=$((external_accessible + 1))
-        fi
-
-        if [ $external_accessible -eq 0 ]; then
-            echo_info "  → External routes not accessible (common in internal/corporate clusters)"
-            echo_info "  → Use port-forwarding: kubectl port-forward svc/cost-onprem-ros-api -n $NAMESPACE 8001:8000"
-        else
-            echo_success "  → $external_accessible route(s) externally accessible"
-        fi
-
     else
-        # For Kubernetes/KIND, use hardcoded port from extraPortMappings (KIND-mapped port)
-        echo_info "Using hardcoded ingress HTTP port for KIND cluster..."
-        local http_port="32061"
-        local hostname="localhost:$http_port"
-        echo_info "Using ingress HTTP port: $http_port"
-        echo_info "Testing connectivity to http://$hostname..."
+        echo_error "✗ Ingress pod not found"
+        failed_checks=$((failed_checks + 1))
+    fi
 
-        # Check if ingress is accessible
-        echo_info "Testing Ingress API: http://$hostname/ready"
-        if curl -f -s "http://$hostname/ready" >/dev/null; then
-            echo_success "✓ Ingress API is accessible via http://$hostname/ready"
-        else
-            echo_error "✗ Ingress API is not accessible via http://$hostname/ready"
-            echo_info "Debug: Testing root endpoint first..."
-            curl -v "http://$hostname/" || echo "Root endpoint also failed"
-            failed_checks=$((failed_checks + 1))
-        fi
+    # Test Kruize API via port-forward
+    echo_info "Testing Kruize API via port-forward..."
+    local kruize_pf_pid=""
+    kubectl port-forward -n "$NAMESPACE" svc/cost-onprem-kruize 18081:8080 --request-timeout=90s >/dev/null 2>&1 &
+    kruize_pf_pid=$!
+    sleep 3
+    if kill -0 "$kruize_pf_pid" 2>/dev/null && curl -f -s --connect-timeout 60 --max-time 90 http://localhost:18081/listPerformanceProfiles >/dev/null 2>&1; then
+        echo_success "✓ Kruize API service is healthy (port-forward)"
+    else
+        echo_error "✗ Kruize API service is not responding (port-forward)"
+        failed_checks=$((failed_checks + 1))
+    fi
+    # Cleanup kruize port-forward
+    if [ -n "$kruize_pf_pid" ] && kill -0 "$kruize_pf_pid" 2>/dev/null; then
+        kill "$kruize_pf_pid" 2>/dev/null || true
+        # Wait a moment for process to terminate
+        sleep 1
+    fi
 
-        # Check if ROS API is accessible via Ingress
-        echo_info "Testing ROS API: http://$hostname/status"
-        if curl -f -s "http://$hostname/status" >/dev/null; then
-            echo_success "✓ ROS API is accessible via http://$hostname/status"
-        else
-            echo_error "✗ ROS API is not accessible via http://$hostname/status"
-            failed_checks=$((failed_checks + 1))
-        fi
+    # Test external route accessibility (informational only - not counted as failure)
+    echo_info "Testing external route accessibility (informational)..."
+    local main_route=$(kubectl get route -n "$NAMESPACE" -o jsonpath='{.items[?(@.spec.path=="/")].spec.host}' 2>/dev/null)
+    local ingress_route=$(kubectl get route -n "$NAMESPACE" -o jsonpath='{.items[?(@.spec.path=="/api/ingress")].spec.host}' 2>/dev/null)
+    local kruize_route=$(kubectl get route -n "$NAMESPACE" -o jsonpath='{.items[?(@.spec.path=="/api/kruize")].spec.host}' 2>/dev/null)
 
-        # Check if Kruize is accessible
-        echo_info "Testing Kruize API: http://$hostname/api/kruize/listPerformanceProfiles"
-        if curl -f -s "http://$hostname/api/kruize/listPerformanceProfiles" >/dev/null; then
-            echo_success "✓ Kruize API is accessible via http://$hostname/api/kruize/listPerformanceProfiles"
-        else
-            echo_error "✗ Kruize API is not accessible via http://$hostname/api/kruize/listPerformanceProfiles"
-            failed_checks=$((failed_checks + 1))
-        fi
+    local external_accessible=0
 
-        # Check if MinIO console is accessible via ingress
-        echo_info "Testing MinIO console: http://$hostname/minio/"
-        if curl -f -s "http://$hostname/minio/" >/dev/null; then
-            echo_success "✓ MinIO console is accessible via http://$hostname/minio/"
-        else
-            echo_error "✗ MinIO console is not accessible via http://$hostname/minio/"
-            failed_checks=$((failed_checks + 1))
-        fi
+    if [ -n "$main_route" ] && curl -f -s "http://$main_route/status" >/dev/null 2>&1; then
+        echo_success "  → ROS API externally accessible: http://$main_route/status"
+        external_accessible=$((external_accessible + 1))
+    fi
+
+    if [ -n "$ingress_route" ] && curl -f -s "http://$ingress_route/ready" >/dev/null 2>&1; then
+        echo_success "  → Ingress API externally accessible: http://$ingress_route/ready"
+        external_accessible=$((external_accessible + 1))
+    fi
+
+    if [ -n "$kruize_route" ] && curl -f -s "http://$kruize_route/api/kruize/listPerformanceProfiles" >/dev/null 2>&1; then
+        echo_success "  → Kruize API externally accessible: http://$kruize_route/api/kruize/listPerformanceProfiles"
+        external_accessible=$((external_accessible + 1))
+    fi
+
+    if [ $external_accessible -eq 0 ]; then
+        echo_info "  → External routes not accessible (common in internal/corporate clusters)"
+        echo_info "  → Use port-forwarding: kubectl port-forward svc/cost-onprem-ros-api -n $NAMESPACE 8001:8000"
+    else
+        echo_success "  → $external_accessible route(s) externally accessible"
     fi
 
     if [ $failed_checks -eq 0 ]; then
@@ -1869,39 +1587,32 @@ create_keycloak_ca_secret() {
     fi
 }
 
-# Function to setup JWT authentication based on platform
+# Function to setup JWT authentication
 setup_jwt_authentication() {
-    echo_info "Configuring JWT authentication based on platform..."
+    echo_info "Configuring JWT authentication..."
 
-    # JWT authentication is enabled on OpenShift (requires Keycloak), disabled elsewhere
-    if [ "$PLATFORM" = "openshift" ]; then
-        export JWT_AUTH_ENABLED="true"
-        echo_info "JWT authentication: Enabled (OpenShift platform)"
-        echo_info "  JWT Method: Envoy native JWT filter"
-        echo_info "  Requires: RHBK (Red Hat Build of Keycloak) deployed"
+    # JWT authentication is enabled on OpenShift (requires Keycloak)
+    export JWT_AUTH_ENABLED="true"
+    echo_info "JWT authentication: Enabled"
+    echo_info "  JWT Method: Envoy native JWT filter"
+    echo_info "  Requires: RHBK (Red Hat Build of Keycloak) deployed"
 
-        # Detect RHBK for configuration
-        if detect_keycloak; then
-            echo_info "  RHBK Namespace: $KEYCLOAK_NAMESPACE"
-            echo_info "  RHBK API: $KEYCLOAK_API_VERSION"
+    # Detect RHBK for configuration
+    if detect_keycloak; then
+        echo_info "  RHBK Namespace: $KEYCLOAK_NAMESPACE"
+        echo_info "  RHBK API: $KEYCLOAK_API_VERSION"
 
-            # Verify operator client secret exists (created by deploy-rhbk.sh)
-            echo_info "Verifying Keycloak operator client secret exists..."
-            verify_keycloak_client_secret "cost-management-operator" || \
-                echo_warning "Operator client secret not found. Run ./deploy-rhbk.sh to create it."
+        # Verify operator client secret exists (created by deploy-rhbk.sh)
+        echo_info "Verifying Keycloak operator client secret exists..."
+        verify_keycloak_client_secret "cost-management-operator" || \
+            echo_warning "Operator client secret not found. Run ./deploy-rhbk.sh to create it."
 
-            # Verify UI client secret exists (created by deploy-rhbk.sh)
-            echo_info "Verifying Keycloak UI client secret exists..."
-            verify_keycloak_ui_client_secret "cost-management-ui" || \
-                echo_warning "UI client secret not found. Run ./deploy-rhbk.sh to create it."
-        else
-            echo_warning "RHBK not detected - ensure it's deployed before using JWT authentication"
-        fi
+        # Verify UI client secret exists (created by deploy-rhbk.sh)
+        echo_info "Verifying Keycloak UI client secret exists..."
+        verify_keycloak_ui_client_secret "cost-management-ui" || \
+            echo_warning "UI client secret not found. Run ./deploy-rhbk.sh to create it."
     else
-        export JWT_AUTH_ENABLED="false"
-        echo_info "JWT authentication: Disabled (non-OpenShift platform)"
-        echo_info "  Platform: $PLATFORM"
-        echo_info "  Note: JWT auth with RHBK is only supported on OpenShift"
+        echo_warning "RHBK not detected - ensure it's deployed before using JWT authentication"
     fi
 
     return 0
@@ -1909,48 +1620,29 @@ setup_jwt_authentication() {
 
 # Function to set platform-specific configurations
 set_platform_config() {
-    local platform="$1"
+    echo_info "Using OpenShift configuration"
 
-    case "$platform" in
-        "openshift")
-            echo_info "Using OpenShift configuration (auto-detected)"
+    # Use openshift-values.yaml if no custom values file is specified
+    if [ -z "$VALUES_FILE" ]; then
+        local openshift_values="$SCRIPT_DIR/../openshift-values.yaml"
+        if [ -f "$openshift_values" ]; then
+            VALUES_FILE="$openshift_values"
+            echo_info "Using OpenShift values file: $openshift_values"
+        else
+            echo_warning "OpenShift values file not found: $openshift_values"
+            echo_info "Using base values with minimal OpenShift overrides"
+            # Fallback to minimal inline configuration if openshift-values.yaml is missing
+            HELM_EXTRA_ARGS+=(
+                "--set" "global.storageClass=odf-storagecluster-ceph-rbd"
+                "--set" "ingress.auth.enabled=false"
+                "--set" "ingress.upload.requireAuth=false"
+            )
+        fi
+    else
+        echo_info "Using custom values file: $VALUES_FILE"
+    fi
 
-            # Use openshift-values.yaml if no custom values file is specified
-            if [ -z "$VALUES_FILE" ]; then
-                local openshift_values="$SCRIPT_DIR/../openshift-values.yaml"
-                if [ -f "$openshift_values" ]; then
-                    VALUES_FILE="$openshift_values"
-                    echo_info "Using OpenShift values file: $openshift_values"
-                else
-                    echo_warning "OpenShift values file not found: $openshift_values"
-                    echo_info "Using base values with minimal OpenShift overrides"
-                    # Fallback to minimal inline configuration if openshift-values.yaml is missing
-                    HELM_EXTRA_ARGS+=(
-                        "--set" "global.storageClass=odf-storagecluster-ceph-rbd"
-                        "--set" "ingress.auth.enabled=false"
-                        "--set" "ingress.upload.requireAuth=false"
-                    )
-                fi
-            else
-                echo_info "Using custom values file: $VALUES_FILE"
-            fi
-
-            export KAFKA_ENVIRONMENT="ocp"
-            ;;
-
-        "kubernetes")
-            echo_info "Using Kubernetes configuration (auto-detected)"
-            echo_info "Using base values.yaml (optimized for Kubernetes/KIND)"
-
-            # No additional overrides needed - base values.yaml is Kubernetes-optimized
-            export KAFKA_ENVIRONMENT="dev"
-            ;;
-
-        *)
-            echo_error "Unknown platform: $platform"
-            return 1
-            ;;
-    esac
+    export KAFKA_ENVIRONMENT="ocp"
 }
 
 # Main execution
@@ -2008,7 +1700,7 @@ main() {
     setup_jwt_authentication
 
     # Set platform-specific configuration based on auto-detection
-    if ! set_platform_config "$PLATFORM"; then
+    if ! set_platform_config; then
         exit 1
     fi
 
@@ -2121,12 +1813,7 @@ main() {
     echo ""
     echo_success "Cost Management On Prem Helm chart installation completed!"
     echo_info "The services are now running in namespace '$NAMESPACE'"
-
-    if [ "$PLATFORM" = "kubernetes" ]; then
-        echo_info "Next: Run https://raw.githubusercontent.com/insights-onprem/ros-ocp-backend/refs/heads/main/deployment/kubernetes/scripts/test-k8s-dataflow.sh to test the deployment"
-    else
-        echo_info "Next: Run https://raw.githubusercontent.com/insights-onprem/ros-ocp-backend/refs/heads/main/deployment/kubernetes/scripts/test-ocp-dataflow.sh to test the deployment"
-    fi
+    echo_info "Next: Run ./cost-mgmt-ocp-dataflow.sh to test the deployment"
 
     # Cleanup downloaded chart if we used GitHub release
     if [ "$USE_LOCAL_CHART" != "true" ]; then
@@ -2199,6 +1886,14 @@ case "${1:-}" in
         echo "  LOCAL_CHART_PATH        - Path to local chart directory (default: ../cost-onprem)"
         echo "  KAFKA_BOOTSTRAP_SERVERS - Bootstrap servers for existing Kafka (skips verification)"
         echo "                            Example: my-kafka-bootstrap.kafka:9092"
+        echo ""
+        echo "S3/ODF Configuration (for CI or custom storage):"
+        echo "  SKIP_S3_SETUP           - Skip S3 bucket creation entirely (default: false)"
+        echo "                            Set to 'true' for CI environments or external S3 management"
+        echo "  S3_ENDPOINT             - Manual S3 endpoint override (bypasses ODF detection)"
+        echo "                            Example: s3.test.example.com"
+        echo "  S3_ACCESS_KEY           - Manual S3 access key (used with S3_ENDPOINT)"
+        echo "  S3_SECRET_KEY           - Manual S3 secret key (used with S3_ENDPOINT)"
         echo ""
         echo "Chart Source Options:"
         echo "  - Default: Downloads latest release from GitHub (recommended)"

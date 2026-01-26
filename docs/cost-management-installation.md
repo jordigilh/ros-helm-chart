@@ -98,7 +98,6 @@ oc get pvc -n openshift-storage
 # Script will:
 # - Install Strimzi operator (version 0.45.1)
 # - Deploy Kafka cluster (version 3.8.0)
-# - Auto-detect platform (Kubernetes/OpenShift)
 # - Configure appropriate storage class
 # - Wait for cluster to be ready
 ```
@@ -319,7 +318,7 @@ USE_LOCAL_CHART=true ./install-helm-chart.sh
 oc exec -n $NAMESPACE cost-onprem-database-0 -- psql -U koku -d koku -c "SELECT version();"
 
 # Check Koku API health
-oc exec -n $NAMESPACE $(oc get pod -n $NAMESPACE -l app.kubernetes.io/component=cost-management-api -o name | head -1) \
+oc exec -n $NAMESPACE $(oc get pod -n $NAMESPACE -l app.kubernetes.io/component=cost-management-api-reads -o name | head -1) \
   -- python manage.py showmigrations --database=default
 
 # Check Kafka listener

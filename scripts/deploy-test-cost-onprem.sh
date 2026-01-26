@@ -86,10 +86,8 @@ SHARED_DIR="${SHARED_DIR:-}"
 LOCAL_SCRIPTS_DIR="${SCRIPT_DIR}"
 SCRIPT_DEPLOY_RHBK="deploy-rhbk.sh"  # Red Hat Build of Keycloak (RHBK)
 SCRIPT_DEPLOY_STRIMZI="deploy-strimzi.sh"
-SCRIPT_INSTALL_AUTHORINO="install-authorino.sh"
 SCRIPT_INSTALL_HELM="install-helm-chart.sh"
 SCRIPT_SETUP_TLS="setup-cost-mgmt-tls.sh"
-SCRIPT_TEST_JWT="test-ocp-dataflow-jwt.sh"
 OPENSHIFT_VALUES_FILE="openshift-values.yaml"
 
 # Step flags (default: run all steps)
@@ -417,6 +415,7 @@ deploy_helm_chart() {
     export NAMESPACE="${NAMESPACE}"
     export JWT_AUTH_ENABLED="true"
     export USE_LOCAL_CHART="${USE_LOCAL_CHART}"
+    export SKIP_S3_SETUP="true"  # Skip S3/ODF detection in CI environments
 
     if [[ "${VERBOSE}" == "true" ]]; then
         export VERBOSE="true"

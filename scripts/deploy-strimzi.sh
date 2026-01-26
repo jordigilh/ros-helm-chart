@@ -2,7 +2,7 @@
 
 # Strimzi Operator and Kafka Cluster Deployment Script
 # This script automates the deployment of Strimzi operator and Kafka cluster
-# for the cost management on-premise platform with support for both Kubernetes/KIND and OpenShift
+# for the cost management on-premise platform on OpenShift
 #
 # PREREQUISITE: This script should be run BEFORE install-helm-chart.sh
 #
@@ -58,12 +58,12 @@ echo_header() {
     echo ""
 }
 
-# Function to detect platform (Kubernetes vs OpenShift)
+# Function to verify OpenShift platform
 detect_platform() {
-    echo_info "Detecting platform..."
+    echo_info "Verifying OpenShift platform..."
 
     if kubectl get routes.route.openshift.io >/dev/null 2>&1; then
-        echo_success "Detected OpenShift platform"
+        echo_success "Verified OpenShift platform"
         PLATFORM="openshift"
         # Auto-detect default storage class if not provided
         if [ -z "$STORAGE_CLASS" ]; then
@@ -78,15 +78,9 @@ detect_platform() {
             KAFKA_ENVIRONMENT="ocp"
         fi
     else
-        echo_success "Detected Kubernetes platform"
-        PLATFORM="kubernetes"
-        # Auto-detect default storage class if not provided
-        if [ -z "$STORAGE_CLASS" ]; then
-            STORAGE_CLASS=$(kubectl get storageclass -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}' 2>/dev/null | awk '{print $1}')
-            if [ -n "$STORAGE_CLASS" ]; then
-                echo_info "Auto-detected default storage class: $STORAGE_CLASS"
-            fi
-        fi
+        echo_error "OpenShift platform not detected. This chart requires OpenShift."
+        echo_error "Please ensure you are connected to an OpenShift cluster."
+        exit 1
     fi
 }
 

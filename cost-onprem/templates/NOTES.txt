@@ -1,30 +1,27 @@
 {{- $fullName := include "cost-onprem.fullname" . -}}
 {{- $namespace := .Release.Namespace -}}
-{{- $isOpenShift := eq (include "cost-onprem.platform.isOpenShift" .) "true" -}}
 
 🎉 Cost Management On-Premise {{ .Chart.Version }} has been deployed successfully!
 
 📦 Release: {{ .Release.Name }}
 🏷️  Namespace: {{ $namespace }}
-🖥️  Platform: {{ if $isOpenShift }}OpenShift{{ else }}Kubernetes{{ end }}
+🖥️  Platform: OpenShift
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📊 DEPLOYMENT STATUS
 
 Check deployment status:
-  kubectl get pods -n {{ $namespace }}
+  oc get pods -n {{ $namespace }}
 
 Wait for all pods to be ready:
-  kubectl wait --for=condition=ready pod \
+  oc wait --for=condition=ready pod \
     -l app.kubernetes.io/instance={{ .Release.Name }} \
     -n {{ $namespace }} --timeout=300s
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 🌐 ACCESS POINTS
-
-{{- if $isOpenShift }}
 
 OpenShift Routes:
   oc get routes -n {{ $namespace }}
@@ -34,8 +31,7 @@ Get Main Route URL:
   echo "https://$ROUTE_HOST"
 
 API Endpoints:
-  - ROS API: /api/ros/*
-  - Kruize API: /api/kruize/*
+  - Cost Management API: /api/cost-management/v1
   - Sources API: /api/sources/*
   - Upload API: /api/ingress/*
 
@@ -43,37 +39,9 @@ Health Check:
   curl http://$(oc get route {{ $fullName }}-ingress -n {{ $namespace }} -o jsonpath='{.spec.host}')/api/ingress/ready
   curl http://$(oc get route {{ $fullName }}-main -n {{ $namespace }} -o jsonpath='{.spec.host}')/status
 
-{{- else }}
-
-Kubernetes Service:
-  kubectl get svc {{ $fullName }}-ingress -n {{ $namespace }}
-
-{{- if and .Values.ingress.service .Values.ingress.service.nodePort }}
-Access via NodePort:
-  http://localhost:{{ .Values.ingress.service.nodePort }}
-
-API Endpoints:
-  - Health: http://localhost:{{ .Values.ingress.service.nodePort }}/ready
-  - ROS API: http://localhost:{{ .Values.ingress.service.nodePort }}/api/ros/*
-  - Kruize: http://localhost:{{ .Values.ingress.service.nodePort }}/api/kruize/*
-  - Sources: http://localhost:{{ .Values.ingress.service.nodePort }}/api/sources/*
-  - Upload: http://localhost:{{ .Values.ingress.service.nodePort }}/api/ingress/*
-{{- else }}
-Port Forward:
-  kubectl port-forward -n {{ $namespace }} svc/{{ $fullName }}-ingress 8080:80
-
-Access:
-  http://localhost:8080/ready
-{{- end }}
-
-{{- end }}
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 🔐 AUTHENTICATION
-
-{{- if $isOpenShift }}
-{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
 
 ✅ JWT Authentication: ENABLED
 
@@ -91,53 +59,16 @@ Verify Keycloak connectivity:
 For authentication setup details:
   https://github.com/insights-onprem/cost-onprem-chart/blob/main/docs/keycloak-jwt-authentication-setup.md
 
-{{- else }}
-
-⚠️  JWT Authentication: DISABLED
-
-To enable JWT authentication, ensure:
-  1. Red Hat Build of Keycloak (RHBK) is deployed
-  2. Keycloak is properly configured
-  3. Re-install the chart (auto-detection will enable JWT auth)
-
-{{- end }}
-{{- else }}
-
-ℹ️  JWT Authentication: DISABLED (Kubernetes/KIND)
-
-JWT authentication is only supported on OpenShift.
-For development/testing, authentication is disabled by default.
-
-{{- end }}
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 💾 STORAGE
 
-{{- if $isOpenShift }}
-
 OpenShift Data Foundation (ODF):
-  kubectl get pvc -n {{ $namespace }}
+  oc get pvc -n {{ $namespace }}
 
 Storage Classes:
   - PostgreSQL: {{ default (include "cost-onprem.storage.class" .) .Values.database.storageClass }}
   - Kafka: {{ default (include "cost-onprem.storage.class" .) .Values.kafka.storageClass }}
-{{- else }}
-
-MinIO Object Storage:
-  kubectl get sts {{ $fullName }}-minio -n {{ $namespace }}
-
-Access MinIO Console:
-  kubectl port-forward -n {{ $namespace }} svc/{{ $fullName }}-minio 9001:9001
-  http://localhost:9001
-
-Storage Classes:
-  - PostgreSQL: {{ .Values.database.storageClass | default "standard" }}
-  - Kafka: {{ .Values.kafka.storageClass | default "standard" }}
-{{- if .Values.minio }}
-  - MinIO: {{ .Values.minio.storage.storageClass | default "standard" }}
-{{- end }}
-{{- end }}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -145,16 +76,22 @@ Storage Classes:
 
 View logs:
   # ROS API
-  kubectl logs -n {{ $namespace }} -l app.kubernetes.io/component=ros-api --tail=100
+  oc logs -n {{ $namespace }} -l app.kubernetes.io/component=ros-api --tail=100
 
   # ROS Processor
-  kubectl logs -n {{ $namespace }} -l app.kubernetes.io/component=ros-processor --tail=100
+  oc logs -n {{ $namespace }} -l app.kubernetes.io/component=ros-processor --tail=100
 
   # Ingress
-  kubectl logs -n {{ $namespace }} -l app.kubernetes.io/component=ingress --tail=100
+  oc logs -n {{ $namespace }} -l app.kubernetes.io/component=ingress --tail=100
+
+  # Cost Management API (reads)
+  oc logs -n {{ $namespace }} -l app.kubernetes.io/component=cost-management-api-reads --tail=100
+
+  # Cost Management API (writes)
+  oc logs -n {{ $namespace }} -l app.kubernetes.io/component=cost-management-api-writes --tail=100
 
 Check service health:
-  kubectl get pods -n {{ $namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+  oc get pods -n {{ $namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
 
 Common issues:
   - Pods not starting: Check PVC binding status
@@ -174,7 +111,6 @@ Complete guides available at:
 Key resources:
   - Installation Guide: docs/installation.md
   - Configuration Guide: docs/configuration.md
-  - Platform Guide: docs/platform-guide.md
   - JWT Authentication: docs/keycloak-jwt-authentication-setup.md
   - Troubleshooting: docs/troubleshooting.md
 

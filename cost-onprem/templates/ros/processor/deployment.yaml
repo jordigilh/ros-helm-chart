@@ -28,9 +28,7 @@ spec:
         {{- include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
         {{- end }}
         {{- include "cost-onprem.initContainer.waitForKruize" . | nindent 8 }}
-        {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
         {{- include "cost-onprem.initContainer.prepareCABundle" . | nindent 8 }}
-        {{- end }}
       containers:
         - name: ros-processor
           image: "{{ .Values.ros.image.repository }}:{{ .Values.ros.image.tag }}"
@@ -51,11 +49,9 @@ spec:
             - name: cdapp-config
               mountPath: /cdapp
               readOnly: true
-            {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
             - name: ca-bundle
               mountPath: /etc/ssl/certs/ca-bundle
               readOnly: true
-            {{- end }}
           env:
             - name: CLOWDER_ENABLED
               value: "false"
@@ -99,12 +95,10 @@ spec:
               value: {{ .Values.ros.processor.logLevel | quote }}
             - name: PROMETHEUS_PORT
               value: {{ .Values.ros.processor.metricsPort | quote }}
-            {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
             # SSL_CERT_FILE is used by Go's crypto/x509 to load CA certificates
             # Points to combined bundle with system CAs + OpenShift cluster CA + Service CA
             - name: SSL_CERT_FILE
               value: "/etc/ssl/certs/ca-bundle/ca-bundle.crt"
-            {{- end }}
           # Re-enable probes now that PROMETHEUS_PORT environment variable is correctly set
           livenessProbe:
             httpGet:
@@ -128,7 +122,6 @@ spec:
         - name: cdapp-config
           configMap:
             name: {{ include "cost-onprem.fullname" . }}-cdapp-config
-        {{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
         # Volumes for CA bundle preparation
         - name: ca-scripts
           configMap:
@@ -142,4 +135,3 @@ spec:
             name: {{ include "cost-onprem.fullname" . }}-service-ca
         - name: ca-bundle
           emptyDir: {}
-        {{- end }}

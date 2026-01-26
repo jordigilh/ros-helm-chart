@@ -9,8 +9,7 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   ports:
-    {{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
-    # When JWT auth is enabled, expose Envoy proxy port for external traffic
+    # Expose Envoy proxy port for external traffic (JWT auth)
     - port: {{ .Values.ros.api.port }}
       targetPort: http-proxy  # Route to Envoy sidecar
       protocol: TCP
@@ -20,13 +19,6 @@ spec:
       targetPort: admin
       protocol: TCP
       name: envoy-admin
-    {{- else }}
-    # When JWT auth is disabled, expose API directly
-    - port: {{ .Values.ros.api.port }}
-      targetPort: http
-      protocol: TCP
-      name: http
-    {{- end }}
     - port: {{ .Values.ros.api.metricsPort }}
       targetPort: metrics
       protocol: TCP

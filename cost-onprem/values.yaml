@@ -27,8 +27,7 @@ global:
   # Storage class for persistent volumes (auto-detected if empty)
   storageClass: ""
 
-  # Storage type for platform detection (auto-detected if empty)
-  # "odf" for OpenShift, "minio" for Kubernetes
+  # Storage type (ODF is used for OpenShift)
   storageType: ""
 
   # Init container images (shared across all services)
@@ -673,7 +672,7 @@ kruize:
     dbConfigFile: /tmp/cdappconfig.json
     dbDriver: "jdbc:postgresql://"
     clusterType: kubernetes
-    k8sType: openshift  # Overridden on vanilla Kubernetes
+    k8sType: openshift
     authType: ""
     monitoringAgent: "prometheus"
     monitoringService: "prometheus"
@@ -751,13 +750,12 @@ ingress:
     topic: "platform.upload.announce"  # INGRESS_KAFKAANNOUNCETOPIC
     groupId: "ingress"                 # INGRESS_KAFKAGROUPID
 
-  # Authentication (OpenShift only)
-  # Note: Authentication is only available on OpenShift with Keycloak (RHBK).
-  # On vanilla Kubernetes/KIND, authentication is automatically disabled.
+  # Authentication configuration
+  # Note: Authentication is available with Keycloak (RHBK).
   # When JWT is enabled via Envoy sidecar, INGRESS_AUTH is set to false
   # because the backend trusts the X-Rh-Identity header injected by Envoy.
   auth:
-    enabled: true      # Auto-disabled on Kubernetes
+    enabled: true
 
   # Logging
   logging:
@@ -881,42 +879,30 @@ valkey:
     # fsGroup: 1000740000  # Example: CI environment value
 
 # -----------------------------------------------------------------------------
-# Shared Infrastructure - Object Storage
+# Shared Infrastructure - Object Storage (ODF)
 # -----------------------------------------------------------------------------
-# MinIO for Kubernetes, ODF for OpenShift
-minio:
-  image:
-    repository: quay.io/minio/minio
-    tag: "RELEASE.2025-07-23T15-54-02Z"
+# This chart uses OpenShift Data Foundation (ODF) for object storage.
+# ODF provides S3-compatible storage via NooBaa.
+odf:
+  # ODF endpoint - auto-detected from NooBaa CRD if not specified
+  # endpoint: "s3.openshift-storage.svc.cluster.local"
+  # port: 443
+  # useSSL: true
 
-  storage:
-    size: 20Gi
+  # Default bucket for ingress uploads
+  bucket: insights-upload-perma
 
-  rootUser: minioaccesskey
-  rootPassword: miniosecretkey
-
-  ports:
-    api: 9000
-    console: 9990
-
+  # Buckets to create during installation
   buckets:
     - insights-upload-perma
     - koku-bucket
     - ros-data
 
-# ODF (OpenShift) - defined in openshift-values.yaml
-odf: {}
-
 # -----------------------------------------------------------------------------
 # Authentication Configuration (JWT with Keycloak/RHBK)
 # -----------------------------------------------------------------------------
-# Note: JWT authentication only works on OpenShift with Keycloak
-# Auto-disabled on Kubernetes/KIND
-#
 # JWT authentication with RHBK using Envoy's native JWT filter
-# - OpenShift: Automatically enabled (requires RHBK to be deployed)
-# - KIND/Vanilla K8s: Automatically disabled (RHBK not available)
-# Platform detection is automatic via Helm's capability detection.
+# Requires RHBK (Red Hat Build of Keycloak) to be deployed
 #
 # Architecture: Envoy sidecar validates JWT tokens inline using native jwt_authn filter
 # with Lua scripting to extract claims into X-ROS headers for the backend service.
@@ -941,20 +927,16 @@ jwtAuth:
         memory: 128Mi
 
   # Keycloak configuration for JWT validation
-  # NOTE: JWT authentication is ONLY supported on OpenShift with Keycloak.
-  # On vanilla Kubernetes/KIND, JWT authentication is automatically disabled.
-  #
-  # Supported operator:
-  #   - Red Hat Build of Keycloak (RHBK) v22+ - k8s.keycloak.org/v2alpha1
+  # Supported operator: Red Hat Build of Keycloak (RHBK) v22+ - k8s.keycloak.org/v2alpha1
   keycloak:
-    # Keycloak URL - leave empty for automatic runtime discovery (OpenShift only)
+    # Keycloak URL - leave empty for automatic runtime discovery
     #
-    # Runtime Discovery on OpenShift (when url is empty):
+    # Runtime Discovery (when url is empty):
     #   1. Searches for Keycloak Route in common namespaces (keycloak, keycloak-system)
     #   2. Falls back to Keycloak Service discovery (cluster-local)
     #   3. Fails with helpful message if not found
     #
-    # Override only if using custom/external Keycloak instance on OpenShift
+    # Override only if using custom/external Keycloak instance
     url: ""  # e.g., "https://keycloak-keycloak.apps.example.com"
 
     # Keycloak namespace - leave empty for automatic discovery
@@ -1036,16 +1018,7 @@ ui:
 service:
   type: ClusterIP
 
-# Kubernetes Ingress (vanilla Kubernetes)
-serviceIngress:
-  className: nginx
-  hosts:
-    - host: localhost
-      paths:
-        - path: /
-          pathType: Prefix
-
-# OpenShift Routes (auto-used on OpenShift)
+# OpenShift Routes
 serviceRoute:
   annotations:
     # OpenShift-specific route annotations

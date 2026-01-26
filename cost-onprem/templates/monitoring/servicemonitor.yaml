@@ -1,4 +1,4 @@
-{{- if and .Values.monitoring.enabled (eq (include "cost-onprem.platform.isOpenShift" .) "true") }}
+{{- if .Values.monitoring.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor

@@ -1,4 +1,4 @@
-{{- if and .Values.ui (eq (include "cost-onprem.platform.isOpenShift" .) "true") }}
+{{- if .Values.ui }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

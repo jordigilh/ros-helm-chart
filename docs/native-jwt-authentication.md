@@ -239,12 +239,6 @@ upstream connect error or disconnect/reset before headers. TLS error:
 
 ## Configuration
 
-### Automatic Platform Detection
-
-JWT authentication is **automatically enabled on OpenShift** and **disabled on KIND/K8s**. No configuration needed!
-
-The Helm chart detects the platform by checking for OpenShift-specific APIs (`route.openshift.io/v1`).
-
 ### Helm Values
 
 ```yaml
@@ -266,13 +260,8 @@ jwt_auth:
 ```
 
 **Automatic Configuration:**
-- **JWT Enabled/Disabled**: Auto-detected by platform (OpenShift vs K8s)
-- **Keycloak URL**: Auto-detected from Keycloak routes/ingresses
+- **Keycloak URL**: Auto-detected from Keycloak routes
 - **Override**: Set `jwtAuth.keycloak.url` only for custom/external Keycloak
-
-**Platform Behavior:**
-- **OpenShift**: JWT auth enabled automatically (Keycloak required)
-- **KIND/K8s**: JWT auth disabled automatically (no Keycloak)
 
 ### JWT Claims to Headers Mapping
 
@@ -428,15 +417,6 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 - **Cost Management On-Premise API**: `http://ros-api:9000/metrics`
 - **Cost Management On-Premise Processor**: `http://ros-processor:9000/metrics`
 - **Cost Management On-Premise Recommendation Poller**: `http://ros-recommendation-poller:9000/metrics`
-
-### Platform Differences
-
-| Platform | Network Policies | Envoy Sidecars | JWT Auth |
-|----------|------------------|----------------|----------|
-| **OpenShift** | ✅ Enabled | ✅ Enabled | ✅ Enabled |
-| **Kubernetes/KIND** | ❌ Disabled | ❌ Disabled | ❌ Disabled |
-
-**Note**: Network policies are only deployed on OpenShift where JWT authentication is enabled. On Kubernetes/KIND, services are directly accessible without network restrictions.
 
 ### Sources API Authentication Details
 

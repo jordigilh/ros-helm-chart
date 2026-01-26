@@ -60,7 +60,6 @@ When JWT authentication is enabled (automatic on OpenShift):
 
 **Example Template Snippet**:
 ```yaml
-{{- if .Values.jwtAuth.enabled }}
 - name: envoy-proxy
   image: "{{ .Values.jwtAuth.envoy.image.repository }}:{{ .Values.jwtAuth.envoy.image.tag }}"
   ports:
@@ -72,7 +71,6 @@ When JWT authentication is enabled (automatic on OpenShift):
     - name: envoy-config
       mountPath: /etc/envoy
       readOnly: true
-{{- end }}
 ```
 
 ---
@@ -223,27 +221,17 @@ ports:
 
 **Key Functions**:
 
-#### `cost-onprem.jwt.shouldEnable`
-Determines if JWT authentication should be enabled based on platform detection.
+#### JWT Authentication
+JWT authentication is always enabled. Envoy sidecars handle JWT validation with Keycloak OIDC.
 
-**Logic**:
-```go
-{{- define "cost-onprem.jwt.shouldEnable" -}}
-{{- include "cost-onprem.isOpenShift" . -}}
-{{- end -}}
+**Configuration**:
+```yaml
+jwtAuth:
+  # JWT authentication is always enabled
+  keycloak:
+    url: ""  # Auto-detected from Keycloak CR, or set manually
+    realm: kubernetes
 ```
-
-**Behavior**:
-- **Automatic platform detection** - No configuration needed
-- Returns `true` on OpenShift (Keycloak available)
-- Returns `false` on KIND/Vanilla K8s (Keycloak not deployed)
-- Uses Helm's `Capabilities.APIVersions` to detect `route.openshift.io/v1` API
-
-#### `cost-onprem.isOpenShift`
-Detects if running on OpenShift.
-
-**Detection Method**:
-- Checks for OpenShift-specific API groups (e.g., `route.openshift.io`)
 
 ---
 
@@ -251,11 +239,10 @@ Detects if running on OpenShift.
 
 ### Overview
 
-The UI component provides a web-based user interface for Cost Management On-Premise, available exclusively on OpenShift platforms. It uses an OAuth2 proxy sidecar with Keycloak OIDC for authentication and serves the Koku UI micro-frontend application.
+The UI component provides a web-based user interface for Cost Management On-Premise. It uses an OAuth2 proxy sidecar with Keycloak OIDC for authentication and serves the Koku UI micro-frontend application.
 
-**Platform Availability:**
-- ✅ **OpenShift**: Fully supported with Keycloak OAuth proxy authentication
-- ❌ **Kubernetes/KIND**: Not available (requires Keycloak OIDC infrastructure)
+**Requirements:**
+- ✅ OpenShift with Keycloak OAuth proxy authentication
 
 **Key Features:**
 - OAuth2 proxy sidecar for seamless Keycloak OIDC authentication
@@ -348,8 +335,8 @@ resources:
 ```
 
 **Deployment Conditions**:
-- Only deployed when `ui` values are defined AND platform is OpenShift
-- Template check: `{{- if and .Values.ui (eq (include "cost-onprem.platform.isOpenShift" .) "true") }}`
+- Only deployed when `ui` values are defined
+- Template check: `{{- if .Values.ui }}`
 
 ---
 
@@ -540,19 +527,15 @@ ui:
 
 **Common Issues**:
 
-1. **UI not deployed on Kubernetes**:
-   - ✅ **Expected**: UI only available on OpenShift
-   - Check: `kubectl get deployment -n cost-onprem | grep ui` (should be empty on K8s)
-
-2. **OAuth redirect errors**:
+1. **OAuth redirect errors**:
    - Check ServiceAccount annotation: `oc get sa cost-onprem-ui -n cost-onprem -o yaml`
    - Verify Route name matches redirect reference
 
-3. **TLS certificate issues**:
+2. **TLS certificate issues**:
    - Check service annotation: `oc get svc cost-onprem-ui -n cost-onprem -o yaml`
    - Verify secret exists: `oc get secret cost-onprem-ui-tls -n cost-onprem`
 
-4. **UI cannot connect to API**:
+3. **UI cannot connect to API**:
    - Check `API_PROXY_URL` environment variable in app container
    - Verify ROS API service is accessible: `oc get svc cost-onprem-ros-api -n cost-onprem`
 
@@ -633,9 +616,7 @@ helm upgrade cost-onprem ./cost-onprem \
 
 1. **Pre-Install**: Helm validates values schema
 2. **Template Rendering**:
-   - Conditionals evaluate (`jwt_auth.enabled`)
-   - Helpers execute (`cost-onprem.jwt.shouldEnable`)
-   - Templates generate manifests
+   - Templates generate manifests with JWT auth configuration
 3. **Manifest Application**:
    - ConfigMaps (Envoy config)
    - Deployments (Ingress + Envoy sidecar)
