@@ -307,7 +307,7 @@ Common environment variables for Koku API and Celery
 # S3 Region for signature generation (required for S3v4 signatures)
 # NooBaa/MinIO don't use regions, but boto3 requires it for signature calculation
 - name: S3_REGION
-  value: "us-east-1"
+  value: {{ .Values.odf.s3.region | default "onprem" | quote }}
 # AWS SDK configuration for S3v4 signatures
 - name: AWS_CONFIG_FILE
   value: /etc/aws/config

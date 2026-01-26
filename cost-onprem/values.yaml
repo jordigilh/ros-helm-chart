@@ -945,6 +945,13 @@ odf:
   # Created by: scripts/install-helm-chart.sh
   # Credentials: minioadmin / <random-32-char>
 
+  # S3 region for signature generation (required for S3v4 signatures)
+  # NooBaa/MinIO don't use regions, but boto3 requires it for signature calculation
+  # Default: "onprem" (for on-premise deployments)
+  # Override to AWS region (e.g., "us-east-1") if deploying to AWS S3
+  s3:
+    region: "onprem"
+
   # Buckets to create during installation
   buckets:
     - insights-upload-perma
