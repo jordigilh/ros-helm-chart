@@ -321,6 +321,85 @@ detect_external_obc() {
     return 0
 }
 
+# Function to create database credentials secret
+# Creates a secret with credentials for all database users (postgres, ros, kruize, koku, sources)
+create_database_credentials_secret() {
+    echo_info "Creating database credentials secret..."
+
+    local secret_name="cost-onprem-db-credentials"
+
+    # Check if secret already exists
+    if kubectl get secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_warning "Database credentials secret '$secret_name' already exists (preserving existing credentials)"
+        return 0
+    fi
+
+    echo_info "Generating secure random database passwords..."
+
+    # Generate secure random passwords (32 characters, alphanumeric)
+    local postgres_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+    local ros_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+    local kruize_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+    local koku_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+    local sources_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+
+    # Create the secret
+    kubectl create secret generic "$secret_name" \
+        --namespace="$NAMESPACE" \
+        --from-literal=postgres-user=postgres \
+        --from-literal=postgres-password="$postgres_password" \
+        --from-literal=ros-user=ros_user \
+        --from-literal=ros-password="$ros_password" \
+        --from-literal=kruize-user=kruize_user \
+        --from-literal=kruize-password="$kruize_password" \
+        --from-literal=koku-user=koku \
+        --from-literal=koku-password="$koku_password" \
+        --from-literal=sources-user=sources \
+        --from-literal=sources-password="$sources_password"
+
+    if [ $? -eq 0 ]; then
+        echo_success "Database credentials secret created successfully"
+        echo_info "  Secret: $NAMESPACE/$secret_name"
+        echo_info "  📋 To retrieve credentials:"
+        echo_info "    kubectl get secret $secret_name -n $NAMESPACE -o jsonpath='{.data.ros-password}' | base64 -d"
+    else
+        echo_error "Failed to create database credentials secret"
+        return 1
+    fi
+}
+
+# Function to create Sources API credentials secret
+create_sources_credentials_secret() {
+    echo_info "Creating Sources API credentials secret..."
+
+    local secret_name="cost-onprem-sources-credentials"
+
+    # Check if secret already exists
+    if kubectl get secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_warning "Sources API credentials secret '$secret_name' already exists (preserving existing credentials)"
+        return 0
+    fi
+
+    echo_info "Generating Sources API encryption key..."
+
+    # Generate encryption key (valid base64, 32 characters from 24 bytes)
+    # Sources API expects valid base64 for decoding, so keep padding
+    local encryption_key=$(openssl rand -base64 24)
+
+    # Create the secret
+    kubectl create secret generic "$secret_name" \
+        --namespace="$NAMESPACE" \
+        --from-literal=encryption-key="$encryption_key"
+
+    if [ $? -eq 0 ]; then
+        echo_success "Sources API credentials secret created successfully"
+        echo_info "  Secret: $NAMESPACE/$secret_name"
+    else
+        echo_error "Failed to create Sources API credentials secret"
+        return 1
+    fi
+}
+
 # Function to create storage credentials secret
 create_storage_credentials_secret() {
     echo_info "Creating storage credentials secret..."
@@ -345,55 +424,94 @@ create_storage_credentials_secret() {
         return 0
     fi
 
-    # For OpenShift, check if ODF credentials secret exists
-    local odf_secret_name="cost-onprem-odf-credentials"
-    if kubectl get secret "$odf_secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
-        echo_info "Found existing ODF credentials secret: $odf_secret_name"
-        echo_info "Creating storage credentials secret from ODF credentials..."
-            # Extract credentials from ODF secret
-        local access_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}')
-        local secret_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}')
-            # Create storage credentials secret
-        kubectl create secret generic "$secret_name" \
-            --namespace="$NAMESPACE" \
-            --from-literal=access-key="$(echo "$access_key" | base64 -d)" \
-            --from-literal=secret-key="$(echo "$secret_key" | base64 -d)"
-        echo_success "Storage credentials secret created from ODF credentials"
-    else
-        # Try to create ODF credentials from noobaa-admin secret (from create_secret_odf.sh logic)
-        echo_info "ODF credentials secret not found. Attempting to create from noobaa-admin secret..."
-
-        if kubectl get secret noobaa-admin -n openshift-storage >/dev/null 2>&1; then
-            echo_info "Found noobaa-admin secret, extracting ODF credentials..."
-
-            # Extract credentials from noobaa-admin secret (using create_secret_odf.sh logic)
-            local access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d)
-            local secret_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d)
-
-            # Create ODF credentials secret first
-            kubectl create secret generic "$odf_secret_name" \
-                --namespace="$NAMESPACE" \
-                --from-literal=access-key="$access_key" \
-                --from-literal=secret-key="$secret_key"
-
-            echo_success "Created ODF credentials secret from noobaa-admin"
-
-            # Now create storage credentials secret
+    # PRIORITY: If MINIO_ENDPOINT is set, use MinIO credentials (for testing)
+    if [ -n "$MINIO_ENDPOINT" ]; then
+        echo_info "MINIO_ENDPOINT detected: Using MinIO credentials for testing..."
+        # Check if MinIO credentials secret exists (from deploy-minio script)
+        if kubectl get secret minio-credentials -n "$NAMESPACE" >/dev/null 2>&1; then
+            echo_info "Found existing MinIO credentials secret, extracting credentials..."
+            local access_key=$(kubectl get secret minio-credentials -n "$NAMESPACE" -o jsonpath='{.data.root-user}' | base64 -d)
+            local secret_key=$(kubectl get secret minio-credentials -n "$NAMESPACE" -o jsonpath='{.data.root-password}' | base64 -d)
             kubectl create secret generic "$secret_name" \
                 --namespace="$NAMESPACE" \
                 --from-literal=access-key="$access_key" \
                 --from-literal=secret-key="$secret_key"
-
-            echo_success "Storage credentials secret created from noobaa-admin credentials"
+            echo_success "Storage credentials created from MinIO credentials secret"
+            echo_info "  Access Key: $access_key"
+            return 0
         else
-            echo_error "Neither ODF credentials secret '$odf_secret_name' nor noobaa-admin secret found"
-            echo_error "You must create the ODF credentials secret first:"
-            echo_info "  kubectl create secret generic $odf_secret_name \\"
-            echo_info "    --namespace=$NAMESPACE \\"
-            echo_info "    --from-literal=access-key=<your-odf-access-key> \\"
-            echo_info "    --from-literal=secret-key=<your-odf-secret-key>"
-            echo_info ""
-            echo_info "Or ensure noobaa-admin secret exists in openshift-storage namespace"
+            echo_warning "MinIO credentials secret not found, falling back to default logic..."
+        fi
+    fi
+
+    if [ "$PLATFORM" = "openshift" ]; then
+        # For OpenShift, check if ODF credentials secret exists
+        local odf_secret_name="cost-onprem-odf-credentials"
+        if kubectl get secret "$odf_secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+            echo_info "Found existing ODF credentials secret: $odf_secret_name"
+            echo_info "Creating storage credentials secret from ODF credentials..."
+                # Extract credentials from ODF secret
+            local access_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}')
+            local secret_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}')
+                # Create storage credentials secret
+            kubectl create secret generic "$secret_name" \
+                --namespace="$NAMESPACE" \
+                --from-literal=access-key="$(echo "$access_key" | base64 -d)" \
+                --from-literal=secret-key="$(echo "$secret_key" | base64 -d)"
+            echo_success "Storage credentials secret created from ODF credentials"
+        else
+            # Try to create ODF credentials from noobaa-admin secret (from create_secret_odf.sh logic)
+            echo_info "ODF credentials secret not found. Attempting to create from noobaa-admin secret..."
+
+            if kubectl get secret noobaa-admin -n openshift-storage >/dev/null 2>&1; then
+                echo_info "Found noobaa-admin secret, extracting ODF credentials..."
+
+                # Extract credentials from noobaa-admin secret (using create_secret_odf.sh logic)
+                local access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d)
+                local secret_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d)
+
+                # Create ODF credentials secret first
+                kubectl create secret generic "$odf_secret_name" \
+                    --namespace="$NAMESPACE" \
+                    --from-literal=access-key="$access_key" \
+                    --from-literal=secret-key="$secret_key"
+
+                echo_success "Created ODF credentials secret from noobaa-admin"
+
+                # Now create storage credentials secret
+                kubectl create secret generic "$secret_name" \
+                    --namespace="$NAMESPACE" \
+                    --from-literal=access-key="$access_key" \
+                    --from-literal=secret-key="$secret_key"
+
+                echo_success "Storage credentials secret created from noobaa-admin credentials"
+            else
+                echo_error "Neither ODF credentials secret '$odf_secret_name' nor noobaa-admin secret found"
+                echo_error "For OpenShift deployments, you must create the ODF credentials secret first:"
+                echo_info "  kubectl create secret generic $odf_secret_name \\"
+                echo_info "    --namespace=$NAMESPACE \\"
+                echo_info "    --from-literal=access-key=<your-odf-access-key> \\"
+                echo_info "    --from-literal=secret-key=<your-odf-secret-key>"
+                echo_info ""
+                echo_info "Or ensure noobaa-admin secret exists in openshift-storage namespace"
+                return 1
+            fi
+        fi
+    else
+        # For Kubernetes/KIND, create MinIO credentials with random password
+        echo_info "Creating MinIO credentials with random password..."
+        local minio_secret_key=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+        kubectl create secret generic "$secret_name" \
+            --namespace="$NAMESPACE" \
+            --from-literal=access-key="minioadmin" \
+            --from-literal=secret-key="$minio_secret_key"
+
+        if [ $? -eq 0 ]; then
+            echo_success "Storage credentials secret created with MinIO credentials"
+            echo_info "  Access Key: minioadmin"
+            echo_info "  Secret Key: (random, retrieve with: kubectl get secret $secret_name -n $NAMESPACE -o jsonpath='{.data.secret-key}' | base64 -d)"
+        else
+            echo_error "Failed to create storage credentials secret"
             return 1
         fi
     fi
@@ -446,11 +564,24 @@ create_s3_buckets() {
     # Determine S3 endpoint and configuration
     local s3_url mc_insecure
 
-    # Check for manual S3 endpoint override
-    if [ -n "${S3_ENDPOINT:-}" ]; then
-        s3_url="https://${S3_ENDPOINT}"
+    # PRIORITY: If MINIO_ENDPOINT is set, use MinIO (for testing)
+    if [ -n "$MINIO_ENDPOINT" ]; then
+        # Check if MinIO service exists in namespace
+        if kubectl get service minio -n "$NAMESPACE" >/dev/null 2>&1; then
+            s3_url="http://minio:9000"
+            mc_insecure=""
+            echo_info "  ✓ Using MinIO (MINIO_ENDPOINT override): $MINIO_ENDPOINT"
+            echo_info "  ✓ Internal service URL: $s3_url"
+        else
+            echo_error "MINIO_ENDPOINT set but MinIO service not found in namespace: $NAMESPACE"
+            exit 1
+        fi
+    elif kubectl get crd noobaas.noobaa.io >/dev/null 2>&1 && \
+       kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
+        # ODF NooBaa detected
+        s3_url="https://s3.openshift-storage.svc:443"
         mc_insecure="--insecure"
-        echo_info "Using manual S3 endpoint: $s3_url"
+        echo_info "  ✓ Detected: ODF (NooBaa S3)"
     else
         # Detect ODF storage backend (fallback for backward compatibility)
         echo_info "Detecting ODF storage backend..."
@@ -676,11 +807,11 @@ deploy_helm_chart() {
         helm_cmd="$helm_cmd --set odf.port=\"$EXTERNAL_OBC_PORT\""
         helm_cmd="$helm_cmd --set odf.useExternalOBC=true"
         helm_cmd="$helm_cmd --set odf.bucket=\"$EXTERNAL_OBC_BUCKET_NAME\""  # For ingress INGRESS_STAGEBUCKET
-        
+
         # Set bucket names for Koku and ROS (via dynamic helpers in _helpers-koku.tpl)
         helm_cmd="$helm_cmd --set costManagement.storage.bucketName=\"$EXTERNAL_OBC_BUCKET_NAME\""
         helm_cmd="$helm_cmd --set costManagement.storage.rosBucketName=\"$EXTERNAL_OBC_BUCKET_NAME\""
-        
+
         # Also set ROS bucket name for ROS components
         helm_cmd="$helm_cmd --set ros.storage.bucketName=\"$EXTERNAL_OBC_BUCKET_NAME\""
 
@@ -689,6 +820,14 @@ deploy_helm_chart() {
         echo_info "  Bucket: $EXTERNAL_OBC_BUCKET_NAME"
         echo_info "  Bucket configured for ingress, Koku, and ROS components"
         echo_info "  Bucket creation job will be skipped"
+    fi
+
+    # Add MinIO endpoint override if specified (for testing with MinIO in OCP)
+    if [ -n "$MINIO_ENDPOINT" ]; then
+        echo_info "Configuring custom S3 endpoint for MinIO testing"
+        helm_cmd="$helm_cmd --set costManagement.s3Endpoint=\"$MINIO_ENDPOINT\""
+        helm_cmd="$helm_cmd --set costManagement.s3VerifySSL=false"
+        echo_success "✓ MinIO endpoint configured: $MINIO_ENDPOINT"
     fi
 
     # Add additional Helm arguments passed to the script
@@ -1494,14 +1633,37 @@ main() {
         fi
     fi
 
+    echo ""
+    echo_info "════════════════════════════════════════════════════════════"
+    echo_info "  Creating Secrets (Before Helm Install)"
+    echo_info "════════════════════════════════════════════════════════════"
+    echo ""
+
+    # Create database credentials secret (always required)
+    if ! create_database_credentials_secret; then
+        echo_error "Failed to create database credentials. Cannot proceed with installation."
+        exit 1
+    fi
+
+    # Create Sources API credentials secret (always required)
+    if ! create_sources_credentials_secret; then
+        echo_error "Failed to create Sources API credentials. Cannot proceed with installation."
+        exit 1
+    fi
+
     # Create storage credentials secret (only if not using external OBC)
     if [ "$USING_EXTERNAL_OBC" = "false" ]; then
         if ! create_storage_credentials_secret; then
+            echo_error "Failed to create storage credentials. Cannot proceed with installation."
             exit 1
         fi
     else
         echo_info "Skipping storage credentials creation (using OBC credentials)"
     fi
+
+    echo ""
+    echo_success "✓ All required secrets created successfully"
+    echo ""
 
     # Create S3 buckets (only if not using external OBC)
     if [ "$USING_EXTERNAL_OBC" = "false" ]; then
