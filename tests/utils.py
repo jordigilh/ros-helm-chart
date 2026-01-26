@@ -270,25 +270,34 @@ def create_upload_package_from_files(
     cluster_id: str,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    node_label_files: Optional[list[str]] = None,
+    namespace_label_files: Optional[list[str]] = None,
 ) -> str:
     """Create a tar.gz upload package from NISE-generated files.
-    
+
     This function creates a proper upload package with separate file lists
     for cost management (pod_usage) and resource optimization (ros_usage).
-    
+
     Args:
         pod_usage_files: List of paths to pod_usage CSV files (for Koku cost management)
         ros_usage_files: List of paths to ros_usage CSV files (for ROS processor)
         cluster_id: Unique cluster identifier
         start_date: Start date for the report period
         end_date: End date for the report period
-    
+        node_label_files: List of paths to node_label CSV files (for summary tables)
+        namespace_label_files: List of paths to namespace_label CSV files
+
     Returns:
         Path to the created tar.gz file
     """
     from datetime import timedelta
     import os
-    
+
+    if node_label_files is None:
+        node_label_files = []
+    if namespace_label_files is None:
+        namespace_label_files = []
+
     temp_dir = tempfile.mkdtemp()
     manifest_file = Path(temp_dir) / "manifest.json"
     tar_file = Path(temp_dir) / "cost-mgmt.tar.gz"
@@ -299,7 +308,7 @@ def create_upload_package_from_files(
         start_date = now - timedelta(days=1)
     if end_date is None:
         end_date = now
-    
+
     # Ensure dates are timezone-aware
     if start_date.tzinfo is None:
         start_date = start_date.replace(tzinfo=timezone.utc)
@@ -309,6 +318,12 @@ def create_upload_package_from_files(
     # Get just the filenames for the manifest
     pod_filenames = [os.path.basename(f) for f in pod_usage_files]
     ros_filenames = [os.path.basename(f) for f in ros_usage_files]
+    node_label_filenames = [os.path.basename(f) for f in node_label_files]
+    namespace_label_filenames = [os.path.basename(f) for f in namespace_label_files]
+
+    # Combine all cost management files (pod_usage + labels) for manifest
+    # Node and namespace labels are required for Koku summary tables
+    all_cost_files = pod_filenames + node_label_filenames + namespace_label_filenames
 
     # Write manifest with separate file lists
     manifest = {
@@ -316,7 +331,7 @@ def create_upload_package_from_files(
         "cluster_id": cluster_id,
         "cluster_alias": f"e2e-source-{cluster_id[:12]}",
         "date": now.isoformat(),
-        "files": pod_filenames,  # Pod-level data for Koku cost management
+        "files": all_cost_files,  # Pod-level data + labels for Koku cost management
         "resource_optimization_files": ros_filenames,  # Container-level data for ROS
         "certified": True,
         "operator_version": "1.0.0",
@@ -333,6 +348,12 @@ def create_upload_package_from_files(
             tar.add(filepath, arcname=os.path.basename(filepath))
         # Add ROS usage files
         for filepath in ros_usage_files:
+            tar.add(filepath, arcname=os.path.basename(filepath))
+        # Add node label files
+        for filepath in node_label_files:
+            tar.add(filepath, arcname=os.path.basename(filepath))
+        # Add namespace label files
+        for filepath in namespace_label_files:
             tar.add(filepath, arcname=os.path.basename(filepath))
         # Add manifest
         tar.add(manifest_file, arcname="manifest.json")
