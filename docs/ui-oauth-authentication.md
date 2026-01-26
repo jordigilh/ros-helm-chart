@@ -869,15 +869,13 @@ helm install cost-onprem ./cost-onprem \
 - ✅ Service CA Operator for automatic certificate generation
 - ✅ Keycloak OIDC instance (RHBK or community Keycloak) for user authentication
 
-**Automatic Detection**: The UI is only deployed when the chart detects an OpenShift cluster:
+**UI Deployment**: The UI is deployed when enabled in the values:
 
 ```yaml
-{{- if eq (include "cost-onprem.platform.isOpenShift" .) "true" }}
+{{- if .Values.ui }}
 # UI resources deployed here
 {{- end }}
 ```
-
-**Kubernetes/KIND**: For non-OpenShift platforms, alternative ingress and TLS configurations would be required.
 
 ## References
 

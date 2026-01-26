@@ -86,19 +86,6 @@ Koku database user
 {{- end -}}
 
 {{/*
-Koku database connection URL (for Django)
-*/}}
-{{- define "cost-onprem.koku.database.url" -}}
-{{- printf "postgresql://%s:%s@%s:%v/%s"
-    (include "cost-onprem.koku.database.user" .)
-    "$(DATABASE_PASSWORD)"
-    (include "cost-onprem.koku.database.host" .)
-    (include "cost-onprem.koku.database.port" .)
-    (include "cost-onprem.koku.database.dbname" .)
--}}
-{{- end -}}
-
-{{/*
 =============================================================================
 Valkey Connection Helpers (cache/broker)
 =============================================================================
@@ -116,23 +103,6 @@ Valkey port
 */}}
 {{- define "cost-onprem.koku.redis.port" -}}
 {{- .Values.valkey.port | default 6379 -}}
-{{- end -}}
-
-{{/*
-Storage credentials secret name for S3/ODF access
-*/}}
-{{- define "cost-onprem.storage.secretName" -}}
-{{- printf "%s-storage-credentials" (include "cost-onprem.fullname" .) -}}
-{{- end -}}
-
-{{/*
-Redis URL for Koku (uses DB 1)
-*/}}
-{{- define "cost-onprem.koku.redis.url" -}}
-{{- printf "redis://%s:%v/1"
-    (include "cost-onprem.koku.redis.host" .)
-    (include "cost-onprem.koku.redis.port" .)
--}}
 {{- end -}}
 
 {{/*
@@ -163,27 +133,6 @@ Uses configurable value from .Values.costManagement.kafka.port
 */}}
 {{- define "cost-onprem.koku.kafka.port" -}}
 {{- .Values.costManagement.kafka.port | default "9092" -}}
-{{- end -}}
-
-{{/*
-=============================================================================
-MinIO/S3 Connection Helpers (uses shared storage from infrastructure)
-=============================================================================
-*/}}
-
-{{/*
-MinIO endpoint (uses shared MinIO from PR #27)
-*/}}
-{{- define "cost-onprem.koku.s3.endpoint" -}}
-{{- include "cost-onprem.storage.endpoint" . -}}
-{{- end -}}
-
-{{/*
-MinIO bucket name (DEPRECATED - use costManagement.storage.bucketName instead)
-This helper is kept for backwards compatibility but should not be used
-*/}}
-{{- define "cost-onprem.koku.s3.bucket" -}}
-{{- required "costManagement.storage.bucketName is required" .Values.costManagement.storage.bucketName -}}
 {{- end -}}
 
 {{/*
@@ -269,23 +218,6 @@ cost-onprem.io/worker-queue: {{ $type }}
 
 {{/*
 =============================================================================
-Storage Class Helpers
-=============================================================================
-*/}}
-
-{{/*
-Storage class for Koku database (uses default if not specified)
-*/}}
-{{- define "cost-onprem.koku.database.storageClass" -}}
-{{- if .Values.costManagement.database.storage.storageClassName -}}
-  {{- .Values.costManagement.database.storage.storageClassName -}}
-{{- else -}}
-  {{- /* Use default storage class in cluster */ -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
-=============================================================================
 Service Account Helpers
 =============================================================================
 */}}
@@ -354,12 +286,10 @@ Common environment variables for Koku API and Celery
   {{- end }}
 - name: REQUESTED_ROS_BUCKET
   value: {{ include "cost-onprem.koku.s3.rosBucket" . | quote }}
-{{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: AWS_CA_BUNDLE
   value: /etc/pki/ca-trust/combined/ca-bundle.crt
 - name: REQUESTS_CA_BUNDLE
   value: /etc/pki/ca-trust/combined/ca-bundle.crt
-{{- end }}
 - name: AWS_ACCESS_KEY_ID
   valueFrom:
     secretKeyRef:
@@ -420,7 +350,7 @@ Validate Celery Beat replicas (must be exactly 1)
 
 {{/*
 Standard volumeMounts for Koku containers
-Includes tmp mount and combined CA bundle when on OpenShift
+Includes tmp mount and combined CA bundle
 */}}
 {{- define "cost-onprem.koku.volumeMounts" -}}
 - name: tmp
@@ -428,16 +358,14 @@ Includes tmp mount and combined CA bundle when on OpenShift
 - name: aws-config
   mountPath: /etc/aws
   readOnly: true
-{{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: combined-ca-bundle
   mountPath: /etc/pki/ca-trust/combined
   readOnly: true
-{{- end }}
 {{- end -}}
 
 {{/*
 Standard volumes for Koku pods
-Includes tmp volume and CA bundle volumes for OpenShift
+Includes tmp volume and CA bundle volumes
 */}}
 {{- define "cost-onprem.koku.volumes" -}}
 - name: tmp
@@ -445,7 +373,6 @@ Includes tmp volume and CA bundle volumes for OpenShift
 - name: aws-config
   configMap:
     name: {{ include "cost-onprem.fullname" . }}-aws-config
-{{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: ca-scripts
   configMap:
     name: {{ include "cost-onprem.fullname" . }}-ca-combine
@@ -458,15 +385,13 @@ Includes tmp volume and CA bundle volumes for OpenShift
     name: {{ include "cost-onprem.fullname" . }}-service-ca
 - name: combined-ca-bundle
   emptyDir: {}
-{{- end }}
 {{- end -}}
 
 {{/*
-Init container to combine CA certificates (OpenShift only)
+Init container to combine CA certificates
 Combines system CA bundle with OpenShift cluster root CA and Service CA for Python SSL verification
 */}}
 {{- define "cost-onprem.koku.initContainer.combineCA" -}}
-{{- if eq (include "cost-onprem.platform.isOpenShift" $) "true" }}
 - name: prepare-ca-bundle
   image: {{ .Values.global.initContainers.waitFor.repository }}:{{ .Values.global.initContainers.waitFor.tag }}
   command: ['bash', '/scripts/combine-ca.sh']
@@ -481,7 +406,6 @@ Combines system CA bundle with OpenShift cluster root CA and Service CA for Pyth
       mountPath: /ca-output
   securityContext:
     {{- include "cost-onprem.securityContext.container" . | nindent 4 }}
-{{- end }}
 {{- end -}}
 
 {{/*

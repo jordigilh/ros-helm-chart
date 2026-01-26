@@ -47,8 +47,7 @@ Complete configuration reference for resource requirements, storage, and access 
 | PostgreSQL Sources | 10GB | RWO | Sources database |
 | Kafka | 10GB | RWO | Message storage |
 | Zookeeper | 5GB | RWO | Coordination data |
-| MinIO (K8s only) | 20GB | RWO | Object storage |
-| **Total** | **~65GB** | - | Development: 30GB+ |
+| **Total** | **~45GB** | - | Production: 50GB+ |
 
 ---
 
@@ -116,49 +115,11 @@ insights_cost_management_optimizations: "true"
 
 ## Storage Configuration
 
-### Dual Storage Backend Support
+### ODF Storage Backend
 
-The chart automatically selects the appropriate storage backend based on platform:
+The chart uses OpenShift Data Foundation (ODF) for object storage.
 
-| Platform | Storage Backend | Deployment Method |
-|----------|----------------|-------------------|
-| **Kubernetes/KIND** | MinIO | StatefulSet (automatic) |
-| **OpenShift** | ODF (NooBaa) | Existing installation |
-
-### MinIO Configuration (Kubernetes/KIND)
-
-**Automatic Deployment:**
-```yaml
-# Default values
-minio:
-  image:
-    repository: quay.io/minio/minio
-    tag: "RELEASE.2025-07-23T15-54-02Z"
-  storage:
-    size: 20Gi
-  rootUser: minioaccesskey
-  rootPassword: miniosecretkey
-  ports:
-    api: 9000
-    console: 9990
-```
-
-**Access:**
-- **API Endpoint**: `cost-onprem-minio:9000` (internal)
-- **Console**: `http://localhost:32061/minio` (external)
-- **Credentials**: `minioaccesskey` / `miniosecretkey`
-
-**S3 Configuration:**
-```yaml
-ingress:
-  storage:
-    bucket: "ros-data"
-    useSSL: false
-    urlExpiration: 172800
-    pathPrefix: "ros"
-```
-
-### ODF Configuration (OpenShift)
+### ODF Configuration
 
 **Prerequisites:**
 - ODF installed in `openshift-storage` namespace
@@ -243,52 +204,20 @@ odf:
 
 **Automatic Detection:**
 ```bash
-# Kubernetes - uses default storage class
-kubectl get storageclass
-
 # OpenShift - uses ODF storage class
-kubectl get storageclass ocs-storagecluster-ceph-rbd
+oc get storageclass ocs-storagecluster-ceph-rbd
 ```
 
 **Custom Storage Class:**
 ```yaml
 # values.yaml override
 global:
-  storageClass: "fast-ssd"
+  storageClass: "ocs-storagecluster-ceph-rbd"
 ```
 
 ---
 
 ## Access Points
-
-### Kubernetes (KIND) Deployment
-
-All services accessible through ingress controller on **port 32061**:
-
-| Service | URL | Description |
-|---------|-----|-------------|
-| **Health Check** | `http://localhost:32061/ready` | Ingress health endpoint |
-| **ROS API Status** | `http://localhost:32061/status` | Main API status |
-| **ROS API** | `http://localhost:32061/api/ros/*` | Recommendations API |
-| **Kruize API** | `http://localhost:32061/api/kruize/*` | Optimization engine |
-| **Sources API** | `http://localhost:32061/api/sources/*` | Source management |
-| **Upload API** | `http://localhost:32061/api/ingress/*` | Data upload endpoint |
-| **MinIO Console** | `http://localhost:32061/minio` | Storage admin UI |
-
-**Testing Endpoints:**
-```bash
-# Health check
-curl http://localhost:32061/ready
-
-# ROS API status
-curl http://localhost:32061/status
-
-# List recommendations
-curl http://localhost:32061/api/ros/recommendations
-
-# Kruize optimization
-curl http://localhost:32061/api/kruize/listApplications
-```
 
 ### OpenShift Deployment
 
@@ -356,38 +285,23 @@ helm upgrade cost-onprem ./cost-onprem -n cost-onprem \
 
 ### Port Forwarding (Alternative Access)
 
-For direct service access without ingress/routes:
+For direct service access without routes:
 
 ```bash
 # Cost Management On-Premise API
-kubectl port-forward svc/cost-onprem-ros-api 8000:8000 -n cost-onprem
+oc port-forward svc/cost-onprem-ros-api 8000:8000 -n cost-onprem
 # Access: http://localhost:8000
 
 # Kruize API
-kubectl port-forward svc/cost-onprem-kruize 8080:8080 -n cost-onprem
+oc port-forward svc/cost-onprem-kruize 8080:8080 -n cost-onprem
 # Access: http://localhost:8080
 
-# MinIO Console (Kubernetes only)
-kubectl port-forward svc/cost-onprem-minio 9990:9990 -n cost-onprem
-# Access: http://localhost:9990
-
 # PostgreSQL (for debugging)
-kubectl port-forward svc/cost-onprem-db-ros 5432:5432 -n cost-onprem
-# Connection: postgresql://postgres:postgres@localhost:5432/postgres
+oc port-forward svc/cost-onprem-database 5432:5432 -n cost-onprem
+# Connection: postgresql://koku:koku@localhost:5432/koku
 ```
 
-### Service Mesh / Ingress Configuration
-
-**Kubernetes Ingress:**
-```yaml
-serviceIngress:
-  className: nginx
-  hosts:
-    - host: ros.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-```
+### Route Configuration
 
 **OpenShift Routes:**
 ```yaml
@@ -576,28 +490,9 @@ helm install cost-onprem ./cost-onprem -f values-production.yaml
 
 ---
 
-## Platform-Specific Configuration
+## Platform Configuration
 
-### Kubernetes-Specific
-
-```yaml
-# Use MinIO
-minio:
-  enabled: true
-  storage:
-    size: 20Gi
-
-# Kubernetes Ingress
-serviceIngress:
-  className: nginx
-  enabled: true
-
-# Disable OpenShift features
-serviceRoute:
-  enabled: false
-```
-
-### OpenShift-Specific
+### OpenShift Configuration
 
 ```yaml
 # Use ODF
@@ -613,12 +508,6 @@ serviceRoute:
   tls:
     termination: edge
 
-# Disable Kubernetes features
-minio:
-  enabled: false
-serviceIngress:
-  enabled: false
-
 # OpenShift platform configuration
 global:
   platform:
@@ -626,7 +515,7 @@ global:
     domain: "apps.cluster.example.com"
 ```
 
-**See [Platform Guide](platform-guide.md) for detailed platform differences**
+**See [Platform Guide](platform-guide.md) for detailed platform configuration**
 
 ---
 
@@ -657,19 +546,13 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 4. **Cost Management On-Premise API Access Policy**: Allows external REST API access from `openshift-ingress` namespace to Envoy sidecar on port 9080
 5. **Sources API Policy**: Allows internal service communication only (housekeeper) on port 8000
 
-**Platform-Specific:**
+**OpenShift Configuration:**
 ```yaml
 # OpenShift - Automatically enabled with JWT auth
 jwt_auth:
   enabled: true  # Auto-detected
 networkPolicy:
   enabled: true  # Deployed automatically
-
-# Kubernetes/KIND - Disabled (no JWT auth)
-jwt_auth:
-  enabled: false  # Auto-detected
-networkPolicy:
-  enabled: false  # Not deployed
 ```
 
 **Impact on Service Communication:**

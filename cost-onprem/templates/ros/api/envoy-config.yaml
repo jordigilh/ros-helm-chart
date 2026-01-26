@@ -1,4 +1,3 @@
-{{- if eq (include "cost-onprem.jwt.shouldEnable" .) "true" }}
 {{- $keycloakUrl := .Values.jwtAuth.keycloak.url | default (include "cost-onprem.keycloak.url" .) }}
 {{- $issuerUrl := include "cost-onprem.keycloak.issuerUrl" . }}
 {{- $jwksUrl := include "cost-onprem.keycloak.jwksUrl" . }}
@@ -442,5 +441,4 @@ data:
         socket_address:
           address: 0.0.0.0
           port_value: {{ .Values.jwtAuth.envoy.adminPort }}
-{{- end }}
 

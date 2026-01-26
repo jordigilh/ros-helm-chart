@@ -32,23 +32,11 @@ Complete Helm chart for deploying the full Cost Management stack with OCP cost a
 
 ## 🎯 Resource Optimization Service (ROS)
 
-Kubernetes Helm chart for deploying the Resource Optimization Service (ROS) with Kruize integration and future cost management capabilities.
+OpenShift Helm chart for deploying the Resource Optimization Service (ROS) with Kruize integration and future cost management capabilities.
 
 ## 🚀 Quick Start
 
-### Automated Deployment (Recommended)
-
-```bash
-# Step 1: Create KIND cluster (development/testing)
-./scripts/deploy-kind.sh
-
-# Step 2: Deploy Cost Management On-Premise services
-./scripts/install-helm-chart.sh
-
-# Access services at http://localhost:32061
-```
-
-### Production Deployment
+### OpenShift Deployment
 
 ```bash
 # Install latest release from GitHub
@@ -65,7 +53,7 @@ helm repo add cost-onprem https://insights-onprem.github.io/cost-onprem-chart
 helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --create-namespace
 ```
 
-**Note for OpenShift:** See [Authentication Setup](#-authentication-setup) section for required prerequisites (Keycloak)
+**Note:** See [Authentication Setup](#-authentication-setup) section for required prerequisites (Keycloak)
 
 📖 **See [Installation Guide](docs/installation.md) for detailed installation options**
 
@@ -79,7 +67,7 @@ helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --creat
 | 🚀 Getting Started | 🏭 Production Setup | 🔧 Operations |
 |-------------------|-------------------|---------------|
 | [Quick Start](docs/quickstart.md)<br/>*Fast deployment walkthrough* | [Installation Guide](docs/installation.md)<br/>*Detailed installation instructions* | [Troubleshooting](docs/troubleshooting.md)<br/>*Common issues & solutions* |
-| [Platform Guide](docs/platform-guide.md)<br/>*Kubernetes vs OpenShift* | [JWT Authentication](docs/native-jwt-authentication.md)<br/>*Ingress authentication (Keycloak)* | [Force Upload](docs/force-operator-upload.md)<br/>*Testing & validation* |
+| [Platform Guide](docs/platform-guide.md)<br/>*OpenShift deployment details* | [JWT Authentication](docs/native-jwt-authentication.md)<br/>*Ingress authentication (Keycloak)* | [Force Upload](docs/force-operator-upload.md)<br/>*Testing & validation* |
 | | [Scripts Reference](scripts/README.md)<br/>*Automation scripts* |
 | | [Keycloak Setup](docs/keycloak-jwt-authentication-setup.md)<br/>*SSO configuration* | |
 
@@ -112,15 +100,15 @@ cost-onprem-chart/
 
 ### Stateful Services
 - **PostgreSQL**: Unified database server hosting ROS, Kruize, Koku, and Sources databases
-- **MinIO/ODF**: Object storage (MinIO for Kubernetes, ODF for OpenShift)
+- **ODF**: Object storage (OpenShift Data Foundation with NooBaa S3)
 
 ### Kafka Infrastructure (Managed by Install Script)
 - **Strimzi Operator**: Deploys and manages Kafka clusters
 - **Kafka 3.8.0**: Message streaming with persistent storage (deployed via Strimzi CRDs)
 
 ### Application Services
-- **Ingress**: File upload API and routing gateway (with Envoy sidecar for JWT authentication on OpenShift)
-- **ROS API**: Main REST API for recommendations and status (with Envoy sidecar for authentication on OpenShift)
+- **Ingress**: File upload API and routing gateway (with Envoy sidecar for JWT authentication)
+- **ROS API**: Main REST API for recommendations and status (with Envoy sidecar for authentication)
 - **ROS Processor**: Data processing service for cost optimization
 - **ROS Recommendation Poller**: Kruize integration for recommendations
 - **ROS Housekeeper**: Maintenance tasks and data cleanup
@@ -128,7 +116,7 @@ cost-onprem-chart/
 - **Sources API**: Source management and integration (middleware-based authentication for protected endpoints, unauthenticated metadata endpoints for internal use)
 - **Redis/Valkey**: Caching layer for performance
 
-**Security Architecture (OpenShift)**:
+**Security Architecture**:
 - **Ingress Authentication**: Envoy sidecar with JWT validation (Keycloak) for external uploads
 - **Backend Authentication**: Envoy sidecar with JWT validation (Keycloak) for API access
 - **Network Policies**: Restrict direct access to backend services (Kruize, Sources API) while allowing Prometheus metrics scraping
@@ -153,36 +141,36 @@ Complete Cost Management deployment requires significant cluster resources:
 **📖 See [Resource Requirements Guide](docs/resource-requirements.md) for detailed breakdown by component.**
 
 ### Storage Options
-- **Kubernetes/KIND**: MinIO (automatically deployed)
 - **OpenShift**: ODF with Direct Ceph RGW (recommended for strong consistency)
 
 **Note**: Direct Ceph RGW (`ocs-storagecluster-ceph-rgw`) is recommended over NooBaa for ROS deployments due to strong read-after-write consistency requirements. NooBaa has eventual consistency issues that can cause ROS processing failures.
+
+### Storage Requirements
+- **ODF**: OpenShift Data Foundation with NooBaa (required for S3-compatible storage)
 
 **See [Configuration Guide](docs/configuration.md) for detailed requirements**
 
 ## 🌐 Access Points
 
-### Kubernetes (KIND)
-All services accessible at **http://localhost:32061**:
-- Health Check: `/ready`
-- ROS API: `/api/ros/*`
-- Kruize API: `/api/kruize/*`
-- Sources API: `/api/sources/*`
-- Upload API: `/api/ingress/*`
-
-### OpenShift
 Services accessible via OpenShift Routes:
 ```bash
 oc get routes -n cost-onprem
 ```
 
-**See [Platform Guide](docs/platform-guide.md) for platform-specific details**
+Available endpoints:
+- Health Check: `/ready`
+- ROS API: `/api/ros/*`
+- Cost Management API: `/api/cost-management/*`
+- Sources API: `/api/sources/*`
+- Upload API: `/api/ingress/*`
+
+**See [Platform Guide](docs/platform-guide.md) for detailed access information**
 
 ## 🔐 Authentication Setup
 
-### JWT Authentication (OpenShift/Production)
+### JWT Authentication
 
-For OpenShift deployments, JWT authentication is **automatically enabled** and requires Keycloak configuration:
+JWT authentication is **automatically enabled** and requires Keycloak configuration:
 
 ```bash
 # Step 1: Deploy Red Hat Build of Keycloak (RHBK)
@@ -259,7 +247,6 @@ Key requirements:
 
 ### CI/CD Automation
 - **Lint & Validate**: Chart validation on every PR
-- **Full Deployment Test**: E2E testing with KIND cluster
 - **Automated Releases**: Version-tagged releases with packaged charts
 - **Version Tracking**: `--save-versions` flag generates `version_info.json` for traceability
 
