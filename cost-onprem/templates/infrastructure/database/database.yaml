@@ -41,14 +41,36 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "cost-onprem.database.defaultSecretName" . }}
-                  key: admin-user
+                  key: postgres-user
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "cost-onprem.database.defaultSecretName" . }}
-                  key: admin-password
+                  key: postgres-password
             - name: PGDATA
               value: "/var/lib/postgresql/data/pgdata"
+            # Password environment variables for database initialization script
+            # These are used by /docker-entrypoint-initdb.d/init-databases.sh
+            - name: ROS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.database.defaultSecretName" . }}
+                  key: ros-password
+            - name: KRUIZE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.database.defaultSecretName" . }}
+                  key: kruize-password
+            - name: KOKU_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.database.defaultSecretName" . }}
+                  key: koku-password
+            - name: SOURCES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.database.defaultSecretName" . }}
+                  key: sources-password
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data

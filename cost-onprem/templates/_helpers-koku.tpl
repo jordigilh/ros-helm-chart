@@ -79,10 +79,11 @@ Koku database name
 {{- end -}}
 
 {{/*
-Koku database user
+Koku database user - returns hardcoded value (actual value in secret)
+Note: Username stored in secret key 'koku-user'
 */}}
 {{- define "cost-onprem.koku.database.user" -}}
-{{- .Values.database.koku.user | default "koku" -}}
+koku
 {{- end -}}
 
 {{/*
@@ -260,7 +261,10 @@ Common environment variables for Koku API and Celery
 - name: DATABASE_NAME
   value: {{ include "cost-onprem.koku.database.dbname" . | quote }}
 - name: DATABASE_USER
-  value: {{ include "cost-onprem.koku.database.user" . | quote }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "cost-onprem.koku.database.secretName" . }}
+      key: koku-user
 - name: DATABASE_PASSWORD
   valueFrom:
     secretKeyRef:

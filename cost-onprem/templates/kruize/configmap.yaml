@@ -9,15 +9,12 @@ data:
   cdappconfig.json: |
     {
       "database": {
-        "adminPassword": "{{ include "cost-onprem.database.kruize.password" . }}",
-        "adminUsername": "{{ include "cost-onprem.database.kruize.user" . }}",
         "hostname": "{{ include "cost-onprem.kruize.databaseHost" . }}",
         "name": "{{ .Values.database.kruize.name }}",
-        "password": "{{ include "cost-onprem.database.kruize.password" . }}",
         "port": {{ .Values.database.server.port }},
-        "username": "{{ include "cost-onprem.database.kruize.user" . }}",
         "sslMode": "{{ .Values.database.server.sslMode }}"
       },
+      "_comment": "Credentials removed - applications must use environment variables (DATABASE_USER, DATABASE_PASSWORD) from secrets",
       "kafka": {
         "brokers": [
           {
