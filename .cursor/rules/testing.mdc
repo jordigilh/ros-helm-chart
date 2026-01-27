@@ -77,8 +77,14 @@ E2E_CLEANUP_AFTER=true    # Clean after tests (default)
 E2E_RESTART_SERVICES=false # Restart Redis/listener (optional)
 ```
 
-## When Modifying Tests
-1. Check current pod labels: `kubectl get pods -n NAMESPACE -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.labels.app\.kubernetes\.io/component}{"\n"}{end}'`
-2. Run both CI and extended mode to verify
-3. Update label mappings if chart labels change
-4. Check `tests/conftest.py` for shared fixtures
+## When Adding or Modifying Tests
+
+**See `.cursor/rules/test-design.mdc` for test design guidelines.**
+
+Key points:
+1. **Tests must be self-contained** - never depend on other tests' data
+2. Use fixtures for setup/teardown with cleanup in `finally` or teardown
+3. Use `pytest.skip()` when prerequisites unavailable (not silent returns)
+4. Check pod labels: `kubectl get pods -n NAMESPACE -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.labels.app\.kubernetes\.io/component}{"\n"}{end}'`
+5. Run `--all` tests to verify: `./scripts/run-pytest.sh --all`
+6. Check `tests/conftest.py` and `tests/e2e_helpers.py` for shared utilities

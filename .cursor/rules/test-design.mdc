@@ -1,0 +1,117 @@
+---
+description: Test design principles and guidelines for writing pytest tests
+globs: ["tests/**/*.py"]
+---
+
+# Test Design Guidelines
+
+## Core Principle: Tests Must Be Self-Contained
+
+**Every test must set up its own data and clean up after itself.**
+
+Tests MUST NOT depend on:
+- Data created by other tests
+- Leftover data from previous test runs
+- Specific test execution order
+
+### Why This Matters
+- Tests run in parallel or random order
+- CI environments start fresh each run
+- Flaky tests waste developer time
+- Dependencies create cascading failures
+
+## Correct Patterns
+
+### ✅ Self-Contained Test with Fixture
+```python
+@pytest.fixture(scope="module")
+def test_data(cluster_config):
+    """Set up test data, yield context, clean up."""
+    # Setup
+    cluster_id = generate_cluster_id()
+    source = register_source(cluster_id)
+    upload_data(cluster_id)
+    wait_for_processing(cluster_id)
+    
+    yield {"cluster_id": cluster_id, "source": source}
+    
+    # Cleanup
+    delete_source(source.id)
+    cleanup_database(cluster_id)
+
+def test_something(test_data):
+    """Test uses data from fixture."""
+    assert query_data(test_data["cluster_id"]) is not None
+```
+
+### ✅ Test That Skips When Prerequisites Missing
+```python
+def test_requires_data(cluster_config):
+    """Skip if required infrastructure not available."""
+    pod = get_pod_by_label(cluster_config.namespace, "app=database")
+    if not pod:
+        pytest.skip("Database pod not found")
+    
+    # Actual test logic
+    assert pod_is_healthy(pod)
+```
+
+## Anti-Patterns to Avoid
+
+### ❌ Test Depending on Another Test's Data
+```python
+# BAD: Assumes test_01 already ran and created data
+def test_02_verify_data():
+    result = query_database("SELECT * FROM data")
+    assert len(result) > 0  # Will fail if test_01 didn't run
+```
+
+### ❌ Test That Passes When It Should Skip
+```python
+# BAD: Returns early without skip or assertion
+def test_something():
+    data = get_existing_data()
+    if not data:
+        return  # Silent pass - should be pytest.skip()
+    assert data["value"] > 0
+```
+
+### ❌ Hardcoded Dependencies on Test Order
+```python
+# BAD: Assumes specific cluster_id from previous test
+def test_verify_cluster():
+    cluster_id = "e2e-pytest-12345"  # Hardcoded from test_01
+    assert cluster_exists(cluster_id)
+```
+
+## Shared E2E Helpers
+
+Use `tests/e2e_helpers.py` for common setup/teardown:
+
+| Component | Usage |
+|-----------|-------|
+| `NISEConfig` | Consistent test data configuration |
+| `generate_cluster_id()` | Unique cluster IDs per test |
+| `register_source()` | Source registration with cleanup |
+| `wait_for_provider()` | Wait for Kafka → Koku provider creation |
+| `cleanup_database_records()` | Clean up test data |
+
+## When Writing New Tests
+
+1. **Ask**: "Can this test run in isolation?"
+2. **Use fixtures** for setup/teardown
+3. **Generate unique IDs** for test data
+4. **Clean up** in fixture teardown or `finally` blocks
+5. **Skip gracefully** when prerequisites unavailable
+6. **Never assume** data from other tests exists
+
+## Test Markers for Dependencies
+
+If a test truly requires extended setup time:
+```python
+@pytest.mark.extended
+@pytest.mark.timeout(900)
+def test_long_running():
+    """Marked extended - not run in default CI."""
+    pass
+```
