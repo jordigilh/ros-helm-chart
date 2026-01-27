@@ -38,7 +38,8 @@ spec:
               echo 'Waiting for dependencies (Kafka, Kruize) to be ready...'
               sleep 60
               echo 'Starting recommendation-poller...'
-              ./rosocp db migrate up
+              # NOTE: Migrations are now handled by a pre-upgrade/pre-install Helm Job
+              # See: templates/ros/jobs/migration.yaml
               ./rosocp start recommendation-poller
           ports:
             - name: metrics

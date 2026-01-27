@@ -39,7 +39,8 @@ spec:
               echo 'Waiting for dependencies (Kafka) to be ready...'
               sleep 60
               echo 'Starting housekeeper...'
-              ./rosocp db migrate up
+              # NOTE: Migrations are now handled by a pre-upgrade/pre-install Helm Job
+              # See: templates/ros/jobs/migration.yaml
               ./rosocp start housekeeper --sources
           env:
             - name: CLOWDER_ENABLED

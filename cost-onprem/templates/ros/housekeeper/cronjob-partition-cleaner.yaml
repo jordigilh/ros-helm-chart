@@ -28,7 +28,12 @@ spec:
             image: {{ .Values.ros.image.repository }}:{{ .Values.ros.image.tag }}
             imagePullPolicy: {{ .Values.ros.image.pullPolicy | default .Values.global.pullPolicy }}
             command: ["sh"]
-            args: ["-c", "./rosocp db migrate up && ./rosocp start housekeeper --partitions"]
+            args:
+              - "-c"
+              - |
+                # NOTE: Migrations are now handled by a pre-upgrade/pre-install Helm Job
+                # See: templates/ros/jobs/migration.yaml
+                ./rosocp start housekeeper --partitions
             env:
             - name: CLOWDER_ENABLED
               value: "false"
