@@ -224,6 +224,22 @@ cost-onprem.io/worker-queue: {{ $type }}
 {{- end -}}
 
 {{/*
+Selector labels for Koku MASU (cost processor)
+*/}}
+{{- define "cost-onprem.koku.masu.selectorLabels" -}}
+{{ include "cost-onprem.selectorLabels" . }}
+app.kubernetes.io/component: cost-processor
+{{- end -}}
+
+{{/*
+Selector labels for Koku Listener
+*/}}
+{{- define "cost-onprem.koku.listener.selectorLabels" -}}
+{{ include "cost-onprem.selectorLabels" . }}
+app.kubernetes.io/component: listener
+{{- end -}}
+
+{{/*
 =============================================================================
 Service Account Helpers
 =============================================================================

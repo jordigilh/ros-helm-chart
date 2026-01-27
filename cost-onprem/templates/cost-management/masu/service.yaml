@@ -15,6 +15,5 @@ spec:
     protocol: TCP
     name: http
   selector:
-    {{- include "cost-onprem.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: cost-processor
+    {{- include "cost-onprem.koku.masu.selectorLabels" . | nindent 4 }}
 {{- end }}

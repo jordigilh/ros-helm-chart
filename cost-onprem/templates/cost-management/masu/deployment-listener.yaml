@@ -11,8 +11,7 @@ spec:
   replicas: {{ .Values.costManagement.listener.replicas }}
   selector:
     matchLabels:
-      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: listener
+      {{- include "cost-onprem.koku.listener.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
