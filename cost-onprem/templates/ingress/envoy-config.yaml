@@ -452,7 +452,7 @@ data:
             - endpoint:
                 address:
                   socket_address:
-                    address: {{ include "cost-onprem.fullname" . }}-koku-api-reads.{{ .Release.Namespace }}.svc.cluster.local
+                    address: {{ include "cost-onprem.koku.api.reads.name" . }}.{{ .Release.Namespace }}.svc.cluster.local
                     port_value: 8000
         circuit_breakers:
           thresholds:
@@ -474,7 +474,7 @@ data:
             - endpoint:
                 address:
                   socket_address:
-                    address: {{ include "cost-onprem.fullname" . }}-koku-api-writes.{{ .Release.Namespace }}.svc.cluster.local
+                    address: {{ include "cost-onprem.koku.api.writes.name" . }}.{{ .Release.Namespace }}.svc.cluster.local
                     port_value: 8000
         circuit_breakers:
           thresholds:
