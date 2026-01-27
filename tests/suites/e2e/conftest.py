@@ -5,6 +5,9 @@ Most fixtures are inherited from the root conftest.py.
 This file contains E2E-specific fixtures only.
 """
 
+# Import shared fixtures from cost_management suite
+pytest_plugins = ["suites.cost_management.conftest"]
+
 # E2E-specific fixtures are defined in the test classes themselves
 # to ensure proper scoping (class-level for the complete flow tests).
 #
