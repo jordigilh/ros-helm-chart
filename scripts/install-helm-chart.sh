@@ -1576,8 +1576,6 @@ set_platform_config() {
             # Fallback to minimal inline configuration if openshift-values.yaml is missing
             HELM_EXTRA_ARGS+=(
                 "--set" "global.storageClass=odf-storagecluster-ceph-rbd"
-                "--set" "ingress.auth.enabled=false"
-                "--set" "ingress.upload.requireAuth=false"
             )
         fi
     else

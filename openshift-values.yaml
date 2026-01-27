@@ -119,14 +119,6 @@ jwtAuth:
     # namespace: "keycloak"  # Optional: skip namespace discovery
     # serviceName: "keycloak"  # Optional: skip service discovery
 
-# Authentication configuration
-# OpenShift uses native OAuth/RBAC, so we disable custom JWT auth
-ingress:
-  auth:
-    enabled: false  # Use OpenShift native authentication
-  upload:
-    requireAuth: false  # Authentication handled by OpenShift Routes
-
 # OpenShift Routes configuration
 # Override: longer timeout (300s vs 30s default) for large file uploads
 serviceRoute:

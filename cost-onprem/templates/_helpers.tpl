@@ -884,3 +884,30 @@ This ensures Valkey can write to persistent volumes in OCP 4.20+ while remaining
   {{- end -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+Gateway service name
+Returns the fully qualified gateway service name
+Usage: {{ include "cost-onprem.gateway.serviceName" . }}
+*/}}
+{{- define "cost-onprem.gateway.serviceName" -}}
+{{- printf "%s-gateway" (include "cost-onprem.fullname" .) -}}
+{{- end }}
+
+{{/*
+Gateway service port
+Returns the gateway service port for HTTP traffic
+Usage: {{ include "cost-onprem.gateway.servicePort" . }}
+*/}}
+{{- define "cost-onprem.gateway.servicePort" -}}
+{{- .Values.jwtAuth.envoy.servicePort | default 80 -}}
+{{- end }}
+
+{{/*
+Gateway Envoy configmap name
+Returns the fully qualified gateway Envoy configmap name
+Usage: {{ include "cost-onprem.gateway.configMapName" . }}
+*/}}
+{{- define "cost-onprem.gateway.configMapName" -}}
+{{- printf "%s-envoy-config" (include "cost-onprem.gateway.serviceName" .) -}}
+{{- end }}
