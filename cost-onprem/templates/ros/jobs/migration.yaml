@@ -1,0 +1,108 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-ros-migrate
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ros-migration
+  annotations:
+    # Run migrations before deploying ROS components
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600  # 10 minute timeout
+  template:
+    metadata:
+      labels:
+        {{- include "cost-onprem.labels" . | nindent 8 }}
+        app.kubernetes.io/component: ros-migration
+      annotations:
+        checksum/ros-db-credentials: {{ include (print $.Template.BasePath "/infrastructure/database/secrets.yaml") . | sha256sum }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ .Values.ros.serviceAccount.name }}
+      securityContext:
+        {{- include "cost-onprem.securityContext.pod" . | nindent 8 }}
+
+      containers:
+      - name: migrate
+        image: "{{ .Values.ros.image.repository }}:{{ .Values.ros.image.tag }}"
+        imagePullPolicy: {{ .Values.ros.image.pullPolicy | default .Values.global.pullPolicy }}
+        command: ["sh", "-c"]
+        args:
+          - |
+            set -e
+            echo "=== ROS Database Migrations Job ==="
+            echo "Timestamp: $(date)"
+            echo "Release: {{ .Release.Name }}"
+            echo "Namespace: {{ .Release.Namespace }}"
+
+            # Wait for database to be ready
+            DB_HOST="{{ include "cost-onprem.fullname" . }}-database.{{ .Release.Namespace }}.svc.cluster.local"
+            DB_PORT="{{ .Values.database.server.port }}"
+            MAX_WAIT=600  # 10 minutes timeout
+            ELAPSED=0
+            
+            echo "Waiting for database at ${DB_HOST}:${DB_PORT}..."
+            while ! timeout 5 bash -c "cat < /dev/null > /dev/tcp/${DB_HOST}/${DB_PORT}" 2>/dev/null; do
+              if [ $ELAPSED -ge $MAX_WAIT ]; then
+                echo "ERROR: Database not ready after ${MAX_WAIT} seconds"
+                exit 1
+              fi
+              echo "Database not ready (${ELAPSED}s elapsed), waiting..."
+              sleep 5
+              ELAPSED=$((ELAPSED + 5))
+            done
+            echo "✓ Database is ready (waited ${ELAPSED}s)"
+
+            # Run ROS migrations with advisory lock (different lock ID than Koku)
+            echo "✓ Acquired migration lock (ID: 987654321)"
+            ./rosocp db migrate up
+            echo "✓ ROS migrations completed successfully"
+            echo "✓ Migration lock will auto-release on connection close"
+            echo "=== Migration job completed ==="
+
+        env:
+          - name: CLOWDER_ENABLED
+            value: "false"
+          - name: DB_HOST
+            value: {{ include "cost-onprem.database.host" . }}
+          - name: DB_PORT
+            value: {{ .Values.database.server.port | quote }}
+          - name: DB_NAME
+            value: {{ .Values.database.ros.name | quote }}
+          - name: DB_USER
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "cost-onprem.fullname" . }}-db-credentials
+                key: ros-user
+          - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "cost-onprem.fullname" . }}-db-credentials
+                key: ros-password
+          - name: LOG_LEVEL
+            value: {{ .Values.ros.api.logLevel | quote }}
+
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+
+        securityContext:
+          {{- include "cost-onprem.securityContext.container" . | nindent 10 }}
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+      volumes:
+      - name: tmp
+        emptyDir: {}

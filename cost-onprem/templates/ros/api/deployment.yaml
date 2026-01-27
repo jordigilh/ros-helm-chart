@@ -82,7 +82,8 @@ spec:
           command: ["sh", "-c"]
           args:
             - |
-              ./rosocp db migrate up
+              # NOTE: Migrations are now handled by a pre-upgrade/pre-install Helm Job
+              # See: templates/ros/jobs/migration.yaml
               ./rosocp start api
           ports:
             - name: http
