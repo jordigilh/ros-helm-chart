@@ -444,76 +444,80 @@ create_storage_credentials_secret() {
         fi
     fi
 
-    if [ "$PLATFORM" = "openshift" ]; then
-        # For OpenShift, check if ODF credentials secret exists
-        local odf_secret_name="cost-onprem-odf-credentials"
-        if kubectl get secret "$odf_secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
-            echo_info "Found existing ODF credentials secret: $odf_secret_name"
-            echo_info "Creating storage credentials secret from ODF credentials..."
-                # Extract credentials from ODF secret
-            local access_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}')
-            local secret_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}')
-                # Create storage credentials secret
-            kubectl create secret generic "$secret_name" \
-                --namespace="$NAMESPACE" \
-                --from-literal=access-key="$(echo "$access_key" | base64 -d)" \
-                --from-literal=secret-key="$(echo "$secret_key" | base64 -d)"
-            echo_success "Storage credentials secret created from ODF credentials"
-        else
-            # Try to create ODF credentials from noobaa-admin secret (from create_secret_odf.sh logic)
-            echo_info "ODF credentials secret not found. Attempting to create from noobaa-admin secret..."
-
-            if kubectl get secret noobaa-admin -n openshift-storage >/dev/null 2>&1; then
-                echo_info "Found noobaa-admin secret, extracting ODF credentials..."
-
-                # Extract credentials from noobaa-admin secret (using create_secret_odf.sh logic)
-                local access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d)
-                local secret_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d)
-
-                # Create ODF credentials secret first
-                kubectl create secret generic "$odf_secret_name" \
-                    --namespace="$NAMESPACE" \
-                    --from-literal=access-key="$access_key" \
-                    --from-literal=secret-key="$secret_key"
-
-                echo_success "Created ODF credentials secret from noobaa-admin"
-
-                # Now create storage credentials secret
-                kubectl create secret generic "$secret_name" \
-                    --namespace="$NAMESPACE" \
-                    --from-literal=access-key="$access_key" \
-                    --from-literal=secret-key="$secret_key"
-
-                echo_success "Storage credentials secret created from noobaa-admin credentials"
-            else
-                echo_error "Neither ODF credentials secret '$odf_secret_name' nor noobaa-admin secret found"
-                echo_error "For OpenShift deployments, you must create the ODF credentials secret first:"
-                echo_info "  kubectl create secret generic $odf_secret_name \\"
-                echo_info "    --namespace=$NAMESPACE \\"
-                echo_info "    --from-literal=access-key=<your-odf-access-key> \\"
-                echo_info "    --from-literal=secret-key=<your-odf-secret-key>"
-                echo_info ""
-                echo_info "Or ensure noobaa-admin secret exists in openshift-storage namespace"
-                return 1
-            fi
-        fi
-    else
-        # For Kubernetes/KIND, create MinIO credentials with random password
-        echo_info "Creating MinIO credentials with random password..."
-        local minio_secret_key=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+    # OpenShift-only deployment (supports both ODF and MinIO)
+    # Try ODF first, fall back to MinIO for testing/CI environments
+    local odf_secret_name="cost-onprem-odf-credentials"
+    
+    if kubectl get secret "$odf_secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        # Scenario 1: ODF credentials secret exists (created by CI or manually)
+        echo_info "Found existing ODF credentials secret: $odf_secret_name"
+        echo_info "Creating storage credentials secret from ODF credentials..."
+        local access_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}')
+        local secret_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}')
         kubectl create secret generic "$secret_name" \
             --namespace="$NAMESPACE" \
-            --from-literal=access-key="minioadmin" \
-            --from-literal=secret-key="$minio_secret_key"
+            --from-literal=access-key="$(echo "$access_key" | base64 -d)" \
+            --from-literal=secret-key="$(echo "$secret_key" | base64 -d)"
+        echo_success "Storage credentials secret created from ODF credentials"
+        echo_info "  Storage backend: ODF (OpenShift Data Foundation)"
+    elif kubectl get secret noobaa-admin -n openshift-storage >/dev/null 2>&1; then
+        # Scenario 2: NooBaa admin secret exists (production ODF deployment)
+        echo_info "Found noobaa-admin secret in openshift-storage namespace"
+        echo_info "Extracting ODF credentials from NooBaa..."
 
-        if [ $? -eq 0 ]; then
-            echo_success "Storage credentials secret created with MinIO credentials"
-            echo_info "  Access Key: minioadmin"
-            echo_info "  Secret Key: (random, retrieve with: kubectl get secret $secret_name -n $NAMESPACE -o jsonpath='{.data.secret-key}' | base64 -d)"
-        else
-            echo_error "Failed to create storage credentials secret"
-            return 1
-        fi
+        local access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d)
+        local secret_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d)
+
+        # Create ODF credentials secret for reference
+        kubectl create secret generic "$odf_secret_name" \
+            --namespace="$NAMESPACE" \
+            --from-literal=access-key="$access_key" \
+            --from-literal=secret-key="$secret_key"
+        echo_success "Created ODF credentials secret from noobaa-admin"
+
+        # Create storage credentials secret
+        kubectl create secret generic "$secret_name" \
+            --namespace="$NAMESPACE" \
+            --from-literal=access-key="$access_key" \
+            --from-literal=secret-key="$secret_key"
+        echo_success "Storage credentials secret created from noobaa-admin credentials"
+        echo_info "  Storage backend: ODF (OpenShift Data Foundation)"
+    elif kubectl get secret minio-credentials -n minio >/dev/null 2>&1; then
+        # Scenario 3: MinIO credentials exist (testing/CI environment on OpenShift)
+        echo_info "ODF not detected, checking for MinIO deployment..."
+        echo_info "Found MinIO credentials secret in minio namespace"
+        echo_info "Creating storage credentials secret from MinIO credentials..."
+        
+        local access_key=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.access-key}')
+        local secret_key=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.secret-key}')
+        kubectl create secret generic "$secret_name" \
+            --namespace="$NAMESPACE" \
+            --from-literal=access-key="$(echo "$access_key" | base64 -d)" \
+            --from-literal=secret-key="$(echo "$secret_key" | base64 -d)"
+        echo_success "Storage credentials secret created from MinIO credentials"
+        echo_info "  Storage backend: MinIO (standalone on OpenShift)"
+    else
+        # Scenario 4: No storage backend found - FAIL
+        echo_error "No storage backend detected!"
+        echo_error ""
+        echo_error "This chart requires either ODF (OpenShift Data Foundation) or MinIO for S3-compatible storage."
+        echo_error ""
+        echo_info "Available options:"
+        echo_info ""
+        echo_info "Option 1: Deploy with ODF (Production - recommended)"
+        echo_info "  - Ensure ODF operator is installed on your OpenShift cluster"
+        echo_info "  - The script will auto-discover credentials from: openshift-storage/noobaa-admin"
+        echo_info "  - Or manually create: kubectl create secret generic cost-onprem-odf-credentials \\"
+        echo_info "      --namespace=$NAMESPACE \\"
+        echo_info "      --from-literal=access-key=<your-access-key> \\"
+        echo_info "      --from-literal=secret-key=<your-secret-key>"
+        echo_info ""
+        echo_info "Option 2: Deploy with MinIO (Testing/CI only)"
+        echo_info "  - First deploy MinIO: ./scripts/deploy-minio-test.sh minio"
+        echo_info "  - Then re-run this installation script"
+        echo_info ""
+        echo_error "Deployment aborted. Please configure a storage backend and try again."
+        return 1
     fi
 }
 
