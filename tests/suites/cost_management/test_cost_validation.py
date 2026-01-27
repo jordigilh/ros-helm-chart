@@ -96,11 +96,28 @@ class TestSummaryTableData:
 @pytest.mark.cost_management
 @pytest.mark.cost_validation
 @pytest.mark.extended
-class TestCPUMetrics:
-    """Tests for CPU metric validation."""
+class TestMetricValidation:
+    """Tests for CPU and memory metric validation against expected values."""
     
-    def test_cpu_request_hours_within_tolerance(self, cost_validation_data):
-        """Verify CPU request hours match expected values within tolerance."""
+    @pytest.mark.parametrize("metric_name,db_column,expected_key,unit", [
+        pytest.param(
+            "CPU request", "pod_request_cpu_core_hours", 
+            "expected_cpu_hours", "hours", 
+            id="cpu_request_hours"
+        ),
+        pytest.param(
+            "memory request", "pod_request_memory_gigabyte_hours", 
+            "expected_memory_gb_hours", "GB-hours", 
+            id="memory_request_gb_hours"
+        ),
+    ])
+    def test_request_metric_within_tolerance(
+        self, cost_validation_data, metric_name: str, db_column: str, expected_key: str, unit: str
+    ):
+        """Verify request metric matches expected value within tolerance.
+        
+        Parametrized for: CPU request hours, memory request GB-hours.
+        """
         ctx = cost_validation_data
         expected = ctx["expected"]
         tolerance = get_cost_tolerance()
@@ -111,29 +128,36 @@ class TestCPUMetrics:
             "koku",
             "koku",
             f"""
-            SELECT SUM(pod_request_cpu_core_hours) as total_cpu_hours
+            SELECT SUM({db_column}) as total
             FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
             WHERE cluster_id = '{ctx["cluster_id"]}'
             AND namespace NOT LIKE '%unallocated%'
             """,
         )
         
-        assert result and result[0][0] is not None, "No CPU data in summary tables"
+        assert result and result[0][0] is not None, f"No {metric_name} data in summary tables"
         
-        actual_cpu_hours = float(result[0][0])
-        expected_cpu_hours = expected["expected_cpu_hours"]
+        actual_value = float(result[0][0])
+        expected_value = expected[expected_key]
         
-        diff_pct = abs(actual_cpu_hours - expected_cpu_hours) / expected_cpu_hours if expected_cpu_hours > 0 else 0
+        diff_pct = abs(actual_value - expected_value) / expected_value if expected_value > 0 else 0
         
         assert diff_pct <= tolerance, (
-            f"CPU request hours mismatch:\n"
-            f"  Expected: {expected_cpu_hours:.2f} hours\n"
-            f"  Actual:   {actual_cpu_hours:.2f} hours\n"
+            f"{metric_name.capitalize()} mismatch:\n"
+            f"  Expected: {expected_value:.2f} {unit}\n"
+            f"  Actual:   {actual_value:.2f} {unit}\n"
             f"  Diff:     {diff_pct*100:.1f}% (tolerance: {tolerance*100}%)"
         )
     
-    def test_cpu_usage_recorded(self, cost_validation_data):
-        """Verify CPU usage data was recorded."""
+    @pytest.mark.parametrize("metric_name,db_column,unit", [
+        pytest.param("CPU", "pod_usage_cpu_core_hours", "hours", id="cpu_usage"),
+        pytest.param("memory", "pod_usage_memory_gigabyte_hours", "GB-hours", id="memory_usage"),
+    ])
+    def test_usage_recorded(self, cost_validation_data, metric_name: str, db_column: str, unit: str):
+        """Verify usage data was recorded (non-zero).
+        
+        Parametrized for: CPU usage, memory usage.
+        """
         ctx = cost_validation_data
         
         result = execute_db_query(
@@ -142,79 +166,17 @@ class TestCPUMetrics:
             "koku",
             "koku",
             f"""
-            SELECT SUM(pod_usage_cpu_core_hours) as total_cpu_usage
+            SELECT SUM({db_column}) as total_usage
             FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
             WHERE cluster_id = '{ctx["cluster_id"]}'
             AND namespace NOT LIKE '%unallocated%'
             """,
         )
         
-        assert result and result[0][0] is not None, "No CPU usage data"
+        assert result and result[0][0] is not None, f"No {metric_name} usage data"
         
-        actual_cpu_usage = float(result[0][0])
-        assert actual_cpu_usage > 0, f"CPU usage hours is zero or negative: {actual_cpu_usage}"
-
-
-@pytest.mark.cost_management
-@pytest.mark.cost_validation
-@pytest.mark.extended
-class TestMemoryMetrics:
-    """Tests for memory metric validation."""
-    
-    def test_memory_request_gb_hours_within_tolerance(self, cost_validation_data):
-        """Verify memory request GB-hours match expected values within tolerance."""
-        ctx = cost_validation_data
-        expected = ctx["expected"]
-        tolerance = get_cost_tolerance()
-        
-        result = execute_db_query(
-            ctx["namespace"],
-            ctx["db_pod"],
-            "koku",
-            "koku",
-            f"""
-            SELECT SUM(pod_request_memory_gigabyte_hours) as total_mem_hours
-            FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
-            WHERE cluster_id = '{ctx["cluster_id"]}'
-            AND namespace NOT LIKE '%unallocated%'
-            """,
-        )
-        
-        assert result and result[0][0] is not None, "No memory data in summary tables"
-        
-        actual_mem_hours = float(result[0][0])
-        expected_mem_hours = expected["expected_memory_gb_hours"]
-        
-        diff_pct = abs(actual_mem_hours - expected_mem_hours) / expected_mem_hours if expected_mem_hours > 0 else 0
-        
-        assert diff_pct <= tolerance, (
-            f"Memory request GB-hours mismatch:\n"
-            f"  Expected: {expected_mem_hours:.2f} GB-hours\n"
-            f"  Actual:   {actual_mem_hours:.2f} GB-hours\n"
-            f"  Diff:     {diff_pct*100:.1f}% (tolerance: {tolerance*100}%)"
-        )
-    
-    def test_memory_usage_recorded(self, cost_validation_data):
-        """Verify memory usage data was recorded."""
-        ctx = cost_validation_data
-        
-        result = execute_db_query(
-            ctx["namespace"],
-            ctx["db_pod"],
-            "koku",
-            "koku",
-            f"""
-            SELECT SUM(pod_usage_memory_gigabyte_hours) as total_mem_usage
-            FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
-            WHERE cluster_id = '{ctx["cluster_id"]}'
-            AND namespace NOT LIKE '%unallocated%'
-            """,
-        )
-        
-        assert result and result[0][0] is not None, "No memory usage data"
-        
-        actual_mem_usage = float(result[0][0])
-        assert actual_mem_usage > 0, f"Memory usage GB-hours is zero or negative: {actual_mem_usage}"
+        actual_usage = float(result[0][0])
+        assert actual_usage > 0, f"{metric_name} usage is zero or negative: {actual_usage} {unit}"
 
 
 @pytest.mark.cost_management
@@ -223,8 +185,18 @@ class TestMemoryMetrics:
 class TestResourceCounts:
     """Tests for resource count validation."""
     
-    def test_node_count_matches_expected(self, cost_validation_data):
-        """Verify unique node count matches expected."""
+    @pytest.mark.parametrize("resource_type,db_column,expected_key", [
+        pytest.param("node", "node", "expected_node_count", id="node_count"),
+        pytest.param("namespace", "namespace", "expected_namespace_count", id="namespace_count"),
+        pytest.param("pod", "resource_id", "expected_pod_count", id="pod_count"),
+    ])
+    def test_resource_count_matches_expected(
+        self, cost_validation_data, resource_type: str, db_column: str, expected_key: str
+    ):
+        """Verify unique resource count matches expected.
+        
+        Parametrized for: node, namespace, pod counts.
+        """
         ctx = cost_validation_data
         expected = ctx["expected"]
         
@@ -234,74 +206,21 @@ class TestResourceCounts:
             "koku",
             "koku",
             f"""
-            SELECT COUNT(DISTINCT node) as node_count
+            SELECT COUNT(DISTINCT {db_column}) as count
             FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
             WHERE cluster_id = '{ctx["cluster_id"]}'
             AND namespace NOT LIKE '%unallocated%'
             """,
         )
         
-        assert result, "Could not query node count"
+        assert result, f"Could not query {resource_type} count"
         
         actual_count = int(result[0][0])
-        expected_count = expected["expected_node_count"]
+        expected_count = expected[expected_key]
         
         assert actual_count == expected_count, (
-            f"Node count mismatch: expected {expected_count}, got {actual_count}"
-        )
-    
-    def test_namespace_count_matches_expected(self, cost_validation_data):
-        """Verify unique namespace count matches expected."""
-        ctx = cost_validation_data
-        expected = ctx["expected"]
-        
-        result = execute_db_query(
-            ctx["namespace"],
-            ctx["db_pod"],
-            "koku",
-            "koku",
-            f"""
-            SELECT COUNT(DISTINCT namespace) as ns_count
-            FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
-            WHERE cluster_id = '{ctx["cluster_id"]}'
-            AND namespace NOT LIKE '%unallocated%'
-            """,
-        )
-        
-        assert result, "Could not query namespace count"
-        
-        actual_count = int(result[0][0])
-        expected_count = expected["expected_namespace_count"]
-        
-        assert actual_count == expected_count, (
-            f"Namespace count mismatch: expected {expected_count}, got {actual_count}"
-        )
-    
-    def test_pod_count_matches_expected(self, cost_validation_data):
-        """Verify unique pod/resource count matches expected."""
-        ctx = cost_validation_data
-        expected = ctx["expected"]
-        
-        result = execute_db_query(
-            ctx["namespace"],
-            ctx["db_pod"],
-            "koku",
-            "koku",
-            f"""
-            SELECT COUNT(DISTINCT resource_id) as pod_count
-            FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
-            WHERE cluster_id = '{ctx["cluster_id"]}'
-            AND namespace NOT LIKE '%unallocated%'
-            """,
-        )
-        
-        assert result, "Could not query pod count"
-        
-        actual_count = int(result[0][0])
-        expected_count = expected["expected_pod_count"]
-        
-        assert actual_count == expected_count, (
-            f"Pod/resource count mismatch: expected {expected_count}, got {actual_count}"
+            f"{resource_type.capitalize()} count mismatch: "
+            f"expected {expected_count}, got {actual_count}"
         )
 
 
@@ -311,8 +230,17 @@ class TestResourceCounts:
 class TestResourceNames:
     """Tests for resource name validation."""
     
-    def test_node_name_matches_expected(self, cost_validation_data):
-        """Verify node name matches NISE static report."""
+    @pytest.mark.parametrize("resource_type,db_column,expected_key", [
+        pytest.param("node", "node", "node_name", id="node_name"),
+        pytest.param("namespace", "namespace", "namespace", id="namespace_name"),
+    ])
+    def test_resource_name_matches_expected(
+        self, cost_validation_data, resource_type: str, db_column: str, expected_key: str
+    ):
+        """Verify resource name matches NISE static report.
+        
+        Parametrized for: node name, namespace name.
+        """
         ctx = cost_validation_data
         expected = ctx["expected"]
         
@@ -322,7 +250,7 @@ class TestResourceNames:
             "koku",
             "koku",
             f"""
-            SELECT DISTINCT node
+            SELECT DISTINCT {db_column}
             FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
             WHERE cluster_id = '{ctx["cluster_id"]}'
             AND namespace NOT LIKE '%unallocated%'
@@ -330,41 +258,14 @@ class TestResourceNames:
             """,
         )
         
-        assert result and result[0][0], "No node data available"
+        assert result and result[0][0], f"No {resource_type} data available"
         
-        actual_node = result[0][0]
-        expected_node = expected["node_name"]
+        actual_value = result[0][0]
+        expected_value = expected[expected_key]
         
-        assert actual_node == expected_node, (
-            f"Node name mismatch: expected '{expected_node}', got '{actual_node}'"
-        )
-    
-    def test_namespace_name_matches_expected(self, cost_validation_data):
-        """Verify namespace name matches NISE static report."""
-        ctx = cost_validation_data
-        expected = ctx["expected"]
-        
-        result = execute_db_query(
-            ctx["namespace"],
-            ctx["db_pod"],
-            "koku",
-            "koku",
-            f"""
-            SELECT DISTINCT namespace
-            FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
-            WHERE cluster_id = '{ctx["cluster_id"]}'
-            AND namespace NOT LIKE '%unallocated%'
-            LIMIT 1
-            """,
-        )
-        
-        assert result and result[0][0], "No namespace data available"
-        
-        actual_ns = result[0][0]
-        expected_ns = expected["namespace"]
-        
-        assert actual_ns == expected_ns, (
-            f"Namespace mismatch: expected '{expected_ns}', got '{actual_ns}'"
+        assert actual_value == expected_value, (
+            f"{resource_type.capitalize()} name mismatch: "
+            f"expected '{expected_value}', got '{actual_value}'"
         )
 
 
@@ -409,52 +310,3 @@ class TestInfrastructureCost:
         print(f"\n  Infrastructure cost: ${total_cost:.2f} ({rows_with_cost} rows)")
 
 
-@pytest.mark.cost_management
-@pytest.mark.cost_validation
-@pytest.mark.extended
-class TestMetricTolerance:
-    """Parametrized tests for metric validation with configurable tolerance."""
-    
-    @pytest.mark.parametrize("metric", [
-        "pod_request_cpu_core_hours",
-        "pod_request_memory_gigabyte_hours",
-    ])
-    def test_metric_within_tolerance(self, cost_validation_data, metric: str):
-        """Verify metric is within tolerance of expected value."""
-        ctx = cost_validation_data
-        expected = ctx["expected"]
-        tolerance = get_cost_tolerance()
-        
-        result = execute_db_query(
-            ctx["namespace"],
-            ctx["db_pod"],
-            "koku",
-            "koku",
-            f"""
-            SELECT SUM({metric}) as total
-            FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
-            WHERE cluster_id = '{ctx["cluster_id"]}'
-            AND namespace NOT LIKE '%unallocated%'
-            """,
-        )
-        
-        assert result and result[0][0] is not None, f"No data for metric '{metric}'"
-        
-        actual_value = float(result[0][0])
-        
-        expected_map = {
-            "pod_request_cpu_core_hours": expected["expected_cpu_hours"],
-            "pod_request_memory_gigabyte_hours": expected["expected_memory_gb_hours"],
-        }
-        
-        expected_value = expected_map.get(metric)
-        assert expected_value is not None, f"No expected value for metric '{metric}'"
-        
-        diff_pct = abs(actual_value - expected_value) / expected_value if expected_value > 0 else 0
-        
-        assert diff_pct <= tolerance, (
-            f"Metric '{metric}' outside tolerance:\n"
-            f"  Expected: {expected_value:.4f}\n"
-            f"  Actual:   {actual_value:.4f}\n"
-            f"  Diff:     {diff_pct*100:.1f}% (tolerance: {tolerance*100}%)"
-        )

@@ -115,3 +115,64 @@ def test_long_running():
     """Marked extended - not run in default CI."""
     pass
 ```
+
+## Parametrization Guidelines
+
+Use `@pytest.mark.parametrize` to reduce duplicate code while maintaining clear test names.
+
+### ✅ Good: Parametrize with Clear IDs
+```python
+@pytest.mark.parametrize("resource_type,db_column,expected_key", [
+    pytest.param("node", "node", "expected_node_count", id="node_count"),
+    pytest.param("namespace", "namespace", "expected_namespace_count", id="namespace_count"),
+    pytest.param("pod", "resource_id", "expected_pod_count", id="pod_count"),
+])
+def test_resource_count_matches_expected(self, data, resource_type, db_column, expected_key):
+    """Verify unique resource count matches expected."""
+    # Single implementation, clear test names like:
+    # test_resource_count_matches_expected[node_count]
+    # test_resource_count_matches_expected[namespace_count]
+```
+
+### ✅ Good: Parametrize Lists from Class Constants
+```python
+class TestKafkaTopics:
+    REQUIRED_TOPICS = ["platform.upload.announce", "hccm.ros.events"]
+    
+    @pytest.mark.parametrize("topic", REQUIRED_TOPICS)
+    def test_required_topic_exists(self, topic: str):
+        """Verify required Kafka topic exists."""
+        pass
+```
+
+### ❌ Bad: Parametrize Without IDs (Unclear Names)
+```python
+# BAD: Test names will be test_metric[pod_request_cpu_core_hours]
+@pytest.mark.parametrize("metric", [
+    "pod_request_cpu_core_hours",
+    "pod_request_memory_gigabyte_hours",
+])
+def test_metric(self, metric):
+    pass
+```
+
+### When to Parametrize
+
+**DO parametrize when:**
+- Multiple tests have identical logic with different inputs
+- Testing the same behavior across multiple resources/values
+- The test name with `[id]` suffix remains clear
+
+**DON'T parametrize when:**
+- Tests have significantly different logic paths
+- The parametrized ID would be confusing
+- It would obscure what's being tested
+
+### Parametrization Pattern Reference
+
+| Pattern | Example ID | Use Case |
+|---------|------------|----------|
+| Resource types | `[node_count]`, `[pod_count]` | Counting different resources |
+| Metrics | `[cpu_usage]`, `[memory_usage]` | Validating different metrics |
+| Required items | `[platform.upload.announce]` | Checking required topics/buckets |
+| Scenarios | `[minimal_ocp_pod_only]` | Testing different configurations |

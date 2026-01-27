@@ -312,74 +312,49 @@ class TestKafkaTopics:
 class TestKafkaListener:
     """Tests for Kafka listener pod and connectivity."""
     
-    def test_listener_pod_exists(self, cluster_config):
-        """Verify Kafka listener pod exists."""
-        listener_pod = get_pod_by_label(
+    @pytest.fixture
+    def listener_pod(self, cluster_config):
+        """Get listener pod, skip if not found."""
+        pod = get_pod_by_label(
             cluster_config.namespace,
             "app.kubernetes.io/component=listener"
         )
-        
-        if not listener_pod:
+        if not pod:
             pytest.skip("Listener pod not found - may not be deployed yet")
-        
+        return pod
+    
+    def test_listener_pod_exists(self, listener_pod):
+        """Verify Kafka listener pod exists."""
         assert listener_pod, "Kafka listener pod not found"
     
-    def test_listener_pod_running(self, cluster_config):
-        """Verify Kafka listener pod is in Running state."""
-        listener_pod = get_pod_by_label(
-            cluster_config.namespace,
-            "app.kubernetes.io/component=listener"
-        )
+    @pytest.mark.parametrize("jsonpath,expected,check_name", [
+        pytest.param("{.status.phase}", "Running", "pod phase", id="pod_running"),
+        pytest.param("{.status.containerStatuses[0].ready}", "true", "container ready", id="container_ready"),
+    ])
+    def test_listener_status(self, cluster_config, listener_pod, jsonpath: str, expected: str, check_name: str):
+        """Verify listener pod status.
         
-        if not listener_pod:
-            pytest.skip("Listener pod not found")
-        
-        # Check pod status
+        Parametrized for: pod running state, container readiness.
+        """
         try:
             result = subprocess.run(
                 [
                     "kubectl", "get", "pod",
                     "-n", cluster_config.namespace,
                     listener_pod,
-                    "-o", "jsonpath={.status.phase}",
+                    "-o", f"jsonpath={jsonpath}",
                 ],
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
             
-            phase = result.stdout.strip()
-            assert phase == "Running", f"Listener pod is not running (status: {phase})"
-        except subprocess.TimeoutExpired:
-            pytest.fail("Timeout checking listener pod status")
-    
-    def test_listener_container_ready(self, cluster_config):
-        """Verify listener container is ready."""
-        listener_pod = get_pod_by_label(
-            cluster_config.namespace,
-            "app.kubernetes.io/component=listener"
-        )
-        
-        if not listener_pod:
-            pytest.skip("Listener pod not found")
-        
-        try:
-            result = subprocess.run(
-                [
-                    "kubectl", "get", "pod",
-                    "-n", cluster_config.namespace,
-                    listener_pod,
-                    "-o", "jsonpath={.status.containerStatuses[0].ready}",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
+            actual = result.stdout.strip().lower()
+            assert actual == expected.lower(), (
+                f"Listener {check_name} check failed: expected '{expected}', got '{actual}'"
             )
-            
-            ready = result.stdout.strip().lower()
-            assert ready == "true", f"Listener container not ready: {ready}"
         except subprocess.TimeoutExpired:
-            pytest.fail("Timeout checking listener container readiness")
+            pytest.fail(f"Timeout checking listener {check_name}")
     
     def test_listener_kafka_connectivity(self, cluster_config):
         """Verify listener can connect to Kafka (log-based check)."""
