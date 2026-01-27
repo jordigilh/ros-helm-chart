@@ -29,8 +29,93 @@ from e2e_helpers import (
 )
 from utils import (
     create_upload_package_from_files,
+    execute_db_query,
+    exec_in_pod,
     get_pod_by_label,
 )
+
+
+def cleanup_old_cost_val_clusters(namespace: str, db_pod: str, listener_pod: str, sources_api_url: str, org_id: str):
+    """Clean up any leftover cost-val clusters from previous test runs.
+    
+    This ensures cost_validation tests start with a clean slate and don't
+    pick up data from previous runs.
+    """
+    import json
+    
+    # Find and delete old cost-val sources
+    try:
+        result = exec_in_pod(
+            namespace,
+            listener_pod,
+            [
+                "curl", "-s", f"{sources_api_url}/sources",
+                "-H", "Content-Type: application/json",
+                "-H", f"x-rh-sources-org-id: {org_id}",
+            ],
+            container="sources-listener",
+        )
+        
+        if result:
+            sources = json.loads(result)
+            for source in sources.get("data", []):
+                source_ref = source.get("source_ref", "")
+                if source_ref and source_ref.startswith("cost-val-"):
+                    source_id = source.get("id")
+                    print(f"       Deleting old source: {source.get('name')} (ref: {source_ref})")
+                    exec_in_pod(
+                        namespace,
+                        listener_pod,
+                        [
+                            "curl", "-s", "-X", "DELETE",
+                            f"{sources_api_url}/sources/{source_id}",
+                            "-H", f"x-rh-sources-org-id: {org_id}",
+                        ],
+                        container="sources-listener",
+                    )
+    except Exception as e:
+        print(f"       Warning: Could not clean old sources: {e}")
+    
+    # Clean up database records for cost-val clusters
+    try:
+        # Delete manifest statuses
+        execute_db_query(
+            namespace, db_pod, "koku", "koku",
+            """
+            DELETE FROM reporting_common_costusagereportstatus 
+            WHERE manifest_id IN (
+                SELECT id FROM reporting_common_costusagereportmanifest 
+                WHERE cluster_id LIKE 'cost-val-%'
+            )
+            """
+        )
+        
+        # Delete manifests
+        execute_db_query(
+            namespace, db_pod, "koku", "koku",
+            "DELETE FROM reporting_common_costusagereportmanifest WHERE cluster_id LIKE 'cost-val-%'"
+        )
+        
+        # Get all schemas and clean summary tables
+        schemas = execute_db_query(
+            namespace, db_pod, "koku", "koku",
+            "SELECT DISTINCT schema_name FROM api_customer WHERE schema_name IS NOT NULL"
+        )
+        
+        if schemas:
+            for row in schemas:
+                schema = row[0].strip() if row[0] else None
+                if schema:
+                    try:
+                        execute_db_query(
+                            namespace, db_pod, "koku", "koku",
+                            f"DELETE FROM {schema}.reporting_ocpusagelineitem_daily_summary WHERE cluster_id LIKE 'cost-val-%'"
+                        )
+                    except Exception:
+                        pass  # Table might not exist in all schemas
+                        
+    except Exception as e:
+        print(f"       Warning: Could not clean database records: {e}")
 
 
 @pytest.fixture(scope="module")
@@ -103,11 +188,19 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
         print(f"{'='*60}")
         print(f"  Cluster ID: {cluster_id}")
         
+        # Pre-test cleanup: Remove any leftover cost-val clusters from previous runs
+        print("\n  [0/5] Pre-test cleanup...")
+        cleanup_old_cost_val_clusters(cluster_config.namespace, db_pod, listener_pod, sources_url, org_id)
+        print("       Cleanup complete")
+        
         # Step 1: Generate NISE data
+        # Use 2 days ago to yesterday to get exactly 24 hours of data
+        # (NISE generates from start_date 00:00 to end_date 23:59, so same day = 0 data)
         print("\n  [1/5] Generating NISE data...")
         now = datetime.utcnow()
-        start_date = now - timedelta(days=1)
-        end_date = now
+        # Use dates 2-3 days ago to ensure we get exactly 24 hours
+        start_date = (now - timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         
         files = generate_nise_data(cluster_id, start_date, end_date, temp_dir, config=nise_config)
         print(f"       Generated {len(files['all_files'])} CSV files")
@@ -177,6 +270,20 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
         print("SETUP COMPLETE - Running validation tests")
         print(f"{'='*60}\n")
         
+        # Query the actual number of days of data in the DB
+        # Koku aggregates hourly data into daily summaries
+        result = execute_db_query(
+            cluster_config.namespace, db_pod, "koku", "koku",
+            f"""
+            SELECT COUNT(DISTINCT usage_start)
+            FROM {schema_name}.reporting_ocpusagelineitem_daily_summary
+            WHERE cluster_id = '{cluster_id}'
+            """
+        )
+        actual_days = int(result[0][0]) if result and result[0][0] else 1
+        actual_hours = actual_days * 24  # Each day has 24 hours of data
+        print(f"  Actual days of data in DB: {actual_days} ({actual_hours} hours)")
+        
         yield {
             "namespace": cluster_config.namespace,
             "db_pod": db_pod,
@@ -184,7 +291,7 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
             "schema_name": schema_name,
             "source_id": source_registration.source_id,
             "org_id": org_id,
-            "expected": nise_config.get_expected_values(),
+            "expected": nise_config.get_expected_values(hours=actual_hours),
         }
         
     finally:
