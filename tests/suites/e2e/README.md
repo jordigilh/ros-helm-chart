@@ -104,3 +104,4 @@ pytest tests/suites/e2e/test_scenarios.py -v -m scenario
 - `test_complete_flow.py` - Full E2E data flow tests (source → upload → processing → recommendations)
 - `test_smoke.py` - Quick smoke tests for E2E validation
 - `conftest.py` - Shared fixtures for E2E tests
+- `../../e2e_helpers.py` - Centralized E2E helpers (NISE config, source registration, upload utilities)

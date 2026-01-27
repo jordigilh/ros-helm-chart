@@ -34,7 +34,15 @@ Validates that cost calculations in Koku match expected values from NISE-generat
 
 **Markers**: `@pytest.mark.cost_management`, `@pytest.mark.cost_validation`, `@pytest.mark.extended`
 
-**Prerequisites**: Requires E2E tests to have run with `E2E_CLEANUP_AFTER=false` to preserve data.
+**Self-Contained Setup**: These tests are fully self-contained via the `cost_validation_data` fixture. Each test run:
+1. Generates NISE data with known expected values (from `e2e_helpers.NISEConfig`)
+2. Registers a source in Sources API (with `source_ref` for cluster matching)
+3. Uploads data via JWT-authenticated ingress
+4. Waits for Koku to process and populate summary tables
+5. Runs validation tests
+6. Cleans up all test data (source, database records, temp files)
+
+**Note**: The expected values come from `e2e_helpers.NISEConfig.get_expected_values()` to ensure consistency with the NISE static report template.
 
 **Environment Variables**:
 | Variable | Default | Description |
@@ -102,4 +110,5 @@ pytest tests/suites/cost_management/test_processing_state.py -v
 
 - `test_processing.py` - Koku listener and MASU worker health tests
 - `test_sources_api.py` - Sources API health and configuration tests
-- `conftest.py` - Shared fixtures for cost management tests
+- `conftest.py` - Suite fixtures including `cost_validation_data` for self-contained E2E setup
+- `../../e2e_helpers.py` - Centralized E2E helpers (NISE config, source registration, upload utilities)

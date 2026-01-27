@@ -41,38 +41,19 @@ from utils import (
 )
 from cleanup import full_cleanup
 
-
-# =============================================================================
-# Data Generation Utilities
-# =============================================================================
-
-def is_nise_available() -> bool:
-    """Check if NISE is available for data generation."""
-    try:
-        result = subprocess.run(
-            ["nise", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        return result.returncode == 0
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-
-
-def install_nise() -> bool:
-    """Attempt to install NISE via pip."""
-    try:
-        print("  Installing koku-nise...")
-        result = subprocess.run(
-            ["pip", "install", "koku-nise"],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        return result.returncode == 0
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return False
+# Import shared E2E helpers
+from e2e_helpers import (
+    E2E_CLUSTER_PREFIX,
+    DEFAULT_NISE_CONFIG,
+    is_nise_available,
+    install_nise,
+    ensure_nise_available,
+    get_sources_api_url,
+    upload_with_retry,
+    wait_for_provider,
+    cleanup_database_records,
+    cleanup_e2e_sources,
+)
 
 
 def generate_dynamic_static_report(start_date: datetime, end_date: datetime, output_dir: str) -> str:

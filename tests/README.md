@@ -10,6 +10,7 @@ The test suite is organized into **focused suites** that avoid redundancy:
 tests/
 ├── conftest.py              # Root fixtures (cluster config, JWT, DB, etc.)
 ├── utils.py                 # Shared utility functions
+├── e2e_helpers.py           # Centralized E2E helpers (NISE, source registration, upload)
 ├── cleanup.py               # E2E cleanup utilities
 ├── pytest.ini               # Pytest configuration and markers
 ├── requirements.txt         # Python dependencies
@@ -233,6 +234,25 @@ pytest -x
 | `PLATFORM` | `openshift` | Platform type |
 | `PYTHON` | `python3` | Python interpreter |
 | `E2E_COST_TOLERANCE` | `0.05` | Tolerance for cost validation (5%) |
+
+## Centralized E2E Helpers
+
+The `e2e_helpers.py` module centralizes common E2E functionality to avoid duplication:
+
+| Component | Description |
+|-----------|-------------|
+| `NISEConfig` | Dataclass with default NISE configuration and `get_expected_values()` method |
+| `E2E_CLUSTER_PREFIX` | Standard prefix `"e2e-pytest-"` for all E2E cluster IDs |
+| `is_nise_available()` / `install_nise()` | NISE availability checking and installation |
+| `generate_nise_data()` | Generate NISE data with categorized file output |
+| `generate_cluster_id()` | Generate unique cluster IDs |
+| `get_sources_api_url()` | Get internal Sources API URL |
+| `register_source()` / `delete_source()` | Source registration with proper `source_ref` |
+| `upload_with_retry()` | Upload with retry logic for transient errors |
+| `wait_for_provider()` / `wait_for_summary_tables()` | Processing wait utilities |
+| `cleanup_database_records()` / `cleanup_e2e_sources()` | Cleanup utilities |
+
+Both `test_complete_flow.py` and `cost_management/conftest.py` import from `e2e_helpers` to ensure consistent behavior.
 
 ## Data Generation
 
