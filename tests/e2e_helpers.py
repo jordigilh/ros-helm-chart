@@ -553,10 +553,13 @@ def wait_for_provider(
     namespace: str,
     db_pod: str,
     cluster_id: str,
-    timeout: int = 120,
-    interval: int = 5,
+    timeout: int = 300,
+    interval: int = 10,
 ) -> bool:
     """Wait for provider to be created in Koku database.
+    
+    Note: Timeout increased to 300s for CI environments where Kafka → Koku
+    provider creation can be slower due to resource constraints.
     
     Returns True if provider was created, False on timeout.
     """

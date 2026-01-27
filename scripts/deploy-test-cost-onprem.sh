@@ -516,8 +516,8 @@ run_tests() {
         return 0
     fi
     
-    # TEMPORARY: Run ALL tests in CI to validate new test suites
-    # TODO: Remove --all flag once new tests are stable, revert to default (no flag)
+    # Run all tests including extended and cost_validation
+    # Note: cost_validation tests have their own E2E setup with 300s provider timeout
     if [[ "${VERBOSE}" == "true" ]]; then
         if ! "${pytest_script}" --all -v; then
             log_error "Pytest test suite failed"

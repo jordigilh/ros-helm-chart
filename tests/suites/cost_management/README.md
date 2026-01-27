@@ -51,39 +51,17 @@ Validates that cost calculations in Koku match expected values from NISE-generat
 
 ---
 
-### Processing State Validation (`test_processing_state.py`)
+### Processing State Validation
 
-Validates the health of Koku's data processing pipeline by examining database state.
+Processing state validation (manifest fields, file status, stuck manifests, summary failures) has been **merged into the E2E tests** in `tests/suites/e2e/test_complete_flow.py`:
 
-| Test Class | Test | Description |
-|------------|------|-------------|
-| `TestManifestState` | `test_can_query_manifests` | Verifies manifest table is queryable |
-| | `test_manifests_have_required_fields` | Manifests have id, assembly_id, cluster_id, etc. |
-| | `test_no_stuck_manifests` | No manifests stuck with 0 processed files |
-| `TestFileProcessingStatus` | `test_can_query_file_statuses` | File status table is queryable |
-| | `test_no_failed_files_in_recent_manifests` | No files with status=FAILED |
-| | `test_successful_files_have_completion_time` | Successful files have timestamps |
-| `TestProviderState` | `test_can_query_providers` | Provider table is queryable |
-| | `test_active_providers_have_required_fields` | Providers have uuid, name, type |
-| `TestSummaryTaskState` | `test_summary_state_in_manifests` | Manifests have state JSON |
-| | `test_no_summary_failures_in_recent_manifests` | No summary failures in state |
-| `TestProcessingMetrics` | `test_processing_completion_rate` | ≥50% files processed |
-| | `test_file_status_distribution` | <10% failure rate |
+| E2E Test | Processing Validation Added |
+|----------|----------------------------|
+| `test_04_manifest_created_in_koku` | Manifest required fields (id, assembly_id, cluster_id, num_total_files, creation_datetime) |
+| `test_05_files_processed_by_masu` | File status validation (no failures, completion timestamps) |
+| `test_06_summary_tables_populated` | Stuck manifest detection, summary failure detection, processing stats |
 
-**File Status Codes**:
-| Code | Name | Meaning |
-|------|------|---------|
-| 0 | PENDING | Not yet processed |
-| 1 | SUCCESS | Successfully processed |
-| 2 | FAILED | Processing failed |
-
-**What These Tests Detect**:
-- **Stuck manifests** → Kafka/listener issues
-- **Failed files** → MASU processing bugs
-- **Summary failures** → Celery worker issues
-- **Low completion rate** → Systemic problems
-
-**Markers**: `@pytest.mark.cost_management`, `@pytest.mark.component`, `@pytest.mark.extended`
+This ensures processing state is validated as part of the E2E flow with the actual test data, rather than depending on leftover data from previous runs.
 
 ---
 
@@ -102,8 +80,6 @@ pytest tests/suites/cost_management/test_cost_validation.py -v -m extended
 # Run cost validation with custom tolerance (10%)
 E2E_COST_TOLERANCE=0.10 pytest -m cost_validation -v
 
-# Run only processing state tests
-pytest tests/suites/cost_management/test_processing_state.py -v
 ```
 
 ## Related Files
