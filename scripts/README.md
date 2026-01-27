@@ -197,12 +197,20 @@ KAFKA_BOOTSTRAP_SERVERS=my-kafka:9092 ./deploy-strimzi.sh
 ### `deploy-test-cost-onprem.sh`
 Complete orchestration script for deploying and testing Cost On-Prem with JWT authentication.
 
+**OpenShift CI Integration:**
+This script is invoked by the OpenShift CI step `insights-onprem-cost-onprem-chart-e2e`:
+```
+release/ci-operator/step-registry/insights-onprem/cost-onprem-chart/e2e/
+└── insights-onprem-cost-onprem-chart-e2e-commands.sh
+    └── bash ./scripts/deploy-test-cost-onprem.sh --namespace cost-onprem --verbose
+```
+
 **What it does:**
 1. Deploys Red Hat Build of Keycloak (RHBK)
 2. Deploys Kafka/Strimzi infrastructure
 3. Installs Cost On-Prem Helm chart
 4. Configures TLS certificates
-5. Runs pytest test suite
+5. **Runs pytest via `scripts/run-pytest.sh`** (CI mode - excludes extended tests)
 6. Optionally saves deployment version info
 
 **Usage:**
@@ -236,6 +244,17 @@ Complete orchestration script for deploying and testing Cost On-Prem with JWT au
 
 ### `run-pytest.sh`
 Run the pytest test suite for JWT authentication and data flow validation.
+
+**Default CI Execution:**
+```bash
+# What OpenShift CI runs (via deploy-test-cost-onprem.sh):
+NAMESPACE=cost-onprem ./scripts/run-pytest.sh
+
+# Equivalent to:
+pytest -m "not extended" --junit-xml=reports/junit.xml
+```
+
+**CI runs ~88 tests in ~3 minutes** (excludes extended tests that require ODF/S3).
 
 **Suite options:**
 - `--helm` - Helm chart validation tests
@@ -283,7 +302,7 @@ Run the pytest test suite for JWT authentication and data flow validation.
 **Output:** JUnit XML report at `tests/reports/junit.xml`
 
 **Requirements:**
-- Python 3.9+
+- Python 3.10+
 - OpenShift CLI (`oc`) logged in
 - Cost On-Prem deployed with JWT authentication
 

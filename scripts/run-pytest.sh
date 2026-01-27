@@ -109,7 +109,7 @@ check_prerequisites() {
     # Check Python
     if ! command -v "$PYTHON" &> /dev/null; then
         log_error "Python not found: $PYTHON"
-        log_error "Please install Python 3.9+ or set PYTHON environment variable"
+        log_error "Please install Python 3.10+ or set PYTHON environment variable"
         exit 1
     fi
 
@@ -180,6 +180,20 @@ run_pytest() {
 
     # Change to tests directory
     cd "$TESTS_DIR"
+
+    # Log the full pytest command being executed (critical for CI debugging)
+    echo ""
+    echo "============================================================"
+    echo "PYTEST COMMAND"
+    echo "============================================================"
+    echo "pytest ${pytest_args[*]}"
+    echo ""
+    echo "Working directory: $(pwd)"
+    echo "NAMESPACE=${NAMESPACE}"
+    echo "HELM_RELEASE_NAME=${HELM_RELEASE_NAME}"
+    echo "KEYCLOAK_NAMESPACE=${KEYCLOAK_NAMESPACE}"
+    echo "============================================================"
+    echo ""
 
     # Run pytest with JUnit XML output
     local exit_code=0

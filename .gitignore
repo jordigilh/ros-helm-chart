@@ -20,6 +20,9 @@ PR*-COMMENTS-*.md
 test-logs/
 *.log
 
+# CI artifacts (downloaded from Prow/GCS)
+ci-artifacts-*/
+
 # Temporary files
 *.tmp
 *.temp
