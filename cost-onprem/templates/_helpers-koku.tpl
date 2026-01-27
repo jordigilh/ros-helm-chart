@@ -31,6 +31,20 @@ Koku API writes deployment name
 {{- end -}}
 
 {{/*
+Koku MASU (cost processor) name
+*/}}
+{{- define "cost-onprem.koku.masu.name" -}}
+{{- printf "%s-koku-masu" (include "cost-onprem.fullname" .) -}}
+{{- end -}}
+
+{{/*
+Koku Kafka listener name
+*/}}
+{{- define "cost-onprem.koku.listener.name" -}}
+{{- printf "%s-koku-listener" (include "cost-onprem.fullname" .) -}}
+{{- end -}}
+
+{{/*
 Koku Celery Beat name
 */}}
 {{- define "cost-onprem.koku.celery.beat.name" -}}
