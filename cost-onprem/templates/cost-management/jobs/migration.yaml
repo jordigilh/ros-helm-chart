@@ -1,0 +1,131 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-koku-migrate
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.koku.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cost-management-migration
+  annotations:
+    # Run migrations before install/upgrade
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  # Only run once - don't retry on failure to avoid race conditions
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "cost-onprem.koku.labels" . | nindent 8 }}
+        app.kubernetes.io/component: cost-management-migration
+    spec:
+      serviceAccountName: {{ include "cost-onprem.koku.serviceAccountName" . }}
+      restartPolicy: Never
+
+      securityContext:
+        {{- include "cost-onprem.securityContext.pod" . | nindent 8 }}
+
+      containers:
+      - name: migrate
+        image: "{{ include "cost-onprem.koku.image" . }}"
+        imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
+        command:
+          - bash
+          - -c
+          - |
+            set -e
+            echo "=== Koku Django Migrations Job ==="
+            echo "Timestamp: $(date)"
+            echo "Release: {{ .Release.Name }}"
+            echo "Namespace: {{ .Release.Namespace }}"
+
+            # Wait for database to be ready
+            # Use hardcoded service name since environment variables may not be set yet during pre-install
+            DB_HOST="{{ include "cost-onprem.fullname" . }}-database.{{ .Release.Namespace }}.svc.cluster.local"
+            DB_PORT="{{ .Values.database.server.port }}"
+            MAX_WAIT=600  # 10 minutes timeout
+            ELAPSED=0
+            
+            echo "Waiting for database at ${DB_HOST}:${DB_PORT}..."
+            while ! timeout 5 bash -c "cat < /dev/null > /dev/tcp/${DB_HOST}/${DB_PORT}" 2>/dev/null; do
+              if [ $ELAPSED -ge $MAX_WAIT ]; then
+                echo "ERROR: Database not ready after ${MAX_WAIT} seconds"
+                exit 1
+              fi
+              echo "Database not ready (${ELAPSED}s elapsed), waiting..."
+              sleep 5
+              ELAPSED=$((ELAPSED + 5))
+            done
+            echo "✓ Database is ready (waited ${ELAPSED}s)"
+
+            # Set up environment
+            mkdir -p /tmp/prometheus
+            cd /opt/koku/koku
+
+            # Acquire migration lock using PostgreSQL advisory lock
+            # This ensures only ONE pod can run migrations at a time
+            echo "Attempting to acquire migration lock..."
+            
+            # Use psycopg2 to acquire a session-level advisory lock
+            # Lock ID: 123456789 (arbitrary unique number for koku migrations)
+            python << 'PYTHON_EOF'
+            import os
+            import sys
+            import django
+            from django.conf import settings
+
+            # Configure Django settings
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'koku.settings')
+            django.setup()
+
+            from django.db import connection
+
+            MIGRATION_LOCK_ID = 123456789
+
+            print("Acquiring PostgreSQL advisory lock...")
+            with connection.cursor() as cursor:
+                # pg_advisory_lock() blocks until lock is acquired
+                # This ensures only one migration runs at a time
+                cursor.execute("SELECT pg_advisory_lock(%s)", [MIGRATION_LOCK_ID])
+                print(f"✓ Acquired migration lock (ID: {MIGRATION_LOCK_ID})")
+            
+            # Run migrations while holding the lock
+            # Lock is held by the database connection, not just the cursor
+            print("Running Django migrations...")
+            from django.core.management import call_command
+            try:
+                call_command('migrate', '--noinput', verbosity=2)
+                print("✓ Migrations completed successfully")
+            except Exception as e:
+                print(f"✗ Migration failed: {e}")
+                sys.exit(1)
+            finally:
+                # Lock is automatically released when connection closes
+                # Django closes connection after migrations complete
+                print("✓ Migration lock will auto-release on connection close")
+            PYTHON_EOF
+
+            echo "=== Migration job completed ==="
+
+        env:
+        {{- include "cost-onprem.koku.commonEnv" . | nindent 8 }}
+
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+
+        securityContext:
+          {{- include "cost-onprem.securityContext.container" . | nindent 10 }}
+
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+
+      volumes:
+      - name: tmp
+        emptyDir: {}
