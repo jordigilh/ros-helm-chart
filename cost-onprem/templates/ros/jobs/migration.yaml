@@ -24,7 +24,7 @@ spec:
         checksum/ros-db-credentials: {{ include (print $.Template.BasePath "/infrastructure/database/secrets.yaml") . | sha256sum }}
     spec:
       restartPolicy: Never
-      serviceAccountName: ros
+      serviceAccountName: {{ .Values.ros.serviceAccount.name }}
       securityContext:
         {{- include "cost-onprem.securityContext.pod" . | nindent 8 }}
 
