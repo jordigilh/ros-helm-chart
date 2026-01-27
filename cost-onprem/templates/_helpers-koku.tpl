@@ -79,14 +79,6 @@ Koku database name
 {{- end -}}
 
 {{/*
-Koku database user - returns hardcoded value (actual value in secret)
-Note: Username stored in secret key 'koku-user'
-*/}}
-{{- define "cost-onprem.koku.database.user" -}}
-koku
-{{- end -}}
-
-{{/*
 =============================================================================
 Valkey Connection Helpers (cache/broker)
 =============================================================================

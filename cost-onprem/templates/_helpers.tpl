@@ -101,24 +101,6 @@ Usage: {{ include "cost-onprem.database.secretName" . }}
 {{- end }}
 
 {{/*
-Get ROS database username - returns hardcoded value (actual value in secret)
-Usage: {{ include "cost-onprem.database.ros.user" . }}
-Note: Used for connection strings. Username stored in secret key 'ros-user'
-*/}}
-{{- define "cost-onprem.database.ros.user" -}}
-ros_user
-{{- end }}
-
-{{/*
-Get Kruize database username - returns hardcoded value (actual value in secret)
-Usage: {{ include "cost-onprem.database.kruize.user" . }}
-Note: Used for connection strings. Username stored in secret key 'kruize-user'
-*/}}
-{{- define "cost-onprem.database.kruize.user" -}}
-kruize_user
-{{- end }}
-
-{{/*
 NOTE: Sources API now uses the infra chart's PostgreSQL (shares koku database)
 because Sources API provisions tables that Koku uses.
 Sources credentials are in the postgres-credentials secret from the infra chart.
