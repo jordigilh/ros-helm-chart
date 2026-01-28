@@ -2,7 +2,7 @@
 Celery Client Wrapper
 ======================
 
-Direct Celery connection via Redis.
+Direct Celery connection via Valkey.
 """
 
 from celery import Celery
@@ -10,13 +10,13 @@ from typing import Dict, Optional
 
 
 class CeleryClient:
-    """Direct Celery connection via Redis"""
+    """Direct Celery connection via Valkey"""
 
     def __init__(self, redis_url: str):
         """Initialize Celery client
 
         Args:
-            redis_url: Redis connection URL (e.g., redis://redis:6379/0)
+            redis_url: Valkey connection URL (e.g., redis://valkey:6379/0)
         """
         self.redis_url = redis_url
         self.celery = Celery(broker=redis_url, backend=redis_url)

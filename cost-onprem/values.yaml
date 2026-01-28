@@ -5,7 +5,7 @@
 # - ROS (Resource Optimization Service)
 # - Cost Management Service (future)
 # - Sources API
-# - Shared infrastructure (PostgreSQL, Kafka, Redis/Valkey, MinIO/ODF)
+# - Shared infrastructure (PostgreSQL, Kafka, Valkey, MinIO/ODF)
 #
 # Naming conventions:
 # - Use camelCase for all variable names

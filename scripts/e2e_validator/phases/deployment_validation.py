@@ -86,7 +86,7 @@ class DeploymentValidationPhase:
         required_services = [
             'koku-koku-api',
             'koku-koku-db',
-            'redis',
+            'valkey',
         ]
 
         accessible = []
@@ -321,7 +321,7 @@ except Exception as e:
             return {'passed': False, 'error': str(e)}
 
     def validate_celery_integration(self) -> Dict[str, any]:
-        """Validate Celery/Redis integration"""
+        """Validate Celery/Valkey integration"""
         print("\n⚙️  Integration: Celery Task Queue")
 
         masu_pod = self.k8s.get_pod_by_component('masu')
@@ -337,15 +337,15 @@ django.setup()
 from celery import Celery
 from kombu import Connection
 
-# Test Redis connection
-redis_url = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
+# Test Valkey connection
+redis_url = os.environ.get('REDIS_URL', 'redis://valkey:6379/0')
 try:
     conn = Connection(redis_url)
     conn.connect()
-    print("REDIS_CONNECTED=True")
+    print("VALKEY_CONNECTED=True")
     conn.release()
 except Exception as e:
-    print(f"REDIS_ERROR={e}")
+    print(f"VALKEY_ERROR={e}")
 
 # Test Celery app
 try:
@@ -356,21 +356,21 @@ except Exception as e:
     print(f"CELERY_ERROR={e}")
 """)
 
-            redis_ok = "REDIS_CONNECTED=True" in output
+            valkey_ok = "VALKEY_CONNECTED=True" in output
             celery_ok = "CELERY_CONFIGURED=True" in output
             num_tasks = 0
             if "CELERY_TASKS=" in output:
                 num_tasks = int(output.split("CELERY_TASKS=")[1].split("\n")[0])
 
-            print(f"  {'✓' if redis_ok else '✗'} Redis connection")
+            print(f"  {'✓' if valkey_ok else '✗'} Valkey connection")
             print(f"  {'✓' if celery_ok else '✗'} Celery configuration")
             print(f"  ✓ {num_tasks} tasks registered")
 
             return {
-                'redis_connected': redis_ok,
+                'valkey_connected': valkey_ok,
                 'celery_configured': celery_ok,
                 'num_tasks': num_tasks,
-                'passed': redis_ok and celery_ok and num_tasks > 10
+                'passed': valkey_ok and celery_ok and num_tasks > 10
             }
         except Exception as e:
             print(f"  ✗ Celery test failed: {e}")

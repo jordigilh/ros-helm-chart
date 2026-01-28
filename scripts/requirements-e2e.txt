@@ -5,7 +5,7 @@
 kubernetes>=28.1.0
 boto3>=1.34.0
 celery>=5.3.4
-redis>=5.0.1
+redis>=5.0.1  # Standard Python client (works with Valkey)
 requests>=2.31.0
 click>=8.1.7
 urllib3>=2.1.0

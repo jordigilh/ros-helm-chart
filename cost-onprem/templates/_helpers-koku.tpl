@@ -101,14 +101,14 @@ Valkey Connection Helpers (cache/broker)
 {{/*
 Valkey host
 */}}
-{{- define "cost-onprem.koku.redis.host" -}}
+{{- define "cost-onprem.koku.valkey.host" -}}
 {{- printf "%s-valkey" (include "cost-onprem.fullname" .) -}}
 {{- end -}}
 
 {{/*
 Valkey port
 */}}
-{{- define "cost-onprem.koku.redis.port" -}}
+{{- define "cost-onprem.koku.valkey.port" -}}
 {{- .Values.valkey.port | default 6379 -}}
 {{- end -}}
 
@@ -292,10 +292,11 @@ Common environment variables for Koku API and Celery
     secretKeyRef:
       name: {{ include "cost-onprem.koku.database.secretName" . }}
       key: koku-password
+# Valkey connection
 - name: REDIS_HOST
-  value: {{ include "cost-onprem.koku.redis.host" . | quote }}
+  value: {{ include "cost-onprem.koku.valkey.host" . | quote }}
 - name: REDIS_PORT
-  value: {{ include "cost-onprem.koku.redis.port" . | quote }}
+  value: {{ include "cost-onprem.koku.valkey.port" . | quote }}
 - name: CELERY_RESULT_EXPIRES
   value: {{ .Values.costManagement.celery.resultExpires | default "28800" | quote }}
 - name: INSIGHTS_KAFKA_HOST
