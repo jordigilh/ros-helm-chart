@@ -20,9 +20,10 @@ spec:
         cost-onprem.io/api-type: reads
     spec:
       serviceAccountName: {{ include "cost-onprem.koku.serviceAccountName" . }}
+      automountServiceAccountToken: false
 
       securityContext:
-        {{- include "cost-onprem.securityContext.pod" . | nindent 8 }}
+        {{- include "cost-onprem.securityContext.pod.nonRoot" . | nindent 8 }}
 
       initContainers:
       {{- include "cost-onprem.koku.initContainer.combineCA" . | nindent 6 }}
@@ -33,6 +34,8 @@ spec:
       - name: koku-api
         image: "{{ include "cost-onprem.koku.image" . }}"
         imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
+        securityContext:
+          {{- include "cost-onprem.securityContext.container" . | nindent 10 }}
 
         # Use image's default entrypoint (./scripts/entrypoint.sh)
         # which handles migrations and starts gunicorn correctly
