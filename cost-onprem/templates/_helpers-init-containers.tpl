@@ -129,7 +129,7 @@ Usage: {{ include "cost-onprem.initContainer.waitForSourcesApi" . | nindent 8 }}
 {{- end -}}
 
 {{/*
-Wait for Cache (Redis/Valkey) init container
+Wait for Cache (Valkey) init container
 Usage: {{ include "cost-onprem.initContainer.waitForCache" . | nindent 8 }}
 */}}
 {{- define "cost-onprem.initContainer.waitForCache" -}}

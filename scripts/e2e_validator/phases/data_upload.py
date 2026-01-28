@@ -157,7 +157,7 @@ generators:
         }
 
     def _restart_koku_components_for_cache_clear(self):
-        """Restart Redis and Koku listener to clear stale caches.
+        """Restart Valkey and Koku listener to clear stale caches.
 
         This ensures a clean state by clearing any cached processing state.
         """
@@ -169,20 +169,20 @@ generators:
         print(f"\n🔄 Clearing Koku caches (workaround for table_exists cache bug)...")
 
         try:
-            # Restart Redis to clear cache
-            print(f"  🗑️  Restarting Redis to clear cache...")
+            # Restart Valkey to clear cache
+            print(f"  🗑️  Restarting Valkey to clear cache...")
             subprocess.run(
                 ['kubectl', 'delete', 'pod', '-n', namespace, '-l', 'app.kubernetes.io/component=cache'],
                 capture_output=True, timeout=30
             )
 
-            # Wait for Redis to come back
+            # Wait for Valkey to come back
             subprocess.run(
                 ['kubectl', 'wait', '--for=condition=ready', 'pod',
                  '-l', 'app.kubernetes.io/component=cache', '-n', namespace, '--timeout=60s'],
                 capture_output=True, timeout=70
             )
-            print(f"  ✅ Redis restarted")
+            print(f"  ✅ Valkey restarted")
 
             # Restart listener to clear in-memory state
             print(f"  🔄 Restarting Koku listener...")
@@ -204,7 +204,7 @@ generators:
 
         except Exception as e:
             print(f"  ⚠️  Warning: Could not restart components: {e}")
-            print(f"  ℹ️  You may need to manually restart Redis and listener pods")
+            print(f"  ℹ️  You may need to manually restart Valkey and listener pods")
 
     def check_existing_data(self) -> Dict[str, any]:
         """Check if VALID test data already exists
