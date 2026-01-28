@@ -44,6 +44,11 @@ kubectl logs -n ${NAMESPACE:-cost-onprem} -l app.kubernetes.io/component=ingress
 kubectl logs -n ${NAMESPACE:-cost-onprem} -l app.kubernetes.io/component=database --tail=100
 ```
 
+### Sources API
+```bash
+kubectl logs -n ${NAMESPACE:-cost-onprem} -l app.kubernetes.io/component=sources-api --tail=100
+```
+
 ## Follow Logs (Live)
 
 Add `-f` to follow logs in real-time:

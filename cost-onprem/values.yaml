@@ -799,7 +799,9 @@ ingress:
 #     --from-literal=kruize-user=kruize_user \
 #     --from-literal=kruize-password=<YOUR_PASSWORD> \
 #     --from-literal=koku-user=koku \
-#     --from-literal=koku-password=<YOUR_PASSWORD>
+#     --from-literal=koku-password=<YOUR_PASSWORD> \
+#     --from-literal=sources-user=sources \
+#     --from-literal=sources-password=<YOUR_PASSWORD>
 #
 # Security Model:
 # - Each service gets its own dedicated database and user

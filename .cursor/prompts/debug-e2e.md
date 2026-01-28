@@ -12,13 +12,13 @@ Provide:
 ## Test-Specific Debugging
 
 ### test_01_source_registered
-**What it does**: Registers an OCP source via Koku's Sources API endpoints
+**What it does**: Registers an OCP source via Sources API
 
 ```bash
-# Check Koku API is running (Sources API is now integrated in Koku)
-kubectl get pods -n ${NAMESPACE} -l app.kubernetes.io/component=cost-management-api-writes
+# Check Sources API is running
+kubectl get pods -n ${NAMESPACE} -l app.kubernetes.io/component=sources-api
 
-# Check listener can reach Koku API
+# Check listener can reach Sources API
 kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/component=listener --tail=50 | grep -i source
 ```
 

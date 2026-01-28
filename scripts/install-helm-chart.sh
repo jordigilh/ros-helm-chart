@@ -341,6 +341,7 @@ create_database_credentials_secret() {
     local ros_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
     local kruize_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
     local koku_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+    local sources_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
 
     # Create the secret
     kubectl create secret generic "$secret_name" \
@@ -352,7 +353,9 @@ create_database_credentials_secret() {
         --from-literal=kruize-user=kruize_user \
         --from-literal=kruize-password="$kruize_password" \
         --from-literal=koku-user=koku \
-        --from-literal=koku-password="$koku_password"
+        --from-literal=koku-password="$koku_password" \
+        --from-literal=sources-user=sources \
+        --from-literal=sources-password="$sources_password"
 
     if [ $? -eq 0 ]; then
         echo_success "Database credentials secret created successfully"
@@ -361,6 +364,38 @@ create_database_credentials_secret() {
         echo_info "    kubectl get secret $secret_name -n $NAMESPACE -o jsonpath='{.data.ros-password}' | base64 -d"
     else
         echo_error "Failed to create database credentials secret"
+        return 1
+    fi
+}
+
+# Function to create Sources API credentials secret
+create_sources_credentials_secret() {
+    echo_info "Creating Sources API credentials secret..."
+
+    local secret_name="cost-onprem-sources-credentials"
+
+    # Check if secret already exists
+    if kubectl get secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_warning "Sources API credentials secret '$secret_name' already exists (preserving existing credentials)"
+        return 0
+    fi
+
+    echo_info "Generating Sources API encryption key..."
+
+    # Generate encryption key (valid base64, 32 characters from 24 bytes)
+    # Sources API expects valid base64 for decoding, so keep padding
+    local encryption_key=$(openssl rand -base64 24)
+
+    # Create the secret
+    kubectl create secret generic "$secret_name" \
+        --namespace="$NAMESPACE" \
+        --from-literal=encryption-key="$encryption_key"
+
+    if [ $? -eq 0 ]; then
+        echo_success "Sources API credentials secret created successfully"
+        echo_info "  Secret: $NAMESPACE/$secret_name"
+    else
+        echo_error "Failed to create Sources API credentials secret"
         return 1
     fi
 }
@@ -1611,6 +1646,12 @@ main() {
     # Create database credentials secret (always required)
     if ! create_database_credentials_secret; then
         echo_error "Failed to create database credentials. Cannot proceed with installation."
+        exit 1
+    fi
+
+    # Create Sources API credentials secret (always required)
+    if ! create_sources_credentials_secret; then
+        echo_error "Failed to create Sources API credentials. Cannot proceed with installation."
         exit 1
     fi
 
