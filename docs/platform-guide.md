@@ -106,7 +106,8 @@ oc create secret generic cost-onprem-odf-credentials \
 ```yaml
 odf:
   endpoint: "s3.openshift-storage.svc.cluster.local"
-  region: "us-east-1"
+  s3:
+    region: "onprem"  # Default for NooBaa/MinIO; use "us-east-1" for AWS S3
   bucket: "ros-data"
   pathStyle: true
   useSSL: true

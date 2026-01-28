@@ -20,8 +20,6 @@ spec:
       labels:
         {{- include "cost-onprem.labels" . | nindent 8 }}
         app.kubernetes.io/component: ros-migration
-      annotations:
-        checksum/ros-db-credentials: {{ include (print $.Template.BasePath "/infrastructure/database/secrets.yaml") . | sha256sum }}
     spec:
       restartPolicy: Never
       serviceAccountName: {{ .Values.ros.serviceAccount.name }}

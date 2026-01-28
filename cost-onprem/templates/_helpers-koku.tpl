@@ -79,13 +79,6 @@ Koku database name
 {{- end -}}
 
 {{/*
-Koku database user
-*/}}
-{{- define "cost-onprem.koku.database.user" -}}
-{{- .Values.database.koku.user | default "koku" -}}
-{{- end -}}
-
-{{/*
 =============================================================================
 Valkey Connection Helpers (cache/broker)
 =============================================================================
@@ -260,7 +253,10 @@ Common environment variables for Koku API and Celery
 - name: DATABASE_NAME
   value: {{ include "cost-onprem.koku.database.dbname" . | quote }}
 - name: DATABASE_USER
-  value: {{ include "cost-onprem.koku.database.user" . | quote }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "cost-onprem.koku.database.secretName" . }}
+      key: koku-user
 - name: DATABASE_PASSWORD
   valueFrom:
     secretKeyRef:
@@ -303,7 +299,7 @@ Common environment variables for Koku API and Celery
 # S3 Region for signature generation (required for S3v4 signatures)
 # NooBaa/MinIO don't use regions, but boto3 requires it for signature calculation
 - name: S3_REGION
-  value: "us-east-1"
+  value: {{ .Values.odf.s3.region | default "onprem" | quote }}
 # AWS SDK configuration for S3v4 signatures
 - name: AWS_CONFIG_FILE
   value: /etc/aws/config

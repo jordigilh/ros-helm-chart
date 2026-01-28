@@ -79,7 +79,7 @@ spec:
             - name: local
               value: {{ .Values.kruize.env.local | quote }}
             # Database credentials from secret
-            - name: database_user
+            - name: database_username
               valueFrom:
                 secretKeyRef:
                   name: {{ include "cost-onprem.database.secretName" . }}
@@ -89,6 +89,17 @@ spec:
                 secretKeyRef:
                   name: {{ include "cost-onprem.database.secretName" . }}
                   key: kruize-password
+            # Database admin credentials for partition creation
+            - name: database_adminusername
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.database.secretName" . }}
+                  key: postgres-user
+            - name: database_adminpassword
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cost-onprem.database.secretName" . }}
+                  key: postgres-password
           volumeMounts:
             - name: kruize-config
               mountPath: /tmp/cdappconfig.json
@@ -155,7 +166,7 @@ spec:
             - name: plots
               value: {{ .Values.kruize.env.plots | quote }}
             # Database credentials from secret
-            - name: database_user
+            - name: database_username
               valueFrom:
                 secretKeyRef:
                   name: {{ include "cost-onprem.database.secretName" . }}
