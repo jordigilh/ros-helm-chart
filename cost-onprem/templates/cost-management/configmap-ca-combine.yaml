@@ -11,20 +11,30 @@ data:
     #!/bin/bash
     set -e
 
+    {{- if .Values.global.debug }}
     echo "🔧 Combining CA certificates for Python SSL..."
+    {{- end }}
 
     # Start with system CA bundle
     if [ -f /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem ]; then
+        {{- if .Values.global.debug }}
         echo "📋 Adding system CA bundle..."
+        {{- end }}
         cat /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem > /tmp/combined-ca.crt
     elif [ -f /etc/ssl/certs/ca-bundle.crt ]; then
+        {{- if .Values.global.debug }}
         echo "📋 Adding system CA bundle..."
+        {{- end }}
         cat /etc/ssl/certs/ca-bundle.crt > /tmp/combined-ca.crt
     elif [ -f /etc/ssl/certs/ca-certificates.crt ]; then
+        {{- if .Values.global.debug }}
         echo "📋 Adding system CA certificates..."
+        {{- end }}
         cat /etc/ssl/certs/ca-certificates.crt > /tmp/combined-ca.crt
     else
+        {{- if .Values.global.debug }}
         echo "⚠️ No system CA bundle found, starting with empty bundle"
+        {{- end }}
         touch /tmp/combined-ca.crt
     fi
 
@@ -32,14 +42,18 @@ data:
 
     # Add OpenShift cluster root CA (Kubernetes service account CA)
     if [ -f /var/run/secrets/kubernetes.io/serviceaccount/ca.crt ]; then
+        {{- if .Values.global.debug }}
         echo "📋 Adding OpenShift cluster root CA..."
+        {{- end }}
         cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /tmp/combined-ca.crt
         echo "" >> /tmp/combined-ca.crt
     fi
 
     # Add OpenShift Service CA (signs *.svc certificates like s3.openshift-storage.svc)
     if [ -f /ca-source/service-ca.crt ] && [ -s /ca-source/service-ca.crt ]; then
+        {{- if .Values.global.debug }}
         echo "📋 Adding OpenShift Service CA..."
+        {{- end }}
         cat /ca-source/service-ca.crt >> /tmp/combined-ca.crt
         echo "" >> /tmp/combined-ca.crt
     fi
@@ -47,6 +61,10 @@ data:
     # Copy to shared volume
     cp /tmp/combined-ca.crt /ca-output/ca-bundle.crt
 
+    {{- if .Values.global.debug }}
     echo "✅ Combined CA bundle created with $(grep -c 'BEGIN CERTIFICATE' /ca-output/ca-bundle.crt) certificates"
+    {{- end }}
+    {{- if .Values.global.debug }}
     echo "📄 CA bundle size: $(wc -c < /ca-output/ca-bundle.crt) bytes"
+    {{- end }}
 

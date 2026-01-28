@@ -449,26 +449,40 @@ to ensure migrations run before the application starts
     - -c
     - |
       set -e
+      {{- if .Values.global.debug }}
       echo "=== Koku Django Migrations Init Container ==="
+      {{- end }}
+      {{- if .Values.global.debug }}
       echo "Timestamp: $(date)"
+      {{- end }}
 
       # Wait for database to be ready
+      {{- if .Values.global.debug }}
       echo "Waiting for database..."
+      {{- end }}
       until timeout 5 bash -c "cat < /dev/null > /dev/tcp/${DATABASE_SERVICE_HOST}/${DATABASE_SERVICE_PORT}" 2>/dev/null; do
+        {{- if .Values.global.debug }}
         echo "Database not ready, waiting..."
+        {{- end }}
         sleep 2
       done
+      {{- if .Values.global.debug }}
       echo "Database is ready"
+      {{- end }}
 
       # Set up environment
       mkdir -p /tmp/prometheus
       cd /opt/koku/koku
 
       # Run migrations
+      {{- if .Values.global.debug }}
       echo "Running Django migrations..."
+      {{- end }}
       python manage.py migrate --noinput
 
+      {{- if .Values.global.debug }}
       echo "Migrations completed successfully"
+      {{- end }}
   env:
   {{- include "cost-onprem.koku.commonEnv" . | nindent 2 }}
   volumeMounts:
