@@ -11,7 +11,7 @@ spec:
   ports:
     # Expose ros-api container port directly
     # Traffic is pre-authenticated by centralized gateway
-    - port: 8000
+    - port: {{ .Values.ros.api.port }}
       targetPort: http
       protocol: TCP
       name: http

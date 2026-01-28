@@ -11,7 +11,7 @@ spec:
   ports:
     # Expose ingress container port directly
     # Traffic is pre-authenticated by centralized gateway
-    - port: 8081
+    - port: {{ .Values.ingress.server.port }}
       targetPort: http
       protocol: TCP
       name: http

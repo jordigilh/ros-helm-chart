@@ -32,14 +32,14 @@ spec:
 
 
         ports:
-        - containerPort: 8000
+        - containerPort: {{ include "cost-onprem.koku.api.port" . }}
           protocol: TCP
 
         # Health checks
         livenessProbe:
           httpGet:
             path: /livez
-            port: 9000
+            port: {{ include "cost-onprem.koku.metrics.port" . }}
           initialDelaySeconds: 30
           periodSeconds: 20
           timeoutSeconds: 3
@@ -49,7 +49,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /readyz
-            port: 9000
+            port: {{ include "cost-onprem.koku.metrics.port" . }}
           initialDelaySeconds: 30
           periodSeconds: 20
           timeoutSeconds: 3

@@ -25,5 +25,5 @@ spec:
               app.kubernetes.io/component: gateway
       ports:
         - protocol: TCP
-          port: 8081  # Ingress container port
+          port: {{ .Values.ingress.server.port }}  # Ingress container port
 

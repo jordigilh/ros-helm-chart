@@ -52,12 +52,8 @@ class TestRecommendationsAPI:
         if not auth_header:
             pytest.skip("Could not obtain fresh JWT token")
 
-        # Gateway route already includes /api prefix
-        base = ros_api_url.rstrip("/")
-        if base.endswith("/api"):
-            endpoint = f"{base}/cost-management/v1/recommendations/openshift"
-        else:
-            endpoint = f"{base}/api/cost-management/v1/recommendations/openshift"
+        # Gateway route always includes /api prefix
+        endpoint = f"{ros_api_url.rstrip('/')}/cost-management/v1/recommendations/openshift"
 
         response = http_session.get(endpoint, headers=auth_header, timeout=30)
 

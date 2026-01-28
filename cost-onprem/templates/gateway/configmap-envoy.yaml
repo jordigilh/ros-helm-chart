@@ -176,7 +176,6 @@ data:
                         cache_duration:
                           seconds: 300
                       forward: true
-                      forward_payload_header: jwt-payload
                       payload_in_metadata: keycloak
                   rules:
                   - match:
@@ -441,7 +440,7 @@ data:
                 address:
                   socket_address:
                     address: {{ include "cost-onprem.fullname" . }}-ros-api.{{ .Release.Namespace }}.svc.cluster.local
-                    port_value: 8000
+                    port_value: {{ .Values.ros.api.port }}
         circuit_breakers:
           thresholds:
           - priority: DEFAULT
@@ -463,7 +462,7 @@ data:
                 address:
                   socket_address:
                     address: {{ include "cost-onprem.koku.api.reads.name" . }}.{{ .Release.Namespace }}.svc.cluster.local
-                    port_value: 8000
+                    port_value: {{ include "cost-onprem.koku.api.port" . }}
         circuit_breakers:
           thresholds:
           - priority: DEFAULT
@@ -485,7 +484,7 @@ data:
                 address:
                   socket_address:
                     address: {{ include "cost-onprem.koku.api.writes.name" . }}.{{ .Release.Namespace }}.svc.cluster.local
-                    port_value: 8000
+                    port_value: {{ include "cost-onprem.koku.api.port" . }}
         circuit_breakers:
           thresholds:
           - priority: DEFAULT
@@ -507,7 +506,7 @@ data:
                 address:
                   socket_address:
                     address: {{ include "cost-onprem.fullname" . }}-sources-api.{{ .Release.Namespace }}.svc.cluster.local
-                    port_value: 8000
+                    port_value: {{ .Values.sourcesApi.port }}
         circuit_breakers:
           thresholds:
           - priority: DEFAULT
@@ -529,7 +528,7 @@ data:
                 address:
                   socket_address:
                     address: {{ include "cost-onprem.fullname" . }}-ingress.{{ .Release.Namespace }}.svc.cluster.local
-                    port_value: 8081
+                    port_value: {{ .Values.ingress.server.port }}
         circuit_breakers:
           thresholds:
           - priority: DEFAULT

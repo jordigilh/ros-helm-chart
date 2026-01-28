@@ -10,8 +10,8 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - port: 8000
-    targetPort: 8000
+  - port: {{ include "cost-onprem.koku.api.port" . }}
+    targetPort: {{ include "cost-onprem.koku.api.port" . }}
     protocol: TCP
     name: http
   selector:

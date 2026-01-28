@@ -252,7 +252,6 @@ costManagement:
     service:
       type: ClusterIP
       port: 8000
-      targetPort: 8000
       name: koku-api
 
   # ---------------------------------------------------------------------------
@@ -722,7 +721,7 @@ ingress:
 
   # Server configuration
   server:
-    port: 8080
+    port: 8081
     debug: false
 
   # Upload handling
@@ -1005,6 +1004,7 @@ ui:
       repository: registry.redhat.io/rhceph/oauth2-proxy-rhel9
       pullPolicy: IfNotPresent
       tag: "v7.6.0"
+    port: 8443  # OAuth proxy HTTPS port
     resources:
       limits:
         cpu: "100m"

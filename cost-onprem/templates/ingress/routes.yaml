@@ -39,8 +39,8 @@ metadata:
     {{- with .Values.serviceRoute.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-    # Extended timeout for large API responses
-    haproxy.router.openshift.io/timeout: "60s"
+    # Uncomment to extend timeout for large API responses
+    # haproxy.router.openshift.io/timeout: "60s"
 spec:
   host: {{ $apiHost | quote }}
   path: /api

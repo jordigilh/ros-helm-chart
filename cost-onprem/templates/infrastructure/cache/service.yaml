@@ -10,7 +10,7 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   ports:
-    - port: 6379
+    - port: {{ .Values.valkey.port }}
       targetPort: {{ $cacheName }}
       protocol: TCP
       name: {{ $cacheName }}
