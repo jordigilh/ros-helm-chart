@@ -110,7 +110,6 @@ E2E_RESTART_SERVICES=false # Restart Redis/listener (optional)
 | Kruize | `app.kubernetes.io/component=ros-optimization` |
 | ROS API | `app.kubernetes.io/component=ros-api` |
 | ROS Processor | `app.kubernetes.io/component=ros-processor` |
-| Sources API | `app.kubernetes.io/component=sources-api` |
 | Cache (Valkey) | `app.kubernetes.io/component=cache` |
 | Koku Listener | `app.kubernetes.io/component=listener` |
 | MASU | `app.kubernetes.io/component=cost-processor` |
