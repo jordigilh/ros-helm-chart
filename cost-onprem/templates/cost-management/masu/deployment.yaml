@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-onprem.koku.api.reads.name" . | replace "reads" "masu" }}
+  name: {{ include "cost-onprem.koku.masu.name" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.koku.labels" . | nindent 4 }}
@@ -11,8 +11,7 @@ spec:
   replicas: {{ .Values.costManagement.masu.replicas }}
   selector:
     matchLabels:
-      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: cost-processor
+      {{- include "cost-onprem.koku.masu.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
@@ -20,12 +19,17 @@ spec:
         app.kubernetes.io/component: cost-processor
     spec:
       serviceAccountName: {{ .Values.costManagement.serviceAccount.name }}
+      automountServiceAccountToken: false
+
       initContainers:
       {{- include "cost-onprem.koku.initContainer.combineCA" . | nindent 6 }}
       containers:
       - name: masu
         image: "{{ include "cost-onprem.koku.image" . }}"
         imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
+        securityContext:
+          {{- include "cost-onprem.securityContext.container" . | nindent 10 }}
+
 
         ports:
         - containerPort: 8000
@@ -58,7 +62,7 @@ spec:
 
         # Environment variables
         env:
-        # Common Koku environment variables (includes DB, Redis, S3, etc.)
+        # Common Koku environment variables (includes DB, Valkey, S3, etc.)
         {{- include "cost-onprem.koku.commonEnv" . | nindent 8 }}
 
         # POD_CPU_LIMIT is required for gunicorn worker calculation

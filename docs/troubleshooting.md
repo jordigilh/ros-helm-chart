@@ -351,9 +351,9 @@ kubectl get pods -n kafka -l name=strimzi-cluster-operator
 **Steps**:
 
 ```bash
-# 1. Clear Redis/Valkey cache (uses valkey-cli, Redis-compatible)
-REDIS_POD=$(kubectl get pod -n cost-onprem -l app.kubernetes.io/component=cache -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n cost-onprem $REDIS_POD -- valkey-cli FLUSHALL
+# 1. Clear Valkey cache
+VALKEY_POD=$(kubectl get pod -n cost-onprem -l app.kubernetes.io/component=cache -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n cost-onprem $VALKEY_POD -- valkey-cli FLUSHALL
 
 # 2. Restart Koku listener to clear in-memory state
 kubectl delete pod -n cost-onprem -l app.kubernetes.io/component=listener

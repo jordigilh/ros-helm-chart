@@ -114,7 +114,7 @@ cost-onprem-chart/
 - **ROS Housekeeper**: Maintenance tasks and data cleanup
 - **Kruize Autotune**: Optimization recommendation engine (direct authentication, protected by network policies)
 - **Sources API**: Source management and integration (middleware-based authentication for protected endpoints, unauthenticated metadata endpoints for internal use)
-- **Redis/Valkey**: Caching layer for performance
+- **Valkey**: Caching layer for performance
 
 **Security Architecture**:
 - **Ingress Authentication**: Envoy sidecar with JWT validation (Keycloak) for external uploads

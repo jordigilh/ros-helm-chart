@@ -31,6 +31,20 @@ Koku API writes deployment name
 {{- end -}}
 
 {{/*
+Koku MASU (cost processor) name
+*/}}
+{{- define "cost-onprem.koku.masu.name" -}}
+{{- printf "%s-koku-masu" (include "cost-onprem.fullname" .) -}}
+{{- end -}}
+
+{{/*
+Koku Kafka listener name
+*/}}
+{{- define "cost-onprem.koku.listener.name" -}}
+{{- printf "%s-koku-listener" (include "cost-onprem.fullname" .) -}}
+{{- end -}}
+
+{{/*
 Koku Celery Beat name
 */}}
 {{- define "cost-onprem.koku.celery.beat.name" -}}
@@ -79,13 +93,6 @@ Koku database name
 {{- end -}}
 
 {{/*
-Koku database user
-*/}}
-{{- define "cost-onprem.koku.database.user" -}}
-{{- .Values.database.koku.user | default "koku" -}}
-{{- end -}}
-
-{{/*
 =============================================================================
 Valkey Connection Helpers (cache/broker)
 =============================================================================
@@ -94,14 +101,14 @@ Valkey Connection Helpers (cache/broker)
 {{/*
 Valkey host
 */}}
-{{- define "cost-onprem.koku.redis.host" -}}
+{{- define "cost-onprem.koku.valkey.host" -}}
 {{- printf "%s-valkey" (include "cost-onprem.fullname" .) -}}
 {{- end -}}
 
 {{/*
 Valkey port
 */}}
-{{- define "cost-onprem.koku.redis.port" -}}
+{{- define "cost-onprem.koku.valkey.port" -}}
 {{- .Values.valkey.port | default 6379 -}}
 {{- end -}}
 
@@ -217,6 +224,22 @@ cost-onprem.io/worker-queue: {{ $type }}
 {{- end -}}
 
 {{/*
+Selector labels for Koku MASU (cost processor)
+*/}}
+{{- define "cost-onprem.koku.masu.selectorLabels" -}}
+{{ include "cost-onprem.selectorLabels" . }}
+app.kubernetes.io/component: cost-processor
+{{- end -}}
+
+{{/*
+Selector labels for Koku Listener
+*/}}
+{{- define "cost-onprem.koku.listener.selectorLabels" -}}
+{{ include "cost-onprem.selectorLabels" . }}
+app.kubernetes.io/component: listener
+{{- end -}}
+
+{{/*
 =============================================================================
 Service Account Helpers
 =============================================================================
@@ -260,16 +283,20 @@ Common environment variables for Koku API and Celery
 - name: DATABASE_NAME
   value: {{ include "cost-onprem.koku.database.dbname" . | quote }}
 - name: DATABASE_USER
-  value: {{ include "cost-onprem.koku.database.user" . | quote }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "cost-onprem.koku.database.secretName" . }}
+      key: koku-user
 - name: DATABASE_PASSWORD
   valueFrom:
     secretKeyRef:
       name: {{ include "cost-onprem.koku.database.secretName" . }}
       key: koku-password
+# Valkey connection
 - name: REDIS_HOST
-  value: {{ include "cost-onprem.koku.redis.host" . | quote }}
+  value: {{ include "cost-onprem.koku.valkey.host" . | quote }}
 - name: REDIS_PORT
-  value: {{ include "cost-onprem.koku.redis.port" . | quote }}
+  value: {{ include "cost-onprem.koku.valkey.port" . | quote }}
 - name: CELERY_RESULT_EXPIRES
   value: {{ .Values.costManagement.celery.resultExpires | default "28800" | quote }}
 - name: INSIGHTS_KAFKA_HOST
@@ -303,7 +330,7 @@ Common environment variables for Koku API and Celery
 # S3 Region for signature generation (required for S3v4 signatures)
 # NooBaa/MinIO don't use regions, but boto3 requires it for signature calculation
 - name: S3_REGION
-  value: "us-east-1"
+  value: {{ .Values.odf.s3.region | default "onprem" | quote }}
 # AWS SDK configuration for S3v4 signatures
 - name: AWS_CONFIG_FILE
   value: /etc/aws/config

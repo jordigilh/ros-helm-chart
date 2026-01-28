@@ -91,7 +91,7 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "cost-onprem.fullname" . }}-koku-api-reads
+  name: {{ include "cost-onprem.koku.api.reads.name" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
@@ -111,7 +111,7 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "cost-onprem.fullname" . }}-koku-api-writes
+  name: {{ include "cost-onprem.koku.api.writes.name" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}

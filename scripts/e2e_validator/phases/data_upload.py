@@ -38,7 +38,7 @@ class DataUploadPhase:
         """Initialize data upload phase
 
         Args:
-            s3_client: boto3 S3 client
+            s3_client: S3Client wrapper instance (with internal presigned URL support)
             nise_client: NiseClient instance
             bucket: S3 bucket name
             report_name: Report name
@@ -50,7 +50,15 @@ class DataUploadPhase:
             org_id: Organization ID for Kafka messages
             s3_endpoint: S3 endpoint URL for Kafka messages
         """
-        self.s3 = s3_client
+        # Support both S3Client wrapper and direct boto3 client for backwards compatibility
+        if hasattr(s3_client, 's3'):
+            # S3Client wrapper - store both wrapper and boto3 client
+            self.s3_wrapper = s3_client
+            self.s3 = s3_client.s3
+        else:
+            # Direct boto3 client (legacy)
+            self.s3_wrapper = None
+            self.s3 = s3_client
         self.nise = nise_client
         self.bucket = bucket
         self.report_name = report_name
@@ -157,7 +165,7 @@ generators:
         }
 
     def _restart_koku_components_for_cache_clear(self):
-        """Restart Redis and Koku listener to clear stale caches.
+        """Restart Valkey and Koku listener to clear stale caches.
 
         This ensures a clean state by clearing any cached processing state.
         """
@@ -169,20 +177,20 @@ generators:
         print(f"\n🔄 Clearing Koku caches (workaround for table_exists cache bug)...")
 
         try:
-            # Restart Redis to clear cache
-            print(f"  🗑️  Restarting Redis to clear cache...")
+            # Restart Valkey to clear cache
+            print(f"  🗑️  Restarting Valkey to clear cache...")
             subprocess.run(
                 ['kubectl', 'delete', 'pod', '-n', namespace, '-l', 'app.kubernetes.io/component=cache'],
                 capture_output=True, timeout=30
             )
 
-            # Wait for Redis to come back
+            # Wait for Valkey to come back
             subprocess.run(
                 ['kubectl', 'wait', '--for=condition=ready', 'pod',
                  '-l', 'app.kubernetes.io/component=cache', '-n', namespace, '--timeout=60s'],
                 capture_output=True, timeout=70
             )
-            print(f"  ✅ Redis restarted")
+            print(f"  ✅ Valkey restarted")
 
             # Restart listener to clear in-memory state
             print(f"  🔄 Restarting Koku listener...")
@@ -204,7 +212,7 @@ generators:
 
         except Exception as e:
             print(f"  ⚠️  Warning: Could not restart components: {e}")
-            print(f"  ℹ️  You may need to manually restart Redis and listener pods")
+            print(f"  ℹ️  You may need to manually restart Valkey and listener pods")
 
     def check_existing_data(self) -> Dict[str, any]:
         """Check if VALID test data already exists
@@ -912,18 +920,47 @@ generators:
         # The listener uses requests.get(url) which requires pre-authenticated URLs.
         # In production, Red Hat Ingress API provides these. For on-prem E2E tests,
         # we generate S3 presigned URLs that work with requests.get() without credentials.
+        #
+        # IMPORTANT: We generate presigned URLs from INSIDE the cluster (via pod exec) to use
+        # the internal S3 endpoint (.svc). This allows Koku pods with automountServiceAccountToken: false
+        # to download from S3 without needing the cluster root CA from the service account mount.
         print(f"\n🔐 Generating presigned URL for listener download...")
         try:
-            presigned_url = self.s3.generate_presigned_url(
-                'get_object',
-                Params={
-                    'Bucket': self.bucket,
-                    'Key': s3_key
-                },
-                ExpiresIn=3600  # Valid for 1 hour (enough for E2E test)
-            )
-            print(f"  ✅ Presigned URL generated (expires in 1 hour)")
-            print(f"  ℹ️  This URL works with requests.get() - no additional credentials needed")
+            # Try to generate internal presigned URL via pod exec (preferred)
+            if self.s3_wrapper:
+                presigned_url = self.s3_wrapper.generate_presigned_url_via_pod(
+                    bucket=self.bucket,
+                    key=s3_key,
+                    expires_in=3600
+                )
+                
+                if presigned_url:
+                    print(f"  ✅ Presigned URL generated from inside cluster (internal endpoint)")
+                    print(f"  ℹ️  URL uses internal S3 service (.svc) - compatible with full PSS")
+                else:
+                    # Fallback to external presigned URL (requires service account CA)
+                    print(f"  ⚠️  Falling back to external presigned URL generation")
+                    presigned_url = self.s3.generate_presigned_url(
+                        'get_object',
+                        Params={
+                            'Bucket': self.bucket,
+                            'Key': s3_key
+                        },
+                        ExpiresIn=3600
+                    )
+                    print(f"  ✅ Presigned URL generated (expires in 1 hour)")
+                    print(f"  ⚠️  URL uses external route - requires cluster root CA in pod")
+            else:
+                # Legacy path - generate external presigned URL
+                presigned_url = self.s3.generate_presigned_url(
+                    'get_object',
+                    Params={
+                        'Bucket': self.bucket,
+                        'Key': s3_key
+                    },
+                    ExpiresIn=3600
+                )
+                print(f"  ✅ Presigned URL generated (expires in 1 hour)")
         except Exception as e:
             print(f"  ❌ Failed to generate presigned URL: {e}")
             return {'success': False, 'error': f'Presigned URL generation failed: {str(e)}'}

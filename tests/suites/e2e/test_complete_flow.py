@@ -15,7 +15,7 @@ Environment Variables:
   - E2E_NISE_STATIC_REPORT: Path to custom NISE static report file
   - E2E_CLEANUP_BEFORE=true/false: Run cleanup before tests (default: true)
   - E2E_CLEANUP_AFTER=true/false: Run cleanup after tests (default: true)
-  - E2E_RESTART_SERVICES=true: Restart Redis/listener during cleanup (slower but thorough)
+  - E2E_RESTART_SERVICES=true: Restart Valkey/listener during cleanup (slower but thorough)
 """
 
 import os
@@ -82,13 +82,11 @@ generators:
       nodes:
         - node:
           node_name: test-node-1
-          node_labels: label_node_name:test-node-1|label_environment:e2e-test
           cpu_cores: 2
           memory_gig: 8
           resource_id: test-resource-1
           namespaces:
             test-namespace:
-              namespace_labels: label_namespace:test-namespace|label_environment:e2e-test
               pods:
                 - pod:
                   pod_name: test-pod-1
@@ -169,21 +167,16 @@ def generate_nise_ocp_data(
     all_csv_files = list(Path(output_dir).rglob("*.csv"))
     pod_usage_files = [f for f in all_csv_files if "pod_usage" in f.name]
     ros_usage_files = [f for f in all_csv_files if "ros_usage" in f.name and "namespace" not in f.name]
-    # Label files are required for Koku summary tables to work correctly
-    node_label_files = [f for f in all_csv_files if "node_label" in f.name.lower()]
-    namespace_label_files = [f for f in all_csv_files if "namespace_label" in f.name.lower()]
     manifest_files = list(Path(output_dir).rglob("*manifest.json"))
-
+    
     # Prioritize pod_usage files (for Koku summary tables), then ROS files
     csv_files = pod_usage_files + [f for f in all_csv_files if f not in pod_usage_files]
-
+    
     return {
         "output_dir": output_dir,
         "csv_files": [str(f) for f in csv_files],
         "pod_usage_files": [str(f) for f in pod_usage_files],
         "ros_usage_files": [str(f) for f in ros_usage_files],  # Container-level data for ROS
-        "node_label_files": [str(f) for f in node_label_files],  # Node labels for summary
-        "namespace_label_files": [str(f) for f in namespace_label_files],  # Namespace labels
         "manifest_files": [str(f) for f in manifest_files],
         "cluster_id": cluster_id,
         "start_date": start_date,
@@ -416,7 +409,7 @@ class TestCompleteDataFlow:
         Cleanup includes:
           - S3 data files from previous runs
           - Database processing records
-          - Optionally Redis cache and listener restart (if E2E_RESTART_SERVICES=1)
+          - Optionally Valkey cache and listener restart (if E2E_RESTART_SERVICES=1)
         """
         from utils import exec_in_pod, get_pod_by_label
         import json
@@ -712,21 +705,16 @@ class TestCompleteDataFlow:
         # Check if we have NISE-generated files with separate ROS data
         pod_usage_files = e2e_test_data.get("pod_usage_files", [])
         ros_usage_files = e2e_test_data.get("ros_usage_files", [])
-        node_label_files = e2e_test_data.get("node_label_files", [])
-        namespace_label_files = e2e_test_data.get("namespace_label_files", [])
-
+        
         if pod_usage_files and ros_usage_files:
             # Use NISE files with proper separation of cost and ROS data
-            label_count = len(node_label_files) + len(namespace_label_files)
-            print(f"  📦 Creating package with {len(pod_usage_files)} pod_usage + {len(ros_usage_files)} ros_usage + {label_count} label files")
+            print(f"  📦 Creating package with {len(pod_usage_files)} pod_usage + {len(ros_usage_files)} ros_usage files")
             tar_path = create_upload_package_from_files(
                 pod_usage_files,
                 ros_usage_files,
                 cluster_id,
                 start_date=start_date,
                 end_date=end_date,
-                node_label_files=node_label_files,
-                namespace_label_files=namespace_label_files,
             )
         else:
             # Fall back to simple CSV content

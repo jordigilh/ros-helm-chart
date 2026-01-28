@@ -9,15 +9,12 @@ data:
   cdappconfig.json: |
     {
       "database": {
-        "adminPassword": "{{ include "cost-onprem.database.ros.password" . }}",
-        "adminUsername": "{{ include "cost-onprem.database.ros.user" . }}",
         "hostname": "{{ include "cost-onprem.database.host" . }}",
         "name": "{{ .Values.database.ros.name }}",
-        "password": "{{ include "cost-onprem.database.ros.password" . }}",
         "port": {{ .Values.database.server.port }},
-        "username": "{{ include "cost-onprem.database.ros.user" . }}",
         "sslMode": "{{ .Values.database.server.sslMode }}"
       },
+      "_comment": "Credentials removed - applications must use environment variables (DB_USER, DB_PASSWORD) from secrets",
       "kafka": {
         "brokers": [
           {
