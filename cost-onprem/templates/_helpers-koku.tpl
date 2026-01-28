@@ -31,6 +31,20 @@ Koku API writes deployment name
 {{- end -}}
 
 {{/*
+Koku MASU (cost processor) name
+*/}}
+{{- define "cost-onprem.koku.masu.name" -}}
+{{- printf "%s-koku-masu" (include "cost-onprem.fullname" .) -}}
+{{- end -}}
+
+{{/*
+Koku Kafka listener name
+*/}}
+{{- define "cost-onprem.koku.listener.name" -}}
+{{- printf "%s-koku-listener" (include "cost-onprem.fullname" .) -}}
+{{- end -}}
+
+{{/*
 Koku Celery Beat name
 */}}
 {{- define "cost-onprem.koku.celery.beat.name" -}}
@@ -207,6 +221,22 @@ Usage: {{ include "cost-onprem.koku.celery.worker.selectorLabels" (dict "context
 app.kubernetes.io/component: cost-worker
 cost-onprem.io/celery-type: worker
 cost-onprem.io/worker-queue: {{ $type }}
+{{- end -}}
+
+{{/*
+Selector labels for Koku MASU (cost processor)
+*/}}
+{{- define "cost-onprem.koku.masu.selectorLabels" -}}
+{{ include "cost-onprem.selectorLabels" . }}
+app.kubernetes.io/component: cost-processor
+{{- end -}}
+
+{{/*
+Selector labels for Koku Listener
+*/}}
+{{- define "cost-onprem.koku.listener.selectorLabels" -}}
+{{ include "cost-onprem.selectorLabels" . }}
+app.kubernetes.io/component: listener
 {{- end -}}
 
 {{/*

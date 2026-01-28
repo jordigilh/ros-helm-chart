@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-onprem.koku.api.reads.name" . | replace "reads" "listener" }}
+  name: {{ include "cost-onprem.koku.listener.name" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.koku.labels" . | nindent 4 }}
@@ -11,8 +11,7 @@ spec:
   replicas: {{ .Values.costManagement.listener.replicas }}
   selector:
     matchLabels:
-      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: listener
+      {{- include "cost-onprem.koku.listener.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:

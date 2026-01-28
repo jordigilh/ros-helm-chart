@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-onprem.koku.api.reads.name" . | replace "reads" "masu" }}
+  name: {{ include "cost-onprem.koku.masu.name" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.koku.labels" . | nindent 4 }}
@@ -11,8 +11,7 @@ spec:
   replicas: {{ .Values.costManagement.masu.replicas }}
   selector:
     matchLabels:
-      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: cost-processor
+      {{- include "cost-onprem.koku.masu.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
