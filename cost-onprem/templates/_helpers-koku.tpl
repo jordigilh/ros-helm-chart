@@ -211,6 +211,19 @@ cost-onprem.io/celery-type: beat
 {{- end -}}
 
 {{/*
+Full labels for Celery Worker (includes all koku labels + component labels)
+Usage: {{ include "cost-onprem.koku.celery.worker.labels" (dict "context" . "type" "default") }}
+*/}}
+{{- define "cost-onprem.koku.celery.worker.labels" -}}
+{{- $context := .context -}}
+{{- $type := .type -}}
+{{ include "cost-onprem.koku.labels" $context }}
+app.kubernetes.io/component: cost-worker
+cost-onprem.io/celery-type: worker
+cost-onprem.io/worker-queue: {{ $type }}
+{{- end -}}
+
+{{/*
 Selector labels for Celery Worker (takes worker type as argument)
 Usage: {{ include "cost-onprem.koku.celery.worker.selectorLabels" (dict "context" . "type" "default") }}
 */}}
