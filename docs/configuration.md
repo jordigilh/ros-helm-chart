@@ -171,7 +171,8 @@ odf:
 ```yaml
 odf:
   endpoint: "rook-ceph-rgw-ocs-storagecluster-cephobjectstore.openshift-storage.svc"
-  region: "us-east-1"
+  s3:
+    region: "onprem"  # Default for NooBaa/MinIO; use "us-east-1" for AWS S3
   bucket: "ros-data-ceph-bfe1f304-xxx"  # From OBC ConfigMap
   pathStyle: true
   useSSL: true

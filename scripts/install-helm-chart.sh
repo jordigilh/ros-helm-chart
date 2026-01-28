@@ -321,6 +321,85 @@ detect_external_obc() {
     return 0
 }
 
+# Function to create database credentials secret
+# Creates a secret with credentials for all database users (postgres, ros, kruize, koku, sources)
+create_database_credentials_secret() {
+    echo_info "Creating database credentials secret..."
+
+    local secret_name="cost-onprem-db-credentials"
+
+    # Check if secret already exists
+    if kubectl get secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_warning "Database credentials secret '$secret_name' already exists (preserving existing credentials)"
+        return 0
+    fi
+
+    echo_info "Generating secure random database passwords..."
+
+    # Generate secure random passwords (32 characters, alphanumeric)
+    local postgres_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+    local ros_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+    local kruize_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+    local koku_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+    local sources_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+
+    # Create the secret
+    kubectl create secret generic "$secret_name" \
+        --namespace="$NAMESPACE" \
+        --from-literal=postgres-user=postgres \
+        --from-literal=postgres-password="$postgres_password" \
+        --from-literal=ros-user=ros_user \
+        --from-literal=ros-password="$ros_password" \
+        --from-literal=kruize-user=kruize_user \
+        --from-literal=kruize-password="$kruize_password" \
+        --from-literal=koku-user=koku \
+        --from-literal=koku-password="$koku_password" \
+        --from-literal=sources-user=sources \
+        --from-literal=sources-password="$sources_password"
+
+    if [ $? -eq 0 ]; then
+        echo_success "Database credentials secret created successfully"
+        echo_info "  Secret: $NAMESPACE/$secret_name"
+        echo_info "  📋 To retrieve credentials:"
+        echo_info "    kubectl get secret $secret_name -n $NAMESPACE -o jsonpath='{.data.ros-password}' | base64 -d"
+    else
+        echo_error "Failed to create database credentials secret"
+        return 1
+    fi
+}
+
+# Function to create Sources API credentials secret
+create_sources_credentials_secret() {
+    echo_info "Creating Sources API credentials secret..."
+
+    local secret_name="cost-onprem-sources-credentials"
+
+    # Check if secret already exists
+    if kubectl get secret "$secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo_warning "Sources API credentials secret '$secret_name' already exists (preserving existing credentials)"
+        return 0
+    fi
+
+    echo_info "Generating Sources API encryption key..."
+
+    # Generate encryption key (valid base64, 32 characters from 24 bytes)
+    # Sources API expects valid base64 for decoding, so keep padding
+    local encryption_key=$(openssl rand -base64 24)
+
+    # Create the secret
+    kubectl create secret generic "$secret_name" \
+        --namespace="$NAMESPACE" \
+        --from-literal=encryption-key="$encryption_key"
+
+    if [ $? -eq 0 ]; then
+        echo_success "Sources API credentials secret created successfully"
+        echo_info "  Secret: $NAMESPACE/$secret_name"
+    else
+        echo_error "Failed to create Sources API credentials secret"
+        return 1
+    fi
+}
+
 # Function to create storage credentials secret
 create_storage_credentials_secret() {
     echo_info "Creating storage credentials secret..."
@@ -345,57 +424,100 @@ create_storage_credentials_secret() {
         return 0
     fi
 
-    # For OpenShift, check if ODF credentials secret exists
+    # PRIORITY: If MINIO_ENDPOINT is set, use MinIO credentials (for testing)
+    if [ -n "$MINIO_ENDPOINT" ]; then
+        echo_info "MINIO_ENDPOINT detected: Using MinIO credentials for testing..."
+        # Check if MinIO credentials secret exists (from deploy-minio script)
+        if kubectl get secret minio-credentials -n "$NAMESPACE" >/dev/null 2>&1; then
+            echo_info "Found existing MinIO credentials secret, extracting credentials..."
+            local access_key=$(kubectl get secret minio-credentials -n "$NAMESPACE" -o jsonpath='{.data.root-user}' | base64 -d)
+            local secret_key=$(kubectl get secret minio-credentials -n "$NAMESPACE" -o jsonpath='{.data.root-password}' | base64 -d)
+            kubectl create secret generic "$secret_name" \
+                --namespace="$NAMESPACE" \
+                --from-literal=access-key="$access_key" \
+                --from-literal=secret-key="$secret_key"
+            echo_success "Storage credentials created from MinIO credentials secret"
+            echo_info "  Access Key: $access_key"
+            return 0
+        else
+            echo_warning "MinIO credentials secret not found, falling back to default logic..."
+        fi
+    fi
+
+    # OpenShift-only deployment (supports both ODF and MinIO)
+    # Try ODF first, fall back to MinIO for testing/CI environments
     local odf_secret_name="cost-onprem-odf-credentials"
+    
     if kubectl get secret "$odf_secret_name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        # Scenario 1: ODF credentials secret exists (created by CI or manually)
         echo_info "Found existing ODF credentials secret: $odf_secret_name"
         echo_info "Creating storage credentials secret from ODF credentials..."
-            # Extract credentials from ODF secret
         local access_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.access-key}')
         local secret_key=$(kubectl get secret "$odf_secret_name" -n "$NAMESPACE" -o jsonpath='{.data.secret-key}')
-            # Create storage credentials secret
         kubectl create secret generic "$secret_name" \
             --namespace="$NAMESPACE" \
             --from-literal=access-key="$(echo "$access_key" | base64 -d)" \
             --from-literal=secret-key="$(echo "$secret_key" | base64 -d)"
         echo_success "Storage credentials secret created from ODF credentials"
+        echo_info "  Storage backend: ODF (OpenShift Data Foundation)"
+    elif kubectl get secret noobaa-admin -n openshift-storage >/dev/null 2>&1; then
+        # Scenario 2: NooBaa admin secret exists (production ODF deployment)
+        echo_info "Found noobaa-admin secret in openshift-storage namespace"
+        echo_info "Extracting ODF credentials from NooBaa..."
+
+        local access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d)
+        local secret_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d)
+
+        # Create ODF credentials secret for reference
+        kubectl create secret generic "$odf_secret_name" \
+            --namespace="$NAMESPACE" \
+            --from-literal=access-key="$access_key" \
+            --from-literal=secret-key="$secret_key"
+        echo_success "Created ODF credentials secret from noobaa-admin"
+
+        # Create storage credentials secret
+        kubectl create secret generic "$secret_name" \
+            --namespace="$NAMESPACE" \
+            --from-literal=access-key="$access_key" \
+            --from-literal=secret-key="$secret_key"
+        echo_success "Storage credentials secret created from noobaa-admin credentials"
+        echo_info "  Storage backend: ODF (OpenShift Data Foundation)"
+    elif kubectl get secret minio-credentials -n minio >/dev/null 2>&1; then
+        # Scenario 3: MinIO credentials exist (testing/CI environment on OpenShift)
+        echo_info "ODF not detected, checking for MinIO deployment..."
+        echo_info "Found MinIO credentials secret in minio namespace"
+        echo_info "Creating storage credentials secret from MinIO credentials..."
+        
+        local access_key=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.access-key}')
+        local secret_key=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.secret-key}')
+        kubectl create secret generic "$secret_name" \
+            --namespace="$NAMESPACE" \
+            --from-literal=access-key="$(echo "$access_key" | base64 -d)" \
+            --from-literal=secret-key="$(echo "$secret_key" | base64 -d)"
+        echo_success "Storage credentials secret created from MinIO credentials"
+        echo_info "  Storage backend: MinIO (standalone on OpenShift)"
     else
-        # Try to create ODF credentials from noobaa-admin secret (from create_secret_odf.sh logic)
-        echo_info "ODF credentials secret not found. Attempting to create from noobaa-admin secret..."
-
-        if kubectl get secret noobaa-admin -n openshift-storage >/dev/null 2>&1; then
-            echo_info "Found noobaa-admin secret, extracting ODF credentials..."
-
-            # Extract credentials from noobaa-admin secret (using create_secret_odf.sh logic)
-            local access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d)
-            local secret_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d)
-
-            # Create ODF credentials secret first
-            kubectl create secret generic "$odf_secret_name" \
-                --namespace="$NAMESPACE" \
-                --from-literal=access-key="$access_key" \
-                --from-literal=secret-key="$secret_key"
-
-            echo_success "Created ODF credentials secret from noobaa-admin"
-
-            # Now create storage credentials secret
-            kubectl create secret generic "$secret_name" \
-                --namespace="$NAMESPACE" \
-                --from-literal=access-key="$access_key" \
-                --from-literal=secret-key="$secret_key"
-
-            echo_success "Storage credentials secret created from noobaa-admin credentials"
-        else
-            echo_error "Neither ODF credentials secret '$odf_secret_name' nor noobaa-admin secret found"
-            echo_error "You must create the ODF credentials secret first:"
-            echo_info "  kubectl create secret generic $odf_secret_name \\"
-            echo_info "    --namespace=$NAMESPACE \\"
-            echo_info "    --from-literal=access-key=<your-odf-access-key> \\"
-            echo_info "    --from-literal=secret-key=<your-odf-secret-key>"
-            echo_info ""
-            echo_info "Or ensure noobaa-admin secret exists in openshift-storage namespace"
-            return 1
-        fi
+        # Scenario 4: No storage backend found - FAIL
+        echo_error "No storage backend detected!"
+        echo_error ""
+        echo_error "This chart requires either ODF (OpenShift Data Foundation) or MinIO for S3-compatible storage."
+        echo_error ""
+        echo_info "Available options:"
+        echo_info ""
+        echo_info "Option 1: Deploy with ODF (Production - recommended)"
+        echo_info "  - Ensure ODF operator is installed on your OpenShift cluster"
+        echo_info "  - The script will auto-discover credentials from: openshift-storage/noobaa-admin"
+        echo_info "  - Or manually create: kubectl create secret generic cost-onprem-odf-credentials \\"
+        echo_info "      --namespace=$NAMESPACE \\"
+        echo_info "      --from-literal=access-key=<your-access-key> \\"
+        echo_info "      --from-literal=secret-key=<your-secret-key>"
+        echo_info ""
+        echo_info "Option 2: Deploy with MinIO (Testing/CI only)"
+        echo_info "  - First deploy MinIO: ./scripts/deploy-minio-test.sh minio"
+        echo_info "  - Then re-run this installation script"
+        echo_info ""
+        echo_error "Deployment aborted. Please configure a storage backend and try again."
+        return 1
     fi
 }
 
@@ -446,11 +568,24 @@ create_s3_buckets() {
     # Determine S3 endpoint and configuration
     local s3_url mc_insecure
 
-    # Check for manual S3 endpoint override
-    if [ -n "${S3_ENDPOINT:-}" ]; then
-        s3_url="https://${S3_ENDPOINT}"
+    # PRIORITY: If MINIO_ENDPOINT is set, use MinIO (for testing)
+    if [ -n "$MINIO_ENDPOINT" ]; then
+        # Check if MinIO service exists in namespace
+        if kubectl get service minio -n "$NAMESPACE" >/dev/null 2>&1; then
+            s3_url="http://minio:9000"
+            mc_insecure=""
+            echo_info "  ✓ Using MinIO (MINIO_ENDPOINT override): $MINIO_ENDPOINT"
+            echo_info "  ✓ Internal service URL: $s3_url"
+        else
+            echo_error "MINIO_ENDPOINT set but MinIO service not found in namespace: $NAMESPACE"
+            exit 1
+        fi
+    elif kubectl get crd noobaas.noobaa.io >/dev/null 2>&1 && \
+       kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
+        # ODF NooBaa detected
+        s3_url="https://s3.openshift-storage.svc:443"
         mc_insecure="--insecure"
-        echo_info "Using manual S3 endpoint: $s3_url"
+        echo_info "  ✓ Detected: ODF (NooBaa S3)"
     else
         # Detect ODF storage backend (fallback for backward compatibility)
         echo_info "Detecting ODF storage backend..."
@@ -602,223 +737,6 @@ cleanup_downloaded_chart() {
     fi
 }
 
-# Function to detect cluster configuration and generate Helm --set flags
-# This replaces expensive lookup() calls in Helm templates with pre-detected values
-# Reduces Kubernetes API calls from ~400+ to ~10
-detect_and_inject_values() {
-    echo_info "Pre-detecting cluster configuration to optimize Helm deployment..." >&2
-
-    local extra_sets=()
-
-    # ============================================
-    # Storage Backend Detection (ODF vs MinIO)
-    # ============================================
-    echo_info "  Detecting storage backend..." >&2
-
-    if kubectl get crd noobaas.noobaa.io >/dev/null 2>&1 && \
-       kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
-        # ODF/NooBaa detected
-        echo_info "    ✓ Detected: OpenShift Data Foundation (ODF)" >&2
-        extra_sets+=("--set" "odf.storageType=odf")
-        extra_sets+=("--set" "odf.endpoint=s3.openshift-storage.svc")
-        extra_sets+=("--set" "odf.port=443")
-        extra_sets+=("--set" "odf.useSSL=true")
-
-        # Try to get ODF credentials from noobaa-admin secret
-        local odf_access_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' 2>/dev/null | base64 -d || echo "")
-        local odf_secret_key=$(kubectl get secret noobaa-admin -n openshift-storage -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' 2>/dev/null | base64 -d || echo "")
-        if [ -n "$odf_access_key" ] && [ -n "$odf_secret_key" ]; then
-            echo_info "    ✓ Detected ODF credentials from noobaa-admin secret" >&2
-            extra_sets+=("--set" "odf.credentials.accessKey=$odf_access_key")
-            extra_sets+=("--set" "odf.credentials.secretKey=$odf_secret_key")
-        fi
-    elif kubectl get service minio-storage -n "$NAMESPACE" >/dev/null 2>&1; then
-        # MinIO with proxy service in cost-onprem namespace
-        echo_info "    ✓ Detected: MinIO (CI pattern - proxy service)" >&2
-        extra_sets+=("--set" "odf.storageType=minio")
-        extra_sets+=("--set" "odf.endpoint=minio-storage")
-        extra_sets+=("--set" "odf.port=9000")
-        extra_sets+=("--set" "odf.useSSL=false")
-
-        # Try to get MinIO credentials from cost-onprem-odf-credentials secret
-        local minio_access_key=$(kubectl get secret cost-onprem-odf-credentials -n "$NAMESPACE" -o jsonpath='{.data.access-key}' 2>/dev/null | base64 -d || echo "")
-        local minio_secret_key=$(kubectl get secret cost-onprem-odf-credentials -n "$NAMESPACE" -o jsonpath='{.data.secret-key}' 2>/dev/null | base64 -d || echo "")
-        if [ -n "$minio_access_key" ] && [ -n "$minio_secret_key" ]; then
-            echo_info "    ✓ Detected MinIO credentials from cost-onprem-odf-credentials secret" >&2
-            extra_sets+=("--set" "odf.credentials.accessKey=$minio_access_key")
-            extra_sets+=("--set" "odf.credentials.secretKey=$minio_secret_key")
-        fi
-    elif kubectl get service minio -n minio >/dev/null 2>&1; then
-        # MinIO standalone in minio namespace
-        echo_info "    ✓ Detected: MinIO (minio namespace)" >&2
-        extra_sets+=("--set" "odf.storageType=minio")
-        extra_sets+=("--set" "odf.endpoint=minio.minio.svc")
-        extra_sets+=("--set" "odf.port=9000")
-        extra_sets+=("--set" "odf.useSSL=false")
-
-        # Try to get MinIO credentials from minio-credentials secret
-        local minio_access_key=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.access-key}' 2>/dev/null | base64 -d || echo "")
-        local minio_secret_key=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.secret-key}' 2>/dev/null | base64 -d || echo "")
-        if [ -n "$minio_access_key" ] && [ -n "$minio_secret_key" ]; then
-            echo_info "    ✓ Detected MinIO credentials from minio-credentials secret" >&2
-            extra_sets+=("--set" "odf.credentials.accessKey=$minio_access_key")
-            extra_sets+=("--set" "odf.credentials.secretKey=$minio_secret_key")
-        fi
-    else
-        echo_warning "    ⚠ Could not detect storage backend - Helm will use lookup() fallback" >&2
-    fi
-
-    # ============================================
-    # Keycloak URL and Namespace Detection
-    # ============================================
-    if [ "$PLATFORM" = "openshift" ]; then
-        echo_info "  Detecting Keycloak configuration..." >&2
-
-        if kubectl get crd keycloaks.k8s.keycloak.org >/dev/null 2>&1; then
-            # Keycloak CRD exists - mark as installed
-            extra_sets+=("--set" "jwtAuth.keycloak.installed=true")
-            echo_info "    ✓ Keycloak CRD detected (installed=true)" >&2
-
-            # Try to find Keycloak namespace and route
-            local kc_namespace=""
-            local kc_route=""
-            local kc_service=""
-
-            # Check for Keycloak CR first
-            kc_namespace=$(kubectl get keycloak -A -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || echo "")
-
-            if [ -n "$kc_namespace" ]; then
-                echo_info "    ✓ Detected namespace: $kc_namespace" >&2
-                extra_sets+=("--set" "jwtAuth.keycloak.namespace=$kc_namespace")
-
-                # Try to find service in that namespace
-                kc_service=$(kubectl get service -n "$kc_namespace" -l app=keycloak -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-                if [ -n "$kc_service" ]; then
-                    echo_info "    ✓ Detected service: $kc_service" >&2
-                    extra_sets+=("--set" "jwtAuth.keycloak.serviceName=$kc_service")
-                fi
-
-                # Try to find route in that namespace
-                kc_route=$(kubectl get route -n "$kc_namespace" -o jsonpath='{.items[0].spec.host}' 2>/dev/null || echo "")
-            else
-                # Fallback: try common namespaces
-                for ns in keycloak rhbk rhsso; do
-                    if kubectl get namespace "$ns" >/dev/null 2>&1; then
-                        kc_namespace="$ns"
-                        kc_service=$(kubectl get service -n "$ns" -l app=keycloak -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-                        kc_route=$(kubectl get route -n "$ns" -o jsonpath='{.items[0].spec.host}' 2>/dev/null || echo "")
-                        if [ -n "$kc_route" ]; then
-                            echo_info "    ✓ Detected namespace: $kc_namespace (fallback)" >&2
-                            extra_sets+=("--set" "jwtAuth.keycloak.namespace=$kc_namespace")
-                            if [ -n "$kc_service" ]; then
-                                echo_info "    ✓ Detected service: $kc_service (fallback)" >&2
-                                extra_sets+=("--set" "jwtAuth.keycloak.serviceName=$kc_service")
-                            fi
-                            break
-                        fi
-                    fi
-                done
-            fi
-
-            if [ -n "$kc_route" ]; then
-                echo_info "    ✓ Detected URL: https://$kc_route" >&2
-                extra_sets+=("--set" "jwtAuth.keycloak.url=https://$kc_route")
-            else
-                echo_warning "    ⚠ Keycloak CRD found but no route - Helm will use lookup() fallback" >&2
-            fi
-        else
-            # No Keycloak CRD - mark as not installed
-            extra_sets+=("--set" "jwtAuth.keycloak.installed=false")
-            echo_info "    ⓘ Keycloak CRD not found (installed=false) - JWT auth will be disabled" >&2
-        fi
-    fi
-
-    # ============================================
-    # Default Storage Class Detection
-    # ============================================
-    echo_info "  Detecting default storage class..." >&2
-
-    local default_sc=$(kubectl get storageclass -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}' 2>/dev/null | awk '{print $1}')
-
-    if [ -n "$default_sc" ]; then
-        echo_info "    ✓ Detected: $default_sc" >&2
-        extra_sets+=("--set" "global.storageClass=$default_sc")
-    else
-        # Try alternative annotation
-        default_sc=$(kubectl get storageclass -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.beta\.kubernetes\.io/is-default-class=="true")].metadata.name}' 2>/dev/null | awk '{print $1}')
-        if [ -n "$default_sc" ]; then
-            echo_info "    ✓ Detected: $default_sc" >&2
-            extra_sets+=("--set" "global.storageClass=$default_sc")
-        else
-            echo_warning "    ⚠ No default storage class - Helm will use lookup() fallback" >&2
-        fi
-    fi
-
-    # ============================================
-    # OpenShift Cluster Domain and Name Detection
-    # ============================================
-    if [ "$PLATFORM" = "openshift" ]; then
-        echo_info "  Detecting OpenShift cluster configuration..." >&2
-
-        # Detect cluster domain
-        local cluster_domain=$(kubectl get ingress.config.openshift.io/cluster -o jsonpath='{.spec.domain}' 2>/dev/null || echo "")
-
-        if [ -z "$cluster_domain" ]; then
-            # Fallback: get from ingress controller
-            cluster_domain=$(kubectl get ingresscontroller -n openshift-ingress-operator default -o jsonpath='{.status.domain}' 2>/dev/null || echo "")
-        fi
-
-        if [ -z "$cluster_domain" ]; then
-            # Fallback: extract from existing route
-            cluster_domain=$(kubectl get route -A -o jsonpath='{.items[0].spec.host}' 2>/dev/null | sed 's/^[^.]*\.//' || echo "")
-        fi
-
-        if [ -n "$cluster_domain" ]; then
-            echo_info "    ✓ Detected domain: $cluster_domain" >&2
-            extra_sets+=("--set" "global.clusterDomain=$cluster_domain")
-        else
-            echo_warning "    ⚠ Could not detect cluster domain - Helm will use lookup() fallback" >&2
-        fi
-
-        # Detect cluster name/ID
-        local cluster_name=$(kubectl get infrastructure cluster -o jsonpath='{.status.infrastructureName}' 2>/dev/null || echo "")
-        if [ -z "$cluster_name" ]; then
-            # Fallback: get from clusterversion
-            local cluster_id=$(kubectl get clusterversion version -o jsonpath='{.spec.clusterID}' 2>/dev/null || echo "")
-            if [ -n "$cluster_id" ]; then
-                cluster_name="cluster-${cluster_id:0:8}"
-            fi
-        fi
-
-        if [ -n "$cluster_name" ]; then
-            echo_info "    ✓ Detected cluster name: $cluster_name" >&2
-            extra_sets+=("--set" "global.clusterName=$cluster_name")
-        else
-            echo_warning "    ⚠ Could not detect cluster name - Helm will use default" >&2
-        fi
-
-        # ============================================
-        # Namespace fsGroup Detection (for Valkey persistence)
-        # ============================================
-        echo_info "  Detecting namespace fsGroup for storage..." >&2
-        local namespace_fsgroup=""
-        local fsgroup_range=$(kubectl get namespace "${NAMESPACE}" -o jsonpath='{.metadata.annotations.openshift\.io/sa\.scc\.supplemental-groups}' 2>/dev/null || echo "")
-
-        if [ -n "$fsgroup_range" ]; then
-            # Extract the first number from "1000740000/10000" format
-            namespace_fsgroup=$(echo "$fsgroup_range" | cut -d'/' -f1)
-            if [ -n "$namespace_fsgroup" ]; then
-                echo_info "    ✓ Detected fsGroup: $namespace_fsgroup (from range: $fsgroup_range)" >&2
-                extra_sets+=("--set" "valkey.securityContext.fsGroup=$namespace_fsgroup")
-            fi
-        else
-            echo_warning "    ⚠ Could not detect namespace fsGroup - Helm will use lookup() fallback" >&2
-        fi
-    fi
-
-    # Return the --set flags (to stdout only)
-    echo "${extra_sets[@]}"
-}
 
 # Function to deploy Helm chart
 deploy_helm_chart() {
@@ -860,9 +778,8 @@ deploy_helm_chart() {
     local helm_cmd="helm upgrade --install \"$HELM_RELEASE_NAME\" \"$chart_source\""
     helm_cmd="$helm_cmd --namespace \"$NAMESPACE\""
     helm_cmd="$helm_cmd --create-namespace"
-    helm_cmd="$helm_cmd --timeout=${HELM_TIMEOUT:-1200s}"  # Increased from 600s to 1200s (20min) to allow rate limiter recovery
+    helm_cmd="$helm_cmd --timeout=${HELM_TIMEOUT:-600s}"
     helm_cmd="$helm_cmd --wait"
-    helm_cmd="$helm_cmd --debug"  # Enable verbose debug output to trace rate limiter failures
 
     # Add values file if specified
     if [ -n "$VALUES_FILE" ]; then
@@ -887,14 +804,6 @@ deploy_helm_chart() {
         echo_info "JWT authentication disabled (non-OpenShift platform)"
     fi
 
-    # Pre-detect cluster configuration to avoid expensive lookup() calls in templates
-    # This reduces Kubernetes API calls from ~400+ to ~10
-    local detected_values=($(detect_and_inject_values))
-    if [ ${#detected_values[@]} -gt 0 ]; then
-        echo_info "Adding pre-detected values to Helm command (${#detected_values[@]} flags)"
-        helm_cmd="$helm_cmd ${detected_values[*]}"
-    fi
-
     # Add external OBC configuration to Helm if detected in main()
     if [ "$USING_EXTERNAL_OBC" = "true" ]; then
         echo_info "Configuring Helm deployment for external OBC (Direct Ceph RGW)"
@@ -902,11 +811,11 @@ deploy_helm_chart() {
         helm_cmd="$helm_cmd --set odf.port=\"$EXTERNAL_OBC_PORT\""
         helm_cmd="$helm_cmd --set odf.useExternalOBC=true"
         helm_cmd="$helm_cmd --set odf.bucket=\"$EXTERNAL_OBC_BUCKET_NAME\""  # For ingress INGRESS_STAGEBUCKET
-        
+
         # Set bucket names for Koku and ROS (via dynamic helpers in _helpers-koku.tpl)
         helm_cmd="$helm_cmd --set costManagement.storage.bucketName=\"$EXTERNAL_OBC_BUCKET_NAME\""
         helm_cmd="$helm_cmd --set costManagement.storage.rosBucketName=\"$EXTERNAL_OBC_BUCKET_NAME\""
-        
+
         # Also set ROS bucket name for ROS components
         helm_cmd="$helm_cmd --set ros.storage.bucketName=\"$EXTERNAL_OBC_BUCKET_NAME\""
 
@@ -917,26 +826,19 @@ deploy_helm_chart() {
         echo_info "  Bucket creation job will be skipped"
     fi
 
+    # Add MinIO endpoint override if specified (for testing with MinIO in OCP)
+    if [ -n "$MINIO_ENDPOINT" ]; then
+        echo_info "Configuring custom S3 endpoint for MinIO testing"
+        helm_cmd="$helm_cmd --set costManagement.s3Endpoint=\"$MINIO_ENDPOINT\""
+        helm_cmd="$helm_cmd --set costManagement.s3VerifySSL=false"
+        echo_success "✓ MinIO endpoint configured: $MINIO_ENDPOINT"
+    fi
+
     # Add additional Helm arguments passed to the script
     if [ ${#HELM_EXTRA_ARGS[@]} -gt 0 ]; then
         echo_info "Adding additional Helm arguments: ${HELM_EXTRA_ARGS[*]}"
         helm_cmd="$helm_cmd ${HELM_EXTRA_ARGS[*]}"
     fi
-
-    # DIAGNOSTIC: Try client-side dry-run first to isolate template rendering vs kubectl operations
-    echo_info "=== DIAGNOSTIC: Testing template rendering with --dry-run=client ==="
-    local dryrun_cmd="${helm_cmd} --dry-run=client"
-    echo_info "Executing: $dryrun_cmd"
-    if eval $dryrun_cmd > /dev/null 2>&1; then
-        echo_success "✓ Template rendering succeeded (client-side dry-run passed)"
-        echo_info "  This means the rate limit occurs during server-side operations, not template parsing"
-    else
-        echo_error "✗ Template rendering FAILED (client-side dry-run failed)"
-        echo_info "  This means the rate limit occurs during template parsing/rendering"
-        echo_info "  The lookup() calls in templates are overwhelming the API even before deployment"
-    fi
-    echo_info "=== END DIAGNOSTIC ==="
-    echo ""
 
     echo_info "Executing: $helm_cmd"
 
@@ -1735,14 +1637,37 @@ main() {
         fi
     fi
 
+    echo ""
+    echo_info "════════════════════════════════════════════════════════════"
+    echo_info "  Creating Secrets (Before Helm Install)"
+    echo_info "════════════════════════════════════════════════════════════"
+    echo ""
+
+    # Create database credentials secret (always required)
+    if ! create_database_credentials_secret; then
+        echo_error "Failed to create database credentials. Cannot proceed with installation."
+        exit 1
+    fi
+
+    # Create Sources API credentials secret (always required)
+    if ! create_sources_credentials_secret; then
+        echo_error "Failed to create Sources API credentials. Cannot proceed with installation."
+        exit 1
+    fi
+
     # Create storage credentials secret (only if not using external OBC)
     if [ "$USING_EXTERNAL_OBC" = "false" ]; then
         if ! create_storage_credentials_secret; then
+            echo_error "Failed to create storage credentials. Cannot proceed with installation."
             exit 1
         fi
     else
         echo_info "Skipping storage credentials creation (using OBC credentials)"
     fi
+
+    echo ""
+    echo_success "✓ All required secrets created successfully"
+    echo ""
 
     # Create S3 buckets (only if not using external OBC)
     if [ "$USING_EXTERNAL_OBC" = "false" ]; then

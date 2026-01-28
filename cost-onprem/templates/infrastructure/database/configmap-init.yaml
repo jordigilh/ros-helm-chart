@@ -6,35 +6,71 @@ metadata:
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: database
+  annotations:
+    # Create database init scripts before database StatefulSet starts (pre-install hook)
+    # No delete policy - ConfigMap persists and remains managed by Helm
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-15"
 data:
   # PostgreSQL initialization script for all on-prem databases
   # This script runs automatically on first database initialization
   # Uses PostgreSQL's /docker-entrypoint-initdb.d/ mechanism
   #
   # Creates databases: ros_db, kruize_db, koku
-  init-databases.sql: |
+  # Shell script wrapper that passes password environment variables to SQL commands
+  init-databases.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "Initializing databases with user-specific credentials..."
+
+    # Create users with passwords from environment variables
+    # Using SQL with string interpolation (safe because we control the environment)
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<EOF
     -- ========================================
     -- Create Dedicated Database Users
     -- ========================================
-    -- Each service gets its own database user with restricted privileges
 
     -- ROS User
-    DO $$
+    DO \$\$
     BEGIN
-      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '{{ .Values.database.ros.user }}') THEN
-        CREATE USER {{ .Values.database.ros.user }} WITH PASSWORD '{{ .Values.database.ros.password }}';
+      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$ROS_USER') THEN
+        EXECUTE 'CREATE USER $ROS_USER WITH PASSWORD ' || quote_literal('$ROS_PASSWORD');
       END IF;
     END
-    $$;
+    \$\$;
 
     -- Kruize User
-    DO $$
+    DO \$\$
     BEGIN
-      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '{{ .Values.database.kruize.user }}') THEN
-        CREATE USER {{ .Values.database.kruize.user }} WITH PASSWORD '{{ .Values.database.kruize.password }}';
+      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$KRUIZE_USER') THEN
+        EXECUTE 'CREATE USER $KRUIZE_USER WITH PASSWORD ' || quote_literal('$KRUIZE_PASSWORD');
       END IF;
     END
-    $$;
+    \$\$;
+
+    -- Koku User (requires CREATEROLE and CREATEDB for Django migrations)
+    -- CREATEROLE: needed for migrations that create roles like 'hive'
+    -- CREATEDB: needed for migrations that create the 'hive' database
+    DO \$\$
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$KOKU_USER') THEN
+        EXECUTE 'CREATE USER $KOKU_USER WITH PASSWORD ' || quote_literal('$KOKU_PASSWORD') || ' CREATEROLE CREATEDB';
+      ELSE
+        -- Ensure privileges are granted if user already exists
+        ALTER USER $KOKU_USER CREATEROLE CREATEDB;
+      END IF;
+    END
+    \$\$;
+
+    -- Sources User
+    DO \$\$
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$SOURCES_USER') THEN
+        EXECUTE 'CREATE USER $SOURCES_USER WITH PASSWORD ' || quote_literal('$SOURCES_PASSWORD');
+      END IF;
+    END
+    \$\$;
 
     -- ========================================
     -- Create Databases
@@ -50,61 +86,51 @@ data:
     WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ .Values.database.kruize.name }}')
     \gexec
 
-    -- ========================================
-    -- Grant Database Ownership and Privileges
-    -- ========================================
-    -- Each user gets full access to their own database only
-
-    -- ROS Database - owned by ros_user
-    GRANT ALL PRIVILEGES ON DATABASE {{ .Values.database.ros.name }} TO {{ .Values.database.ros.user }};
-    ALTER DATABASE {{ .Values.database.ros.name }} OWNER TO {{ .Values.database.ros.user }};
-
-    -- Kruize Database - owned by kruize_user
-    GRANT ALL PRIVILEGES ON DATABASE {{ .Values.database.kruize.name }} TO {{ .Values.database.kruize.user }};
-    ALTER DATABASE {{ .Values.database.kruize.name }} OWNER TO {{ .Values.database.kruize.user }};
-
-    -- ========================================
-    -- Koku Database and User
-    -- ========================================
-    -- Koku Cost Management Service
-
-    -- Koku User (requires CREATEROLE and CREATEDB for Django migrations)
-    -- CREATEROLE: needed for migrations that create roles like 'hive'
-    -- CREATEDB: needed for migrations that create the 'hive' database
-    DO $$
-    BEGIN
-      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '{{ .Values.database.koku.user }}') THEN
-        CREATE USER {{ .Values.database.koku.user }} WITH PASSWORD '{{ .Values.database.koku.password }}' CREATEROLE CREATEDB;
-      ELSE
-        -- Ensure privileges are granted if user already exists
-        ALTER USER {{ .Values.database.koku.user }} CREATEROLE CREATEDB;
-      END IF;
-    END
-    $$;
-
-    -- Hive Role and Database (required by Koku migrations for Trino/Hive compatibility)
-    -- These are created upfront to support migrations that reference them
-    DO $$
-    BEGIN
-      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'hive') THEN
-        CREATE ROLE hive;
-      END IF;
-    END
-    $$;
-    GRANT hive TO {{ .Values.database.koku.user }} WITH ADMIN OPTION;
-
-    -- Hive Database (required by Koku migration 0039_create_hive_db)
-    SELECT 'CREATE DATABASE hive OWNER {{ .Values.database.koku.user }}'
-    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'hive')
-    \gexec
-
     -- Koku Database
     SELECT 'CREATE DATABASE {{ .Values.database.koku.name }}'
     WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ .Values.database.koku.name }}')
     \gexec
 
-    GRANT ALL PRIVILEGES ON DATABASE {{ .Values.database.koku.name }} TO {{ .Values.database.koku.user }};
-    ALTER DATABASE {{ .Values.database.koku.name }} OWNER TO {{ .Values.database.koku.user }};
+    -- Sources Database
+    SELECT 'CREATE DATABASE {{ .Values.database.sources.name }}'
+    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ .Values.database.sources.name }}')
+    \gexec
+
+    -- ========================================
+    -- Grant Database Ownership and Privileges
+    -- ========================================
+
+    -- ROS Database - owned by $ROS_USER
+    GRANT ALL PRIVILEGES ON DATABASE {{ .Values.database.ros.name }} TO $ROS_USER;
+    ALTER DATABASE {{ .Values.database.ros.name }} OWNER TO $ROS_USER;
+
+    -- Kruize Database - owned by $KRUIZE_USER
+    GRANT ALL PRIVILEGES ON DATABASE {{ .Values.database.kruize.name }} TO $KRUIZE_USER;
+    ALTER DATABASE {{ .Values.database.kruize.name }} OWNER TO $KRUIZE_USER;
+
+    -- ========================================
+    -- Koku Special Configuration
+    -- ========================================
+    -- Koku requires special setup for Trino/Hive integration
+
+    -- Create hive role (used by Trino for table operations)
+    DO \$\$
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'hive') THEN
+        CREATE ROLE hive LOGIN;
+      END IF;
+    END
+    \$\$;
+
+    GRANT hive TO $KOKU_USER WITH ADMIN OPTION;
+
+    -- Hive Database (required by Koku migration 0039_create_hive_db)
+    SELECT 'CREATE DATABASE hive OWNER $KOKU_USER'
+    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'hive')
+    \gexec
+
+    GRANT ALL PRIVILEGES ON DATABASE {{ .Values.database.koku.name }} TO $KOKU_USER;
+    ALTER DATABASE {{ .Values.database.koku.name }} OWNER TO $KOKU_USER;
 
     -- Enable pg_stat_statements extension on koku database
     \c {{ .Values.database.koku.name }}

@@ -1,0 +1,38 @@
+---
+description: NISE data generation for E2E cost management tests
+globs: ["tests/suites/e2e/**", "tests/utils.py", "scripts/test-*.sh"]
+---
+
+# NISE Data Generation
+
+The E2E tests use NISE (koku-nise) to generate proper OCP cost data.
+
+## Basic Usage
+```bash
+nise report ocp --ros-ocp-info --static-report-file static.yml --write-monthly
+```
+
+## Key Flags
+- `--ros-ocp-info` - Generate container-level data for ROS processor (REQUIRED for ROS tests)
+- `--write-monthly` - Organize output by month
+- `--static-report-file` - Use predefined workload configuration
+
+## Manifest Structure
+Upload tarball must have proper manifest.json:
+```json
+{
+  "uuid": "...",
+  "cluster_id": "...",
+  "version": "...",
+  "date": "2026-01-22",
+  "start": "2026-01-20",
+  "end": "2026-01-22",
+  "files": ["pod_usage.csv"],
+  "resource_optimization_files": ["ros_usage.csv"]
+}
+```
+
+## Important Notes
+- `files` array: Pod-level data for Koku processing
+- `resource_optimization_files` array: Container-level data for ROS processor
+- Both `start` and `end` dates are REQUIRED for summary table population

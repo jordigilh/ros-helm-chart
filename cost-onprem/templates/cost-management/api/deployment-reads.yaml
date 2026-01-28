@@ -26,9 +26,8 @@ spec:
 
       initContainers:
       {{- include "cost-onprem.koku.initContainer.combineCA" . | nindent 6 }}
-      # Run Django migrations before starting the API
-      # This ensures migrations are complete before listeners check for them
-      {{- include "cost-onprem.koku.initContainer.migrations" . | nindent 6 }}
+      # NOTE: Migrations are now handled by a pre-upgrade/pre-install Helm Job
+      # See: templates/cost-management/jobs/migration.yaml
 
       containers:
       - name: koku-api

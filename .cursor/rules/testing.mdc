@@ -1,0 +1,84 @@
+---
+description: Pytest test infrastructure commands and configuration
+globs: ["tests/**", "scripts/run-pytest.sh", "scripts/deploy-test-*.sh"]
+---
+
+# Testing Infrastructure
+
+## OpenShift CI Execution Flow
+
+In OpenShift CI, tests are executed via the `insights-onprem-cost-onprem-chart-e2e` step:
+
+```
+CI Step Registry: insights-onprem/cost-onprem-chart/e2e/
+├── insights-onprem-cost-onprem-chart-e2e-commands.sh  # Main CI script
+├── insights-onprem-cost-onprem-chart-e2e-ref.yaml     # Step definition
+└── OWNERS
+```
+
+### CI Execution Sequence
+1. **Dependencies**: Installs yq, kubectl, helm, oc
+2. **MinIO Setup**: Reads config from `insights-onprem-minio-deploy` step
+3. **Cost Management Operator**: Installs via OLM (stable channel)
+4. **Helm Wrapper**: Injects MinIO storage config for cost-onprem chart
+5. **Deploy & Test**: Runs `scripts/deploy-test-cost-onprem.sh --namespace cost-onprem --verbose`
+
+### What `deploy-test-cost-onprem.sh` Does
+1. Deploys RHBK (Keycloak) for JWT authentication
+2. Deploys Strimzi/Kafka
+3. Installs cost-onprem Helm chart
+4. Configures TLS
+5. **Runs pytest via `scripts/run-pytest.sh`** (CI mode - excludes extended tests)
+
+### Default CI Test Run
+```bash
+# This is what CI executes (via deploy-test-cost-onprem.sh):
+NAMESPACE=cost-onprem ./scripts/run-pytest.sh
+
+# Equivalent to:
+pytest -m "not extended" --junit-xml=reports/junit.xml
+```
+
+**CI runs ~88 tests in ~3 minutes** (excludes extended tests that require ODF/S3).
+
+## Requirements
+- **Python 3.10+** (CI uses Python 3.11)
+- OpenShift CLI (`oc`) with cluster access
+- Helm 3.x
+
+## Running Tests Locally
+
+```bash
+# CI mode (default) - excludes extended tests
+NAMESPACE=cost-onprem-ocp ./scripts/run-pytest.sh
+
+# Extended tests (requires ODF/S3)
+NAMESPACE=cost-onprem-ocp ./scripts/run-pytest.sh --extended
+
+# Specific suites
+./scripts/run-pytest.sh --helm
+./scripts/run-pytest.sh --auth
+./scripts/run-pytest.sh --e2e
+./scripts/run-pytest.sh --infrastructure
+./scripts/run-pytest.sh --ros
+```
+
+## Test Markers
+- `component` - Single-component tests
+- `integration` - Multi-component tests
+- `extended` - Long-running tests (skipped by default in CI)
+- `smoke` - Quick validation tests
+
+## Test Cleanup
+Environment variables for cleanup control:
+```bash
+E2E_CLEANUP_BEFORE=true   # Clean before tests (default)
+E2E_CLEANUP_AFTER=true    # Clean after tests (default)
+E2E_RESTART_SERVICES=false # Restart Redis/listener (optional)
+```
+
+## When Modifying Tests
+1. Check current pod labels: `kubectl get pods -n NAMESPACE -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.labels.app\.kubernetes\.io/component}{"\n"}{end}'`
+2. Run both CI and extended mode to verify
+3. Update label mappings if chart labels change
+4. Check `tests/conftest.py` for shared fixtures

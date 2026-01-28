@@ -2,6 +2,12 @@
 
 Pytest-based test suite for validating Cost On-Prem deployments on OpenShift.
 
+## Requirements
+
+- **Python 3.10+** (CI uses Python 3.11)
+- OpenShift CLI (`oc`) with cluster access
+- Helm 3.x
+
 ## Test Architecture
 
 The test suite is organized into **focused suites** that avoid redundancy:
@@ -239,6 +245,39 @@ Both tools validate the same pipeline, but:
 - Use pytest E2E for CI/CD integration and combined test runs
 
 ## CI/CD Integration
+
+### OpenShift CI Execution
+
+In OpenShift CI, tests are executed via the `insights-onprem-cost-onprem-chart-e2e` step:
+
+```
+release/ci-operator/step-registry/insights-onprem/cost-onprem-chart/e2e/
+├── insights-onprem-cost-onprem-chart-e2e-commands.sh  # Main CI script
+├── insights-onprem-cost-onprem-chart-e2e-ref.yaml     # Step definition
+```
+
+**CI Execution Sequence:**
+1. Dependencies installed (yq, kubectl, helm, oc)
+2. MinIO configured from `insights-onprem-minio-deploy` step
+3. Cost Management Operator installed via OLM
+4. Helm wrapper injects MinIO storage config
+5. `scripts/deploy-test-cost-onprem.sh` runs:
+   - Deploys RHBK (Keycloak)
+   - Deploys Strimzi/Kafka
+   - Installs cost-onprem Helm chart
+   - Configures TLS
+   - **Runs `scripts/run-pytest.sh`** (CI mode)
+
+**Default CI Test Run:**
+```bash
+# What CI executes (via deploy-test-cost-onprem.sh):
+NAMESPACE=cost-onprem ./scripts/run-pytest.sh
+
+# Equivalent to:
+pytest -m "not extended" --junit-xml=reports/junit.xml
+```
+
+**CI runs ~88 tests in ~3 minutes** (excludes extended tests that require ODF/S3).
 
 ### JUnit Reports
 

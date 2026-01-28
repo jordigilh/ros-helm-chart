@@ -16,22 +16,12 @@ import threading
 class KubernetesClient:
     """Native Kubernetes API client"""
 
-    # Component label mapping (logical name -> actual label value)
+    # Component name mapping: logical name -> Helm chart component label
     COMPONENT_LABELS = {
-        'masu': 'cost-processor',  # MASU uses cost-processor label
-        'database': 'database',
-        'koku-db': 'database',  # Legacy alias for database
-        'listener': 'listener',
-        'cache': 'cache',
-        'sources-listener': 'sources-listener',
-        'koku-api': 'cost-management-api-reads',  # Default to reads for Django commands
-        'cost-management-api-reads': 'cost-management-api-reads',
-        'cost-management-api-writes': 'cost-management-api-writes',
-        'worker': 'cost-worker',  # Celery workers use cost-worker label
-        'cost-worker': 'cost-worker',
-        'ros-processor': 'ros-processor',
-        'ros-optimization': 'ros-optimization',
-        'ingress': 'ingress',
+        'masu': 'cost-processor',           # MASU processor -> cost-processor
+        'listener': 'listener',             # Listener pod
+        'database': 'database',             # PostgreSQL
+        'cost-processor': 'cost-processor', # Direct mapping
     }
 
     def __init__(self, namespace: str = "cost-onprem"):
@@ -63,15 +53,15 @@ class KubernetesClient:
         """Get first pod name for a component
 
         Args:
-            component: Logical component name (e.g., "masu", "database")
-                      Will be mapped to actual label value via COMPONENT_LABELS
+            component: Component label value (e.g., "masu", "database")
+                      Uses COMPONENT_LABELS mapping to translate logical names
 
         Returns:
             Pod name or None
         """
-        # Map logical component name to actual label value
-        label_value = self.COMPONENT_LABELS.get(component, component)
-        pods = self.get_pods(f"app.kubernetes.io/component={label_value}")
+        # Map logical component name to Helm chart label
+        helm_component = self.COMPONENT_LABELS.get(component, component)
+        pods = self.get_pods(f"app.kubernetes.io/component={helm_component}")
         return pods[0].metadata.name if pods else None
 
     def discover_postgresql_pod(self) -> Optional[str]:
