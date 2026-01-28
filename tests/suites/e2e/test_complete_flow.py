@@ -606,11 +606,10 @@ class TestCompleteDataFlow:
                 cluster_config.namespace,
                 ingress_pod,
                 [
-                    "curl", "-s", "-w", "\nHTTP_CODE:%{http_code}", "-X", "POST",
-                    f"{koku_api_writes_url}/sources",
+                    "curl", "-s", "-w", "\nHTTP_CODE:%{http_code}",
+                    f"{koku_api_reads_url}/sources",
                     "-H", "Content-Type: application/json",
                     "-H", f"X-Rh-Identity: {rh_identity_header}",
-                    "-d", payload,
                 ],
                 container="ingress",
             )
