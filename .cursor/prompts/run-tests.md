@@ -48,7 +48,7 @@ NAMESPACE=cost-onprem ./scripts/run-pytest.sh --extended
 ```bash
 E2E_CLEANUP_BEFORE=true   # Clean before tests (default)
 E2E_CLEANUP_AFTER=true    # Clean after tests (default)
-E2E_RESTART_SERVICES=false # Restart Redis/listener (optional)
+E2E_RESTART_SERVICES=false # Restart Valkey/listener (optional)
 ```
 
 ## Output

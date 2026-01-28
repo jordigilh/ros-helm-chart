@@ -19,12 +19,19 @@ spec:
         app.kubernetes.io/component: listener
     spec:
       serviceAccountName: {{ .Values.costManagement.serviceAccount.name }}
+      automountServiceAccountToken: false
+
+      securityContext:
+        {{- include "cost-onprem.securityContext.pod.nonRoot" . | nindent 8 }}
+
       initContainers:
       {{- include "cost-onprem.koku.initContainer.combineCA" . | nindent 6 }}
       containers:
       - name: listener
         image: "{{ include "cost-onprem.koku.image" . }}"
         imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
+        securityContext:
+          {{- include "cost-onprem.securityContext.container" . | nindent 10 }}
 
         ports:
         - containerPort: 9000
@@ -76,7 +83,7 @@ spec:
           value: {{ .Values.costManagement.kafka.topic | quote }}
         {{- end }}
 
-        # Common Koku environment variables (includes DB, Redis, S3, Kafka, etc.)
+        # Common Koku environment variables (includes DB, Valkey, S3, Kafka, etc.)
         {{- include "cost-onprem.koku.commonEnv" . | nindent 8 }}
 
         # POD_CPU_LIMIT is required for gunicorn worker calculation

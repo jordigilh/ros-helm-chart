@@ -7,7 +7,7 @@ ensuring a clean state for repeated test execution.
 Cleanup includes:
   - S3 data files (uploaded cost data)
   - Database processing records (manifests, report status)
-  - Redis cache (optional, via pod restart)
+  - Valkey cache (optional, via pod restart)
   - Koku listener state (optional, via pod restart)
 """
 
@@ -199,8 +199,8 @@ def cleanup_database_records(
     }
 
 
-def restart_redis(namespace: str, timeout: int = 120) -> dict:
-    """Restart Redis to clear cached processing state.
+def restart_valkey(namespace: str, timeout: int = 120) -> dict:
+    """Restart Valkey to clear cached processing state.
     
     Args:
         namespace: Kubernetes namespace
@@ -210,7 +210,7 @@ def restart_redis(namespace: str, timeout: int = 120) -> dict:
         Dict with restart status
     """
     try:
-        # Delete Redis pod (will be recreated by deployment)
+        # Delete Valkey pod (will be recreated by deployment)
         result = subprocess.run(
             [
                 "oc", "delete", "pod", "-n", namespace,
@@ -267,7 +267,7 @@ def restart_redis(namespace: str, timeout: int = 120) -> dict:
         return {"success": result.returncode == 0}
         
     except subprocess.TimeoutExpired:
-        return {"success": False, "error": "Timeout waiting for Redis"}
+        return {"success": False, "error": "Timeout waiting for Valkey"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -335,7 +335,7 @@ def full_cleanup(
         org_id: Organization ID to clean up
         s3_config: Optional S3 configuration dict with endpoint, access_key, secret_key, bucket
         cluster_id: Optional cluster ID to limit cleanup scope
-        restart_services: Whether to restart Redis and listener (slower but more thorough)
+        restart_services: Whether to restart Valkey and listener (slower but more thorough)
         verbose: Whether to print progress
         
     Returns:
@@ -385,14 +385,14 @@ def full_cleanup(
     # Optionally restart services
     if restart_services:
         if verbose:
-            print("  🔄 Restarting Redis...")
-        redis_result = restart_redis(namespace)
-        results["redis"] = redis_result
+            print("  🔄 Restarting Valkey...")
+        valkey_result = restart_valkey(namespace)
+        results["valkey"] = valkey_result
         if verbose:
-            if redis_result.get("success"):
-                print("     ✅ Redis restarted")
+            if valkey_result.get("success"):
+                print("     ✅ Valkey restarted")
             else:
-                print(f"     ⚠️  Redis restart failed: {redis_result.get('error')}")
+                print(f"     ⚠️  Valkey restart failed: {valkey_result.get('error')}")
         
         if verbose:
             print("  🔄 Restarting Koku listener...")

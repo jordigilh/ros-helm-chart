@@ -15,7 +15,7 @@ Environment Variables:
   - E2E_NISE_STATIC_REPORT: Path to custom NISE static report file
   - E2E_CLEANUP_BEFORE=true/false: Run cleanup before tests (default: true)
   - E2E_CLEANUP_AFTER=true/false: Run cleanup after tests (default: true)
-  - E2E_RESTART_SERVICES=true: Restart Redis/listener during cleanup (slower but thorough)
+  - E2E_RESTART_SERVICES=true: Restart Valkey/listener during cleanup (slower but thorough)
 """
 
 import json
@@ -433,7 +433,7 @@ class TestCompleteDataFlow:
         Cleanup includes:
           - S3 data files from previous runs
           - Database processing records
-          - Optionally Redis cache and listener restart (if E2E_RESTART_SERVICES=1)
+          - Optionally Valkey cache and listener restart (if E2E_RESTART_SERVICES=1)
         """
         from utils import exec_in_pod, get_pod_by_label
         

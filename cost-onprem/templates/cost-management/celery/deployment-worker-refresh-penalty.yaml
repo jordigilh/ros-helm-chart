@@ -22,9 +22,11 @@ spec:
         cost-onprem.io/worker-queue: refresh-penalty
     spec:
       serviceAccountName: {{ include "cost-onprem.koku.serviceAccountName" . }}
+      automountServiceAccountToken: false
+
 
       securityContext:
-        {{- include "cost-onprem.securityContext.pod" . | nindent 8 }}
+        {{- include "cost-onprem.securityContext.pod.nonRoot" . | nindent 8 }}
 
       initContainers:
       {{- include "cost-onprem.koku.initContainer.combineCA" . | nindent 6 }}

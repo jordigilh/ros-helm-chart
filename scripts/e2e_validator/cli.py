@@ -532,12 +532,13 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                     except Exception as e:
                         print(f"  ❌ Could not determine external route: {e}")
 
-            # Create S3 client using wrapper
+            # Create S3 client using wrapper (pass k8s_client for internal presigned URLs)
             s3_client = S3Client(
                 endpoint_url=s3_endpoint,
                 access_key=s3_access_key,
                 secret_key=s3_secret_key,
-                verify=False
+                verify=False,
+                k8s_client=k8s
             )
 
             # Create Kafka client for OCP report announcements (OCP uses push-based processing)
@@ -552,7 +553,7 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
 
             # DataUploadPhase with S3 client (direct upload via HTTPS)
             data_upload = DataUploadPhase(
-                s3_client.s3,
+                s3_client,  # Pass the whole S3Client wrapper (not just .s3) for internal presigned URLs
                 nise,
                 k8s_client=k8s,
                 db_client=db,
