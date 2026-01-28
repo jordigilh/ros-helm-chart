@@ -18,6 +18,8 @@ spec:
         {{- include "cost-onprem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: ros-optimization
     spec:
+      securityContext:
+        {{- include "cost-onprem.securityContext.pod.nonRoot" . | nindent 8 }}
       serviceAccountName: kruize
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -29,6 +31,8 @@ spec:
         - name: create-kruize-partitions
           image: "{{ .Values.kruize.image.repository }}:{{ .Values.kruize.image.tag }}"
           imagePullPolicy: {{ .Values.global.pullPolicy }}
+          securityContext:
+            {{- include "cost-onprem.securityContext.container" . | nindent 12 }}
           command: ["sh"]
           args: ["-c", "export DB_CONFIG_FILE={{ .Values.kruize.env.dbConfigFile }} && /home/autotune/app/target/bin/CreatePartition"]
           env:
@@ -101,6 +105,8 @@ spec:
         - name: kruize
           image: "{{ .Values.kruize.image.repository }}:{{ .Values.kruize.image.tag }}"
           imagePullPolicy: {{ .Values.global.pullPolicy }}
+          securityContext:
+            {{- include "cost-onprem.securityContext.container" . | nindent 12 }}
           ports:
             - name: http
               containerPort: {{ .Values.kruize.port }}

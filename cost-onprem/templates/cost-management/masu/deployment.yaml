@@ -20,12 +20,17 @@ spec:
         app.kubernetes.io/component: cost-processor
     spec:
       serviceAccountName: {{ .Values.costManagement.serviceAccount.name }}
+      automountServiceAccountToken: false
+
       initContainers:
       {{- include "cost-onprem.koku.initContainer.combineCA" . | nindent 6 }}
       containers:
       - name: masu
         image: "{{ include "cost-onprem.koku.image" . }}"
         imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
+        securityContext:
+          {{- include "cost-onprem.securityContext.container" . | nindent 10 }}
+
 
         ports:
         - containerPort: 8000
