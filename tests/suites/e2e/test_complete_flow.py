@@ -479,7 +479,8 @@ class TestCompleteDataFlow:
             cluster_config.namespace,
             ingress_pod,
             [
-                "curl", "-s", f"{koku_api_reads_url}/source_types",
+                "curl", "-s", "-w", "\n__HTTP_CODE__:%{http_code}",
+                f"{koku_api_reads_url}/source_types",
                 "-H", "Content-Type: application/json",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
@@ -487,7 +488,24 @@ class TestCompleteDataFlow:
         )
         
         if not result:
-            pytest.skip("Could not get source types")
+            pytest.fail(
+                f"Could not get source types - exec_in_pod returned None. "
+                f"ingress_pod={ingress_pod}, url={koku_api_reads_url}/source_types"
+            )
+        
+        # Parse response and status code
+        if "__HTTP_CODE__:" in result:
+            body, http_code = result.rsplit("__HTTP_CODE__:", 1)
+            result = body.strip()
+            http_code = http_code.strip()
+            if http_code != "200":
+                pytest.fail(
+                    f"Source types request failed with HTTP {http_code}. "
+                    f"Response: {result[:500]}"
+                )
+        
+        if not result:
+            pytest.fail("Source types returned empty response")
         
         source_types = json.loads(result)
         ocp_type_id = None
@@ -573,7 +591,7 @@ class TestCompleteDataFlow:
             cluster_config.namespace,
             ingress_pod,
             [
-                "curl", "-s", "-X", "POST",
+                "curl", "-s", "-w", "\n__HTTP_CODE__:%{http_code}", "-X", "POST",
                 f"{koku_api_writes_url}/sources",
                 "-H", "Content-Type: application/json",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
@@ -596,20 +614,34 @@ class TestCompleteDataFlow:
                 ],
                 container="ingress",
             )
-            pytest.skip(
+            pytest.fail(
                 f"Source creation failed - exec_in_pod returned None. "
+                f"ingress_pod={ingress_pod}, url={koku_api_writes_url}/sources, "
                 f"Debug info: {error_result}"
+            )
+        
+        # Parse response and status code
+        http_code = None
+        if "__HTTP_CODE__:" in result:
+            body, http_code = result.rsplit("__HTTP_CODE__:", 1)
+            result = body.strip()
+            http_code = http_code.strip()
+        
+        if http_code and http_code not in ("200", "201"):
+            pytest.fail(
+                f"Source creation failed with HTTP {http_code}. "
+                f"Response: {result[:500]}"
             )
         
         try:
             source_data = json.loads(result)
         except json.JSONDecodeError as e:
-            pytest.skip(f"Source creation returned invalid JSON: {result[:500]} - {e}")
+            pytest.fail(f"Source creation returned invalid JSON: {result[:500]} - {e}")
         
         source_id = source_data.get("id")
         
         if not source_id:
-            pytest.skip(f"Source creation failed: {result}")
+            pytest.fail(f"Source creation failed - no 'id' in response: {result}")
         
         # Create application via Koku API (POST - use writes)
         if cost_mgmt_app_id:
