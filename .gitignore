@@ -32,3 +32,4 @@ ci-artifacts-*/
 *.csv
 version_info.json
 .digest-cache/*.digest
+reports/junit.xml

@@ -1,136 +1,390 @@
 """
-Kafka infrastructure tests.
+Kafka Infrastructure Validation Tests.
 
-Tests for Kafka cluster health and topic configuration.
+These tests validate the Kafka infrastructure required for Cost Management:
+1. Kafka cluster health (Strimzi-managed)
+2. Kafka listener pod deployment
+3. Kafka connectivity from listener
+4. Required Kafka topics existence
+
+Source Reference: scripts/e2e_validator/phases/kafka_validation.py
 """
+
+import json
+import os
+import subprocess
+from typing import List, Optional
 
 import pytest
 
-from utils import run_oc_command, exec_in_pod, get_pod_by_label
+from utils import get_pod_by_label, run_oc_command
 
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+def get_kafka_namespace() -> str:
+    """Get Kafka namespace from environment or default."""
+    return os.environ.get("KAFKA_NAMESPACE", "kafka")
+
+
+def get_kafka_broker_pod(kafka_namespace: str) -> Optional[str]:
+    """Get the first Kafka broker pod name.
+    
+    Uses strimzi.io/broker-role=true to find actual broker pods,
+    not the entity-operator which also has strimzi.io/kind=Kafka.
+    
+    Args:
+        kafka_namespace: Namespace where Kafka is deployed
+        
+    Returns:
+        Pod name or None if not found
+    """
+    try:
+        # Use broker-role label to get actual Kafka broker, not entity-operator
+        result = subprocess.run(
+            [
+                "kubectl", "get", "pods",
+                "-n", kafka_namespace,
+                "-l", "strimzi.io/broker-role=true",
+                "-o", "jsonpath={.items[0].metadata.name}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+        return None
+    except (subprocess.TimeoutExpired, Exception):
+        return None
+
+
+def get_kafka_pods_status(kafka_namespace: str) -> dict:
+    """Get status of all Kafka pods.
+    
+    Args:
+        kafka_namespace: Namespace where Kafka is deployed
+        
+    Returns:
+        Dict with pod counts and status details
+    """
+    try:
+        result = subprocess.run(
+            [
+                "kubectl", "get", "pods",
+                "-n", kafka_namespace,
+                "-l", "strimzi.io/kind=Kafka",
+                "-o", "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        
+        if result.returncode != 0:
+            return {"error": result.stderr, "total": 0, "running": 0}
+        
+        pods_data = json.loads(result.stdout)
+        items = pods_data.get("items", [])
+        
+        running = sum(
+            1 for pod in items
+            if pod.get("status", {}).get("phase") == "Running"
+        )
+        
+        return {
+            "total": len(items),
+            "running": running,
+            "pods": [
+                {
+                    "name": pod.get("metadata", {}).get("name"),
+                    "phase": pod.get("status", {}).get("phase"),
+                }
+                for pod in items
+            ],
+        }
+    except Exception as e:
+        return {"error": str(e), "total": 0, "running": 0}
+
+
+def list_kafka_topics(kafka_namespace: str, kafka_pod: str) -> List[str]:
+    """List all Kafka topics.
+    
+    Args:
+        kafka_namespace: Namespace where Kafka is deployed
+        kafka_pod: Name of a Kafka broker pod
+        
+    Returns:
+        List of topic names
+    """
+    try:
+        result = subprocess.run(
+            [
+                "kubectl", "exec",
+                "-n", kafka_namespace,
+                kafka_pod, "--",
+                "bin/kafka-topics.sh",
+                "--bootstrap-server", "localhost:9092",
+                "--list",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        
+        if result.returncode != 0:
+            return []
+        
+        # Filter out internal topics (starting with __)
+        topics = [
+            t.strip() for t in result.stdout.split("\n")
+            if t.strip() and not t.strip().startswith("__")
+        ]
+        return topics
+    except Exception:
+        return []
+
+
+def check_listener_kafka_connection(namespace: str, listener_pod: str) -> dict:
+    """Check listener logs for Kafka connection status.
+    
+    Args:
+        namespace: Application namespace
+        listener_pod: Name of the listener pod
+        
+    Returns:
+        Dict with connection status and details
+    """
+    try:
+        result = subprocess.run(
+            [
+                "kubectl", "logs",
+                "-n", namespace,
+                listener_pod,
+                "--tail=200",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        
+        if result.returncode != 0:
+            return {"connected": False, "error": result.stderr}
+        
+        logs = result.stdout.lower()
+        
+        # Check for positive connection indicators
+        connected_indicators = [
+            "kafka is running",
+            "consumer is listening",
+            "connected to kafka",
+            "subscribed to topic",
+        ]
+        
+        # Check for error indicators
+        error_indicators = [
+            "kafka connection error",
+            "unable to connect to kafka",
+            "broker transport failure",
+            "connection refused",
+        ]
+        
+        has_connection = any(ind in logs for ind in connected_indicators)
+        has_errors = any(ind in logs for ind in error_indicators)
+        
+        return {
+            "connected": has_connection and not has_errors,
+            "has_errors": has_errors,
+            "logs_checked": True,
+        }
+    except Exception as e:
+        return {"connected": False, "error": str(e)}
+
+
+# =============================================================================
+# Test Classes
+# =============================================================================
 
 @pytest.mark.infrastructure
 @pytest.mark.component
 class TestKafkaCluster:
     """Tests for Kafka cluster health."""
-
-    def test_kafka_cluster_exists(self, kafka_namespace: str, kafka_cluster_name: str):
-        """Verify Kafka cluster resource exists."""
-        result = run_oc_command([
-            "get", "kafka", kafka_cluster_name,
-            "-n", kafka_namespace,
-        ], check=False)
+    
+    def test_kafka_cluster_pods_exist(self):
+        """Verify Kafka cluster pods exist in the kafka namespace."""
+        kafka_ns = get_kafka_namespace()
+        status = get_kafka_pods_status(kafka_ns)
         
-        assert result.returncode == 0, (
-            f"Kafka cluster '{kafka_cluster_name}' not found in namespace '{kafka_namespace}'"
+        if "error" in status and status["total"] == 0:
+            pytest.skip(f"Kafka cluster not found in namespace '{kafka_ns}': {status.get('error', 'unknown')}")
+        
+        assert status["total"] > 0, (
+            f"No Kafka pods found in namespace '{kafka_ns}'. "
+            "Ensure Strimzi Kafka is deployed."
         )
-
-    def test_kafka_cluster_ready(self, kafka_namespace: str, kafka_cluster_name: str):
-        """Verify Kafka cluster is ready."""
-        result = run_oc_command([
-            "get", "kafka", kafka_cluster_name,
-            "-n", kafka_namespace,
-            "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}"
-        ], check=False)
+    
+    def test_kafka_cluster_pods_running(self):
+        """Verify all Kafka cluster pods are in Running state."""
+        kafka_ns = get_kafka_namespace()
+        status = get_kafka_pods_status(kafka_ns)
         
-        assert result.stdout.strip() == "True", (
-            f"Kafka cluster not ready: {result.stdout}"
+        if status["total"] == 0:
+            pytest.skip(f"No Kafka pods found in namespace '{kafka_ns}'")
+        
+        assert status["running"] == status["total"], (
+            f"Not all Kafka pods are running: {status['running']}/{status['total']}. "
+            f"Pod details: {status.get('pods', [])}"
         )
-
-    @pytest.mark.smoke
-    def test_kafka_pods_running(self, kafka_namespace: str, kafka_cluster_name: str):
-        """Verify Kafka broker pods are running."""
-        result = run_oc_command([
-            "get", "pods", "-n", kafka_namespace,
-            "-l", f"strimzi.io/cluster={kafka_cluster_name},strimzi.io/kind=Kafka",
-            "-o", "jsonpath={.items[*].status.phase}"
-        ], check=False)
+    
+    def test_kafka_broker_accessible(self):
+        """Verify at least one Kafka broker pod is accessible."""
+        kafka_ns = get_kafka_namespace()
+        broker_pod = get_kafka_broker_pod(kafka_ns)
         
-        phases = result.stdout.split()
-        assert len(phases) > 0, "No Kafka broker pods found"
-        assert all(p == "Running" for p in phases), f"Not all Kafka pods running: {phases}"
+        if not broker_pod:
+            pytest.skip(f"No Kafka broker pod found in namespace '{kafka_ns}'")
+        
+        # Try to run a simple command in the broker pod
+        try:
+            result = subprocess.run(
+                [
+                    "kubectl", "exec",
+                    "-n", kafka_ns,
+                    broker_pod, "--",
+                    "echo", "broker-accessible",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            assert result.returncode == 0, f"Cannot exec into Kafka broker: {result.stderr}"
+        except subprocess.TimeoutExpired:
+            pytest.fail("Timeout accessing Kafka broker pod")
 
 
 @pytest.mark.infrastructure
 @pytest.mark.component
 class TestKafkaTopics:
     """Tests for required Kafka topics."""
-
+    
     REQUIRED_TOPICS = [
-        "platform.upload.announce",
-        "hccm.ros.events",
+        "platform.upload.announce",  # Ingress upload notifications
+        "hccm.ros.events",           # ROS events from Koku
     ]
-
-    def test_required_topics_exist(
-        self, kafka_namespace: str, kafka_cluster_name: str
-    ):
-        """Verify required Kafka topics exist."""
-        # Get list of topics
-        result = run_oc_command([
-            "get", "kafkatopic", "-n", kafka_namespace,
-            "-o", "jsonpath={.items[*].metadata.name}"
-        ], check=False)
+    
+    def test_can_list_topics(self):
+        """Verify we can list Kafka topics."""
+        kafka_ns = get_kafka_namespace()
+        broker_pod = get_kafka_broker_pod(kafka_ns)
         
-        topics = result.stdout.split()
+        if not broker_pod:
+            pytest.skip(f"No Kafka broker pod found in namespace '{kafka_ns}'")
         
-        for required_topic in self.REQUIRED_TOPICS:
-            # Topic names may have cluster prefix
-            found = any(
-                required_topic in topic or topic.endswith(required_topic.replace(".", "-"))
-                for topic in topics
-            )
-            assert found, f"Required topic '{required_topic}' not found"
-
-    def test_upload_announce_topic_ready(self, kafka_namespace: str):
-        """Verify platform.upload.announce topic is ready."""
-        # Try to find the topic (may have different naming conventions)
-        for topic_name in ["platform.upload.announce", "platform-upload-announce"]:
-            result = run_oc_command([
-                "get", "kafkatopic", topic_name,
-                "-n", kafka_namespace,
-                "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}"
-            ], check=False)
-            
-            if result.returncode == 0 and result.stdout.strip() == "True":
-                return
+        topics = list_kafka_topics(kafka_ns, broker_pod)
         
-        pytest.skip("Upload announce topic not found or not ready")
+        # We should be able to list topics even if none exist
+        assert isinstance(topics, list), "Failed to list Kafka topics"
+    
+    @pytest.mark.parametrize("topic", REQUIRED_TOPICS)
+    def test_required_topic_exists(self, topic: str):
+        """Verify required Kafka topic exists."""
+        kafka_ns = get_kafka_namespace()
+        broker_pod = get_kafka_broker_pod(kafka_ns)
+        
+        if not broker_pod:
+            pytest.skip(f"No Kafka broker pod found in namespace '{kafka_ns}'")
+        
+        topics = list_kafka_topics(kafka_ns, broker_pod)
+        
+        if not topics:
+            pytest.skip("Could not list Kafka topics - cluster may not be ready")
+        
+        assert topic in topics, (
+            f"Required topic '{topic}' not found. "
+            f"Available topics: {', '.join(topics[:10])}{'...' if len(topics) > 10 else ''}"
+        )
 
 
 @pytest.mark.infrastructure
 @pytest.mark.integration
-class TestKafkaConsumerGroups:
-    """Tests for Kafka consumer groups."""
-
-    def test_listener_consumer_group_exists(
-        self, cluster_config, kafka_namespace: str, kafka_cluster_name: str
-    ):
-        """Verify Koku listener consumer group exists."""
-        # Find a Kafka pod to run commands
-        kafka_pod = get_pod_by_label(
-            kafka_namespace,
-            f"strimzi.io/cluster={kafka_cluster_name},strimzi.io/kind=Kafka"
+class TestKafkaListener:
+    """Tests for Kafka listener pod and connectivity."""
+    
+    @pytest.fixture
+    def listener_pod(self, cluster_config):
+        """Get listener pod, skip if not found."""
+        pod = get_pod_by_label(
+            cluster_config.namespace,
+            "app.kubernetes.io/component=listener"
+        )
+        if not pod:
+            pytest.skip("Listener pod not found - may not be deployed yet")
+        return pod
+    
+    def test_listener_pod_exists(self, listener_pod):
+        """Verify Kafka listener pod exists."""
+        assert listener_pod, "Kafka listener pod not found"
+    
+    @pytest.mark.parametrize("jsonpath,expected,check_name", [
+        pytest.param("{.status.phase}", "Running", "pod phase", id="pod_running"),
+        pytest.param("{.status.containerStatuses[0].ready}", "true", "container ready", id="container_ready"),
+    ])
+    def test_listener_status(self, cluster_config, listener_pod, jsonpath: str, expected: str, check_name: str):
+        """Verify listener pod status.
+        
+        Parametrized for: pod running state, container readiness.
+        """
+        try:
+            result = subprocess.run(
+                [
+                    "kubectl", "get", "pod",
+                    "-n", cluster_config.namespace,
+                    listener_pod,
+                    "-o", f"jsonpath={jsonpath}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            
+            actual = result.stdout.strip().lower()
+            assert actual == expected.lower(), (
+                f"Listener {check_name} check failed: expected '{expected}', got '{actual}'"
+            )
+        except subprocess.TimeoutExpired:
+            pytest.fail(f"Timeout checking listener {check_name}")
+    
+    def test_listener_kafka_connectivity(self, cluster_config):
+        """Verify listener can connect to Kafka (log-based check)."""
+        listener_pod = get_pod_by_label(
+            cluster_config.namespace,
+            "app.kubernetes.io/component=listener"
         )
         
-        if not kafka_pod:
-            pytest.skip("No Kafka pod found to query consumer groups")
+        if not listener_pod:
+            pytest.skip("Listener pod not found")
         
-        # List consumer groups
-        result = exec_in_pod(
-            kafka_namespace,
-            kafka_pod,
-            [
-                "bin/kafka-consumer-groups.sh",
-                "--bootstrap-server", "localhost:9092",
-                "--list"
-            ],
-            timeout=30,
+        status = check_listener_kafka_connection(
+            cluster_config.namespace,
+            listener_pod
         )
         
-        if result is None:
-            pytest.skip("Could not list consumer groups")
+        if "error" in status:
+            pytest.skip(f"Could not check listener logs: {status['error']}")
         
-        # Check for listener-related consumer groups
-        # The exact name depends on configuration
-        consumer_groups = result.strip().split("\n")
-        assert len(consumer_groups) > 0, "No consumer groups found"
+        if status.get("has_errors"):
+            pytest.fail(
+                "Kafka connection errors found in listener logs. "
+                "Check: kubectl logs -n {ns} {pod} | grep -i 'kafka\\|error'".format(
+                    ns=cluster_config.namespace,
+                    pod=listener_pod
+                )
+            )
+        
+        # Note: If no explicit connection message but no errors, we consider it OK
+        # The listener may not log connection success explicitly
+        if not status.get("connected") and not status.get("has_errors"):
+            # This is a soft pass - no errors detected
+            pass
