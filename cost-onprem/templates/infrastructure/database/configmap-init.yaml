@@ -63,15 +63,6 @@ data:
     END
     \$\$;
 
-    -- Sources User
-    DO \$\$
-    BEGIN
-      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$SOURCES_USER') THEN
-        EXECUTE 'CREATE USER $SOURCES_USER WITH PASSWORD ' || quote_literal('$SOURCES_PASSWORD');
-      END IF;
-    END
-    \$\$;
-
     -- ========================================
     -- Create Databases
     -- ========================================
@@ -89,11 +80,6 @@ data:
     -- Koku Database
     SELECT 'CREATE DATABASE {{ .Values.database.koku.name }}'
     WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ .Values.database.koku.name }}')
-    \gexec
-
-    -- Sources Database
-    SELECT 'CREATE DATABASE {{ .Values.database.sources.name }}'
-    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ .Values.database.sources.name }}')
     \gexec
 
     -- ========================================
