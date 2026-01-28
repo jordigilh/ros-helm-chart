@@ -85,8 +85,10 @@ generators:
           cpu_cores: 2
           memory_gig: 8
           resource_id: test-resource-1
+          labels: node-role.kubernetes.io/worker:true|kubernetes.io/os:linux
           namespaces:
             test-namespace:
+              labels: openshift.io/cluster-monitoring:true
               pods:
                 - pod:
                   pod_name: test-pod-1
@@ -167,6 +169,8 @@ def generate_nise_ocp_data(
     all_csv_files = list(Path(output_dir).rglob("*.csv"))
     pod_usage_files = [f for f in all_csv_files if "pod_usage" in f.name]
     ros_usage_files = [f for f in all_csv_files if "ros_usage" in f.name and "namespace" not in f.name]
+    node_label_files = [f for f in all_csv_files if "node_label" in f.name]
+    namespace_label_files = [f for f in all_csv_files if "namespace_label" in f.name]
     manifest_files = list(Path(output_dir).rglob("*manifest.json"))
     
     # Prioritize pod_usage files (for Koku summary tables), then ROS files
@@ -177,6 +181,8 @@ def generate_nise_ocp_data(
         "csv_files": [str(f) for f in csv_files],
         "pod_usage_files": [str(f) for f in pod_usage_files],
         "ros_usage_files": [str(f) for f in ros_usage_files],  # Container-level data for ROS
+        "node_label_files": [str(f) for f in node_label_files],  # Node labels for summary tables
+        "namespace_label_files": [str(f) for f in namespace_label_files],  # Namespace labels
         "manifest_files": [str(f) for f in manifest_files],
         "cluster_id": cluster_id,
         "start_date": start_date,
@@ -705,16 +711,24 @@ class TestCompleteDataFlow:
         # Check if we have NISE-generated files with separate ROS data
         pod_usage_files = e2e_test_data.get("pod_usage_files", [])
         ros_usage_files = e2e_test_data.get("ros_usage_files", [])
+        node_label_files = e2e_test_data.get("node_label_files", [])
+        namespace_label_files = e2e_test_data.get("namespace_label_files", [])
         
         if pod_usage_files and ros_usage_files:
             # Use NISE files with proper separation of cost and ROS data
             print(f"  📦 Creating package with {len(pod_usage_files)} pod_usage + {len(ros_usage_files)} ros_usage files")
+            if node_label_files:
+                print(f"     + {len(node_label_files)} node_label files")
+            if namespace_label_files:
+                print(f"     + {len(namespace_label_files)} namespace_label files")
             tar_path = create_upload_package_from_files(
                 pod_usage_files,
                 ros_usage_files,
                 cluster_id,
                 start_date=start_date,
                 end_date=end_date,
+                node_label_files=node_label_files if node_label_files else None,
+                namespace_label_files=namespace_label_files if namespace_label_files else None,
             )
         else:
             # Fall back to simple CSV content

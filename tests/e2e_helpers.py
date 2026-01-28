@@ -120,8 +120,10 @@ generators:
           cpu_cores: {self.cpu_cores}
           memory_gig: {self.memory_gig}
           resource_id: {self.resource_id}
+          labels: node-role.kubernetes.io/worker:true|kubernetes.io/os:linux
           namespaces:
             {self.namespace}:
+              labels: openshift.io/cluster-monitoring:true
               pods:
                 - pod:
                   pod_name: {self.pod_name}
