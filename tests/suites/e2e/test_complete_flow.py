@@ -617,36 +617,43 @@ class TestCompleteDataFlow:
             "s3_config_dict": s3_config_dict,
         }
         
-        # Post-test cleanup
-        print("\n" + "=" * 60)
-        print("POST-TEST CLEANUP")
-        print("=" * 60)
-        
-        # Delete the source
-        print("  🗑️  Deleting test source...")
-        exec_in_pod(
-            cluster_config.namespace,
-            listener_pod,
-            [
-                "curl", "-s", "-X", "DELETE",
-                f"{sources_api_url}/sources/{source_id}",
-                "-H", f"x-rh-sources-org-id: {org_id}",
-            ],
-            container="sources-listener",
-        )
-        print(f"     ✅ Deleted source {source_id}")
-        
-        # Full cleanup if enabled
-        if cleanup_after and db_pod:
-            full_cleanup(
-                namespace=cluster_config.namespace,
-                db_pod=db_pod,
-                org_id=org_id,
-                s3_config=s3_config_dict,
-                cluster_id=e2e_cluster_id,  # Only clean this test's cluster
-                restart_services=False,  # Don't restart services after tests
-                verbose=True,
+        # Post-test cleanup (only if enabled)
+        if cleanup_after:
+            print("\n" + "=" * 60)
+            print("POST-TEST CLEANUP")
+            print("=" * 60)
+            
+            # Delete the source
+            print("  🗑️  Deleting test source...")
+            exec_in_pod(
+                cluster_config.namespace,
+                listener_pod,
+                [
+                    "curl", "-s", "-X", "DELETE",
+                    f"{sources_api_url}/sources/{source_id}",
+                    "-H", f"x-rh-sources-org-id: {org_id}",
+                ],
+                container="sources-listener",
             )
+            print(f"     ✅ Deleted source {source_id}")
+            
+            # Full cleanup
+            if db_pod:
+                full_cleanup(
+                    namespace=cluster_config.namespace,
+                    db_pod=db_pod,
+                    org_id=org_id,
+                    s3_config=s3_config_dict,
+                    cluster_id=e2e_cluster_id,  # Only clean this test's cluster
+                    restart_services=False,  # Don't restart services after tests
+                    verbose=True,
+                )
+        else:
+            print("\n" + "=" * 60)
+            print("POST-TEST CLEANUP SKIPPED (E2E_CLEANUP_AFTER=false)")
+            print("=" * 60)
+            print(f"  Data preserved for cluster: {e2e_cluster_id}")
+            print(f"  Source ID: {source_id}")
 
     # =========================================================================
     # Test Steps - Ordered to validate the complete pipeline
