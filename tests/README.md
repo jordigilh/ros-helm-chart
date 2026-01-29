@@ -16,17 +16,29 @@ The test suite is organized into **focused suites** that avoid redundancy:
 tests/
 ├── conftest.py              # Root fixtures (cluster config, JWT, DB, etc.)
 ├── utils.py                 # Shared utility functions
+├── e2e_helpers.py           # Centralized E2E helpers (NISE, source registration, upload)
+├── cleanup.py               # E2E cleanup utilities
 ├── pytest.ini               # Pytest configuration and markers
 ├── requirements.txt         # Python dependencies
 ├── reports/                 # JUnit XML reports (generated)
 └── suites/                  # Test suites organized by subject
     ├── helm/                # Helm chart validation
     ├── auth/                # JWT authentication
-    ├── infrastructure/      # Infrastructure health (DB, S3, Kafka)
-    ├── cost_management/     # Koku component health
+    ├── infrastructure/      # Infrastructure health (DB, S3, Kafka) → [README](suites/infrastructure/README.md)
+    ├── cost_management/     # Koku pipeline validation → [README](suites/cost_management/README.md)
     ├── ros/                 # ROS/Kruize component health
-    └── e2e/                 # Complete end-to-end pipeline
+    └── e2e/                 # Complete end-to-end pipeline → [README](suites/e2e/README.md)
 ```
+
+## Suite Documentation
+
+Each suite has its own README with detailed test descriptions:
+
+| Suite | README | Highlights |
+|-------|--------|------------|
+| **infrastructure** | [suites/infrastructure/README.md](suites/infrastructure/README.md) | Kafka validation, S3/Storage preflight |
+| **cost_management** | [suites/cost_management/README.md](suites/cost_management/README.md) | Cost calculation validation, Processing state |
+| **e2e** | [suites/e2e/README.md](suites/e2e/README.md) | YAML-driven scenario tests |
 
 ### Suite Responsibilities
 
@@ -45,9 +57,22 @@ Tests are categorized by scope:
 
 | Marker | Description | Count |
 |--------|-------------|-------|
-| `component` | Tests validating a single component in isolation | ~34 |
-| `integration` | Tests validating interactions between multiple components | ~20 |
-| `extended` | Long-running tests requiring extended processing (skipped by default) | 3 |
+| `component` | Tests validating a single component in isolation | ~50 |
+| `integration` | Tests validating interactions between multiple components | ~25 |
+| `extended` | Long-running tests requiring extended processing (skipped by default) | ~60 |
+| `scenario` | YAML-driven scenario tests | 35 |
+
+### Test Counts by File
+
+| Suite | Test File | Tests | Description |
+|-------|-----------|-------|-------------|
+| infrastructure | `test_kafka.py` | 10 | Kafka cluster, topics, listener validation |
+| infrastructure | `test_storage.py` | 6 | S3 endpoint, buckets, connectivity (uses boto3) |
+| cost_management | `test_cost_validation.py` | 14 | Cost metrics vs NISE expected values |
+| cost_management | `test_processing_state.py` | 12 | Manifest/file processing state validation |
+| e2e | `test_scenarios.py` | 35 | YAML-driven scenario definitions and validation |
+
+**Total Tests**: ~163
 
 ### E2E Test Coverage
 
@@ -105,6 +130,16 @@ The `e2e` suite validates the **complete production data flow**:
 # Run specific suite
 ./scripts/run-pytest.sh --helm
 ./scripts/run-pytest.sh --auth
+./scripts/run-pytest.sh --infrastructure
+./scripts/run-pytest.sh --cost-management
+./scripts/run-pytest.sh --ros
+
+# Run specific test files directly
+pytest tests/suites/infrastructure/test_kafka.py -v      # Kafka validation
+pytest tests/suites/infrastructure/test_storage.py -v    # S3/Storage preflight
+pytest tests/suites/cost_management/test_cost_validation.py -v -m extended  # Cost validation
+pytest tests/suites/cost_management/test_processing_state.py -v  # Processing state
+pytest tests/suites/e2e/test_scenarios.py -v -m scenario  # YAML-driven scenarios
 ```
 
 ## Running Tests
@@ -201,8 +236,29 @@ pytest -x
 | `NAMESPACE` | `cost-onprem` | Target Kubernetes namespace |
 | `HELM_RELEASE_NAME` | `cost-onprem` | Helm release name |
 | `KEYCLOAK_NAMESPACE` | `keycloak` | Keycloak namespace |
+| `KAFKA_NAMESPACE` | `kafka` | Kafka cluster namespace |
 | `PLATFORM` | `openshift` | Platform type |
 | `PYTHON` | `python3` | Python interpreter |
+| `E2E_COST_TOLERANCE` | `0.05` | Tolerance for cost validation (5%) |
+
+## Centralized E2E Helpers
+
+The `e2e_helpers.py` module centralizes common E2E functionality to avoid duplication:
+
+| Component | Description |
+|-----------|-------------|
+| `NISEConfig` | Dataclass with default NISE configuration and `get_expected_values()` method |
+| `E2E_CLUSTER_PREFIX` | Standard prefix `"e2e-pytest-"` for all E2E cluster IDs |
+| `is_nise_available()` / `install_nise()` | NISE availability checking and installation |
+| `generate_nise_data()` | Generate NISE data with categorized file output |
+| `generate_cluster_id()` | Generate unique cluster IDs |
+| `get_sources_api_url()` | Get internal Sources API URL |
+| `register_source()` / `delete_source()` | Source registration with proper `source_ref` |
+| `upload_with_retry()` | Upload with retry logic for transient errors |
+| `wait_for_provider()` / `wait_for_summary_tables()` | Processing wait utilities |
+| `cleanup_database_records()` / `cleanup_e2e_sources()` | Cleanup utilities |
+
+Both `test_complete_flow.py` and `cost_management/conftest.py` import from `e2e_helpers` to ensure consistent behavior.
 
 ## Data Generation
 

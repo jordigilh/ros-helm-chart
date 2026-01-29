@@ -313,6 +313,8 @@ def create_upload_package_from_files(
     cluster_id: str,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    node_label_files: Optional[list[str]] = None,
+    namespace_label_files: Optional[list[str]] = None,
 ) -> str:
     """Create a tar.gz upload package from NISE-generated files.
     
@@ -325,6 +327,8 @@ def create_upload_package_from_files(
         cluster_id: Unique cluster identifier
         start_date: Start date for the report period
         end_date: End date for the report period
+        node_label_files: Optional list of paths to node label CSV files
+        namespace_label_files: Optional list of paths to namespace label CSV files
     
     Returns:
         Path to the created tar.gz file
@@ -352,6 +356,12 @@ def create_upload_package_from_files(
     # Get just the filenames for the manifest
     pod_filenames = [os.path.basename(f) for f in pod_usage_files]
     ros_filenames = [os.path.basename(f) for f in ros_usage_files]
+    node_label_filenames = [os.path.basename(f) for f in (node_label_files or [])]
+    namespace_label_filenames = [os.path.basename(f) for f in (namespace_label_files or [])]
+    
+    # Combine all files for the manifest's "files" array
+    # Koku processes all files listed here, including label files
+    all_data_files = pod_filenames + node_label_filenames + namespace_label_filenames
 
     # Write manifest with separate file lists
     manifest = {
@@ -359,7 +369,7 @@ def create_upload_package_from_files(
         "cluster_id": cluster_id,
         "cluster_alias": f"e2e-source-{cluster_id[:12]}",
         "date": now.isoformat(),
-        "files": pod_filenames,  # Pod-level data for Koku cost management
+        "files": all_data_files,  # All data files for Koku cost management (pod, node labels, namespace labels)
         "resource_optimization_files": ros_filenames,  # Container-level data for ROS
         "certified": True,
         "operator_version": "1.0.0",
@@ -377,6 +387,14 @@ def create_upload_package_from_files(
         # Add ROS usage files
         for filepath in ros_usage_files:
             tar.add(filepath, arcname=os.path.basename(filepath))
+        # Add node label files if provided
+        if node_label_files:
+            for filepath in node_label_files:
+                tar.add(filepath, arcname=os.path.basename(filepath))
+        # Add namespace label files if provided
+        if namespace_label_files:
+            for filepath in namespace_label_files:
+                tar.add(filepath, arcname=os.path.basename(filepath))
         # Add manifest
         tar.add(manifest_file, arcname="manifest.json")
 

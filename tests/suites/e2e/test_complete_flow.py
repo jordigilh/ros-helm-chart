@@ -42,38 +42,19 @@ from utils import (
 )
 from cleanup import full_cleanup
 
-
-# =============================================================================
-# Data Generation Utilities
-# =============================================================================
-
-def is_nise_available() -> bool:
-    """Check if NISE is available for data generation."""
-    try:
-        result = subprocess.run(
-            ["nise", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        return result.returncode == 0
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-
-
-def install_nise() -> bool:
-    """Attempt to install NISE via pip."""
-    try:
-        print("  Installing koku-nise...")
-        result = subprocess.run(
-            ["pip", "install", "koku-nise"],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        return result.returncode == 0
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return False
+# Import shared E2E helpers
+from e2e_helpers import (
+    E2E_CLUSTER_PREFIX,
+    DEFAULT_NISE_CONFIG,
+    is_nise_available,
+    install_nise,
+    ensure_nise_available,
+    get_sources_api_url,
+    upload_with_retry,
+    wait_for_provider,
+    cleanup_database_records,
+    cleanup_e2e_sources,
+)
 
 
 def generate_dynamic_static_report(start_date: datetime, end_date: datetime, output_dir: str) -> str:
@@ -105,8 +86,10 @@ generators:
           cpu_cores: 2
           memory_gig: 8
           resource_id: test-resource-1
+          labels: node-role.kubernetes.io/worker:true|kubernetes.io/os:linux
           namespaces:
             test-namespace:
+              labels: openshift.io/cluster-monitoring:true
               pods:
                 - pod:
                   pod_name: test-pod-1
@@ -187,6 +170,8 @@ def generate_nise_ocp_data(
     all_csv_files = list(Path(output_dir).rglob("*.csv"))
     pod_usage_files = [f for f in all_csv_files if "pod_usage" in f.name]
     ros_usage_files = [f for f in all_csv_files if "ros_usage" in f.name and "namespace" not in f.name]
+    node_label_files = [f for f in all_csv_files if "node_label" in f.name]
+    namespace_label_files = [f for f in all_csv_files if "namespace_label" in f.name]
     manifest_files = list(Path(output_dir).rglob("*manifest.json"))
     
     # Prioritize pod_usage files (for Koku summary tables), then ROS files
@@ -197,6 +182,8 @@ def generate_nise_ocp_data(
         "csv_files": [str(f) for f in csv_files],
         "pod_usage_files": [str(f) for f in pod_usage_files],
         "ros_usage_files": [str(f) for f in ros_usage_files],  # Container-level data for ROS
+        "node_label_files": [str(f) for f in node_label_files],  # Node labels for summary tables
+        "namespace_label_files": [str(f) for f in namespace_label_files],  # Namespace labels
         "manifest_files": [str(f) for f in manifest_files],
         "cluster_id": cluster_id,
         "start_date": start_date,
@@ -800,16 +787,24 @@ class TestCompleteDataFlow:
         # Check if we have NISE-generated files with separate ROS data
         pod_usage_files = e2e_test_data.get("pod_usage_files", [])
         ros_usage_files = e2e_test_data.get("ros_usage_files", [])
+        node_label_files = e2e_test_data.get("node_label_files", [])
+        namespace_label_files = e2e_test_data.get("namespace_label_files", [])
         
         if pod_usage_files and ros_usage_files:
             # Use NISE files with proper separation of cost and ROS data
             print(f"  📦 Creating package with {len(pod_usage_files)} pod_usage + {len(ros_usage_files)} ros_usage files")
+            if node_label_files:
+                print(f"     + {len(node_label_files)} node_label files")
+            if namespace_label_files:
+                print(f"     + {len(namespace_label_files)} namespace_label files")
             tar_path = create_upload_package_from_files(
                 pod_usage_files,
                 ros_usage_files,
                 cluster_id,
                 start_date=start_date,
                 end_date=end_date,
+                node_label_files=node_label_files if node_label_files else None,
+                namespace_label_files=namespace_label_files if namespace_label_files else None,
             )
         else:
             # Fall back to simple CSV content
@@ -855,7 +850,7 @@ class TestCompleteDataFlow:
                 shutil.rmtree(nise_temp_dir, ignore_errors=True)
 
     def test_04_manifest_created_in_koku(self, cluster_config, registered_source):
-        """Step 4: Verify manifest was created in Koku database."""
+        """Step 4: Verify manifest was created in Koku database with required fields."""
         db_pod = get_pod_by_label(
             cluster_config.namespace,
             "app.kubernetes.io/component=database"
@@ -886,9 +881,40 @@ class TestCompleteDataFlow:
         )
         
         assert success, f"Manifest not created for cluster {cluster_id}"
+        
+        # Validate manifest has required fields (from processing_state tests)
+        manifest_result = execute_db_query(
+            cluster_config.namespace,
+            db_pod,
+            "koku",
+            "koku",
+            f"""
+            SELECT 
+                m.id,
+                m.assembly_id,
+                m.cluster_id,
+                m.num_total_files,
+                m.creation_datetime
+            FROM reporting_common_costusagereportmanifest m
+            WHERE m.cluster_id = '{cluster_id}'
+            ORDER BY m.creation_datetime DESC
+            LIMIT 1
+            """,
+        )
+        
+        assert manifest_result and manifest_result[0], "Manifest query returned no results"
+        manifest = manifest_result[0]
+        
+        assert manifest[0] is not None, "Manifest missing ID"
+        assert manifest[1] is not None, "Manifest missing assembly_id"
+        assert manifest[2] == cluster_id, f"Manifest cluster_id mismatch: {manifest[2]}"
+        assert manifest[3] is not None and int(manifest[3]) > 0, "Manifest has no files"
+        assert manifest[4] is not None, "Manifest missing creation_datetime"
+        
+        print(f"  ✅ Manifest {manifest[0]} created with {manifest[3]} files")
 
     def test_05_files_processed_by_masu(self, cluster_config, registered_source):
-        """Step 5: Verify uploaded files were processed by MASU."""
+        """Step 5: Verify uploaded files were processed by MASU with proper status."""
         db_pod = get_pod_by_label(
             cluster_config.namespace,
             "app.kubernetes.io/component=database"
@@ -897,6 +923,11 @@ class TestCompleteDataFlow:
             pytest.skip("Database pod not found")
         
         cluster_id = registered_source["cluster_id"]
+        
+        # File processing status codes (from Koku)
+        FILE_STATUS_PENDING = 0
+        FILE_STATUS_SUCCESS = 1
+        FILE_STATUS_FAILED = 2
         
         def check_processing():
             result = execute_db_query(
@@ -924,6 +955,49 @@ class TestCompleteDataFlow:
         )
         
         assert success, "File processing not completed"
+        
+        # Validate file processing status details (from processing_state tests)
+        file_status_result = execute_db_query(
+            cluster_config.namespace,
+            db_pod,
+            "koku",
+            "koku",
+            f"""
+            SELECT 
+                s.report_name,
+                s.status,
+                s.failed_status,
+                s.completed_datetime
+            FROM reporting_common_costusagereportmanifest m
+            JOIN reporting_common_costusagereportstatus s ON s.manifest_id = m.id
+            WHERE m.cluster_id = '{cluster_id}'
+            ORDER BY m.creation_datetime DESC
+            """,
+        )
+        
+        if file_status_result:
+            failed_files = []
+            missing_completion = []
+            
+            for row in file_status_result:
+                report_name, status, failed_status, completed_datetime = row
+                status_int = int(status) if status is not None else None
+                
+                if status_int == FILE_STATUS_FAILED:
+                    failed_files.append(report_name)
+                elif status_int == FILE_STATUS_SUCCESS and completed_datetime is None:
+                    missing_completion.append(report_name)
+            
+            # Log any issues but don't fail (files may still be processing)
+            if failed_files:
+                print(f"  ⚠️  {len(failed_files)} file(s) failed: {failed_files[:3]}")
+            
+            if missing_completion:
+                print(f"  ⚠️  {len(missing_completion)} successful file(s) missing completion time")
+            
+            # Count successful files
+            successful = sum(1 for row in file_status_result if row[1] and int(row[1]) == FILE_STATUS_SUCCESS)
+            print(f"  ✅ {successful}/{len(file_status_result)} files processed successfully")
 
     @pytest.mark.extended
     @pytest.mark.timeout(900)  # 15 minutes for summary tables
@@ -1090,6 +1164,63 @@ class TestCompleteDataFlow:
                 "\nKNOWN ISSUE: Ingress-based uploads may not trigger summary tasks due to\n"
                 "date extraction issues in Koku. Direct S3 upload (bash test) may work."
             )
+        
+        # Validate processing state (from processing_state tests)
+        # Check for stuck manifests
+        manifest_state = execute_db_query(
+            cluster_config.namespace,
+            db_pod,
+            "koku",
+            "koku",
+            f"""
+            SELECT 
+                m.id,
+                m.num_total_files,
+                m.num_processed_files,
+                m.completed_datetime,
+                m.state::text
+            FROM reporting_common_costusagereportmanifest m
+            WHERE m.cluster_id = '{cluster_id}'
+            ORDER BY m.creation_datetime DESC
+            LIMIT 1
+            """,
+        )
+        
+        if manifest_state and manifest_state[0]:
+            manifest = manifest_state[0]
+            manifest_id, total_files, processed_files, completed, state = manifest
+            
+            # Check if manifest is stuck (has files but none processed and not completed)
+            if total_files and int(total_files) > 0:
+                processed = int(processed_files) if processed_files else 0
+                if processed == 0 and completed is None:
+                    print(f"  ⚠️  Manifest {manifest_id} may be stuck: 0/{total_files} files processed")
+                else:
+                    print(f"  ✅ Manifest {manifest_id}: {processed}/{total_files} files processed")
+            
+            # Check for summary failures in state
+            if state and "failed" in state.lower():
+                print(f"  ⚠️  Manifest {manifest_id} has failure in state: {state[:100]}...")
+        
+        # Get summary data stats
+        summary_stats = execute_db_query(
+            cluster_config.namespace,
+            db_pod,
+            "koku",
+            "koku",
+            f"""
+            SELECT 
+                COUNT(*) as row_count,
+                COALESCE(SUM(pod_request_cpu_core_hours), 0) as cpu_hours,
+                COALESCE(SUM(pod_request_memory_gigabyte_hours), 0) as mem_gb_hours
+            FROM {schema_name}.reporting_ocpusagelineitem_daily_summary
+            WHERE cluster_id = '{cluster_id}'
+            """,
+        )
+        
+        if summary_stats and summary_stats[0]:
+            row_count, cpu_hours, mem_gb_hours = summary_stats[0]
+            print(f"  ✅ Summary tables populated: {row_count} rows, {float(cpu_hours):.2f} CPU-hours, {float(mem_gb_hours):.2f} GB-hours")
 
     @pytest.mark.extended
     @pytest.mark.timeout(300)  # 5 minutes for Kruize experiments

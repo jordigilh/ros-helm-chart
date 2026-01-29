@@ -4,11 +4,129 @@ Cost Management (Koku) suite fixtures.
 Note: Sources API has been merged into Koku. All sources endpoints are now
 available via the Koku API at /api/cost-management/v1/ using X-Rh-Identity
 header for authentication instead of x-rh-sources-org-id.
+
+Includes the cost_validation_data fixture that runs the full E2E flow for cost validation tests.
+This makes cost_validation tests SELF-CONTAINED - they don't depend on other test modules.
 """
 
-import pytest
+import os
+import shutil
+import tempfile
+from datetime import datetime, timedelta
 
-from utils import create_rh_identity_header, get_pod_by_label
+import pytest
+import requests
+
+from e2e_helpers import (
+    DEFAULT_S3_BUCKET,
+    NISEConfig,
+    cleanup_database_records,
+    delete_source,
+    ensure_nise_available,
+    generate_cluster_id,
+    generate_nise_data,
+    get_sources_api_url,
+    register_source,
+    upload_with_retry,
+    wait_for_provider,
+    wait_for_summary_tables,
+)
+from utils import (
+    create_rh_identity_header,
+    create_upload_package_from_files,
+    execute_db_query,
+    exec_in_pod,
+    get_pod_by_label,
+)
+
+
+def cleanup_old_cost_val_clusters(namespace: str, db_pod: str, listener_pod: str, sources_api_url: str, org_id: str):
+    """Clean up any leftover cost-val clusters from previous test runs.
+    
+    This ensures cost_validation tests start with a clean slate and don't
+    pick up data from previous runs.
+    """
+    import json
+    
+    # Find and delete old cost-val sources
+    try:
+        result = exec_in_pod(
+            namespace,
+            listener_pod,
+            [
+                "curl", "-s", f"{sources_api_url}/sources",
+                "-H", "Content-Type: application/json",
+                "-H", f"x-rh-sources-org-id: {org_id}",
+            ],
+            container="sources-listener",
+        )
+        
+        if result:
+            sources = json.loads(result)
+            for source in sources.get("data", []):
+                source_ref = source.get("source_ref", "")
+                if source_ref and source_ref.startswith("cost-val-"):
+                    source_id = source.get("id")
+                    print(f"       Deleting old source: {source.get('name')} (ref: {source_ref})")
+                    exec_in_pod(
+                        namespace,
+                        listener_pod,
+                        [
+                            "curl", "-s", "-X", "DELETE",
+                            f"{sources_api_url}/sources/{source_id}",
+                            "-H", f"x-rh-sources-org-id: {org_id}",
+                        ],
+                        container="sources-listener",
+                    )
+    except Exception as e:
+        print(f"       Warning: Could not clean old sources: {e}")
+    
+    # Clean up database records for cost-val clusters
+    try:
+        # Delete manifest statuses
+        execute_db_query(
+            namespace, db_pod, "koku", "koku",
+            """
+            DELETE FROM reporting_common_costusagereportstatus 
+            WHERE manifest_id IN (
+                SELECT id FROM reporting_common_costusagereportmanifest 
+                WHERE cluster_id LIKE 'cost-val-%'
+            )
+            """
+        )
+        
+        # Delete manifests
+        execute_db_query(
+            namespace, db_pod, "koku", "koku",
+            "DELETE FROM reporting_common_costusagereportmanifest WHERE cluster_id LIKE 'cost-val-%'"
+        )
+        
+        # Get all schemas and clean summary tables
+        schemas = execute_db_query(
+            namespace, db_pod, "koku", "koku",
+            "SELECT DISTINCT schema_name FROM api_customer WHERE schema_name IS NOT NULL"
+        )
+        
+        if schemas:
+            for row in schemas:
+                schema = row[0].strip() if row[0] else None
+                if schema:
+                    try:
+                        execute_db_query(
+                            namespace, db_pod, "koku", "koku",
+                            f"DELETE FROM {schema}.reporting_ocpusagelineitem_daily_summary WHERE cluster_id LIKE 'cost-val-%'"
+                        )
+                    except Exception:
+                        pass  # Table might not exist in all schemas
+                        
+    except Exception as e:
+        print(f"       Warning: Could not clean database records: {e}")
+
+
+@pytest.fixture(scope="module")
+def sources_api_url(cluster_config) -> str:
+    """Get Sources API internal URL."""
+    return get_sources_api_url(cluster_config.helm_release_name, cluster_config.namespace)
 
 
 @pytest.fixture(scope="module")
@@ -55,3 +173,187 @@ def ingress_pod(cluster_config) -> str:
 def rh_identity_header(org_id) -> str:
     """Get X-Rh-Identity header value for the test org."""
     return create_rh_identity_header(org_id)
+
+
+# =============================================================================
+# E2E Test Data Fixture - Self-Contained Setup for Cost Validation
+# =============================================================================
+
+@pytest.fixture(scope="module")
+def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_id):
+    """Run full E2E setup for cost validation tests - SELF-CONTAINED.
+    
+    This fixture:
+    1. Generates NISE data with known expected values
+    2. Registers a source in Sources API
+    3. Uploads data via JWT-authenticated ingress
+    4. Waits for Koku to process and populate summary tables
+    5. Yields the test context
+    6. Cleans up all test data on teardown
+    """
+    # Check NISE availability
+    if not ensure_nise_available():
+        pytest.skip("NISE not available and could not be installed")
+    
+    # Generate unique cluster ID
+    cluster_id = generate_cluster_id(prefix="cost-val")
+    
+    # Get required pods
+    db_pod = get_pod_by_label(cluster_config.namespace, "app.kubernetes.io/component=database")
+    if not db_pod:
+        pytest.skip("Database pod not found")
+    
+    listener_pod = get_pod_by_label(cluster_config.namespace, "app.kubernetes.io/component=sources-listener")
+    if not listener_pod:
+        listener_pod = get_pod_by_label(cluster_config.namespace, "app.kubernetes.io/component=listener")
+    if not listener_pod:
+        pytest.skip("Listener pod not found")
+    
+    temp_dir = tempfile.mkdtemp(prefix="cost_validation_")
+    source_registration = None
+    sources_url = get_sources_api_url(cluster_config.helm_release_name, cluster_config.namespace)
+    
+    # Use centralized NISE config
+    nise_config = NISEConfig()
+    
+    try:
+        print(f"\n{'='*60}")
+        print("COST VALIDATION TEST SETUP (Self-Contained)")
+        print(f"{'='*60}")
+        print(f"  Cluster ID: {cluster_id}")
+        
+        # Pre-test cleanup: Remove any leftover cost-val clusters from previous runs
+        print("\n  [0/5] Pre-test cleanup...")
+        cleanup_old_cost_val_clusters(cluster_config.namespace, db_pod, listener_pod, sources_url, org_id)
+        print("       Cleanup complete")
+        
+        # Step 1: Generate NISE data
+        # Use 2 days ago to yesterday to get exactly 24 hours of data
+        # (NISE generates from start_date 00:00 to end_date 23:59, so same day = 0 data)
+        print("\n  [1/5] Generating NISE data...")
+        now = datetime.utcnow()
+        # Use dates 2-3 days ago to ensure we get exactly 24 hours
+        start_date = (now - timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        files = generate_nise_data(cluster_id, start_date, end_date, temp_dir, config=nise_config)
+        print(f"       Generated {len(files['all_files'])} CSV files")
+        
+        if not files["all_files"]:
+            pytest.skip("NISE generated no CSV files")
+        
+        # Step 2: Register source
+        print("\n  [2/5] Registering source...")
+        source_registration = register_source(
+            namespace=cluster_config.namespace,
+            listener_pod=listener_pod,
+            sources_api_url=sources_url,
+            cluster_id=cluster_id,
+            org_id=org_id,
+            source_name=f"cost-validation-{cluster_id[:16]}",
+        )
+        print(f"       Source ID: {source_registration.source_id}")
+        
+        # Step 3: Wait for provider
+        print("\n  [3/5] Waiting for provider in Koku...")
+        if not wait_for_provider(cluster_config.namespace, db_pod, cluster_id):
+            pytest.fail(f"Provider not created for cluster {cluster_id}")
+        print("       Provider created")
+        
+        # Step 4: Upload data
+        print("\n  [4/5] Uploading data via ingress...")
+        
+        package_path = create_upload_package_from_files(
+            pod_usage_files=files["pod_usage_files"],
+            ros_usage_files=files["ros_usage_files"],
+            cluster_id=cluster_id,
+            start_date=start_date,
+            end_date=end_date,
+            node_label_files=files["node_label_files"] if files["node_label_files"] else None,
+            namespace_label_files=files["namespace_label_files"] if files["namespace_label_files"] else None,
+        )
+        
+        upload_url = f"{ingress_url}/v1/upload"
+        print(f"       Ingress URL: {upload_url}")
+        print(f"       Package size: {os.path.getsize(package_path)} bytes")
+        
+        # Create a session with SSL verification disabled
+        session = requests.Session()
+        session.verify = False
+        
+        response = upload_with_retry(
+            session,
+            upload_url,
+            package_path,
+            jwt_token.authorization_header,
+        )
+        
+        if response.status_code not in [200, 201, 202]:
+            pytest.fail(f"Upload failed: {response.status_code} - {response.text[:200] if response.text else 'No body'}")
+        print(f"       Upload successful: {response.status_code}")
+        
+        # Step 5: Wait for processing
+        print("\n  [5/5] Waiting for Koku processing...")
+        schema_name = wait_for_summary_tables(cluster_config.namespace, db_pod, cluster_id)
+        
+        if not schema_name:
+            pytest.fail(f"Timeout waiting for summary tables for cluster {cluster_id}")
+        print("       Summary tables populated")
+        
+        print(f"\n{'='*60}")
+        print("SETUP COMPLETE - Running validation tests")
+        print(f"{'='*60}\n")
+        
+        # Query the actual number of days of data in the DB
+        # Koku aggregates hourly data into daily summaries
+        result = execute_db_query(
+            cluster_config.namespace, db_pod, "koku", "koku",
+            f"""
+            SELECT COUNT(DISTINCT usage_start)
+            FROM {schema_name}.reporting_ocpusagelineitem_daily_summary
+            WHERE cluster_id = '{cluster_id}'
+            """
+        )
+        actual_days = int(result[0][0]) if result and result[0][0] else 1
+        actual_hours = actual_days * 24  # Each day has 24 hours of data
+        print(f"  Actual days of data in DB: {actual_days} ({actual_hours} hours)")
+        
+        yield {
+            "namespace": cluster_config.namespace,
+            "db_pod": db_pod,
+            "cluster_id": cluster_id,
+            "schema_name": schema_name,
+            "source_id": source_registration.source_id,
+            "org_id": org_id,
+            "expected": nise_config.get_expected_values(hours=actual_hours),
+        }
+        
+    finally:
+        # Cleanup
+        print(f"\n{'='*60}")
+        print("COST VALIDATION TEST CLEANUP")
+        print(f"{'='*60}")
+        
+        if source_registration:
+            if delete_source(
+                cluster_config.namespace,
+                listener_pod,
+                sources_url,
+                source_registration.source_id,
+                org_id,
+            ):
+                print(f"  Deleted source {source_registration.source_id}")
+            else:
+                print(f"  Warning: Could not delete source {source_registration.source_id}")
+        
+        if db_pod:
+            if cleanup_database_records(cluster_config.namespace, db_pod, cluster_id):
+                print("  Cleaned up database records")
+            else:
+                print("  Warning: Could not clean database records")
+        
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            print("  Cleaned up temp directory")
+        
+        print(f"{'='*60}\n")
