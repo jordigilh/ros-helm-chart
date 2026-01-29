@@ -575,7 +575,9 @@ class TestCompleteDataFlow:
             except (json.JSONDecodeError, TypeError):
                 pass  # No existing sources or error in response
         
-        # Create the new source
+        # Create the new source with retry logic
+        # On first run for a new org, the tenant schema creation can be slow
+        # which may cause the first request to fail or timeout
         payload = json.dumps({
             "name": source_name,
             "source_type_id": ocp_type_id,
@@ -586,22 +588,73 @@ class TestCompleteDataFlow:
         print(f"     Cluster ID: {e2e_cluster_id}")
         print(f"     Source Type ID: {ocp_type_id}")
         
-        # POST /sources - use writes
-        result = exec_in_pod(
-            cluster_config.namespace,
-            ingress_pod,
-            [
-                "curl", "-s", "-w", "\n__HTTP_CODE__:%{http_code}", "-X", "POST",
-                f"{koku_api_writes_url}/sources",
-                "-H", "Content-Type: application/json",
-                "-H", f"X-Rh-Identity: {rh_identity_header}",
-                "-d", payload,
-            ],
-            container="ingress",
-        )
+        # Retry logic for source creation
+        # First request may fail due to tenant schema creation (slow operation)
+        max_retries = 5
+        retry_delay = 5  # seconds
+        source_id = None
+        last_error = None
         
-        if not result:
-            # Try to get more info about the failure
+        for attempt in range(max_retries):
+            if attempt > 0:
+                print(f"     ⏳ Retry {attempt}/{max_retries - 1} after {retry_delay}s delay...")
+                time.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 30)  # Exponential backoff, max 30s
+            
+            # POST /sources - use writes
+            result = exec_in_pod(
+                cluster_config.namespace,
+                ingress_pod,
+                [
+                    "curl", "-s", "-w", "\n__HTTP_CODE__:%{http_code}", "-X", "POST",
+                    f"{koku_api_writes_url}/sources",
+                    "-H", "Content-Type: application/json",
+                    "-H", f"X-Rh-Identity: {rh_identity_header}",
+                    "-d", payload,
+                ],
+                container="ingress",
+                timeout=120,  # Longer timeout for first request (schema creation)
+            )
+            
+            if not result:
+                last_error = "exec_in_pod returned None (curl failed or timed out)"
+                print(f"     ⚠️  Attempt {attempt + 1} failed: {last_error}")
+                continue
+            
+            # Parse response and status code
+            http_code = None
+            if "__HTTP_CODE__:" in result:
+                body, http_code = result.rsplit("__HTTP_CODE__:", 1)
+                result = body.strip()
+                http_code = http_code.strip()
+            
+            if http_code and http_code not in ("200", "201"):
+                last_error = f"HTTP {http_code}: {result[:200]}"
+                print(f"     ⚠️  Attempt {attempt + 1} failed: {last_error}")
+                # 5xx errors might be transient, retry
+                if http_code.startswith("5"):
+                    continue
+                # 4xx errors (except 409 conflict) are not retryable
+                if http_code != "409":
+                    break
+                # 409 might mean source already exists, try to get it
+                continue
+            
+            try:
+                source_data = json.loads(result)
+                source_id = source_data.get("id")
+                if source_id:
+                    print(f"     ✅ Source created successfully (id={source_id})")
+                    break
+                else:
+                    last_error = f"No 'id' in response: {result[:200]}"
+                    print(f"     ⚠️  Attempt {attempt + 1} failed: {last_error}")
+            except json.JSONDecodeError as e:
+                last_error = f"Invalid JSON: {result[:200]} - {e}"
+                print(f"     ⚠️  Attempt {attempt + 1} failed: {last_error}")
+        
+        if not source_id:
+            # Get debug info before failing
             error_result = exec_in_pod(
                 cluster_config.namespace,
                 ingress_pod,
@@ -614,33 +667,11 @@ class TestCompleteDataFlow:
                 container="ingress",
             )
             pytest.fail(
-                f"Source creation failed - exec_in_pod returned None. "
+                f"Source creation failed after {max_retries} attempts. "
+                f"Last error: {last_error}. "
                 f"ingress_pod={ingress_pod}, url={koku_api_writes_url}/sources, "
                 f"Debug info: {error_result}"
             )
-        
-        # Parse response and status code
-        http_code = None
-        if "__HTTP_CODE__:" in result:
-            body, http_code = result.rsplit("__HTTP_CODE__:", 1)
-            result = body.strip()
-            http_code = http_code.strip()
-        
-        if http_code and http_code not in ("200", "201"):
-            pytest.fail(
-                f"Source creation failed with HTTP {http_code}. "
-                f"Response: {result[:500]}"
-            )
-        
-        try:
-            source_data = json.loads(result)
-        except json.JSONDecodeError as e:
-            pytest.fail(f"Source creation returned invalid JSON: {result[:500]} - {e}")
-        
-        source_id = source_data.get("id")
-        
-        if not source_id:
-            pytest.fail(f"Source creation failed - no 'id' in response: {result}")
         
         # Create application via Koku API (POST - use writes)
         if cost_mgmt_app_id:
