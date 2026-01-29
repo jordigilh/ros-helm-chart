@@ -276,6 +276,63 @@ check_service_endpoints() {
     fi
 }
 
+check_resource_summary() {
+    print_section "💰 Resource Summary"
+    
+    # Get all pods for the release
+    PODS_JSON=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/instance=${RELEASE_NAME}" -o json 2>/dev/null || echo '{"items":[]}')
+    
+    if [ "$(echo "$PODS_JSON" | jq '.items | length')" -eq 0 ]; then
+        log_warning "No pods found to calculate resource usage"
+        return 0
+    fi
+    
+    # Calculate total requests and limits using jq
+    local total_cpu_req=$(echo "$PODS_JSON" | jq -r '
+        [.items[].spec.containers[]?.resources.requests.cpu // "0" | 
+         if test("m$") then rtrimstr("m") | tonumber 
+         else tonumber * 1000 end] | add // 0')
+    
+    local total_mem_req=$(echo "$PODS_JSON" | jq -r '
+        [.items[].spec.containers[]?.resources.requests.memory // "0" | 
+         if test("Mi$") then rtrimstr("Mi") | tonumber 
+         elif test("Gi$") then rtrimstr("Gi") | tonumber * 1024
+         elif test("Ki$") then rtrimstr("Ki") | tonumber / 1024
+         else tonumber / (1024*1024) end] | add // 0')
+    
+    local total_cpu_lim=$(echo "$PODS_JSON" | jq -r '
+        [.items[].spec.containers[]?.resources.limits.cpu // "0" | 
+         if test("m$") then rtrimstr("m") | tonumber 
+         else tonumber * 1000 end] | add // 0')
+    
+    local total_mem_lim=$(echo "$PODS_JSON" | jq -r '
+        [.items[].spec.containers[]?.resources.limits.memory // "0" | 
+         if test("Mi$") then rtrimstr("Mi") | tonumber 
+         elif test("Gi$") then rtrimstr("Gi") | tonumber * 1024
+         elif test("Ki$") then rtrimstr("Ki") | tonumber / 1024
+         else tonumber / (1024*1024) end] | add // 0')
+    
+    # Convert to human-readable format
+    local cpu_req_cores=$(echo "scale=2; $total_cpu_req / 1000" | bc)
+    local mem_req_gi=$(echo "scale=2; $total_mem_req / 1024" | bc)
+    local cpu_lim_cores=$(echo "scale=2; $total_cpu_lim / 1000" | bc)
+    local mem_lim_gi=$(echo "scale=2; $total_mem_lim / 1024" | bc)
+    
+    echo ""
+    echo "┌────────────────────┬───────────────────┬───────────────────┐"
+    echo "│ Resource Type      │ Requests          │ Limits            │"
+    echo "├────────────────────┼───────────────────┼───────────────────┤"
+    printf "│ %-18s │ %6s cores     │ %6s cores     │\n" "CPU" "$cpu_req_cores" "$cpu_lim_cores"
+    printf "│ %-18s │ (%5sm)         │ (%5sm)         │\n" "" "$total_cpu_req" "$total_cpu_lim"
+    echo "├────────────────────┼───────────────────┼───────────────────┤"
+    printf "│ %-18s │ %6s GiB       │ %6s GiB       │\n" "Memory" "$mem_req_gi" "$mem_lim_gi"
+    printf "│ %-18s │ (%5s Mi)       │ (%5s Mi)       │\n" "" "$total_mem_req" "$total_mem_lim"
+    echo "└────────────────────┴───────────────────┴───────────────────┘"
+    echo ""
+    
+    log_success "Resource summary calculated successfully"
+}
+
 print_summary() {
     print_section "📊 Health Check Summary"
     
@@ -322,6 +379,7 @@ main() {
     check_pod_events
     check_pvc_status
     check_service_endpoints
+    check_resource_summary
     
     # Print summary
     echo ""
