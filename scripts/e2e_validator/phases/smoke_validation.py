@@ -6,6 +6,8 @@ Standalone smoke test validation - no external dependencies.
 Calculates expected values from nise YAML and validates against database.
 """
 
+from ..logging import log_debug, log_info, log_success, log_warning, log_error
+
 import os
 import yaml
 from datetime import datetime, timedelta
@@ -99,11 +101,11 @@ class SmokeValidationPhase:
         NOTE: Manifests are transient and may be deleted after processing completes.
         For smoke tests, we check if ANY processing occurred for this provider.
         """
-        print("\n📋 Validating file processing...")
-        print(f"  Expected from nise YAML:")
-        print(f"    - Cluster: {self.cluster_id}")
-        print(f"    - Files: 1 (pod_usage only)")
-        print()
+        log_info("\n📋 Validating file processing...")
+        log_info(f"  Expected from nise YAML:")
+        log_info(f"    - Cluster: {self.cluster_id}")
+        log_info(f"    - Files: 1 (pod_usage only)")
+        log_info()
 
         try:
             # Find recent manifests for this cluster
@@ -127,8 +129,8 @@ class SmokeValidationPhase:
             if not result or len(result) == 0:
                 # Manifests are transient - they may be deleted after processing
                 # Check if provider exists instead (provider persists)
-                print(f"  ℹ️  No manifest found for cluster {self.cluster_id}")
-                print(f"      (Manifests are transient and cleaned up after processing)")
+                log_info(f"  ℹ️  No manifest found for cluster {self.cluster_id}")
+                log_info(f"      (Manifests are transient and cleaned up after processing)")
 
                 # Verify provider exists as a fallback
                 provider_check = self.db.execute_query(f"""
@@ -141,29 +143,29 @@ class SmokeValidationPhase:
 
                 if provider_check and len(provider_check) > 0:
                     provider_uuid, provider_name, is_active = provider_check[0]
-                    print(f"  ✅ Provider exists: {provider_name} (UUID: {provider_uuid})")
-                    print(f"      Manifest was processed and cleaned up (normal behavior)")
+                    log_success(f"  ✅ Provider exists: {provider_name} (UUID: {provider_uuid})")
+                    log_info(f"      Manifest was processed and cleaned up (normal behavior)")
                     # Don't fail validation - processing completed successfully
                     return {'passed': True, 'manifest_cleaned_up': True}
                 else:
-                    print(f"  ❌ No provider found for cluster {self.cluster_id}")
+                    log_error(f"  ❌ No provider found for cluster {self.cluster_id}")
                     return {'passed': False, 'error': 'No provider or manifest found'}
 
             if len(result[0]) < 6:
-                print(f"  ❌ Manifest query returned incomplete data: {len(result[0])} columns")
+                log_error(f"  ❌ Manifest query returned incomplete data: {len(result[0])} columns")
                 return {'passed': False, 'error': f'Manifest query returned {len(result[0])} columns, expected 6'}
 
             manifest_id, assembly_id, num_files, completed_dt, processing_end, summary_failed = result[0]
 
-            print(f"  ✅ Found manifest (ID: {manifest_id})")
-            print(f"     Assembly ID: {assembly_id}")
-            print(f"     Files: {num_files}")
-            print(f"     Processing end: {processing_end}")
+            log_success(f"  ✅ Found manifest (ID: {manifest_id})")
+            log_info(f"     Assembly ID: {assembly_id}")
+            log_info(f"     Files: {num_files}")
+            log_info(f"     Processing end: {processing_end}")
 
             # Check if summarization failed
             if summary_failed:
-                print(f"     ❌ Summary FAILED: {summary_failed}")
-                print()
+                log_error(f"     ❌ Summary FAILED: {summary_failed}")
+                log_info()
                 return {
                     'passed': False,
                     'error': 'Summarization failed',
@@ -178,10 +180,10 @@ class SmokeValidationPhase:
                 WHERE m.id = %s
             """, (manifest_id,))
             if summary_success_result and summary_success_result[0][0]:
-                print(f"     ✅ Summary completed: {summary_success_result[0][0]}")
+                log_success(f"     ✅ Summary completed: {summary_success_result[0][0]}")
             else:
-                print(f"     ⏳ Summary: pending (may complete after file processing)")
-            print()
+                log_info(f"     ⏳ Summary: pending (may complete after file processing)")
+            log_info()
 
             # Check file processing status
             file_result = self.db.execute_query("""
@@ -196,7 +198,7 @@ class SmokeValidationPhase:
             """, (manifest_id,))
 
             if not file_result or len(file_result) == 0:
-                print(f"  ❌ No file processing records found")
+                log_error(f"  ❌ No file processing records found")
                 return {'passed': False, 'error': 'No file records'}
 
             checks_passed = []
@@ -213,12 +215,12 @@ class SmokeValidationPhase:
                     checks_failed.append(f"File {status_str}: {report_name} (failed_status: {failed_status})")
 
             # Print results
-            print(f"  File processing status:")
+            log_info(f"  File processing status:")
             for check in checks_passed:
-                print(f"    ✅ {check}")
+                log_success(f"    ✅ {check}")
             for check in checks_failed:
-                print(f"    ❌ {check}")
-            print()
+                log_error(f"    ❌ {check}")
+            log_info()
 
             if len(checks_failed) > 0:
                 return {
@@ -237,7 +239,7 @@ class SmokeValidationPhase:
             }
 
         except Exception as e:
-            print(f"  ❌ File processing validation failed: {e}")
+            log_error(f"  ❌ File processing validation failed: {e}")
             return {'passed': False, 'error': str(e)}
 
     def validate_database(self) -> Dict:
@@ -247,15 +249,15 @@ class SmokeValidationPhase:
         If callbacks are broken, this will fail even if processing succeeded.
         Use validate_file_processing() for more reliable validation.
         """
-        print("\n📊 Validating aggregated data in PostgreSQL...")
-        print(f"  Expected from nise YAML:")
-        print(f"    - Node: {self.expected['node_name']}")
-        print(f"    - Namespace: {self.expected['namespace']}")
-        print(f"    - Pod: {self.expected['pod_name']}")
-        print(f"    - CPU hours: {self.expected['expected_cpu_hours']:.2f}")
-        print(f"    - Memory GB-hours: {self.expected['expected_memory_gb_hours']:.2f}")
-        print(f"    - Rows: {self.expected['expected_rows']}")
-        print()
+        log_info("\n📊 Validating aggregated data in PostgreSQL...")
+        log_info(f"  Expected from nise YAML:")
+        log_info(f"    - Node: {self.expected['node_name']}")
+        log_info(f"    - Namespace: {self.expected['namespace']}")
+        log_info(f"    - Pod: {self.expected['pod_name']}")
+        log_info(f"    - CPU hours: {self.expected['expected_cpu_hours']:.2f}")
+        log_info(f"    - Memory GB-hours: {self.expected['expected_memory_gb_hours']:.2f}")
+        log_info(f"    - Rows: {self.expected['expected_rows']}")
+        log_info()
 
         # First, check if summary tables exist
         try:
@@ -268,10 +270,10 @@ class SmokeValidationPhase:
             """)
 
             if not table_check or not table_check[0][0]:
-                print(f"  ⚠️  Summary table does not exist yet")
-                print(f"  ℹ️  This is expected if summary phase hasn't completed")
-                print(f"  ℹ️  For smoke tests, this means CSV → PostgreSQL pipeline works")
-                print()
+                log_warning(f"  ⚠️  Summary table does not exist yet")
+                log_info(f"  ℹ️  This is expected if summary phase hasn't completed")
+                log_info(f"  ℹ️  For smoke tests, this means CSV → PostgreSQL pipeline works")
+                log_info()
                 return {
                     'passed': True,  # Pipeline works, just needs more time for summary
                     'skipped': True,
@@ -279,7 +281,7 @@ class SmokeValidationPhase:
                     'message': 'Summary table not created yet (expected for fast smoke tests)'
                 }
         except Exception as e:
-            print(f"  ⚠️  Could not check for summary table: {e}")
+            log_warning(f"  ⚠️  Could not check for summary table: {e}")
             return {'passed': True, 'skipped': True, 'reason': 'table_check_error', 'error': str(e)}
 
         try:
@@ -302,18 +304,18 @@ class SmokeValidationPhase:
             """, (self.cluster_id,))
 
             if not result or len(result) == 0:
-                print(f"  ❌ Query returned no results")
+                log_error(f"  ❌ Query returned no results")
                 return {'passed': False, 'error': 'Query failed'}
 
             # Safely unpack result tuple with better error handling
             try:
                 if not isinstance(result[0], (tuple, list)):
-                    print(f"  ❌ Query result is not a tuple/list: {type(result[0])}")
+                    log_error(f"  ❌ Query result is not a tuple/list: {type(result[0])}")
                     return {'passed': False, 'error': f'Unexpected result type: {type(result[0])}'}
 
                 if len(result[0]) != 8:
-                    print(f"  ❌ Query returned unexpected number of columns: {len(result[0])}")
-                    print(f"  Debug: result[0] = {result[0]}")
+                    log_error(f"  ❌ Query returned unexpected number of columns: {len(result[0])}")
+                    log_info(f"  Debug: result[0] = {result[0]}")
                     return {'passed': False, 'error': f'Query returned {len(result[0])} columns, expected 8'}
 
                 row_count, first_date, last_date, cpu_hours, mem_gb_hours, node_count, ns_count, pod_count = result[0]
@@ -325,25 +327,25 @@ class SmokeValidationPhase:
                 ns_count = int(ns_count) if ns_count is not None else 0
                 pod_count = int(pod_count) if pod_count is not None else 0
             except (ValueError, IndexError, TypeError) as e:
-                print(f"  ❌ Failed to unpack query result: {e}")
-                print(f"  Debug: result = {result}")
-                print(f"  Debug: result[0] = {result[0] if result else 'N/A'}")
+                log_error(f"  ❌ Failed to unpack query result: {e}")
+                log_info(f"  Debug: result = {result}")
+                log_info(f"  Debug: result[0] = {result[0] if result else 'N/A'}")
                 return {'passed': False, 'error': f'Failed to unpack result: {e}'}
 
             if row_count == 0 or row_count is None:
-                print(f"  ❌ No aggregated data found for cluster {self.cluster_id}")
+                log_error(f"  ❌ No aggregated data found for cluster {self.cluster_id}")
                 return {'passed': False, 'error': 'No data in summary tables'}
 
             # Validate row count matches expected
-            print(f"  Actual data:")
-            print(f"    - Rows: {row_count} (expected: {self.expected['expected_rows']})")
-            print(f"    - Date range: {first_date} to {last_date}")
-            print(f"    - CPU request hours: {cpu_hours:.2f} (expected: {self.expected['expected_cpu_hours']:.2f})")
-            print(f"    - Memory request GB-hours: {mem_gb_hours:.2f} (expected: {self.expected['expected_memory_gb_hours']:.2f})")
-            print(f"    - Unique nodes: {node_count}")
-            print(f"    - Unique namespaces: {ns_count}")
-            print(f"    - Unique pods: {pod_count}")
-            print()
+            log_info(f"  Actual data:")
+            log_info(f"    - Rows: {row_count} (expected: {self.expected['expected_rows']})")
+            log_info(f"    - Date range: {first_date} to {last_date}")
+            log_info(f"    - CPU request hours: {cpu_hours:.2f} (expected: {self.expected['expected_cpu_hours']:.2f})")
+            log_info(f"    - Memory request GB-hours: {mem_gb_hours:.2f} (expected: {self.expected['expected_memory_gb_hours']:.2f})")
+            log_info(f"    - Unique nodes: {node_count}")
+            log_info(f"    - Unique namespaces: {ns_count}")
+            log_info(f"    - Unique pods: {pod_count}")
+            log_info()
 
             # Validation checks with 5% tolerance (IQE pattern)
             tolerance = 0.05
@@ -410,12 +412,12 @@ class SmokeValidationPhase:
                     checks_failed.append(f"Resource ID: {actual_pod} (expected {expected_resource_id} or {expected_resource})")
 
             # Print validation results
-            print(f"  Validation checks:")
+            log_info(f"  Validation checks:")
             for check in checks_passed:
-                print(f"    ✅ {check}")
+                log_success(f"    ✅ {check}")
             for check in checks_failed:
-                print(f"    ❌ {check}")
-            print()
+                log_error(f"    ❌ {check}")
+            log_info()
 
             if len(checks_failed) > 0:
                 return {
@@ -436,8 +438,8 @@ class SmokeValidationPhase:
 
         except Exception as e:
             import traceback
-            print(f"  ❌ Database validation failed: {e}")
-            print(f"  🐛 Full traceback:")
+            log_error(f"  ❌ Database validation failed: {e}")
+            log_info(f"  🐛 Full traceback:")
             traceback.print_exc()
             return {'passed': False, 'error': str(e)}
 
@@ -446,7 +448,7 @@ class SmokeValidationPhase:
 
         Replicates IQE cost validation logic in a standalone way
         """
-        print("\n💰 Validating cost calculations...")
+        log_info("\n💰 Validating cost calculations...")
 
         # First, check if summary tables exist
         try:
@@ -459,9 +461,9 @@ class SmokeValidationPhase:
             """)
 
             if not table_check or not table_check[0][0]:
-                print(f"  ⚠️  Summary table does not exist yet")
-                print(f"  ℹ️  Cost validation requires summary tables")
-                print()
+                log_warning(f"  ⚠️  Summary table does not exist yet")
+                log_info(f"  ℹ️  Cost validation requires summary tables")
+                log_info()
                 return {
                     'passed': True,  # Pipeline works, just needs time for summary
                     'skipped': True,
@@ -469,7 +471,7 @@ class SmokeValidationPhase:
                     'message': 'Summary table not created yet'
                 }
         except Exception as e:
-            print(f"  ⚠️  Could not check for summary table: {e}")
+            log_warning(f"  ⚠️  Could not check for summary table: {e}")
             return {'passed': True, 'skipped': True, 'reason': 'table_check_error', 'error': str(e)}
 
         try:
@@ -489,20 +491,20 @@ class SmokeValidationPhase:
             """
 
             # Show SQL query as requested
-            print(f"\n  🔍 SQL Query:")
+            log_info(f"\n  🔍 SQL Query:")
             for line in sql_query.strip().split('\n'):
-                print(f"     {line}")
-            print(f"     Parameters: (cluster_id={self.cluster_id})")
-            print()
+                log_info(f"     {line}")
+            log_info(f"     Parameters: (cluster_id={self.cluster_id})")
+            log_info()
 
             result = self.db.execute_query(sql_query, (self.cluster_id,))
 
             if not result or len(result) == 0:
-                print(f"  ⚠️  No cost data available yet (may still be processing)")
+                log_warning(f"  ⚠️  No cost data available yet (may still be processing)")
                 return {'passed': True, 'skipped': True, 'reason': 'No cost data yet'}
 
             if len(result[0]) < 6:
-                print(f"  ⚠️  Cost query returned incomplete data: {len(result[0])} columns, expected 6")
+                log_warning(f"  ⚠️  Cost query returned incomplete data: {len(result[0])} columns, expected 6")
                 return {'passed': True, 'skipped': True, 'reason': 'Incomplete cost data'}
 
             cpu_hours, cpu_req_hours, mem_hours, mem_req_hours, infra_cost, rows = result[0]
@@ -515,36 +517,36 @@ class SmokeValidationPhase:
             rows = int(rows) if rows is not None else 0
 
             if rows == 0:
-                print(f"  ⚠️  No rows with cost calculated yet")
+                log_warning(f"  ⚠️  No rows with cost calculated yet")
                 return {'passed': True, 'skipped': True, 'reason': 'Cost not calculated yet'}
 
             # Calculate expected values from nise YAML (ensure float type)
             expected_cpu = float(self.expected['expected_cpu_hours'])
             expected_mem = float(self.expected['expected_memory_gb_hours'])
 
-            print(f"  📊 Cost Validation:")
-            print(f"     Expected (from nise YAML):")
-            print(f"       - CPU request hours: {expected_cpu:.2f}")
-            print(f"       - Memory request GB-hours: {expected_mem:.2f}")
-            print()
-            print(f"     Actual (from PostgreSQL):")
-            print(f"       - CPU usage hours: {cpu_hours:.2f}")
-            print(f"       - CPU request hours: {cpu_req_hours:.2f}")
-            print(f"       - Memory usage GB-hours: {mem_hours:.2f}")
-            print(f"       - Memory request GB-hours: {mem_req_hours:.2f}")
+            log_info(f"  📊 Cost Validation:")
+            log_info(f"     Expected (from nise YAML):")
+            log_info(f"       - CPU request hours: {expected_cpu:.2f}")
+            log_info(f"       - Memory request GB-hours: {expected_mem:.2f}")
+            log_info()
+            log_info(f"     Actual (from PostgreSQL):")
+            log_info(f"       - CPU usage hours: {cpu_hours:.2f}")
+            log_info(f"       - CPU request hours: {cpu_req_hours:.2f}")
+            log_info(f"       - Memory usage GB-hours: {mem_hours:.2f}")
+            log_info(f"       - Memory request GB-hours: {mem_req_hours:.2f}")
             if infra_cost:
-                print(f"       - Infrastructure cost: ${float(infra_cost):.2f}")
-            print(f"       - Aggregated rows: {rows}")
-            print()
+                log_info(f"       - Infrastructure cost: ${float(infra_cost):.2f}")
+            log_info(f"       - Aggregated rows: {rows}")
+            log_info()
 
             # Show comparison in requested format: expected (nise) = actual (postgres)
-            print(f"  📊 Comparison:")
+            log_info(f"  📊 Comparison:")
             cpu_diff = abs(float(cpu_req_hours) - expected_cpu)
             mem_diff = abs(float(mem_req_hours) - expected_mem)
 
-            print(f"     CPU request hours:    {expected_cpu:.2f} (nise) = {cpu_req_hours:.2f} (postgres)  [diff: {cpu_diff:.4f}]")
-            print(f"     Memory request GB-hrs: {expected_mem:.2f} (nise) = {mem_req_hours:.2f} (postgres)  [diff: {mem_diff:.4f}]")
-            print()
+            log_info(f"     CPU request hours:    {expected_cpu:.2f} (nise) = {cpu_req_hours:.2f} (postgres)  [diff: {cpu_diff:.4f}]")
+            log_info(f"     Memory request GB-hrs: {expected_mem:.2f} (nise) = {mem_req_hours:.2f} (postgres)  [diff: {mem_diff:.4f}]")
+            log_info()
 
             # Validation: Request hours should match our nise expectations
             checks_passed = []
@@ -566,12 +568,12 @@ class SmokeValidationPhase:
                 checks_failed.append(f"Memory: {mem_req_hours:.2f} vs expected {expected_mem:.2f} ({mem_req_diff_pct*100:.1f}% diff)")
 
             # Print validation results
-            print(f"  ✅ Validation Results:")
+            log_success(f"  ✅ Validation Results:")
             for check in checks_passed:
-                print(f"     ✅ {check}")
+                log_success(f"     ✅ {check}")
             for check in checks_failed:
-                print(f"     ❌ {check}")
-            print()
+                log_error(f"     ❌ {check}")
+            log_info()
 
             if len(checks_failed) > 0:
                 return {
@@ -587,7 +589,7 @@ class SmokeValidationPhase:
             }
 
         except Exception as e:
-            print(f"  ⚠️  Cost validation skipped: {e}")
+            log_warning(f"  ⚠️  Cost validation skipped: {e}")
             # Don't fail smoke test if cost calculation hasn't run yet
             return {'passed': True, 'skipped': True, 'reason': str(e)}
 
@@ -615,18 +617,18 @@ class SmokeValidationPhase:
             if not rows:
                 return
 
-            print()
-            print("  📊 DATA PROOF - Actual rows from PostgreSQL:")
-            print("  " + "-"*66)
-            print(f"  {'Date':<12} {'Namespace':<20} {'CPU(h)':<10} {'CPU Req':<10} {'Mem(GB)':<10}")
-            print("  " + "-"*66)
+            log_info()
+            log_info("  📊 DATA PROOF - Actual rows from PostgreSQL:")
+            log_info("  " + "-"*66)
+            log_info(f"  {'Date':<12} {'Namespace':<20} {'CPU(h)':<10} {'CPU Req':<10} {'Mem(GB)':<10}")
+            log_info("  " + "-"*66)
 
             for row in rows:
                 date, cluster, ns, cpu, cpu_req, mem, mem_req = row
                 ns_display = ns[:18] + '..' if len(str(ns)) > 20 else ns
-                print(f"  {str(date):<12} {ns_display:<20} {float(cpu or 0):>8.2f}  {float(cpu_req or 0):>8.2f}  {float(mem or 0):>8.2f}")
+                log_info(f"  {str(date):<12} {ns_display:<20} {float(cpu or 0):>8.2f}  {float(cpu_req or 0):>8.2f}  {float(mem or 0):>8.2f}")
 
-            print("  " + "-"*66)
+            log_info("  " + "-"*66)
 
             # Query totals
             total_sql = f"""
@@ -644,28 +646,28 @@ class SmokeValidationPhase:
 
             if totals and totals[0]:
                 cpu, cpu_req, mem, mem_req, count = totals[0]
-                print(f"  {'TOTALS':<12} {'(' + str(count) + ' rows)':<20} {float(cpu or 0):>8.2f}  {float(cpu_req or 0):>8.2f}  {float(mem or 0):>8.2f}")
-                print("  " + "-"*66)
+                log_info(f"  {'TOTALS':<12} {'(' + str(count) + ' rows)':<20} {float(cpu or 0):>8.2f}  {float(cpu_req or 0):>8.2f}  {float(mem or 0):>8.2f}")
+                log_info("  " + "-"*66)
 
                 # Show expected vs actual comparison
                 expected_cpu = self.expected.get('expected_cpu_hours', 0)
                 expected_mem = self.expected.get('expected_memory_gb_hours', 0)
 
-                print()
-                print("  📋 EXPECTED vs ACTUAL (from nise YAML):")
-                print("  " + "-"*50)
-                print(f"  {'Metric':<25} {'Expected':>10} {'Actual':>10} {'Match'}")
-                print("  " + "-"*50)
+                log_info()
+                log_info("  📋 EXPECTED vs ACTUAL (from nise YAML):")
+                log_info("  " + "-"*50)
+                log_info(f"  {'Metric':<25} {'Expected':>10} {'Actual':>10} {'Match'}")
+                log_info("  " + "-"*50)
 
                 cpu_match = "✅" if abs(float(cpu_req or 0) - expected_cpu) < 0.5 else "❌"
                 mem_match = "✅" if abs(float(mem_req or 0) - expected_mem) < 0.5 else "❌"
 
-                print(f"  {'CPU Request (hours)':<25} {expected_cpu:>10.2f} {float(cpu_req or 0):>10.2f} {cpu_match}")
-                print(f"  {'Memory Request (GB-hrs)':<25} {expected_mem:>10.2f} {float(mem_req or 0):>10.2f} {mem_match}")
-                print("  " + "-"*50)
+                log_info(f"  {'CPU Request (hours)':<25} {expected_cpu:>10.2f} {float(cpu_req or 0):>10.2f} {cpu_match}")
+                log_info(f"  {'Memory Request (GB-hrs)':<25} {expected_mem:>10.2f} {float(mem_req or 0):>10.2f} {mem_match}")
+                log_info("  " + "-"*50)
 
         except Exception as e:
-            print(f"  ⚠️  Could not fetch data proof: {e}")
+            log_warning(f"  ⚠️  Could not fetch data proof: {e}")
 
     def run(self) -> Dict:
         """Run smoke validation
@@ -678,10 +680,10 @@ class SmokeValidationPhase:
         Returns:
             Dict with validation results
         """
-        print("\n" + "="*70)
-        print("  SMOKE TEST VALIDATION")
-        print("  (Standalone - No External Dependencies)")
-        print("="*70)
+        log_info("\n" + "="*70)
+        log_info("  SMOKE TEST VALIDATION")
+        log_info("  (Standalone - No External Dependencies)")
+        log_info("="*70)
 
         results = {}
 
@@ -690,23 +692,23 @@ class SmokeValidationPhase:
         # Catches koku application bugs that cause summarization to fail
         results['file_processing'] = self.validate_file_processing()
         if not results['file_processing']['passed']:
-            print("\n❌ Smoke validation FAILED")
+            log_error("\n❌ Smoke validation FAILED")
             error = results['file_processing'].get('error', 'Unknown')
-            print(f"   Reason: {error}")
+            log_info(f"   Reason: {error}")
 
             # Provide specific guidance for summarization failures
             if results['file_processing'].get('summary_failed'):
-                print(f"   Summary failed at: {results['file_processing'].get('summary_failed')}")
-                print("\n   💡 Possible causes:")
-                print("      - Koku application bug (check celery-worker-ocp logs for errors)")
-                print("      - Database schema migration issues")
-                print("      - Trino/PostgreSQL compatibility issues")
-                print("\n   🔍 Recommended debugging:")
-                print("      oc logs -n cost-onprem deployment/cost-onprem-celery-worker-ocp --tail=100")
+                log_info(f"   Summary failed at: {results['file_processing'].get('summary_failed')}")
+                log_info("\n   💡 Possible causes:")
+                log_info("      - Koku application bug (check celery-worker-ocp logs for errors)")
+                log_info("      - Database schema migration issues")
+                log_info("      - Trino/PostgreSQL compatibility issues")
+                log_info("\n   🔍 Recommended debugging:")
+                log_info("      oc logs -n cost-onprem deployment/cost-onprem-celery-worker-ocp --tail=100")
 
             if 'details' in results['file_processing']:
                 for detail in results['file_processing']['details']:
-                    print(f"   - {detail}")
+                    log_info(f"   - {detail}")
             return {
                 'passed': False,
                 'tests': results,
@@ -734,57 +736,57 @@ class SmokeValidationPhase:
         overall_passed = file_ok  # Just require file processing for smoke test
 
         # Summary header
-        print("\n" + "="*70)
+        log_info("\n" + "="*70)
         if overall_passed:
-            print("  ✅ SMOKE VALIDATION PASSED")
+            log_success("  ✅ SMOKE VALIDATION PASSED")
         else:
-            print("  ❌ SMOKE VALIDATION FAILED")
-        print("="*70)
+            log_error("  ❌ SMOKE VALIDATION FAILED")
+        log_info("="*70)
 
         # Show actual data samples from PostgreSQL as proof
         if overall_passed:
             self._print_data_proof()
 
-        print()
-        print(f"  ✅ File Processing: {results['file_processing'].get('checks_passed', 0)} checks passed")
-        print(f"     - {results['file_processing'].get('files_processed', 0)} file(s) processed")
-        print(f"     - Manifest ID: {results['file_processing'].get('manifest_id', 'unknown')}")
+        log_info()
+        log_success(f"  ✅ File Processing: {results['file_processing'].get('checks_passed', 0)} checks passed")
+        log_info(f"     - {results['file_processing'].get('files_processed', 0)} file(s) processed")
+        log_info(f"     - Manifest ID: {results['file_processing'].get('manifest_id', 'unknown')}")
 
         if results['database'].get('passed'):
-            print(f"  ✅ Aggregated Data: {results['database'].get('checks_passed', 0)} checks passed")
-            print(f"     - {results['database'].get('row_count', 0)} rows aggregated")
+            log_success(f"  ✅ Aggregated Data: {results['database'].get('checks_passed', 0)} checks passed")
+            log_info(f"     - {results['database'].get('row_count', 0)} rows aggregated")
             cpu_hrs = float(results['database'].get('cpu_hours', 0) or 0)
             mem_hrs = float(results['database'].get('memory_gb_hours', 0) or 0)
-            print(f"     - {cpu_hrs:.2f} CPU hours")
-            print(f"     - {mem_hrs:.2f} Memory GB-hours")
+            log_info(f"     - {cpu_hrs:.2f} CPU hours")
+            log_info(f"     - {mem_hrs:.2f} Memory GB-hours")
         elif results['database'].get('skipped'):
-            print(f"  ⚠️  Aggregated Data: Skipped - {results['database'].get('reason', 'not ready yet')}")
+            log_warning(f"  ⚠️  Aggregated Data: Skipped - {results['database'].get('reason', 'not ready yet')}")
         else:
             # Show as warning since aggregated data is optional for smoke test
-            print(f"  ⚠️  Aggregated Data: {results['database'].get('error', 'Not available')} (optional)")
+            log_warning(f"  ⚠️  Aggregated Data: {results['database'].get('error', 'Not available')} (optional)")
 
         if results['cost'].get('passed') and not results['cost'].get('skipped'):
-            print(f"  ✅ Cost: {results['cost'].get('checks_passed', 0)} checks passed")
+            log_success(f"  ✅ Cost: {results['cost'].get('checks_passed', 0)} checks passed")
             if results['cost'].get('infra_cost'):
                 infra = float(results['cost'].get('infra_cost', 0) or 0)
-                print(f"     - ${infra:.2f} infrastructure cost")
+                log_info(f"     - ${infra:.2f} infrastructure cost")
         elif results['cost'].get('skipped'):
-            print(f"  ❌ Cost: Skipped - {results['cost'].get('reason', 'not calculated yet')}")
+            log_error(f"  ❌ Cost: Skipped - {results['cost'].get('reason', 'not calculated yet')}")
         else:
-            print(f"  ❌ Cost: Failed - {results['cost'].get('error', 'Unknown error')}")
+            log_error(f"  ❌ Cost: Failed - {results['cost'].get('error', 'Unknown error')}")
 
-        print("="*70)
+        log_info("="*70)
 
         if not overall_passed:
-            print(f"\n  ⚠️  FAILURE REASON:")
-            print(f"     Smoke test requires file processing to pass")
-            print(f"     - File processing: {results['file_processing'].get('error', 'failed')}")
+            log_error(f"\n  ⚠️  FAILURE REASON:")
+            log_info(f"     Smoke test requires file processing to pass")
+            log_info(f"     - File processing: {results['file_processing'].get('error', 'failed')}")
         else:
             # Print optional check status (informational only)
             if not db_ok:
-                print(f"\n  ℹ️  Note: Aggregated data validation is optional (file processing passed)")
+                log_info(f"\n  ℹ️  Note: Aggregated data validation is optional (file processing passed)")
             if not cost_ok:
-                print(f"  ℹ️  Note: Cost calculation is optional (may run asynchronously)")
+                log_info(f"  ℹ️  Note: Cost calculation is optional (may run asynchronously)")
 
         return {
             'passed': overall_passed,

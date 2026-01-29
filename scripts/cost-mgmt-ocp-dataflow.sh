@@ -17,6 +17,13 @@
 #   - Validates complete pipeline
 #   - Suitable for CI/CD and quick validation
 #
+# Environment Variables:
+#   LOG_LEVEL - Control output verbosity (shell wrapper and Python validator)
+#               DEBUG - Most verbose (default for CI/CD troubleshooting)
+#               INFO  - Detailed output
+#               WARN  - Clean output (successes, warnings, errors only)
+#               ERROR - Errors only
+#
 # See OCP_SMOKE_TEST_GUIDE.md for detailed documentation.
 #
 
@@ -28,6 +35,38 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Logging configuration
+# Default: DEBUG for CI/CD (helps triage issues quickly)
+# Override with: LOG_LEVEL=WARN ./cost-mgmt-ocp-dataflow.sh
+LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+
+# Logging functions with LOG_LEVEL support
+log_debug() {
+    [[ "$LOG_LEVEL" == "DEBUG" ]] && echo -e "$1"
+    return 0
+}
+
+log_info() {
+    [[ "$LOG_LEVEL" =~ ^(INFO|DEBUG)$ ]] && echo -e "$1"
+    return 0
+}
+
+log_success() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "$1"
+    return 0
+}
+
+log_warning() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "$1"
+    return 0
+}
+
+log_error() {
+    # Errors are always shown
+    echo -e "$1" >&2
+    return 0
+}
 
 # Default values
 NAMESPACE="cost-onprem"
@@ -105,61 +144,61 @@ done
 START_TIME=$(date +%s)
 
 # Print banner
-echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║                                                               ║${NC}"
-echo -e "${BLUE}║  OCP-Only E2E Validation Suite                                ║${NC}"
-echo -e "${BLUE}║  Cost Management on-prem - OpenShift Provider Focus          ║${NC}"
-echo -e "${BLUE}║                                                               ║${NC}"
-echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "${GREEN}Configuration:${NC}"
-echo "  Namespace:  $NAMESPACE"
-echo "  Provider:   OCP (OpenShift Container Platform)"
-echo "  Data:       NISE-GENERATED (minimal pod-only scenario)"
-echo "  Timeout:    ${TIMEOUT}s"
-echo ""
+log_info "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
+log_info "${BLUE}║                                                               ║${NC}"
+log_info "${BLUE}║  OCP-Only E2E Validation Suite                                ║${NC}"
+log_info "${BLUE}║  Cost Management on-prem - OpenShift Provider Focus          ║${NC}"
+log_info "${BLUE}║                                                               ║${NC}"
+log_info "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
+log_info ""
+log_info "${GREEN}Configuration:${NC}"
+log_info "  Namespace:  $NAMESPACE"
+log_info "  Provider:   OCP (OpenShift Container Platform)"
+log_info "  Data:       NISE-GENERATED (minimal pod-only scenario)"
+log_info "  Timeout:    ${TIMEOUT}s"
+log_info ""
 
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Check kubectl/oc context is set
-echo -e "${BLUE}🔍 Checking Kubernetes context...${NC}"
+log_info "${BLUE}🔍 Checking Kubernetes context...${NC}"
 if ! kubectl config current-context &>/dev/null; then
-    echo -e "${RED}❌ No Kubernetes context is set${NC}"
-    echo ""
-    echo "Please set your kubectl/oc context first:"
-    echo "  kubectl config use-context <context-name>"
-    echo "  # or for OpenShift:"
-    echo "  oc login <cluster-url>"
-    echo ""
-    echo "Available contexts:"
+    log_error "${RED}❌ No Kubernetes context is set${NC}"
+    log_error ""
+    log_error "Please set your kubectl/oc context first:"
+    log_error "  kubectl config use-context <context-name>"
+    log_error "  # or for OpenShift:"
+    log_error "  oc login <cluster-url>"
+    log_error ""
+    log_error "Available contexts:"
     kubectl config get-contexts
     exit 1
 fi
 CURRENT_CONTEXT=$(kubectl config current-context)
-echo -e "${GREEN}  ✓ Context: ${CURRENT_CONTEXT}${NC}"
-echo ""
+log_success "${GREEN}  ✓ Context: ${CURRENT_CONTEXT}${NC}"
+log_info ""
 
 # Use dedicated cost-mgmt venv (clean, no IQE dependencies)
 VENV_DIR="$SCRIPT_DIR/cost-mgmt-venv"
 
 if [ ! -d "$VENV_DIR" ]; then
-    echo -e "${BLUE}🔧 Creating clean venv...${NC}"
+    log_info "${BLUE}🔧 Creating clean venv...${NC}"
     python3 -m venv "$VENV_DIR"
 fi
 
-echo -e "${BLUE}🔧 Activating cost-mgmt venv...${NC}"
+log_info "${BLUE}🔧 Activating cost-mgmt venv...${NC}"
 source "$VENV_DIR/bin/activate"
 
 # Check Python dependencies
-echo -e "${BLUE}🔧 Checking Python dependencies...${NC}"
+log_info "${BLUE}🔧 Checking Python dependencies...${NC}"
 if ! python3 -c "import kubernetes, boto3, yaml" 2>/dev/null; then
-    echo -e "${YELLOW}⚠️  Installing Python dependencies...${NC}"
+    log_warning "${YELLOW}⚠️  Installing Python dependencies...${NC}"
     pip3 install -q -r "$SCRIPT_DIR/requirements-e2e.txt"
 fi
-echo -e "${GREEN}  ✓ Python dependencies available${NC}"
-echo -e "${GREEN}  ✓ Using venv: $VENV_DIR${NC}"
-echo ""
+log_success "${GREEN}  ✓ Python dependencies available${NC}"
+log_success "${GREEN}  ✓ Using venv: $VENV_DIR${NC}"
+log_info ""
 
 # Build Python command
 cd "$SCRIPT_DIR"
@@ -183,8 +222,11 @@ fi
 
 # Run the E2E validation
 # Note: Database queries use kubectl exec - no port-forward needed!
-echo -e "${BLUE}Starting OCP E2E validation...${NC}"
-echo ""
+log_info "${BLUE}Starting OCP E2E validation...${NC}"
+log_info ""
+
+# Export LOG_LEVEL so Python validator can use it
+export LOG_LEVEL
 
 if eval "$CMD"; then
     # Deactivate venv

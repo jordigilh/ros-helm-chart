@@ -9,6 +9,16 @@
 # Typical workflow:
 #   1. ./deploy-strimzi.sh         # Deploy Kafka infrastructure (this script)
 #   2. ./install-helm-chart.sh     # Deploy cost management on-premise application
+#
+# Environment Variables:
+#   LOG_LEVEL - Control output verbosity (ERROR|WARN|INFO|DEBUG, default: WARN)
+#
+# Examples:
+#   # Default (clean output)
+#   ./deploy-strimzi.sh
+#
+#   # Detailed output
+#   LOG_LEVEL=INFO ./deploy-strimzi.sh
 
 set -e  # Exit on any error
 
@@ -18,6 +28,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Logging configuration
+LOG_LEVEL=${LOG_LEVEL:-WARN}
 
 # Configuration - Strimzi/Kafka settings
 KAFKA_NAMESPACE=${KAFKA_NAMESPACE:-kafka}
@@ -34,29 +47,49 @@ KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-}  # If set, use external Kaf
 # Platform-specific configuration (auto-detected)
 PLATFORM=""
 
-echo_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+# Logging functions with level-based filtering
+log_debug() {
+    [[ "$LOG_LEVEL" == "DEBUG" ]] && echo -e "${BLUE}[DEBUG]${NC} $1"
+    return 0
 }
 
-echo_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+log_info() {
+    [[ "$LOG_LEVEL" =~ ^(INFO|DEBUG)$ ]] && echo -e "${BLUE}[INFO]${NC} $1"
+    return 0
 }
 
-echo_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+log_success() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "${GREEN}[SUCCESS]${NC} $1"
+    return 0
 }
 
-echo_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+log_warning() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "${YELLOW}[WARNING]${NC} $1"
+    return 0
 }
 
-echo_header() {
-    echo ""
-    echo -e "${BLUE}============================================${NC}"
-    echo -e "${BLUE} $1${NC}"
-    echo -e "${BLUE}============================================${NC}"
-    echo ""
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1" >&2
+    return 0
 }
+
+log_header() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && {
+        echo ""
+        echo -e "${BLUE}============================================${NC}"
+        echo -e "${BLUE} $1${NC}"
+        echo -e "${BLUE}============================================${NC}"
+        echo ""
+    }
+    return 0
+}
+
+# Backward compatibility aliases
+echo_info() { log_info "$1"; }
+echo_success() { log_success "$1"; }
+echo_warning() { log_warning "$1"; }
+echo_error() { log_error "$1"; }
+echo_header() { log_header "$1"; }
 
 # Function to verify OpenShift platform
 detect_platform() {
