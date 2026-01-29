@@ -200,7 +200,7 @@ ui:
 
 **Documentation:**
 - **Templates**: See [Helm Templates Reference - UI Templates](helm-templates-reference.md#ui-templates) for resource definitions
-- **Authentication**: See [UI OAuth Authentication](ui-oauth-authentication.md) for OAuth proxy setup and troubleshooting
+- **Authentication**: See [UI OAuth Authentication](../api/ui-oauth-authentication.md) for OAuth proxy setup and troubleshooting
 
 ### OpenShift-Specific Values
 
@@ -276,13 +276,13 @@ oc adm policy who-can use scc restricted-v2
 
 ## Next Steps
 
-- **Installation**: See [Installation Guide](installation.md)
-- **Configuration**: See [Configuration Guide](configuration.md)
-- **Troubleshooting**: See [Troubleshooting Guide](troubleshooting.md)
+- **Installation**: See [Installation Guide](../operations/installation.md)
+- **Configuration**: See [Configuration Guide](../operations/configuration.md)
+- **Troubleshooting**: See [Troubleshooting Guide](../operations/troubleshooting.md)
 
 ---
 
 **Related Documentation:**
-- [Installation Guide](installation.md)
-- [Configuration Guide](configuration.md)
-- [Quick Start Guide](quickstart.md)
+- [Installation Guide](../operations/installation.md)
+- [Configuration Guide](../operations/configuration.md)
+- [Quick Start Guide](../operations/quickstart.md)

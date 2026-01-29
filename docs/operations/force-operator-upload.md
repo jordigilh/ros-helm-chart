@@ -54,7 +54,7 @@ Wait for the next hourly metrics collection (top of the hour), which generates n
 Before forcing an upload, ensure:
 
 1. **Metrics have been collected recently** (within the last hour)
-2. **ServiceMonitors are deployed** (see [installation.md](installation.md))
+2. **ServiceMonitors are deployed** (see [installation.md](../operations/installation.md))
 3. **User-workload monitoring is enabled**:
    ```bash
    # Verify user workload monitoring is enabled
@@ -296,7 +296,7 @@ status: 500 | error response: {"error":"Failed to process upload"}
    - Prometheus is not scraping ROS pods
    - Operator collected only Cost Management metrics, not ROS metrics
 
-   **Fix**: Follow [installation.md](installation.md) to deploy ServiceMonitors and enable user-workload monitoring.
+   **Fix**: Follow [installation.md](../operations/installation.md) to deploy ServiceMonitors and enable user-workload monitoring.
 
 2. **Old packages without ROS files**:
    The operator tries to upload packages from before ServiceMonitors were deployed.
@@ -416,7 +416,7 @@ The fact that you see this error means:
 
 ## See Also
 
-- [Installation Guide](installation.md) - How to deploy ServiceMonitors
-- [Troubleshooting Guide](troubleshooting.md) - Common issues and fixes
-- [Configuration Reference](configuration.md) - Operator configuration options
+- [Installation Guide](../operations/installation.md) - How to deploy ServiceMonitors
+- [Troubleshooting Guide](../operations/troubleshooting.md) - Common issues and fixes
+- [Configuration Reference](../operations/configuration.md) - Operator configuration options
 

@@ -149,5 +149,5 @@ oc get route -n cost-onprem -l app.kubernetes.io/component=ui -o jsonpath='{.ite
 
 ## Related Documentation
 
-- [UI OAuth Authentication](ui-oauth-authentication.md) - Architecture details
-- [Keycloak JWT Setup](keycloak-jwt-authentication-setup.md) - Keycloak configuration
+- [UI OAuth Authentication](../api/ui-oauth-authentication.md) - Architecture details
+- [Keycloak JWT Setup](../api/keycloak-jwt-authentication-setup.md) - Keycloak configuration

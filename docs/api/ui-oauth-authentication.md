@@ -887,7 +887,7 @@ helm install cost-onprem ./cost-onprem \
 
 ## Related Documentation
 
-- [Configuration Guide](configuration.md) - Complete UI configuration reference with authentication flow diagrams
-- [Troubleshooting Guide](troubleshooting.md) - UI-specific troubleshooting procedures
-- [Platform Guide](platform-guide.md) - Platform-specific requirements and differences
+- [Configuration Guide](../operations/configuration.md) - Complete UI configuration reference with authentication flow diagrams
+- [Troubleshooting Guide](../operations/troubleshooting.md) - UI-specific troubleshooting procedures
+- [Platform Guide](../architecture/platform-guide.md) - Platform-specific requirements and differences
 

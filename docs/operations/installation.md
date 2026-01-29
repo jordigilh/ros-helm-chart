@@ -52,7 +52,7 @@ curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 Ensure you have:
 - Valid kubeconfig with cluster admin or appropriate namespace permissions
 - Ability to create namespaces (or existing target namespace)
-- Sufficient cluster resources (see [Configuration Guide](configuration.md))
+- Sufficient cluster resources (see [Configuration Guide](../operations/configuration.md))
 
 ---
 
@@ -334,7 +334,7 @@ oc auth can-i create routes -n cost-onprem
 - Additional 6GB RAM for Cost Management On-Premise workloads
 - Additional 2 CPU cores
 
-**See [Configuration Guide](configuration.md) for detailed requirements**
+**See [Configuration Guide](../operations/configuration.md) for detailed requirements**
 
 ### 5. Kafka (Strimzi)
 
@@ -585,7 +585,7 @@ oc rsh -n cost-onprem deployment/cost-onprem-ingress -- \
 | **OCP-Only (minimal)** | ~24 | ~7.5 cores | ~15 cores | ~16 Gi | ~28 Gi |
 | **OCP on Cloud** | ~34 | ~9 cores | ~18 cores | ~21 Gi | ~36 Gi |
 
-**Note:** See [Worker Deployment Scenarios](worker-deployment-scenarios.md) for detailed worker requirements by scenario.
+**Note:** See [Worker Deployment Scenarios](../operations/worker-deployment-scenarios.md) for detailed worker requirements by scenario.
 
 ---
 
@@ -761,7 +761,7 @@ kubectl describe nodes | grep -A 5 "Allocated resources"
 kubectl top nodes  # requires metrics-server
 ```
 
-**See [Troubleshooting Guide](troubleshooting.md) for comprehensive solutions**
+**See [Troubleshooting Guide](../operations/troubleshooting.md) for comprehensive solutions**
 
 ---
 
@@ -769,16 +769,16 @@ kubectl top nodes  # requires metrics-server
 
 After successful installation:
 
-1. **Configure Access**: See [Configuration Guide](configuration.md)
-2. **Set Up JWT Auth**: See [JWT Authentication Guide](native-jwt-authentication.md)
-3. **Configure TLS**: See [TLS Setup Guide](cost-management-operator-tls-setup.md)
+1. **Configure Access**: See [Configuration Guide](../operations/configuration.md)
+2. **Set Up JWT Auth**: See [JWT Authentication Guide](../api/native-jwt-authentication.md)
+3. **Configure TLS**: See [TLS Setup Guide](../operations/cost-management-operator-tls-config-setup.md)
 4. **Run Tests**: See [Scripts Reference](../scripts/README.md)
 
 ---
 
 **Related Documentation:**
-- [Configuration Guide](configuration.md)
-- [Platform Guide](platform-guide.md)
-- [Quick Start Guide](quickstart.md)
-- [Troubleshooting Guide](troubleshooting.md)
+- [Configuration Guide](../operations/configuration.md)
+- [Platform Guide](../architecture/platform-guide.md)
+- [Quick Start Guide](../operations/quickstart.md)
+- [Troubleshooting Guide](../operations/troubleshooting.md)
 

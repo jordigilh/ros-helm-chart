@@ -94,7 +94,7 @@ The Envoy Lua filter constructs the `X-Rh-Identity` header from JWT claims:
 - `org_id`: Organization ID (e.g., `org1234567`)
 - `account_number`: Account number (e.g., `7890123`)
 - `preferred_username`: Username for logging
-- `access`: JSON object defining resource-level permissions (see [Keycloak JWT Setup](keycloak-jwt-authentication-setup.md))
+- `access`: JSON object defining resource-level permissions (see [Keycloak JWT Setup](../api/keycloak-jwt-authentication-setup.md))
 
 **Network Security:**
 - Network policies restrict external access to backend services

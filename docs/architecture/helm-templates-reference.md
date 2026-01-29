@@ -539,7 +539,7 @@ ui:
    - Check `API_PROXY_URL` environment variable in app container
    - Verify ROS API service is accessible: `oc get svc cost-onprem-ros-api -n cost-onprem`
 
-**For detailed OAuth authentication troubleshooting, see [UI OAuth Authentication Guide](ui-oauth-authentication.md)**
+**For detailed OAuth authentication troubleshooting, see [UI OAuth Authentication Guide](../api/ui-oauth-authentication.md)**
 
 ---
 

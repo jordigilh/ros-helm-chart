@@ -50,7 +50,7 @@ This bypasses the default 6-hour packaging/upload cycle and lets you validate:
 - ✅ Processor consumes Kafka messages
 - ✅ Kruize receives experiment data
 
-**Important Note**: Kruize uses a 15-minute default measurement duration and maintains a unique constraint on `(experiment_name, interval_end_time)`. It will reject duplicate uploads with the same `interval_end_time`. This is **expected behavior** when testing - the pipeline is still working correctly even if Kruize shows "already exists" errors. This actually **proves** the data reached Kruize! See the [Force Operator Upload Guide](force-operator-upload.md) for details.
+**Important Note**: Kruize uses a 15-minute default measurement duration and maintains a unique constraint on `(experiment_name, interval_end_time)`. It will reject duplicate uploads with the same `interval_end_time`. This is **expected behavior** when testing - the pipeline is still working correctly even if Kruize shows "already exists" errors. This actually **proves** the data reached Kruize! See the [Force Operator Upload Guide](../operations/force-operator-upload.md) for details.
 
 **Manual Commands:**
 ```bash
@@ -92,7 +92,7 @@ kubectl get costmanagementmetricsconfig -n costmanagement-metrics-operator \
    # Look for: experiment_name with your cluster UUID
    ```
 
-**📖 See [Force Operator Upload Guide](force-operator-upload.md) for complete documentation, including:**
+**📖 See [Force Operator Upload Guide](../operations/force-operator-upload.md) for complete documentation, including:**
 - Detailed explanation of what each command does
 - All verification steps with expected outputs
 - Troubleshooting common issues
@@ -316,9 +316,9 @@ oc exec -n cost-onprem deployment/cost-onprem-ingress -c envoy-proxy -- \
 
 3. **JWT missing org_id claim**
    - **Cause**: Keycloak client not configured with org_id mapper
-   - **Fix**: See [Keycloak Setup Guide](keycloak-jwt-authentication-setup.md)
+   - **Fix**: See [Keycloak Setup Guide](../api/keycloak-jwt-authentication-setup.md)
 
-**Reference**: See [JWT Authentication Guide](native-jwt-authentication.md) for detailed troubleshooting
+**Reference**: See [JWT Authentication Guide](../api/native-jwt-authentication.md) for detailed troubleshooting
 
 ---
 

@@ -516,7 +516,7 @@ global:
     domain: "apps.cluster.example.com"
 ```
 
-**See [Platform Guide](platform-guide.md) for detailed platform configuration**
+**See [Platform Guide](../architecture/platform-guide.md) for detailed platform configuration**
 
 ---
 
@@ -672,15 +672,15 @@ kubectl get secrets -n cost-onprem
 
 ## Next Steps
 
-- **Installation**: See [Installation Guide](installation.md)
-- **Platform Specifics**: See [Platform Guide](platform-guide.md)
-- **JWT Authentication**: See [JWT Auth Guide](native-jwt-authentication.md)
-- **Troubleshooting**: See [Troubleshooting Guide](troubleshooting.md)
+- **Installation**: See [Installation Guide](../operations/installation.md)
+- **Platform Specifics**: See [Platform Guide](../architecture/platform-guide.md)
+- **JWT Authentication**: See [JWT Auth Guide](../api/native-jwt-authentication.md)
+- **Troubleshooting**: See [Troubleshooting Guide](../operations/troubleshooting.md)
 
 ---
 
 **Related Documentation:**
-- [Installation Guide](installation.md)
-- [Platform Guide](platform-guide.md)
-- [Quick Start Guide](quickstart.md)
+- [Installation Guide](../operations/installation.md)
+- [Platform Guide](../architecture/platform-guide.md)
+- [Quick Start Guide](../operations/quickstart.md)
 

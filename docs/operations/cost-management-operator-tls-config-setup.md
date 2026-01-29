@@ -318,7 +318,7 @@ oc logs -n costmanagement-metrics-operator deployment/costmanagement-metrics-ope
 
 ## Integration with JWT Authentication
 
-**IMPORTANT**: This TLS configuration is essential for the JWT authentication flow documented in [native-jwt-authentication.md](native-jwt-authentication.md).
+**IMPORTANT**: This TLS configuration is essential for the JWT authentication flow documented in [native-jwt-authentication.md](../api/native-jwt-authentication.md).
 
 ### Why TLS Matters for JWT Authentication
 Our JWT authentication implementation requires the Cost Management Operator to:

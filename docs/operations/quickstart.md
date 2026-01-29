@@ -301,8 +301,8 @@ echo -e "\nFor detailed troubleshooting, run: ./cost-mgmt-ocp-dataflow.sh --diag
 
 After successful deployment:
 
-1. **Configure JWT Authentication**: See [Keycloak Setup Guide](keycloak-jwt-authentication-setup.md)
-2. **Set Up TLS**: See [TLS Certificate Options](tls-certificate-options.md)
+1. **Configure JWT Authentication**: See [Keycloak Setup Guide](../api/keycloak-jwt-authentication-setup.md)
+2. **Set Up TLS**: See [TLS Certificate Options](../operations/tls-certificate-options.md)
 3. **Explore APIs**: Use the access points to interact with services
 4. **Load Test Data**: Upload your own cost management files
 5. **Monitor Metrics**: Check Kruize recommendations and optimizations
