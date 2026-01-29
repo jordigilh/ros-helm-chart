@@ -49,7 +49,6 @@ from e2e_helpers import (
     is_nise_available,
     install_nise,
     ensure_nise_available,
-    get_sources_api_url,
     upload_with_retry,
     wait_for_provider,
     cleanup_database_records,
