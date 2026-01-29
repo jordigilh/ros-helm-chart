@@ -272,16 +272,12 @@ jwt_auth:
 
 ### JWT Claims to Headers Mapping
 
-The Lua filter extracts JWT claims and injects these headers:
+The Lua filter extracts JWT claims and constructs these headers:
 
-| JWT Claim            | HTTP Header         | Description                |
-|----------------------|---------------------|----------------------------|
-| `sub`                | `X-ROS-User-ID`     | User/service account ID    |
-| `preferred_username` | `X-ROS-User-Name`   | Username                   |
-| `azp` or `client_id` | `X-Client-ID`       | Client ID                  |
-| (authentication)     | `X-ROS-Authenticated` | Always "true" when valid   |
-| (method)             | `X-ROS-Auth-Method` | "Envoy-Native-JWT"         |
-| Authorization header | `X-Bearer-Token`    | JWT token without "Bearer" |
+| Source | HTTP Header | Description |
+|--------|-------------|-------------|
+| JWT claims (org_id, account_number, username, email) | `X-Rh-Identity` | Base64-encoded identity JSON for Koku |
+| Authorization header | `X-Bearer-Token` | JWT token without "Bearer" prefix |
 
 ## Testing
 

@@ -107,19 +107,20 @@ cost-onprem-chart/
 - **Kafka 3.8.0**: Message streaming with persistent storage (deployed via Strimzi CRDs)
 
 ### Application Services
-- **Ingress**: File upload API and routing gateway (with Envoy sidecar for JWT authentication)
-- **ROS API**: Main REST API for recommendations and status (with Envoy sidecar for authentication)
+- **API Gateway**: Centralized Envoy gateway for JWT authentication and API routing (port 9080)
+- **Ingress**: File upload API processing
+- **ROS API**: Main REST API for recommendations and status
 - **ROS Processor**: Data processing service for cost optimization
 - **ROS Recommendation Poller**: Kruize integration for recommendations
 - **ROS Housekeeper**: Maintenance tasks and data cleanup
-- **Kruize Autotune**: Optimization recommendation engine (direct authentication, protected by network policies)
-- **Koku Sources API**: Source management integrated in Koku API (accessible via `/api/cost-management/v1/sources/`)
+- **Kruize Autotune**: Optimization recommendation engine (internal service, protected by network policies)
+- **Sources API**: Source management and integration
 - **Valkey**: Caching layer for performance
 
 **Security Architecture**:
-- **Ingress Authentication**: Envoy sidecar with JWT validation (Keycloak) for external uploads
-- **Backend Authentication**: Envoy sidecar with JWT validation (Keycloak) for API access
-- **Network Policies**: Restrict direct access to backend services (Kruize) while allowing Prometheus metrics scraping
+- **Centralized Gateway**: Single API gateway with JWT validation (Keycloak) for all external API traffic
+- **Backend Services**: Receive pre-authenticated requests from gateway with `X-Rh-Identity` header
+- **Network Policies**: Restrict direct access to backend services while allowing Prometheus metrics scraping
 - **Multi-tenancy**: `org_id` and `account_number` from authentication enable data isolation across organizations and accounts
 
 **See [JWT Authentication Guide](docs/native-jwt-authentication.md) for detailed architecture**

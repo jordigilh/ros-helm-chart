@@ -81,19 +81,35 @@ This document provides detailed information about the Helm templates used in the
 
 **Key Features**:
 - Processes file uploads from Cost Management Operator
-- Trusts X-ROS headers injected by Gateway
-- No longer requires Envoy sidecar
+- Trusts `X-Rh-Identity` header injected by Gateway
+- No longer requires Envoy sidecar (JWT validation handled by centralized Gateway)
 
 **Container Configuration**:
 - **Ingress container**: Listens on port `8080`
-- **Flow**: Gateway → Ingress (8080) with authentication headers
+- **Flow**: Gateway → Ingress (8080) with `X-Rh-Identity` header
 
 **Key Environment Variables**:
 | Variable | Value | Description |
 |----------|-------|-------------|
-| `AUTH_ENABLED` | `"true"` | Ingress trusts X-ROS headers from Gateway |
-| `SERVER_PORT` | `8080` | Ingress listens on standard port |
-| `UPLOAD_REQUIRE_AUTH` | `"true"` | Upload endpoint requires authentication |
+| `INGRESS_WEBPORT` | `8080` | Ingress listens on standard port |
+| `INGRESS_METRICSPORT` | `9090` | Prometheus metrics endpoint |
+| `INGRESS_AUTH` | `"false"` | Auth disabled - Gateway handles JWT validation and injects `X-Rh-Identity` |
+| `INGRESS_MINIOENDPOINT` | (from helper) | S3/MinIO storage endpoint |
+| `INGRESS_STAGEBUCKET` | (from helper) | S3 bucket for staged uploads |
+| `INGRESS_USESSL` | (from helper) | Whether to use SSL for S3 connection |
+| `INGRESS_KAFKA_BROKERS` | (from helper) | Kafka bootstrap servers |
+| `INGRESS_KAFKAANNOUNCETOPIC` | `platform.upload.announce` | Topic for upload announcements |
+| `AWS_CONFIG_FILE` | `/etc/aws/config` | AWS SDK configuration for S3v4 signatures |
+
+**Volume Mounts**:
+- `aws-config`: Mounted at `/etc/aws` (AWS SDK configuration for path-style S3 addressing)
+- `service-ca-cert`: Mounted at `/etc/ssl/certs/service-ca.crt` (TLS CA certificate)
+
+**Authentication Flow**:
+1. Client sends JWT in `Authorization: Bearer <token>` header
+2. Gateway Envoy validates JWT signature against Keycloak JWKS
+3. Gateway Lua filter extracts claims and constructs `X-Rh-Identity` header
+4. Ingress receives request with `X-Rh-Identity` header (no additional auth needed)
 
 ---
 
@@ -108,7 +124,7 @@ graph TB
         direction TB
         HCM["HTTP Connection Manager"]
         JWT["jwt_authn filter<br/>└─ Validates JWT signature<br/>└─ Extracts claims"]
-        Lua["Lua filter<br/>└─ Injects X-ROS-* headers<br/>└─ Injects X-Rh-Identity"]
+        Lua["Lua filter<br/>└─ Injects X-Rh-Identity<br/>└─ Injects X-Bearer-Token"]
         Router["Router filter<br/>└─ Routes to backends"]
 
         HCM --> JWT
@@ -158,19 +174,15 @@ graph TB
 - `/health` - Public (health checks)
 - `/ready` - Public (readiness checks)
 
-#### 2. Lua Filter (Claims Extraction)
-- **Purpose**: Extracts JWT claims from Envoy metadata and injects X-ROS headers
+#### 2. Lua Filter (Identity Header Construction)
+- **Purpose**: Constructs X-Rh-Identity header from JWT claims for Koku compatibility
 - **Language**: Lua (inline script)
 - **Execution**: On every authenticated request
 
 **Header Mapping**:
-| JWT Claim | HTTP Header | Description |
-|-----------|-------------|-------------|
-| `sub` | `X-ROS-User-ID` | User/service account ID |
-| `preferred_username` | `X-ROS-User-Name` | Username |
-| `azp` or `client_id` | `X-Client-ID` | Client ID |
-| (authentication) | `X-ROS-Authenticated` | Always `"true"` |
-| (method) | `X-ROS-Auth-Method` | `"Envoy-Native-JWT"` |
+| Source | HTTP Header | Description |
+|--------|-------------|-------------|
+| JWT claims (org_id, account_number, username, email) | `X-Rh-Identity` | Base64-encoded identity JSON for Koku |
 | Authorization header | `X-Bearer-Token` | JWT token (without "Bearer" prefix) |
 
 **Lua Script Example**:
@@ -182,9 +194,13 @@ function envoy_on_request(request_handle)
   if jwt_data ~= nil then
     local payload = jwt_data["jwt_payload"]
     if payload ~= nil then
-      request_handle:headers():add("X-ROS-Authenticated", "true")
-      request_handle:headers():add("X-ROS-User-ID", tostring(payload["sub"]))
-      -- ... additional header extractions
+      -- Build X-Rh-Identity JSON from JWT claims
+      local xrhid_json = build_xrhid_json(org_id, account_number, "User", username, email)
+      local xrhid_b64 = request_handle:base64Escape(xrhid_json)
+      request_handle:headers():replace("X-Rh-Identity", xrhid_b64)
+
+      -- Forward JWT token for services that need it
+      request_handle:headers():replace("X-Bearer-Token", bearer_token)
     end
   end
 end
@@ -645,8 +661,8 @@ helm upgrade cost-onprem ./cost-onprem \
 2. **Template Rendering**:
    - Templates generate manifests with JWT auth configuration
 3. **Manifest Application**:
-   - ConfigMaps (Envoy config)
-   - Deployments (Ingress + Envoy sidecar)
+   - ConfigMaps (Gateway Envoy config)
+   - Deployments (Gateway, Ingress, APIs)
    - Services (Port configuration)
 4. **Post-Install**: Health checks and validation
 
@@ -712,7 +728,7 @@ helm get values cost-onprem -n cost-onprem
 
 ### Resource Usage
 
-**Envoy Sidecar**:
+**API Gateway (Envoy)**:
 ```yaml
 resources:
   requests:
@@ -738,6 +754,6 @@ resources:
 
 ---
 
-**Last Updated**: October 2025
+**Last Updated**: January 2026
 **Maintainer**: ROS Engineering Team
 

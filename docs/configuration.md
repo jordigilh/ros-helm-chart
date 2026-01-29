@@ -527,20 +527,20 @@ serviceAccount:
 
 ### Network Policies
 
-Network policies are automatically deployed on OpenShift to secure service-to-service communication and enforce authentication through Envoy sidecars.
+Network policies are automatically deployed on OpenShift to secure service-to-service communication and enforce authentication through the centralized API gateway.
 
 **Purpose:**
-- ✅ Enforce authentication via Envoy sidecars (port 9080)
-- ✅ Restrict direct access to backend application containers
+- ✅ Enforce authentication via centralized gateway (port 9080)
+- ✅ Restrict direct external access to backend application containers
 - ✅ Allow Prometheus metrics scraping from `openshift-monitoring` namespace
 - ✅ Enable internal service-to-service communication within `cost-onprem` namespace
 
 **Key Policies:**
-1. **Ingress Network Policy**: Allows external file uploads from `openshift-ingress` namespace to Envoy sidecar on port 9080
+1. **Gateway Network Policy**: Allows external traffic from `openshift-ingress` namespace to gateway on port 9080
 2. **Kruize Network Policy**: Allows internal service communication only (processor, poller, housekeeper) on port 8080
 3. **Cost Management On-Premise Metrics Policies**: Allow Prometheus metrics scraping on port 9000 for API, Processor, and Recommendation Poller
-4. **Cost Management On-Premise API Access Policy**: Allows external REST API access from `openshift-ingress` namespace to Envoy sidecar on port 9080
-5. **Koku API Access Policy**: Allows external REST API access from `openshift-ingress` namespace to Envoy sidecar on port 9080 (includes Sources API endpoints)
+4. **Backend Access Policies**: Allow gateway to route to backend services (Ingress, Koku, ROS, Sources)
+5. **Sources API Policy**: Allows internal service communication only (housekeeper, gateway) on port 8000
 
 **OpenShift Configuration:**
 ```yaml
@@ -552,7 +552,7 @@ networkPolicy:
 ```
 
 **Impact on Service Communication:**
-- External requests MUST go through Envoy sidecars (port 9080) with proper authentication
+- External requests MUST go through centralized gateway (port 9080) with proper authentication
 - Direct access to backend ports (8000, 8081) is blocked from outside the namespace
 - Prometheus can access `/metrics` endpoints (port 9000) without authentication
 - Internal services can communicate freely within the same namespace

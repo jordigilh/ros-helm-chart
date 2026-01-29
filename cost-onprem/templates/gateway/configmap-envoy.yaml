@@ -366,9 +366,6 @@ data:
                         -- Use replace to avoid duplicate headers
                         request_handle:headers():replace("X-Rh-Identity", xrhid_b64)
 
-                        -- Inject headers for ingress app (expects JWT token directly)
-                        request_handle:headers():replace("X-ROS-Authenticated", "true")
-
                         -- Forward the original Authorization header as X-Bearer-Token
                         -- Try both capitalization variants for case-insensitive lookup
                         local auth_header = request_handle:headers():get("authorization")
