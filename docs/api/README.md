@@ -9,7 +9,6 @@ Authentication, authorization, and API integration guides for Cost Management On
 | **[Keycloak JWT Authentication Setup](keycloak-jwt-authentication-setup.md)** | Complete guide for setting up JWT authentication with Keycloak |
 | **[Native JWT Authentication](native-jwt-authentication.md)** | Detailed explanation of JWT authentication architecture and implementation |
 | **[UI OAuth Authentication](ui-oauth-authentication.md)** | Complete guide for UI OAuth authentication with Keycloak OAuth proxy |
-| **[Add Email Mapper Keycloak](add-email-mapper-keycloak.md)** | Keycloak email mapper configuration |
 
 ## Quick Start
 

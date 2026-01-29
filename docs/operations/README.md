@@ -44,6 +44,5 @@ Installation, deployment, configuration, and operational guides for Cost Managem
 | Document | Description |
 |----------|-------------|
 | **[Troubleshooting Guide](troubleshooting.md)** | Common issues and their solutions |
-| **[Get Keycloak URL](get-keycloak-url.md)** | Helper for retrieving Keycloak URLs |
 
 [← Back to Documentation Index](../README.md)

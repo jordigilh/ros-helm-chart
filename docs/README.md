@@ -55,7 +55,6 @@ Deployment, configuration, maintenance, and troubleshooting.
 | **[Cost Management Operator TLS Config](operations/cost-management-operator-tls-config-setup.md)** | TLS configuration for the Cost Management Metrics Operator |
 | **[Force Operator Upload](operations/force-operator-upload.md)** | Guide for manually triggering metrics upload for testing |
 | **[Upload Verification Checklist](operations/cost-management-operator-upload-verification-checklist.md)** | Step-by-step checklist to verify operator metrics upload |
-| **[Get Keycloak URL](operations/get-keycloak-url.md)** | Helper for retrieving Keycloak URLs |
 | **[Troubleshooting Guide](operations/troubleshooting.md)** | Common issues and their solutions |
 
 ### 🔐 API & Authentication
@@ -66,7 +65,6 @@ Authentication, authorization, and API integration guides.
 | **[Keycloak JWT Authentication Setup](api/keycloak-jwt-authentication-setup.md)** | Complete guide for setting up JWT authentication with Keycloak |
 | **[Native JWT Authentication](api/native-jwt-authentication.md)** | Detailed explanation of JWT authentication architecture |
 | **[UI OAuth Authentication](api/ui-oauth-authentication.md)** | Complete guide for UI OAuth authentication with Keycloak OAuth proxy |
-| **[Add Email Mapper Keycloak](api/add-email-mapper-keycloak.md)** | Keycloak email mapper configuration |
 
 ### 🧪 Development & Testing
 Testing guides, validation procedures, and development resources.
@@ -74,7 +72,6 @@ Testing guides, validation procedures, and development resources.
 | Document | Purpose |
 |----------|---------|
 | **[UI OAuth Testing](development/ui-oauth-testing.md)** | Guide for testing UI OAuth flow with Keycloak |
-| **[Cost Management Testing Results](development/cost-management-testing-results.md)** | Test results and validation data |
 
 ---
 
