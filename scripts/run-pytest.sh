@@ -22,8 +22,7 @@
 # Filter Options:
 #   --smoke             Run only smoke tests (quick validation)
 #   --slow              Include slow tests (processing, recommendations)
-#   --extended          Run E2E tests INCLUDING extended (summary tables, Kruize)
-#   --all               Run all tests including extended (overrides default exclusions)
+#   --ui                Run UI tests (Playwright browser automation)
 #
 # Setup Options:
 #   --setup-only        Only setup the environment, don't run tests
@@ -43,8 +42,7 @@
 #   ./run-pytest.sh --auth --ros            # Run auth and ROS suites
 #   ./run-pytest.sh --e2e --smoke           # Run E2E smoke tests
 #   ./run-pytest.sh --e2e                   # Run full E2E flow
-#   ./run-pytest.sh --extended              # Run full E2E flow INCLUDING extended tests
-#   ./run-pytest.sh --all                   # Run ALL tests including extended
+#   ./run-pytest.sh --ui                    # Run UI tests
 #   ./run-pytest.sh -k "test_jwt"           # Run tests matching pattern
 #   ./run-pytest.sh suites/helm/            # Run specific suite directory
 #   ./run-pytest.sh -m "smoke and auth"     # Custom marker expression
@@ -96,6 +94,7 @@ show_help() {
     echo "  cost-management   Sources API, upload, Koku processing"
     echo "  ros               Kruize, recommendations API"
     echo "  e2e               Complete end-to-end data flow"
+    echo "  ui                Browser-based UI tests (Playwright)"
     echo ""
     echo "Markers:"
     echo "  smoke             Quick validation tests (~1 min)"
@@ -205,8 +204,6 @@ run_pytest() {
 main() {
     local pytest_markers=()
     local pytest_extra_args=()
-    local run_all=false
-    local include_extended=false
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -236,6 +233,10 @@ main() {
                 pytest_markers+=("e2e")
                 shift
                 ;;
+            --ui)
+                pytest_markers+=("ui")
+                shift
+                ;;
             # Filter options
             --smoke)
                 pytest_markers+=("smoke")
@@ -243,14 +244,6 @@ main() {
                 ;;
             --slow)
                 pytest_markers+=("slow")
-                shift
-                ;;
-            --extended)
-                include_extended=true
-                shift
-                ;;
-            --all)
-                run_all=true
                 shift
                 ;;
             # Setup options
@@ -296,15 +289,7 @@ main() {
     local pytest_args=()
 
     # Handle marker filtering
-    if [[ "$run_all" == "true" ]]; then
-        # Run all tests, override the default -m "not extended" from pytest.ini
-        pytest_args+=("-m" "")
-    elif [[ "$include_extended" == "true" ]]; then
-        # Run full E2E flow including extended tests
-        # This runs the entire TestCompleteDataFlow class to ensure proper fixture setup
-        # Override the default -m "not extended" from pytest.ini
-        pytest_args+=("-m" "" "suites/e2e/test_complete_flow.py::TestCompleteDataFlow")
-    elif [[ ${#pytest_markers[@]} -gt 0 ]]; then
+    if [[ ${#pytest_markers[@]} -gt 0 ]]; then
         local marker_expr
         marker_expr=$(IFS=" or "; echo "${pytest_markers[*]}")
         pytest_args+=("-m" "$marker_expr")

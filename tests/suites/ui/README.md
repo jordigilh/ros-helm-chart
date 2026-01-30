@@ -6,8 +6,8 @@ Browser-based UI tests using [Playwright](https://playwright.dev/) for end-to-en
 
 These tests validate:
 - **Login Flow**: OAuth/OIDC authentication via Keycloak
-- **Recommendations Display**: ROS optimization recommendations in the UI
-- **Navigation**: Protected routes and session persistence
+- **Navigation**: Main application pages (Overview, OpenShift, Cost Explorer, Settings)
+- **Session Persistence**: Protected routes and session handling
 
 ## Prerequisites
 
@@ -50,6 +50,7 @@ PLAYWRIGHT_HEADLESS=false PLAYWRIGHT_SLOW_MO=500 pytest -m ui
 
 # Run specific test file
 pytest suites/ui/test_login_flow.py
+pytest suites/ui/test_navigation.py
 
 # Run with different browser
 PLAYWRIGHT_BROWSER=firefox pytest -m ui
@@ -63,7 +64,64 @@ suites/ui/
 ├── conftest.py           # Playwright fixtures
 ├── README.md             # This file
 ├── test_login_flow.py    # Keycloak OAuth login tests
-└── test_recommendations.py # ROS recommendations display tests
+└── test_navigation.py    # Main page navigation tests
+```
+
+## Test Coverage
+
+### Login Flow Tests (`test_login_flow.py`)
+
+| Test Class | Test | Description |
+|------------|------|-------------|
+| `TestLoginFlow` | `test_ui_redirects_to_keycloak` | UI redirects to Keycloak for auth |
+| | `test_successful_login` | Valid credentials complete login |
+| | `test_invalid_credentials_shows_error` | Invalid credentials show error |
+| `TestAuthenticatedSession` | `test_session_persists_across_navigation` | Session persists after navigation |
+| | `test_can_access_protected_routes` | Authenticated user can access routes |
+
+### Navigation Tests (`test_navigation.py`)
+
+| Test Class | Test | Description |
+|------------|------|-------------|
+| `TestDefaultNavigation` | `test_ui_defaults_to_overview` | Root URL defaults to Overview page |
+| | `test_navigation_menu_visible` | Nav menu shows expected items |
+| `TestPageNavigation` | `test_can_navigate_to_page[page]` | Can click nav to each main page |
+| | `test_page_loads_without_error[page]` | Each page loads without errors |
+| `TestOptionalPages` | `test_optional_page_accessible[page]` | Cloud provider pages accessible |
+| `TestOverviewPage` | `test_overview_has_content` | Overview page has content |
+| `TestOpenShiftPage` | `test_openshift_page_has_content` | OpenShift page has content |
+| `TestCostExplorerPage` | `test_cost_explorer_has_content` | Cost Explorer page has content |
+| `TestSettingsPage` | `test_settings_page_has_content` | Settings page has content |
+
+**Validated Pages** (parametrized tests):
+- Overview (`/openshift/cost-management`)
+- OpenShift (`/openshift/cost-management/ocp`)
+- Cost Explorer (`/openshift/cost-management/explorer`)
+- Settings (`/openshift/cost-management/settings`)
+
+**Optional Pages** (may show "no data"):
+- Optimizations (`/openshift/cost-management/optimizations`)
+- AWS (`/openshift/cost-management/aws`)
+- GCP (`/openshift/cost-management/gcp`)
+- Azure (`/openshift/cost-management/azure`)
+
+### Extending Navigation Tests
+
+To add more pages to validate, edit `test_navigation.py`:
+
+```python
+# Add to NAVIGATION_PAGES for required pages
+NAVIGATION_PAGES = [
+    NavPage("Overview", "/openshift/cost-management", "Overview"),
+    NavPage("OpenShift", "/openshift/cost-management/ocp", "OpenShift"),
+    # Add new pages here...
+]
+
+# Add to OPTIONAL_PAGES for pages that may not have data
+OPTIONAL_PAGES = [
+    NavPage("Optimizations", "/openshift/cost-management/optimizations", "Optimizations"),
+    # Add new optional pages here...
+]
 ```
 
 ## Fixtures
@@ -142,7 +200,8 @@ class TestProtectedFeature:
     def test_requires_auth(self, authenticated_page: Page, ui_url: str):
         # Already logged in
         authenticated_page.goto(f"{ui_url}/protected-route")
-        expect(authenticated_page).not_to_have_url_matching(".*keycloak.*")
+        # Verify not redirected to Keycloak
+        expect(authenticated_page).to_have_url(re.compile(f"{ui_url}.*"))
 ```
 
 ### Best Practices
@@ -155,14 +214,14 @@ class TestProtectedFeature:
 
 ## CI Integration
 
-UI tests are excluded from the default CI run. To include them:
+UI tests run as part of the default test suite:
 
 ```bash
 # Run all tests including UI
-pytest -m "not extended or ui"
+pytest
 
-# Run only UI tests in CI
-pytest -m ui --browser chromium
+# Run only UI tests
+pytest -m ui
 ```
 
 For CI, ensure:

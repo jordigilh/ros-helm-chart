@@ -5,6 +5,8 @@ These tests validate the OAuth/OIDC login flow through the browser,
 ensuring users can authenticate via Keycloak and access the UI.
 """
 
+import re
+
 import pytest
 from playwright.sync_api import Page, expect
 
@@ -21,7 +23,7 @@ class TestLoginFlow:
         page.goto(ui_url)
         
         # Should redirect to Keycloak
-        expect(page).to_have_url_matching(f".*{keycloak_config.realm}.*")
+        expect(page).to_have_url(re.compile(f".*{keycloak_config.realm}.*"))
         
         # Login form should be visible
         expect(page.locator('input[name="username"]')).to_be_visible()
@@ -47,7 +49,7 @@ class TestLoginFlow:
         page.wait_for_url(f"{ui_url}**", timeout=15000)
         
         # Verify we're on the UI (not Keycloak)
-        expect(page).not_to_have_url_matching(f".*{keycloak_config.realm}.*")
+        expect(page).not_to_have_url(re.compile(f".*{keycloak_config.realm}.*"))
 
     def test_invalid_credentials_shows_error(self, page: Page, ui_url: str, keycloak_config):
         """Verify invalid credentials show an error message."""
@@ -61,7 +63,7 @@ class TestLoginFlow:
         page.click('input[type="submit"], button[type="submit"]')
         
         # Should show error message (stay on Keycloak)
-        expect(page).to_have_url_matching(f".*{keycloak_config.realm}.*")
+        expect(page).to_have_url(re.compile(f".*{keycloak_config.realm}.*"))
         
         # Error message should be visible
         error_locator = page.locator(".alert-error, .kc-feedback-text, #input-error")
@@ -82,7 +84,7 @@ class TestAuthenticatedSession:
         
         # Should not redirect to Keycloak
         authenticated_page.wait_for_load_state("networkidle")
-        expect(authenticated_page).to_have_url_matching(f"{ui_url}.*")
+        expect(authenticated_page).to_have_url(re.compile(f"{re.escape(ui_url)}.*"))
 
     def test_can_access_protected_routes(
         self, authenticated_page: Page, ui_url: str
@@ -93,4 +95,4 @@ class TestAuthenticatedSession:
         
         # Should load without redirect to Keycloak
         authenticated_page.wait_for_load_state("networkidle")
-        expect(authenticated_page).not_to_have_url_matching(".*keycloak.*")
+        expect(authenticated_page).not_to_have_url(re.compile(".*keycloak.*"))

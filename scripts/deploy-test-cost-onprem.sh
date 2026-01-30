@@ -519,13 +519,13 @@ run_tests() {
     # Run all tests including extended and cost_validation
     # Note: cost_validation tests have their own E2E setup with 300s provider timeout
     if [[ "${VERBOSE}" == "true" ]]; then
-        if ! "${pytest_script}" --all -v; then
+        if ! "${pytest_script}" -v; then
             log_error "Pytest test suite failed"
             log_info "JUnit report available at: tests/reports/junit.xml"
             exit 1
         fi
     else
-        if ! "${pytest_script}" --all; then
+        if ! "${pytest_script}"; then
             log_error "Pytest test suite failed"
             log_info "JUnit report available at: tests/reports/junit.xml"
             exit 1

@@ -31,7 +31,7 @@ def playwright_instance() -> Generator[Playwright, None, None]:
 def browser(playwright_instance: Playwright) -> Generator[Browser, None, None]:
     """Launch a browser for the test session.
     
-    Uses Chromium by default. Set PLAYWRIGHT_BROWSER env var to change:
+    Set PLAYWRIGHT_BROWSER env var to change:
     - chromium (default)
     - firefox
     - webkit
