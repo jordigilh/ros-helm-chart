@@ -154,6 +154,19 @@ setup_venv() {
     log_info "Installing test dependencies..."
     pip install --quiet -r "$TESTS_DIR/requirements.txt"
 
+    # Install Playwright browsers (required for UI tests)
+    if command -v playwright &> /dev/null; then
+        log_info "Installing Playwright browsers..."
+        # Try with system deps first (requires sudo), fall back to browser-only install
+        if playwright install chromium --with-deps 2>/dev/null; then
+            log_success "Playwright browsers installed with system dependencies"
+        elif playwright install chromium 2>/dev/null; then
+            log_success "Playwright browsers installed (system deps may be missing)"
+        else
+            log_warning "Failed to install Playwright browsers - UI tests may be skipped"
+        fi
+    fi
+
     log_success "Virtual environment ready"
 }
 
