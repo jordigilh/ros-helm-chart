@@ -78,8 +78,8 @@ class DatabaseConfig:
 
     pod_name: str
     namespace: str
-    database: str = "koku"
-    user: str = "koku"
+    database: str = "costonprem_koku"
+    user: str = "costonprem_koku"
     password: Optional[str] = None
 
 
@@ -232,12 +232,12 @@ def database_config(cluster_config: ClusterConfig) -> DatabaseConfig:
     db_password = get_secret_value(cluster_config.namespace, secret_name, "koku-password")
     
     if not db_user:
-        db_user = "koku"
+        db_user = "costonprem_koku"
     
     return DatabaseConfig(
         pod_name=db_pod,
         namespace=cluster_config.namespace,
-        database="koku",
+        database="costonprem_koku",
         user=db_user,
         password=db_password,
     )
