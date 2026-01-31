@@ -5,6 +5,8 @@ Kafka Producer Client for E2E Testing
 Sends OCP report announcements to Kafka to trigger MASU processing.
 """
 
+from ..logging import log_debug, log_info, log_success, log_warning, log_error
+
 import json
 import base64
 import uuid
@@ -78,11 +80,11 @@ class KafkaProducerClient:
 
         message_json = json.dumps(message)
 
-        print(f"\n📨 Sending Kafka message to trigger OCP processing...")
-        print(f"  Topic: {self.topic}")
-        print(f"  Request ID: {request_id}")
-        print(f"  Cluster ID: {cluster_id}")
-        print(f"  Tarball URL: {tarball_url}")
+        log_info(f"\n📨 Sending Kafka message to trigger OCP processing...")
+        log_info(f"  Topic: {self.topic}")
+        log_info(f"  Request ID: {request_id}")
+        log_info(f"  Cluster ID: {cluster_id}")
+        log_info(f"  Tarball URL: {tarball_url}")
 
         try:
             # Use kubectl/oc exec to send message from inside the cluster
@@ -131,7 +133,7 @@ class KafkaProducerClient:
                     'request_id': request_id
                 }
 
-            print(f"  ✅ Kafka message sent successfully")
+            log_success(f"  ✅ Kafka message sent successfully")
 
             return {
                 'success': True,
@@ -191,7 +193,7 @@ class KafkaProducerClient:
         Returns:
             Dict with connectivity status
         """
-        print("\n🔍 Verifying Kafka connectivity...")
+        log_info("\n🔍 Verifying Kafka connectivity...")
 
         kafka_pod = self._get_kafka_pod()
         if not kafka_pod:
@@ -231,9 +233,9 @@ class KafkaProducerClient:
             # Check if our required topic exists
             topic_exists = self.topic in topics
 
-            print(f"  ✅ Kafka connectivity verified")
-            print(f"  Topics: {len(topics)}")
-            print(f"  Required topic '{self.topic}': {'✅ exists' if topic_exists else '⚠️  not found'}")
+            log_success(f"  ✅ Kafka connectivity verified")
+            log_info(f"  Topics: {len(topics)}")
+            log_success(f"  Required topic '{self.topic}': {'✅ exists' if topic_exists else '⚠️  not found'}")
 
             return {
                 'success': True,

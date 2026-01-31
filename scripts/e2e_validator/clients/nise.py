@@ -6,6 +6,8 @@ Synthetic cloud cost data generator for E2E testing.
 Generates predictable test scenarios for financial validation.
 """
 
+from ..logging import log_debug, log_info, log_success, log_warning, log_error
+
 import os
 import subprocess
 import tempfile
@@ -219,7 +221,7 @@ class NiseClient:
 
     def _install_nise(self) -> str:
         """Auto-install nise if not found"""
-        print("⚠️  Nise not found, attempting to install...")
+        log_warning("⚠️  Nise not found, attempting to install...")
         try:
             subprocess.run(
                 ['pip3', 'install', 'koku-nise'],
@@ -227,7 +229,7 @@ class NiseClient:
                 capture_output=True,
                 text=True
             )
-            print("✅ Nise installed successfully")
+            log_success("✅ Nise installed successfully")
 
             # Try common install locations after install
             import sys
@@ -239,7 +241,7 @@ class NiseClient:
 
             for path in possible_paths:
                 if os.path.exists(path):
-                    print(f"  Found at: {path}")
+                    log_info(f"  Found at: {path}")
                     return path
 
             # Try which one more time
@@ -251,7 +253,7 @@ class NiseClient:
                 pass
 
             # Last resort - just return 'nise' and hope it's in PATH during execution
-            print("  ⚠️  Nise installed but path not detected, will try 'nise' command")
+            log_warning("  ⚠️  Nise installed but path not detected, will try 'nise' command")
             return 'nise'
 
         except subprocess.CalledProcessError as e:
@@ -302,7 +304,7 @@ class NiseClient:
             cmd.extend(['--static-report-file', scenario['static_report']])
 
         # Run nise - generates files in current directory
-        print(f"    Executing Nise: {scenario_name} ({start_date.date()} to {end_date.date()})...")
+        log_info(f"    Executing Nise: {scenario_name} ({start_date.date()} to {end_date.date()})...")
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -312,7 +314,7 @@ class NiseClient:
         )
 
         if result.stdout:
-            print(f"    Generated: {result.stdout.strip()[:100]}")
+            log_info(f"    Generated: {result.stdout.strip()[:100]}")
 
         return output_dir
 
@@ -355,7 +357,7 @@ class NiseClient:
             '--write-monthly'
         ]
 
-        print(f"    Generating AWS CUR: {account_id}, {start_date.date()} to {end_date.date()}")
+        log_info(f"    Generating AWS CUR: {account_id}, {start_date.date()} to {end_date.date()}")
         # AWS nise writes to current directory
         result = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=output_dir)
 
@@ -404,7 +406,7 @@ class NiseClient:
         if resource_group:
             cmd.append('--resource-group')
 
-        print(f"    Generating Azure export: {subscription_id}, {start_date.date()} to {end_date.date()}")
+        log_info(f"    Generating Azure export: {subscription_id}, {start_date.date()} to {end_date.date()}")
         # Azure nise writes to current directory
         result = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=output_dir)
 
@@ -456,7 +458,7 @@ class NiseClient:
         if resource_level:
             cmd.append('--resource-level')
 
-        print(f"    Generating GCP export: {project_id}, {start_date.date()} to {end_date.date()}")
+        log_info(f"    Generating GCP export: {project_id}, {start_date.date()} to {end_date.date()}")
         # GCP nise writes to current directory
         result = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=output_dir)
 
@@ -499,9 +501,9 @@ class NiseClient:
         if static_report_file:
             cmd.extend(['--static-report-file', static_report_file])
 
-        print(f"    Generating OCP usage: {cluster_id}, {start_date.date()} to {end_date.date()}")
+        log_info(f"    Generating OCP usage: {cluster_id}, {start_date.date()} to {end_date.date()}")
         if static_report_file:
-            print(f"    Using static report: {static_report_file}")
+            log_info(f"    Using static report: {static_report_file}")
 
         # OCP nise writes to current directory
         result = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=output_dir)

@@ -6,6 +6,8 @@ Validates deployment health beyond application-level tests.
 Ensures infrastructure, integration, and operational readiness.
 """
 
+from ..logging import log_debug, log_info, log_success, log_warning, log_error
+
 from typing import Dict, List, Optional
 import time
 
@@ -36,7 +38,7 @@ class DeploymentValidationPhase:
 
     def validate_pod_health(self) -> Dict[str, any]:
         """Validate all pods are healthy"""
-        print("\n🏗️  Infrastructure: Pod Health")
+        log_info("\n🏗️  Infrastructure: Pod Health")
 
         health = self.k8s.get_pod_health()
         pods = self.k8s.get_pods()
@@ -69,19 +71,19 @@ class DeploymentValidationPhase:
             'passed': len(issues) == 0 and health['ready'] >= 20
         }
 
-        print(f"  Total: {result['total_pods']}, Ready: {result['ready_pods']}")
+        log_info(f"  Total: {result['total_pods']}, Ready: {result['ready_pods']}")
         if result['passed']:
-            print("  ✅ All pods healthy")
+            log_success("  ✅ All pods healthy")
         else:
-            print(f"  ❌ {len(issues)} issues found")
+            log_error(f"  ❌ {len(issues)} issues found")
             for issue in issues[:5]:
-                print(f"    - {issue}")
+                log_info(f"    - {issue}")
 
         return result
 
     def validate_services(self) -> Dict[str, any]:
         """Validate services are accessible"""
-        print("\n🌐 Infrastructure: Service Endpoints")
+        log_info("\n🌐 Infrastructure: Service Endpoints")
 
         required_services = [
             'koku-koku-api',
@@ -96,10 +98,10 @@ class DeploymentValidationPhase:
             endpoint = self.k8s.get_service_endpoint(svc_name)
             if endpoint:
                 accessible.append(svc_name)
-                print(f"  ✓ {svc_name}: {endpoint}")
+                log_success(f"  ✓ {svc_name}: {endpoint}")
             else:
                 inaccessible.append(svc_name)
-                print(f"  ✗ {svc_name}: NOT FOUND")
+                log_info(f"  ✗ {svc_name}: NOT FOUND")
 
         result = {
             'required': len(required_services),
@@ -112,7 +114,7 @@ class DeploymentValidationPhase:
 
     def validate_persistent_storage(self) -> Dict[str, any]:
         """Validate PVCs are bound"""
-        print("\n💾 Infrastructure: Persistent Storage")
+        log_info("\n💾 Infrastructure: Persistent Storage")
 
         pvcs = self.k8s.v1.list_namespaced_persistent_volume_claim(
             namespace=self.k8s.namespace
@@ -124,10 +126,10 @@ class DeploymentValidationPhase:
         for pvc in pvcs.items:
             if pvc.status.phase == "Bound":
                 bound.append(pvc.metadata.name)
-                print(f"  ✓ {pvc.metadata.name}: Bound ({pvc.spec.resources.requests['storage']})")
+                log_success(f"  ✓ {pvc.metadata.name}: Bound ({pvc.spec.resources.requests['storage']})")
             else:
                 unbound.append(pvc.metadata.name)
-                print(f"  ✗ {pvc.metadata.name}: {pvc.status.phase}")
+                log_info(f"  ✗ {pvc.metadata.name}: {pvc.status.phase}")
 
         result = {
             'total': len(pvcs.items),
@@ -140,7 +142,7 @@ class DeploymentValidationPhase:
 
     def validate_celery_workers(self) -> Dict[str, any]:
         """Validate all required Celery workers are deployed and running"""
-        print("\n👷 Infrastructure: Celery Workers")
+        log_info("\n👷 Infrastructure: Celery Workers")
 
         required_workers = {
             'default': 'celery queue',
@@ -165,7 +167,7 @@ class DeploymentValidationPhase:
                 if not deployments.items:
                     missing.append(f"{worker_type} ({description})")
                     workers_status[worker_type] = {'deployed': False, 'ready': False}
-                    print(f"  ✗ {worker_type}: NOT DEPLOYED - {description}")
+                    log_info(f"  ✗ {worker_type}: NOT DEPLOYED - {description}")
                 else:
                     deployment = deployments.items[0]
                     ready_replicas = deployment.status.ready_replicas or 0
@@ -180,15 +182,15 @@ class DeploymentValidationPhase:
                     }
 
                     if is_ready:
-                        print(f"  ✓ {worker_type}: {ready_replicas}/{desired_replicas} ready - {description}")
+                        log_success(f"  ✓ {worker_type}: {ready_replicas}/{desired_replicas} ready - {description}")
                     else:
                         not_ready.append(f"{worker_type} ({ready_replicas}/{desired_replicas})")
-                        print(f"  ⚠️  {worker_type}: {ready_replicas}/{desired_replicas} ready - {description}")
+                        log_warning(f"  ⚠️  {worker_type}: {ready_replicas}/{desired_replicas} ready - {description}")
 
             except Exception as e:
                 missing.append(f"{worker_type} (error: {e})")
                 workers_status[worker_type] = {'deployed': False, 'ready': False, 'error': str(e)}
-                print(f"  ✗ {worker_type}: ERROR - {e}")
+                log_error(f"  ✗ {worker_type}: ERROR - {e}")
 
         result = {
             'required_count': len(required_workers),
@@ -201,12 +203,12 @@ class DeploymentValidationPhase:
         }
 
         if result['passed']:
-            print(f"  ✅ All {len(required_workers)} worker types deployed and ready")
+            log_success(f"  ✅ All {len(required_workers)} worker types deployed and ready")
         else:
             if missing:
-                print(f"  ❌ Missing {len(missing)} worker types: {', '.join(missing)}")
+                log_error(f"  ❌ Missing {len(missing)} worker types: {', '.join(missing)}")
             if not_ready:
-                print(f"  ⚠️  {len(not_ready)} workers not ready: {', '.join(not_ready)}")
+                log_warning(f"  ⚠️  {len(not_ready)} workers not ready: {', '.join(not_ready)}")
 
         return result
 
@@ -216,7 +218,7 @@ class DeploymentValidationPhase:
 
     def validate_database_connectivity(self) -> Dict[str, any]:
         """Validate database connections work"""
-        print("\n🔗 Integration: Database Connectivity")
+        log_info("\n🔗 Integration: Database Connectivity")
 
         tests = {
             'koku_db': False,
@@ -228,9 +230,9 @@ class DeploymentValidationPhase:
             # Test basic connection
             result = self.db.execute_query("SELECT version()", fetch_one=True)
             tests['koku_db'] = result is not None
-            print("  ✓ Koku DB connection")
+            log_success("  ✓ Koku DB connection")
         except Exception as e:
-            print(f"  ✗ Koku DB connection: {e}")
+            log_info(f"  ✗ Koku DB connection: {e}")
 
         try:
             # Test critical tables exist
@@ -240,9 +242,9 @@ class DeploymentValidationPhase:
                 AND table_name IN ('api_provider', 'api_customer', 'django_migrations')
             """, fetch_one=True)
             tests['tables_exist'] = result[0] == 3
-            print(f"  {'✓' if tests['tables_exist'] else '✗'} Critical tables exist")
+            log_success(f"  {'✓' if tests['tables_exist'] else '✗'} Critical tables exist")
         except Exception as e:
-            print(f"  ✗ Table check: {e}")
+            log_info(f"  ✗ Table check: {e}")
 
         try:
             # Test can query data
@@ -251,9 +253,9 @@ class DeploymentValidationPhase:
                 fetch_one=True
             )
             tests['can_query'] = True
-            print(f"  ✓ Can query provider table ({result[0]} providers)")
+            log_success(f"  ✓ Can query provider table ({result[0]} providers)")
         except Exception as e:
-            print(f"  ✗ Query test: {e}")
+            log_info(f"  ✗ Query test: {e}")
 
         result = {
             'tests': tests,
@@ -264,7 +266,7 @@ class DeploymentValidationPhase:
 
     def validate_s3_integration(self, bucket: str = "koku-bucket") -> Dict[str, any]:
         """Validate S3/MinIO integration"""
-        print("\n☁️  Integration: S3 Storage")
+        log_info("\n☁️  Integration: S3 Storage")
 
         # Get S3 credentials from secret (try helm chart name first)
         storage_secret_name = f'{self.k8s.namespace}-storage-credentials'
@@ -277,15 +279,15 @@ class DeploymentValidationPhase:
             secret_key = self.k8s.get_secret('koku-storage-credentials', 'secret-key')
 
         if not access_key or not secret_key:
-            print("  ✗ S3 credentials not found")
+            log_info("  ✗ S3 credentials not found")
             return {'passed': False, 'error': 'Credentials missing'}
 
-        print("  ✓ S3 credentials found")
+        log_success("  ✓ S3 credentials found")
 
         # Test S3 endpoint accessible from MASU pod
         masu_pod = self.k8s.get_pod_by_component('masu')
         if not masu_pod:
-            print("  ✗ MASU pod not found")
+            log_info("  ✗ MASU pod not found")
             return {'passed': False, 'error': 'MASU pod not found'}
 
         try:
@@ -308,8 +310,8 @@ except Exception as e:
             has_bucket = f"HAS_{bucket}=True" in output
             num_buckets = int(output.split("BUCKETS=")[1].split("\n")[0]) if "BUCKETS=" in output else 0
 
-            print(f"  ✓ S3 accessible ({num_buckets} buckets)")
-            print(f"  {'✓' if has_bucket else '✗'} Bucket '{bucket}' exists")
+            log_success(f"  ✓ S3 accessible ({num_buckets} buckets)")
+            log_success(f"  {'✓' if has_bucket else '✗'} Bucket '{bucket}' exists")
 
             return {
                 'passed': has_bucket,
@@ -317,12 +319,12 @@ except Exception as e:
                 'target_bucket_exists': has_bucket
             }
         except Exception as e:
-            print(f"  ✗ S3 test failed: {e}")
+            log_info(f"  ✗ S3 test failed: {e}")
             return {'passed': False, 'error': str(e)}
 
     def validate_celery_integration(self) -> Dict[str, any]:
         """Validate Celery/Valkey integration"""
-        print("\n⚙️  Integration: Celery Task Queue")
+        log_info("\n⚙️  Integration: Celery Task Queue")
 
         masu_pod = self.k8s.get_pod_by_component('masu')
         if not masu_pod:
@@ -362,9 +364,9 @@ except Exception as e:
             if "CELERY_TASKS=" in output:
                 num_tasks = int(output.split("CELERY_TASKS=")[1].split("\n")[0])
 
-            print(f"  {'✓' if valkey_ok else '✗'} Valkey connection")
-            print(f"  {'✓' if celery_ok else '✗'} Celery configuration")
-            print(f"  ✓ {num_tasks} tasks registered")
+            log_success(f"  {'✓' if valkey_ok else '✗'} Valkey connection")
+            log_success(f"  {'✓' if celery_ok else '✗'} Celery configuration")
+            log_success(f"  ✓ {num_tasks} tasks registered")
 
             return {
                 'valkey_connected': valkey_ok,
@@ -373,7 +375,7 @@ except Exception as e:
                 'passed': valkey_ok and celery_ok and num_tasks > 10
             }
         except Exception as e:
-            print(f"  ✗ Celery test failed: {e}")
+            log_info(f"  ✗ Celery test failed: {e}")
             return {'passed': False, 'error': str(e)}
 
     # ========================================================================
@@ -382,7 +384,7 @@ except Exception as e:
 
     def validate_data_pipeline(self) -> Dict[str, any]:
         """Validate end-to-end data pipeline (PostgreSQL-based)"""
-        print("\n🔄 Data Flow: Pipeline Validation")
+        log_info("\n🔄 Data Flow: Pipeline Validation")
 
         stages = {
             's3_to_masu': False,
@@ -393,25 +395,25 @@ except Exception as e:
         # Check S3 data exists
         # (Already validated in s3_integration)
         stages['s3_to_masu'] = True
-        print("  ✓ Stage 1: S3 → MASU")
+        log_success("  ✓ Stage 1: S3 → MASU")
 
         # Check data in Postgres (manifests processed)
         try:
             manifest_count = self.db.get_manifest_count()
             stages['masu_to_postgres'] = manifest_count > 0
-            print(f"  {'✓' if stages['masu_to_postgres'] else '✗'} "
+            log_success(f"  {'✓' if stages['masu_to_postgres'] else '✗'} "
                   f"Stage 2: MASU → Postgres ({manifest_count} manifests)")
         except:
-            print("  ✗ Stage 2: MASU → Postgres")
+            log_info("  ✗ Stage 2: MASU → Postgres")
 
         # Check summary tables populated
         try:
             # Check if any summary data exists
             summary_exists = self.db.check_summary_tables()
             stages['postgres_summary'] = summary_exists
-            print(f"  {'✓' if summary_exists else '✗'} Stage 3: PostgreSQL Summary Tables")
+            log_success(f"  {'✓' if summary_exists else '✗'} Stage 3: PostgreSQL Summary Tables")
         except:
-            print("  ✗ Stage 3: PostgreSQL Summary Tables")
+            log_info("  ✗ Stage 3: PostgreSQL Summary Tables")
 
         result = {
             'stages': stages,
@@ -426,7 +428,7 @@ except Exception as e:
 
     def validate_performance(self) -> Dict[str, any]:
         """Validate performance metrics"""
-        print("\n⚡ Performance: Response Times")
+        log_info("\n⚡ Performance: Response Times")
 
         # Check API response time
         api_pod = self.k8s.get_pod_by_component('koku-api')
@@ -441,14 +443,14 @@ except Exception as e:
             )
             api_response_time = time.time() - start
 
-            print(f"  ✓ API status endpoint: {api_response_time:.2f}s")
+            log_success(f"  ✓ API status endpoint: {api_response_time:.2f}s")
 
             # Check database query performance
             start = time.time()
             self.db.execute_query("SELECT COUNT(*) FROM api_provider")
             db_response_time = time.time() - start
 
-            print(f"  ✓ Database query: {db_response_time:.3f}s")
+            log_success(f"  ✓ Database query: {db_response_time:.3f}s")
 
             result = {
                 'api_response_time': api_response_time,
@@ -457,13 +459,13 @@ except Exception as e:
             }
 
             if result['passed']:
-                print("  ✅ Performance acceptable")
+                log_success("  ✅ Performance acceptable")
             else:
-                print("  ⚠️  Performance degraded")
+                log_warning("  ⚠️  Performance degraded")
 
             return result
         except Exception as e:
-            print(f"  ✗ Performance test failed: {e}")
+            log_info(f"  ✗ Performance test failed: {e}")
             return {'passed': False, 'error': str(e)}
 
     # ========================================================================
@@ -472,7 +474,7 @@ except Exception as e:
 
     def validate_operational_readiness(self) -> Dict[str, any]:
         """Validate operational aspects"""
-        print("\n🚀 Operational: Readiness Checks")
+        log_info("\n🚀 Operational: Readiness Checks")
 
         checks = {
             'logs_accessible': False,
@@ -491,9 +493,9 @@ except Exception as e:
                     tail_lines=10
                 )
                 checks['logs_accessible'] = len(logs) > 0
-                print(f"  {'✓' if checks['logs_accessible'] else '✗'} Pod logs accessible")
+                log_success(f"  {'✓' if checks['logs_accessible'] else '✗'} Pod logs accessible")
         except Exception as e:
-            print(f"  ✗ Pod logs: {e}")
+            log_info(f"  ✗ Pod logs: {e}")
 
         # Check secrets exist
         required_secrets = [
@@ -509,7 +511,7 @@ except Exception as e:
                 pass
 
         checks['secrets_configured'] = secrets_found == len(required_secrets)
-        print(f"  {'✓' if checks['secrets_configured'] else '✗'} "
+        log_success(f"  {'✓' if checks['secrets_configured'] else '✗'} "
               f"Secrets configured ({secrets_found}/{len(required_secrets)})")
 
         # Check resource limits set
@@ -519,12 +521,12 @@ except Exception as e:
             if pod.spec.containers[0].resources.limits
         )
         checks['resource_limits'] = pods_with_limits > len(pods) * 0.5
-        print(f"  {'✓' if checks['resource_limits'] else '✗'} "
+        log_success(f"  {'✓' if checks['resource_limits'] else '✗'} "
               f"Resource limits ({pods_with_limits}/{len(pods)} pods)")
 
         # Monitoring (placeholder - would integrate with Prometheus/Grafana)
         checks['monitoring_ready'] = True
-        print("  ✓ Monitoring configuration")
+        log_success("  ✓ Monitoring configuration")
 
         result = {
             'checks': checks,
@@ -543,9 +545,9 @@ except Exception as e:
         Returns:
             Comprehensive validation results
         """
-        print("\n" + "="*60)
-        print("DEPLOYMENT VALIDATION SUITE")
-        print("="*60)
+        log_info("\n" + "="*60)
+        log_info("DEPLOYMENT VALIDATION SUITE")
+        log_info("="*60)
 
         # Infrastructure
         self.results['infrastructure']['pod_health'] = self.validate_pod_health()
@@ -578,10 +580,10 @@ except Exception as e:
         passed = sum(all_tests)
         score = (passed / total * 100) if total > 0 else 0
 
-        print("\n" + "="*60)
-        print(f"DEPLOYMENT VALIDATION SCORE: {score:.0f}%")
-        print(f"Passed: {passed}/{total} tests")
-        print("="*60)
+        log_info("\n" + "="*60)
+        log_info(f"DEPLOYMENT VALIDATION SCORE: {score:.0f}%")
+        log_info(f"Passed: {passed}/{total} tests")
+        log_info("="*60)
 
         # Determine overall pass/fail based on score threshold
         # Use 80% as passing threshold (less strict than deployment_ready 95%)

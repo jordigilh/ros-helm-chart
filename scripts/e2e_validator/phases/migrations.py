@@ -5,6 +5,8 @@ Phase 2: Database Migrations
 Handles Django migrations and database prerequisites.
 """
 
+from ..logging import log_debug, log_info, log_success, log_warning, log_error
+
 from typing import Dict
 
 
@@ -34,11 +36,11 @@ class MigrationsPhase:
 
     def create_pg_stat_statements(self):
         """Create pg_stat_statements extension"""
-        print("    Creating pg_stat_statements extension...")
+        log_info("    Creating pg_stat_statements extension...")
         # Need superuser, execute via pod
         db_pod = self.k8s.get_pod_by_component('koku-db')
         if not db_pod:
-            print("    ⚠️  Database pod not found, skipping extension creation")
+            log_warning("    ⚠️  Database pod not found, skipping extension creation")
             return
 
         try:
@@ -47,13 +49,13 @@ class MigrationsPhase:
                 ['psql', '-U', 'postgres', '-c',
                  'CREATE EXTENSION IF NOT EXISTS pg_stat_statements;']
             )
-            print("    ✓ pg_stat_statements extension created")
+            log_success("    ✓ pg_stat_statements extension created")
         except Exception as e:
-            print(f"    ⚠️  Could not create extension: {e}")
+            log_warning(f"    ⚠️  Could not create extension: {e}")
 
     def run_django_migrations(self):
         """Execute Django migrations via MASU pod"""
-        print("    Running Django migrations...")
+        log_info("    Running Django migrations...")
         masu_pod = self.k8s.get_pod_by_component('masu')
 
         if not masu_pod:
@@ -64,7 +66,7 @@ class MigrationsPhase:
             ['python', '/opt/koku/koku/manage.py', 'migrate', '--noinput']
         )
 
-        print("    ✓ Django migrations complete")
+        log_success("    ✓ Django migrations complete")
         return output
 
     def check_migrations_status(self) -> Dict:
@@ -99,39 +101,39 @@ class MigrationsPhase:
         Returns:
             Results dict
         """
-        print("\n" + "="*70)
-        print("Phase 2: Database Migrations")
-        print("="*70 + "\n")
+        log_info("\n" + "="*70)
+        log_info("Phase 2: Database Migrations")
+        log_info("="*70 + "\n")
 
         if skip:
-            print("⏭️  Skipped (--skip-migrations)")
+            log_info("⏭️  Skipped (--skip-migrations)")
             return {'passed': False, 'skipped': True}
 
         # Check status
-        print("🔍 Checking migration status...")
+        log_info("🔍 Checking migration status...")
         status = self.check_migrations_status()
 
         if not status['needed']:
-            print("  ✅ All migrations already applied")
+            log_success("  ✅ All migrations already applied")
             return {'passed': True, 'already_complete': True}
 
-        print(f"  ℹ️  Migrations needed: {status.get('reason', 'Unknown')}")
+        log_info(f"  ℹ️  Migrations needed: {status.get('reason', 'Unknown')}")
 
         # Create prerequisites
-        print("\n📝 Creating database prerequisites...")
+        log_info("\n📝 Creating database prerequisites...")
 
         if not self.check_pg_stat_statements():
             self.create_pg_stat_statements()
         else:
-            print("    ✓ pg_stat_statements already installed")
+            log_success("    ✓ pg_stat_statements already installed")
 
         # Run migrations
-        print("\n🔄 Applying Django migrations...")
+        log_info("\n🔄 Applying Django migrations...")
         try:
             output = self.run_django_migrations()
-            print("\n✅ Phase 2 Complete")
+            log_success("\n✅ Phase 2 Complete")
             return {'passed': True, 'output': output}
         except Exception as e:
-            print(f"\n❌ Migration failed: {e}")
+            log_error(f"\n❌ Migration failed: {e}")
             return {'passed': False, 'error': str(e)}
 

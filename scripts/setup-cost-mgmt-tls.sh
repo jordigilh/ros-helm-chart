@@ -5,6 +5,9 @@
 #
 # Usage: ./setup-cost-mgmt-tls.sh [options]
 # Prerequisites: OpenShift cluster with Keycloak (RHBK) installed
+#
+# Environment Variables:
+#   LOG_LEVEL - Control output verbosity (ERROR|WARN|INFO|DEBUG, default: WARN)
 
 set -euo pipefail
 
@@ -22,6 +25,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Logging configuration
+LOG_LEVEL=${LOG_LEVEL:-WARN}
+
 # Configuration variables
 NAMESPACE="${COST_MGMT_NAMESPACE:-$DEFAULT_NAMESPACE}"
 KEYCLOAK_NAMESPACE="${KEYCLOAK_NAMESPACE:-$DEFAULT_KEYCLOAK_NAMESPACE}"
@@ -30,26 +36,43 @@ VERBOSE=false
 DRY_RUN=false
 SKIP_VALIDATION=false
 
-# Function to print colored output
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+# Logging functions with level-based filtering
+log_debug() {
+    [[ "$LOG_LEVEL" == "DEBUG" ]] && echo -e "${BLUE}[DEBUG]${NC} $1"
+    return 0
 }
 
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+log_info() {
+    [[ "$LOG_LEVEL" =~ ^(INFO|DEBUG)$ ]] && echo -e "${BLUE}[INFO]${NC} $1"
+    return 0
 }
 
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+log_success() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "${GREEN}[SUCCESS]${NC} $1"
+    return 0
 }
 
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+log_warning() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "${YELLOW}[WARNING]${NC} $1"
+    return 0
 }
 
-print_header() {
-    echo -e "\n${BLUE}==== $1 ====${NC}"
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1" >&2
+    return 0
 }
+
+log_header() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "\n${BLUE}==== $1 ====${NC}"
+    return 0
+}
+
+# Backward compatibility aliases
+print_status() { log_info "$1"; }
+print_success() { log_success "$1"; }
+print_warning() { log_warning "$1"; }
+print_error() { log_error "$1"; }
+print_header() { log_header "$1"; }
 
 # Function to validate certificate
 validate_cert() {

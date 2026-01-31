@@ -6,6 +6,8 @@ Create or verify cost provider configuration using Sources API (preferred)
 or direct database access (fallback for testing).
 """
 
+from ..logging import log_debug, log_info, log_success, log_warning, log_error
+
 from typing import Dict, Optional
 import time
 import uuid
@@ -77,7 +79,7 @@ class ProviderPhase:
                 # Fallback to direct database connection
                 return self.db.get_provider()
         except Exception as e:
-            print(f"  ⚠️  Could not check for existing provider: {e}")
+            log_warning(f"  ⚠️  Could not check for existing provider: {e}")
             return None
 
     def _ensure_tenant_and_sources(self, provider_uuid: str, provider_name: str, provider_type: str):
@@ -98,7 +100,7 @@ class ProviderPhase:
 
         masu_pod = self.k8s.get_pod_by_component('masu')
         if not masu_pod:
-            print("  ⚠️  MASU pod not found, skipping tenant/sources verification")
+            log_warning("  ⚠️  MASU pod not found, skipping tenant/sources verification")
             return
 
         # Python code to check/create tenant and sources entries
@@ -120,9 +122,9 @@ provider_type_str = "{provider_type}"
 # Check/create tenant
 tenant, tenant_created = Tenant.objects.get_or_create(schema_name=schema_name)
 if tenant_created:
-    print("TENANT_CREATED")
+    log_info("TENANT_CREATED")
 else:
-    print("TENANT_EXISTS")
+    log_info("TENANT_EXISTS")
 
 # Check/create sources entry
 try:
@@ -162,11 +164,11 @@ try:
                 next_source_id, provider.name, provider_type_str,
                 billing_source_json, provider_uuid, provider_uuid, org_id, org_id
             ])
-            print("SOURCES_ENTRY_CREATED")
+            log_info("SOURCES_ENTRY_CREATED")
         else:
-            print("SOURCES_ENTRY_EXISTS")
+            log_info("SOURCES_ENTRY_EXISTS")
 except Exception as e:
-    print("ERROR=" + str(e))
+    log_error("ERROR=" + str(e))
 '''
 
         try:
@@ -174,17 +176,17 @@ except Exception as e:
 
             for line in output.split('\n'):
                 if 'TENANT_CREATED' in line:
-                    print("  ✅ Tenant record created")
+                    log_success("  ✅ Tenant record created")
                 elif 'TENANT_EXISTS' in line:
-                    print("  ✓ Tenant record exists")
+                    log_success("  ✓ Tenant record exists")
                 elif 'SOURCES_ENTRY_CREATED' in line:
-                    print("  ✅ Sources entry created")
+                    log_success("  ✅ Sources entry created")
                 elif 'SOURCES_ENTRY_EXISTS' in line:
-                    print("  ✓ Sources entry exists")
+                    log_success("  ✓ Sources entry exists")
                 elif line.startswith('ERROR='):
-                    print(f"  ⚠️  {line}")
+                    log_warning(f"  ⚠️  {line}")
         except Exception as e:
-            print(f"  ⚠️  Failed to verify tenant/sources: {e}")
+            log_warning(f"  ⚠️  Failed to verify tenant/sources: {e}")
 
     def _sync_provider_to_tenant_schema(self, provider_uuid: str):
         """Sync provider from public.api_provider to tenant schema.
@@ -218,9 +220,9 @@ except Exception as e:
 
         try:
             result = self.k8s.postgres_exec(postgres_pod, 'koku', sync_sql)
-            print(f"  ✓ Provider {provider_uuid} synced to tenant schema {tenant_schema}")
+            log_success(f"  ✓ Provider {provider_uuid} synced to tenant schema {tenant_schema}")
         except Exception as e:
-            print(f"  ⚠️  Failed to sync provider to tenant schema: {e}")
+            log_warning(f"  ⚠️  Failed to sync provider to tenant schema: {e}")
             raise RuntimeError(f"Provider sync failed: {e}")
 
     def create_provider_via_django_orm(self,
@@ -278,13 +280,13 @@ org_id = "{self.org_id}"
 schema_name = "org" + org_id  # Koku prefixes 'org' to org_id for schema names
 provider_type_str = "{provider_type}"
 
-print("DEBUG: org_id=" + org_id)
-print("DEBUG: schema_name=" + schema_name)
-print("DEBUG: provider_type_str=" + provider_type_str)
+log_info("DEBUG: org_id=" + org_id)
+log_info("DEBUG: schema_name=" + schema_name)
+log_info("DEBUG: provider_type_str=" + provider_type_str)
 
 try:
     # STEP 1: Provision tenant schema
-    print("TENANT_PROVISIONING_START")
+    log_info("TENANT_PROVISIONING_START")
 
     # Create Tenant record (CRITICAL: required for celery workers to find accounts)
     from api.models import Tenant
@@ -292,19 +294,19 @@ try:
         schema_name=schema_name
     )
     if tenant_created:
-        print("TENANT_RECORD_CREATED")
+        log_info("TENANT_RECORD_CREATED")
     else:
-        print("TENANT_RECORD_EXISTS")
+        log_info("TENANT_RECORD_EXISTS")
 
     # Create PostgreSQL schema
     with connection.cursor() as cursor:
         cursor.execute("CREATE SCHEMA IF NOT EXISTS " + schema_name)
         cursor.execute("GRANT ALL ON SCHEMA " + schema_name + " TO " + connection.settings_dict['USER'])
-    print("TENANT_SCHEMA_CREATED")
+    log_info("TENANT_SCHEMA_CREATED")
 
     # Run tenant migrations (creates 217 reporting tables)
     call_command('migrate_schemas', schema_name=schema_name, verbosity=0)
-    print("TENANT_MIGRATIONS_COMPLETE")
+    log_info("TENANT_MIGRATIONS_COMPLETE")
 
     # STEP 2: Create provider
     customer, _ = Customer.objects.get_or_create(
@@ -322,7 +324,7 @@ try:
             "customer": customer
         }}
     )
-    print("PROVIDER_TYPE=" + provider_type_str)
+    log_info("PROVIDER_TYPE=" + provider_type_str)
 
     if created:
         # Create authentication with UUID and cluster_id for OCP
@@ -386,7 +388,7 @@ try:
     with connection.cursor() as cursor:
         sql = "INSERT INTO " + schema_name + ".reporting_tenant_api_provider (uuid, name, type, provider_id) VALUES (%s, %s, %s, %s) ON CONFLICT (uuid) DO NOTHING"
         cursor.execute(sql, (str(provider.uuid), provider.name, provider.type, str(provider.uuid)))
-    print("PROVIDER_SYNCED_TO_TENANT_SCHEMA=" + schema_name)
+    log_info("PROVIDER_SYNCED_TO_TENANT_SCHEMA=" + schema_name)
 
     # CRITICAL: Create api_sources entry for account polling
     # Celery's check_report_updates task queries api_sources to find accounts
@@ -451,14 +453,14 @@ try:
             org_id,
             org_id
         ])
-    print("SOURCES_ENTRY_CREATED_OR_UPDATED")
+    log_info("SOURCES_ENTRY_CREATED_OR_UPDATED")
 
-    print("PROVIDER_UUID=" + str(provider.uuid))
-    print("PROVIDER_NAME=" + provider.name)
+    log_info("PROVIDER_UUID=" + str(provider.uuid))
+    log_info("PROVIDER_NAME=" + provider.name)
 except Exception as e:
     import traceback
-    print("ERROR=" + str(e))
-    print("TRACEBACK=" + traceback.format_exc())
+    log_error("ERROR=" + str(e))
+    log_info("TRACEBACK=" + traceback.format_exc())
 '''
 
         # Execute in MASU pod
@@ -534,7 +536,7 @@ except Exception as e:
         Returns:
             Provider UUID or None if timeout
         """
-        print(f"  Waiting for Sources Listener to create provider (timeout: {timeout}s)...")
+        log_info(f"  Waiting for Sources Listener to create provider (timeout: {timeout}s)...")
         start_time = time.time()
         check_interval = 5
 
@@ -548,19 +550,19 @@ except Exception as e:
 
             if result and result[0] and result[0][0]:
                 koku_uuid, name, source_type, pending_update, pending_delete = result[0]
-                print(f"  ✓ Provider created by Sources Listener!")
-                print(f"    Name: {name}")
-                print(f"    Type: {source_type}")
-                print(f"    UUID: {koku_uuid}")
-                print(f"    Pending Update: {pending_update}")
-                print(f"    Pending Delete: {pending_delete}")
+                log_success(f"  ✓ Provider created by Sources Listener!")
+                log_info(f"    Name: {name}")
+                log_info(f"    Type: {source_type}")
+                log_info(f"    UUID: {koku_uuid}")
+                log_info(f"    Pending Update: {pending_update}")
+                log_info(f"    Pending Delete: {pending_delete}")
                 return str(koku_uuid)
 
             elapsed = int(time.time() - start_time)
-            print(f"  ⏳ Still waiting... ({elapsed}s elapsed)")
+            log_info(f"  ⏳ Still waiting... ({elapsed}s elapsed)")
             time.sleep(check_interval)
 
-        print(f"  ⚠️  Timeout waiting for provider creation")
+        log_warning(f"  ⚠️  Timeout waiting for provider creation")
         return None
 
     def create_provider(self,
@@ -604,7 +606,7 @@ except Exception as e:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             name = f"{provider_type} E2E Test {timestamp}"
 
-        print(f"\n📡 Using Sources API (Production Flow)")
+        log_info(f"\n📡 Using Sources API (Production Flow)")
 
         # Clean up ALL authentication records for this cluster_id to avoid MultipleObjectsReturned errors
         # This handles the case where previous test runs left multiple authentication records
@@ -620,11 +622,11 @@ except Exception as e:
                 """, (cluster_id,))
 
                 if providers_to_delete and len(providers_to_delete) > 0:
-                    print(f"  🧹 Cleaning up {len(providers_to_delete)} existing provider(s) for cluster {cluster_id}")
+                    log_info(f"  🧹 Cleaning up {len(providers_to_delete)} existing provider(s) for cluster {cluster_id}")
                     for provider_uuid, provider_name in providers_to_delete:
                         # Delete provider (will cascade to authentication via foreign key)
                         self.db.execute_query("DELETE FROM api_provider WHERE uuid = %s", (provider_uuid,))
-                        print(f"     ✓ Deleted provider {provider_name} ({provider_uuid})")
+                        log_success(f"     ✓ Deleted provider {provider_name} ({provider_uuid})")
 
                 # Clean up any remaining orphaned authentications
                 remaining_auths = self.db.execute_query("""
@@ -634,12 +636,12 @@ except Exception as e:
                 """, (cluster_id,))
 
                 if remaining_auths and len(remaining_auths) > 0:
-                    print(f"  🧹 Cleaning up {len(remaining_auths)} remaining authentication record(s)")
+                    log_info(f"  🧹 Cleaning up {len(remaining_auths)} remaining authentication record(s)")
                     for auth_id, auth_uuid in remaining_auths:
                         self.db.execute_query("DELETE FROM api_providerauthentication WHERE id = %s", (auth_id,))
-                        print(f"     ✓ Deleted authentication {auth_uuid}")
+                        log_success(f"     ✓ Deleted authentication {auth_uuid}")
             except Exception as e:
-                print(f"  ⚠️  Failed to clean up existing records: {e}")
+                log_warning(f"  ⚠️  Failed to clean up existing records: {e}")
                 # Continue anyway - this is a cleanup step, not critical
 
         if provider_type == 'OCP':
@@ -684,16 +686,16 @@ except Exception as e:
         Returns:
             Results dict
         """
-        print("\n" + "="*70)
-        print(f"Phase 3: Provider Setup ({provider_type})")
-        print("="*70 + "\n")
+        log_info("\n" + "="*70)
+        log_info(f"Phase 3: Provider Setup ({provider_type})")
+        log_info("="*70 + "\n")
 
         if skip:
-            print("⏭️  Skipped (--skip-provider)")
+            log_info("⏭️  Skipped (--skip-provider)")
             existing = self.get_existing_provider(provider_type=provider_type)
             if existing:
-                print(f"  ℹ️  Existing provider: {existing['name']}")
-                print(f"  ℹ️  UUID: {existing['uuid']}")
+                log_info(f"  ℹ️  Existing provider: {existing['name']}")
+                log_info(f"  ℹ️  UUID: {existing['uuid']}")
                 return {
                     'passed': True,
                     'skipped': True,
@@ -701,7 +703,7 @@ except Exception as e:
                     'provider_name': existing['name']
                 }
             else:
-                print("  ⚠️  No existing provider found")
+                log_warning("  ⚠️  No existing provider found")
                 return {
                     'passed': False,
                     'skipped': True,
@@ -709,15 +711,15 @@ except Exception as e:
                 }
 
         # Check for existing provider (for OCP, check by cluster_id for data isolation)
-        print("🔍 Checking for existing provider...")
+        log_info("🔍 Checking for existing provider...")
         if provider_type == 'OCP':
-            print(f"  ℹ️  Looking for provider with cluster_id: {cluster_id}")
+            log_info(f"  ℹ️  Looking for provider with cluster_id: {cluster_id}")
         existing = self.get_existing_provider(cluster_id=cluster_id if provider_type == 'OCP' else None, provider_type=provider_type)
 
         if existing:
-            print(f"  ✅ Provider exists: {existing['name']}")
-            print(f"  ℹ️  UUID: {existing['uuid']}")
-            print(f"  ℹ️  Active: {existing['active']}")
+            log_success(f"  ✅ Provider exists: {existing['name']}")
+            log_info(f"  ℹ️  UUID: {existing['uuid']}")
+            log_info(f"  ℹ️  Active: {existing['active']}")
 
             # Check if billing source is configured
             has_billing_source = self.db.execute_query("""
@@ -737,8 +739,8 @@ except Exception as e:
                 """, (existing['uuid'],))
 
                 if has_authentication and has_authentication[0] and has_authentication[0][0] is not None:
-                    print(f"  ✅ Billing source configured")
-                    print(f"  ✅ Authentication configured")
+                    log_success(f"  ✅ Billing source configured")
+                    log_success(f"  ✅ Authentication configured")
 
                     # For OCP, check if authentication has cluster_id
                     if provider_type == 'OCP':
@@ -753,7 +755,7 @@ except Exception as e:
                         else:
                             credentials = credentials_raw or {}
                         if not credentials or not credentials.get('cluster_id'):
-                            print(f"  ⚠️  OCP authentication missing cluster_id, updating...")
+                            log_warning(f"  ⚠️  OCP authentication missing cluster_id, updating...")
                             try:
                                 credentials = credentials or {}
                                 credentials['cluster_id'] = cluster_id
@@ -763,14 +765,14 @@ except Exception as e:
                                     SET credentials = %s::jsonb
                                     WHERE id = %s
                                 """, (json.dumps(credentials), auth_id))
-                                print(f"  ✅ Authentication updated with cluster_id: {cluster_id}")
+                                log_success(f"  ✅ Authentication updated with cluster_id: {cluster_id}")
                             except Exception as e:
-                                print(f"  ⚠️  Failed to update authentication: {e}")
+                                log_warning(f"  ⚠️  Failed to update authentication: {e}")
 
                     # CRITICAL: Verify tenant and sources entries exist (for idempotency)
                     # These are required for account polling but may be missing on existing providers
                     if self.k8s:
-                        print("\n🔍 Verifying tenant and sources configuration...")
+                        log_info("\n🔍 Verifying tenant and sources configuration...")
                         self._ensure_tenant_and_sources(existing['uuid'], existing['name'], provider_type)
 
                     return {
@@ -780,8 +782,8 @@ except Exception as e:
                         'provider_name': existing['name']
                     }
                 else:
-                    print(f"  ✅ Billing source configured")
-                    print(f"  ⚠️  Authentication missing, creating...")
+                    log_success(f"  ✅ Billing source configured")
+                    log_warning(f"  ⚠️  Authentication missing, creating...")
                     # Create authentication for existing provider
                     try:
                         import uuid as uuid_lib
@@ -815,11 +817,11 @@ except Exception as e:
                             RETURNING uuid
                         """, (authentication_id, existing['uuid']))
 
-                        print(f"  ✅ Authentication created and linked")
+                        log_success(f"  ✅ Authentication created and linked")
 
                         # Verify tenant and sources entries exist
                         if self.k8s:
-                            print("\n🔍 Verifying tenant and sources configuration...")
+                            log_info("\n🔍 Verifying tenant and sources configuration...")
                             self._ensure_tenant_and_sources(existing['uuid'], existing['name'], provider_type)
 
                         return {
@@ -830,13 +832,13 @@ except Exception as e:
                             'provider_name': existing['name']
                         }
                     except Exception as e:
-                        print(f"  ❌ Failed to create authentication: {e}")
+                        log_error(f"  ❌ Failed to create authentication: {e}")
                         return {
                             'passed': False,
                             'error': f'Authentication creation failed: {e}'
                         }
             else:
-                print(f"  ⚠️  Billing source missing, creating...")
+                log_warning(f"  ⚠️  Billing source missing, creating...")
                 # Create billing source for existing provider
                 try:
                     import uuid as uuid_lib
@@ -870,7 +872,7 @@ except Exception as e:
                         RETURNING uuid
                     """, (billing_source_id, existing['uuid']))
 
-                    print(f"  ✅ Billing source created and linked")
+                    log_success(f"  ✅ Billing source created and linked")
 
                     # Now check and create authentication if missing
                     has_authentication = self.db.execute_query("""
@@ -881,7 +883,7 @@ except Exception as e:
                     """, (existing['uuid'],))
 
                     if not has_authentication or not has_authentication[0] or has_authentication[0][0] is None:
-                        print(f"  ⚠️  Authentication missing, creating...")
+                        log_warning(f"  ⚠️  Authentication missing, creating...")
                         # Create authentication for existing provider
                         try:
                             import uuid as uuid_lib
@@ -921,9 +923,9 @@ except Exception as e:
                                 RETURNING uuid
                             """, (authentication_id, existing['uuid']))
 
-                            print(f"  ✅ Authentication created and linked")
+                            log_success(f"  ✅ Authentication created and linked")
                         except Exception as e:
-                            print(f"  ❌ Failed to create authentication: {e}")
+                            log_error(f"  ❌ Failed to create authentication: {e}")
                             return {
                                 'passed': False,
                                 'error': f'Authentication creation failed: {e}'
@@ -934,7 +936,7 @@ except Exception as e:
                             import json
                             auth_id, credentials = has_authentication[0]
                             if not credentials or not credentials.get('cluster_id'):
-                                print(f"  ⚠️  OCP authentication missing cluster_id, updating...")
+                                log_warning(f"  ⚠️  OCP authentication missing cluster_id, updating...")
                                 try:
                                     credentials = credentials or {}
                                     credentials['cluster_id'] = cluster_id
@@ -943,13 +945,13 @@ except Exception as e:
                                         SET credentials = %s::jsonb
                                         WHERE id = %s
                                     """, (json.dumps(credentials), auth_id))
-                                    print(f"  ✅ Authentication updated with cluster_id")
+                                    log_success(f"  ✅ Authentication updated with cluster_id")
                                 except Exception as e:
-                                    print(f"  ⚠️  Failed to update authentication: {e}")
+                                    log_warning(f"  ⚠️  Failed to update authentication: {e}")
 
                     # Verify tenant and sources entries exist
                     if self.k8s:
-                        print("\n🔍 Verifying tenant and sources configuration...")
+                        log_info("\n🔍 Verifying tenant and sources configuration...")
                         self._ensure_tenant_and_sources(existing['uuid'], existing['name'], provider_type)
 
                     return {
@@ -960,7 +962,7 @@ except Exception as e:
                         'provider_name': existing['name']
                     }
                 except Exception as e:
-                    print(f"  ❌ Failed to create billing source: {e}")
+                    log_error(f"  ❌ Failed to create billing source: {e}")
                     return {
                         'passed': False,
                         'error': f'Billing source creation failed: {e}'
@@ -972,16 +974,16 @@ except Exception as e:
             provider_name = f"E2E Test OCP Source {cluster_id.replace('test-cluster-', '')}"
         else:
             provider_name = f"{provider_type} Test Provider E2E"
-        print(f"\n📝 Creating new {provider_type} provider...")
+        log_info(f"\n📝 Creating new {provider_type} provider...")
         try:
             provider_uuid = self.create_provider(
                 name=provider_name,
                 provider_type=provider_type,
                 cluster_id=cluster_id
             )
-            print(f"  ✅ {provider_type} provider created")
-            print(f"  ℹ️  Name: {provider_name}")
-            print(f"  ℹ️  UUID: {provider_uuid}")
+            log_success(f"  ✅ {provider_type} provider created")
+            log_info(f"  ℹ️  Name: {provider_name}")
+            log_info(f"  ℹ️  UUID: {provider_uuid}")
 
             return {
                 'passed': True,
@@ -991,7 +993,7 @@ except Exception as e:
                 'provider_type': provider_type
             }
         except Exception as e:
-            print(f"  ❌ Provider creation failed: {e}")
+            log_error(f"  ❌ Provider creation failed: {e}")
             return {
                 'passed': False,
                 'error': str(e)

@@ -8,6 +8,8 @@ Validates that:
 4. Required Kafka topics exist
 """
 
+from ..logging import log_debug, log_info, log_success, log_warning, log_error
+
 import time
 import json
 import subprocess
@@ -29,7 +31,7 @@ class KafkaValidationPhase:
         Returns:
             Dict with status and pod information
         """
-        print(f"\n🔍 Checking Kafka cluster in namespace '{self.kafka_namespace}'...")
+        log_info(f"\n🔍 Checking Kafka cluster in namespace '{self.kafka_namespace}'...")
 
         try:
             # Check for Kafka pods
@@ -72,7 +74,7 @@ class KafkaValidationPhase:
                     'total_pods': total_pods
                 }
 
-            print(f"  ✅ Kafka cluster is healthy: {total_pods} pod(s) running")
+            log_success(f"  ✅ Kafka cluster is healthy: {total_pods} pod(s) running")
 
             return {
                 'success': True,
@@ -93,7 +95,7 @@ class KafkaValidationPhase:
         Returns:
             Dict with status and pod information
         """
-        print(f"\n🔍 Checking Kafka listener pod in namespace '{self.namespace}'...")
+        log_info(f"\n🔍 Checking Kafka listener pod in namespace '{self.namespace}'...")
 
         try:
             # Get listener pod (namespace already set in k8s client)
@@ -151,7 +153,7 @@ class KafkaValidationPhase:
                     'ready': False
                 }
 
-            print(f"  ✅ Listener pod is running: {pod_name}")
+            log_success(f"  ✅ Listener pod is running: {pod_name}")
 
             return {
                 'success': True,
@@ -172,7 +174,7 @@ class KafkaValidationPhase:
         Returns:
             Dict with status and connection information
         """
-        print(f"\n🔍 Checking Kafka connectivity from listener pod...")
+        log_info(f"\n🔍 Checking Kafka connectivity from listener pod...")
 
         try:
             # Get listener pod name
@@ -223,7 +225,7 @@ class KafkaValidationPhase:
                 }
 
             if kafka_connected:
-                print(f"  ✅ Listener successfully connected to Kafka")
+                log_success(f"  ✅ Listener successfully connected to Kafka")
                 return {
                     'success': True,
                     'pod_name': pod_name,
@@ -231,7 +233,7 @@ class KafkaValidationPhase:
                 }
             else:
                 # No explicit connection, but no errors either - check readiness
-                print(f"  ⚠️  No explicit Kafka connection log found (checking readiness...)")
+                log_warning(f"  ⚠️  No explicit Kafka connection log found (checking readiness...)")
                 return {
                     'success': True,
                     'pod_name': pod_name,
@@ -251,7 +253,7 @@ class KafkaValidationPhase:
         Returns:
             Dict with status and topic information
         """
-        print(f"\n🔍 Checking Kafka topics...")
+        log_info(f"\n🔍 Checking Kafka topics...")
 
         try:
             # Get Kafka pod to run topic list command
@@ -295,10 +297,10 @@ class KafkaValidationPhase:
             has_required_topic = required_topic in topics
 
             if has_required_topic:
-                print(f"  ✅ Required topic '{required_topic}' exists")
+                log_success(f"  ✅ Required topic '{required_topic}' exists")
             else:
-                print(f"  ⚠️  Required topic '{required_topic}' not found")
-                print(f"     Available topics: {', '.join(topics[:5])}...")
+                log_warning(f"  ⚠️  Required topic '{required_topic}' not found")
+                log_info(f"     Available topics: {', '.join(topics[:5])}...")
 
             return {
                 'success': True,
@@ -320,9 +322,9 @@ class KafkaValidationPhase:
         Returns:
             Dict with overall validation status
         """
-        print("\n" + "="*80)
-        print("Phase 2.5: Kafka Integration Validation")
-        print("="*80)
+        log_info("\n" + "="*80)
+        log_info("Phase 2.5: Kafka Integration Validation")
+        log_info("="*80)
 
         results = {
             'phase': 'kafka_validation',
@@ -336,19 +338,19 @@ class KafkaValidationPhase:
         # 1. Check Kafka cluster
         results['kafka_cluster'] = self.check_kafka_cluster()
         if not results['kafka_cluster'].get('success'):
-            print(f"\n❌ Kafka cluster check failed: {results['kafka_cluster'].get('error')}")
+            log_error(f"\n❌ Kafka cluster check failed: {results['kafka_cluster'].get('error')}")
             return results
 
         # 2. Check listener pod
         results['listener_pod'] = self.check_listener_pod()
         if not results['listener_pod'].get('success'):
-            print(f"\n❌ Listener pod check failed: {results['listener_pod'].get('error')}")
+            log_error(f"\n❌ Listener pod check failed: {results['listener_pod'].get('error')}")
             return results
 
         # 3. Check Kafka connectivity
         results['kafka_connectivity'] = self.check_kafka_connectivity()
         if not results['kafka_connectivity'].get('success'):
-            print(f"\n❌ Kafka connectivity check failed: {results['kafka_connectivity'].get('error')}")
+            log_error(f"\n❌ Kafka connectivity check failed: {results['kafka_connectivity'].get('error')}")
             # Don't return here - continue to check topics
 
         # 4. Check Kafka topics
@@ -362,9 +364,9 @@ class KafkaValidationPhase:
         ])
 
         if results['overall_success']:
-            print("\n✅ Kafka validation completed successfully!")
+            log_success("\n✅ Kafka validation completed successfully!")
         else:
-            print("\n⚠️  Kafka validation completed with warnings")
+            log_warning("\n⚠️  Kafka validation completed with warnings")
 
         return results
 

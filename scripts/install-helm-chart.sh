@@ -5,6 +5,21 @@
 # By default, it downloads and uses the latest release from GitHub
 # Set USE_LOCAL_CHART=true to use local chart source instead
 # Requires: kubectl/oc configured with target cluster context, helm installed, curl, jq
+#
+# Environment Variables:
+#   LOG_LEVEL       - Control output verbosity (ERROR|WARN|INFO|DEBUG, default: WARN)
+#   USE_LOCAL_CHART - Use local chart instead of GitHub release (true|false, default: false)
+#   NAMESPACE       - Target namespace (default: cost-onprem)
+#
+# Examples:
+#   # Default (clean output with successes/warnings/errors only)
+#   ./install-helm-chart.sh
+#
+#   # Detailed output with all info messages
+#   LOG_LEVEL=INFO ./install-helm-chart.sh
+#
+#   # Quiet (errors only)
+#   LOG_LEVEL=ERROR ./install-helm-chart.sh
 
 set -e  # Exit on any error
 
@@ -18,6 +33,14 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Logging configuration
+# LOG_LEVEL controls output verbosity:
+#   ERROR - Only show errors (quietest)
+#   WARN  - Show errors, warnings, and successes (default, clean output)
+#   INFO  - Show errors, warnings, successes, and info messages (detailed)
+#   DEBUG - Show everything (most verbose)
+LOG_LEVEL=${LOG_LEVEL:-WARN}
+
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-cost-onprem}
@@ -30,21 +53,38 @@ LOCAL_CHART_PATH=${LOCAL_CHART_PATH:-../cost-onprem}  # Path to local chart dire
 STRIMZI_NAMESPACE=${STRIMZI_NAMESPACE:-}  # If set, use existing Strimzi operator in this namespace
 KAFKA_NAMESPACE=${KAFKA_NAMESPACE:-}  # If set, use existing Kafka cluster in this namespace
 
-echo_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+# Logging functions with level-based filtering
+log_debug() {
+    [[ "$LOG_LEVEL" == "DEBUG" ]] && echo -e "${BLUE}[DEBUG]${NC} $1"
+    return 0
 }
 
-echo_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+log_info() {
+    [[ "$LOG_LEVEL" =~ ^(INFO|DEBUG)$ ]] && echo -e "${BLUE}[INFO]${NC} $1"
+    return 0
 }
 
-echo_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+log_success() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "${GREEN}[SUCCESS]${NC} $1"
+    return 0
 }
 
-echo_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+log_warning() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "${YELLOW}[WARNING]${NC} $1"
+    return 0
 }
+
+log_error() {
+    # Errors are always shown regardless of log level
+    echo -e "${RED}[ERROR]${NC} $1" >&2
+    return 0
+}
+
+# Backward compatibility aliases (to be replaced incrementally)
+echo_info() { log_info "$1"; }
+echo_success() { log_success "$1"; }
+echo_warning() { log_warning "$1"; }
+echo_error() { log_error "$1"; }
 
 # Function to check if a command exists
 command_exists() {
