@@ -90,8 +90,26 @@ spec:
                 path: combine-ca.sh
                 mode: 0755
         - name: ca-source
-          configMap:
-            name: {{ include "cost-onprem.fullname" . }}-ca-scripts
+          projected:
+            sources:
+              - configMap:
+                  name: {{ include "cost-onprem.fullname" . }}-ca-scripts
+                  items:
+                    - key: keycloak-ca.crt
+                      path: keycloak-ca.crt
+              - configMap:
+                  name: {{ include "cost-onprem.fullname" . }}-service-ca
+                  items:
+                    - key: service-ca.crt
+                      path: service-ca.crt
+              # OpenShift ingress CA certificate (created by deployment script)
+              # This is needed when Keycloak is accessed via external route
+              - secret:
+                  name: keycloak-ca-cert
+                  items:
+                    - key: ca.crt
+                      path: keycloak-ingress-ca.crt
+                  optional: true
         - name: ca-bundle
           emptyDir: {}
         # Temporary directory for Envoy (required with read-only root filesystem)

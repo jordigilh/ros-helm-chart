@@ -27,6 +27,7 @@ spec:
         {{- if .Values.kafka.bootstrapServers }}
         {{- include "cost-onprem.initContainer.waitForKafka" . | nindent 8 }}
         {{- end }}
+        {{- include "cost-onprem.initContainer.prepareCABundle" . | nindent 8 }}
       serviceAccountName: {{ .Values.ingress.serviceAccount.name }}
       containers:
         # Ingress service - receives pre-authenticated traffic from centralized gateway
@@ -95,6 +96,11 @@ spec:
             - name: INGRESS_LOGLEVEL
               value: {{ .Values.ingress.logging.level | upper | quote }}
 
+            # SSL_CERT_FILE is used by Go's crypto/x509 to load CA certificates
+            # Points to combined bundle with system CAs + OpenShift cluster CA + Service CA
+            - name: SSL_CERT_FILE
+              value: "/etc/ssl/certs/ca-bundle/ca-bundle.crt"
+
           livenessProbe:
             httpGet:
               path: /
@@ -117,17 +123,23 @@ spec:
             - name: aws-config
               mountPath: /etc/aws
               readOnly: true
-            - name: service-ca-cert
-              mountPath: /etc/ssl/certs/service-ca.crt
-              subPath: service-ca.crt
+            - name: ca-bundle
+              mountPath: /etc/ssl/certs/ca-bundle
               readOnly: true
       volumes:
         - name: aws-config
           configMap:
             name: {{ include "cost-onprem.fullname" . }}-aws-config
-        - name: service-ca-cert
+        # Volumes for CA bundle preparation
+        - name: ca-scripts
+          configMap:
+            name: {{ include "cost-onprem.fullname" . }}-ca-combine
+            items:
+              - key: combine-ca.sh
+                path: combine-ca.sh
+                mode: 0755
+        - name: ca-source
           configMap:
             name: {{ include "cost-onprem.fullname" . }}-service-ca
-            items:
-              - key: service-ca.crt
-                path: service-ca.crt
+        - name: ca-bundle
+          emptyDir: {}
