@@ -419,12 +419,17 @@ def register_source(
     source_name: Optional[str] = None,
     bucket: str = DEFAULT_S3_BUCKET,
     container: str = "ingress",
+    max_retries: int = 5,
+    initial_retry_delay: int = 5,
 ) -> SourceRegistration:
     """Register a source in Koku Sources API.
     
     This creates:
     1. A source with source_ref set to cluster_id (critical for matching incoming data)
     2. An application linked to cost-management with cluster_id in extra
+    
+    Note: On first run for a new org, tenant schema creation can be slow,
+    so this function uses retry logic with exponential backoff.
     
     Args:
         namespace: Kubernetes namespace
@@ -437,6 +442,8 @@ def register_source(
         source_name: Optional custom source name (defaults to e2e-source-{cluster_id[:8]})
         bucket: S3 bucket name
         container: Container name in the pod (default: "ingress")
+        max_retries: Maximum number of retry attempts (default: 5)
+        initial_retry_delay: Initial delay between retries in seconds (default: 5)
     
     Returns:
         SourceRegistration with source details
@@ -463,31 +470,68 @@ def register_source(
         "source_ref": cluster_id,
     })
     
-    result = exec_in_pod(
-        namespace,
-        pod,
-        [
-            "curl", "-s", "-X", "POST",
-            f"{api_writes_url}/sources",
-            "-H", "Content-Type: application/json",
-            "-H", f"X-Rh-Identity: {rh_identity_header}",
-            "-d", source_payload,
-        ],
-        container=container,
-    )
+    # Retry logic for source creation
+    # First request may fail due to tenant schema creation (slow operation)
+    retry_delay = initial_retry_delay
+    source_id = None
+    last_error = None
     
-    if not result:
-        raise RuntimeError("Source creation returned no response")
-    
-    try:
-        source_data = json.loads(result)
-    except json.JSONDecodeError:
-        raise RuntimeError(f"Source creation returned invalid JSON: {result}")
-    
-    source_id = source_data.get("id")
+    for attempt in range(max_retries):
+        if attempt > 0:
+            time.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, 30)  # Exponential backoff, max 30s
+        
+        result = exec_in_pod(
+            namespace,
+            pod,
+            [
+                "curl", "-s", "-w", "\n__HTTP_CODE__:%{http_code}", "-X", "POST",
+                f"{api_writes_url}/sources",
+                "-H", "Content-Type: application/json",
+                "-H", f"X-Rh-Identity: {rh_identity_header}",
+                "-d", source_payload,
+            ],
+            container=container,
+            timeout=120,  # Longer timeout for first request (schema creation)
+        )
+        
+        if not result:
+            last_error = "exec_in_pod returned None (curl failed or timed out)"
+            continue
+        
+        # Parse response and status code
+        http_code = None
+        if "__HTTP_CODE__:" in result:
+            body, http_code = result.rsplit("__HTTP_CODE__:", 1)
+            result = body.strip()
+            http_code = http_code.strip()
+        
+        if http_code and http_code not in ("200", "201"):
+            last_error = f"HTTP {http_code}: {result[:200]}"
+            # 5xx errors might be transient, retry
+            if http_code.startswith("5"):
+                continue
+            # 4xx errors (except 409 conflict) are not retryable
+            if http_code != "409":
+                break
+            continue
+        
+        try:
+            source_data = json.loads(result)
+            source_id = source_data.get("id")
+            if source_id:
+                break
+            else:
+                last_error = f"No 'id' in response: {result[:200]}"
+        except json.JSONDecodeError as e:
+            last_error = f"Invalid JSON: {result[:200]} - {e}"
     
     if not source_id:
-        raise RuntimeError(f"Source creation failed: {result}")
+        raise RuntimeError(
+            f"Source creation failed after {max_retries} attempts. "
+            f"Last error: {last_error}. "
+            f"pod={pod}, url={api_writes_url}/sources"
+        )
     
     # Create application with cluster_id in extra
     if app_type_id:
