@@ -109,7 +109,7 @@ def cleanup_old_cost_val_clusters(
             "DELETE FROM reporting_common_costusagereportmanifest WHERE cluster_id LIKE 'cost-val-%'"
         )
         
-        # Get all schemas and clean summary tables
+        # Get all schemas and clean summary tables + tenant provider mappings
         schemas = execute_db_query(
             namespace, db_pod, "koku", "koku",
             "SELECT DISTINCT schema_name FROM api_customer WHERE schema_name IS NOT NULL"
@@ -126,6 +126,30 @@ def cleanup_old_cost_val_clusters(
                         )
                     except Exception:
                         pass  # Table might not exist in all schemas
+                    
+                    # Delete tenant-provider mappings (FK constraint on api_provider)
+                    try:
+                        execute_db_query(
+                            namespace, db_pod, "koku", "koku",
+                            f"""
+                            DELETE FROM {schema}.reporting_tenant_api_provider 
+                            WHERE provider_id IN (
+                                SELECT uuid FROM public.api_provider 
+                                WHERE name LIKE 'cost-validation%'
+                            )
+                            """
+                        )
+                    except Exception:
+                        pass  # Table might not exist in all schemas
+        
+        # Delete providers (after FK references are removed)
+        try:
+            execute_db_query(
+                namespace, db_pod, "koku", "koku",
+                "DELETE FROM public.api_provider WHERE name LIKE 'cost-validation%'"
+            )
+        except Exception:
+            pass  # May fail if no matching providers
                         
     except Exception as e:
         print(f"       Warning: Could not clean database records: {e}")
@@ -203,8 +227,16 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
     3. Uploads data via JWT-authenticated ingress
     4. Waits for Koku to process and populate summary tables
     5. Yields the test context
-    6. Cleans up all test data on teardown
+    6. Cleans up all test data on teardown (if E2E_CLEANUP_AFTER=true)
+    
+    Environment Variables:
+    - E2E_CLEANUP_BEFORE: Run cleanup before tests (default: true)
+    - E2E_CLEANUP_AFTER: Run cleanup after tests (default: true)
     """
+    # Check cleanup settings
+    cleanup_before = os.environ.get("E2E_CLEANUP_BEFORE", "true").lower() == "true"
+    cleanup_after = os.environ.get("E2E_CLEANUP_AFTER", "true").lower() == "true"
+    
     # Check NISE availability
     if not ensure_nise_available():
         pytest.skip("NISE not available and could not be installed")
@@ -237,14 +269,19 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
         print("COST VALIDATION TEST SETUP (Self-Contained)")
         print(f"{'='*60}")
         print(f"  Cluster ID: {cluster_id}")
+        print(f"  Cleanup before: {cleanup_before}")
+        print(f"  Cleanup after: {cleanup_after}")
         
         # Pre-test cleanup: Remove any leftover cost-val clusters from previous runs
-        print("\n  [0/5] Pre-test cleanup...")
-        cleanup_old_cost_val_clusters(
+        if cleanup_before:
+            print("\n  [0/5] Pre-test cleanup...")
+            cleanup_old_cost_val_clusters(
             cluster_config.namespace, db_pod, ingress_pod,
             api_reads_url, api_writes_url, rh_identity
         )
-        print("       Cleanup complete")
+            print("       Cleanup complete")
+        else:
+            print("\n  [0/5] Pre-test cleanup SKIPPED (E2E_CLEANUP_BEFORE=false)")
         
         # Step 1: Generate NISE data
         # Use 2 days ago to yesterday to get exactly 24 hours of data
@@ -351,30 +388,38 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
         }
         
     finally:
-        # Cleanup
+        # Cleanup (only if enabled)
         print(f"\n{'='*60}")
-        print("COST VALIDATION TEST CLEANUP")
-        print(f"{'='*60}")
-        
-        if source_registration:
-            if delete_source(
-                cluster_config.namespace,
-                ingress_pod,
-                api_writes_url,
-                rh_identity,
+        if cleanup_after:
+            print("COST VALIDATION TEST CLEANUP")
+            print(f"{'='*60}")
+            
+            if source_registration:
+                if delete_source(
+                    cluster_config.namespace,
+                    ingress_pod,
+                    api_writes_url,
+                    rh_identity,
                 source_registration.source_id,
-                container="ingress",
-            ):
-                print(f"  Deleted source {source_registration.source_id}")
-            else:
-                print(f"  Warning: Could not delete source {source_registration.source_id}")
+                    container="ingress",
+                ):
+                    print(f"  Deleted source {source_registration.source_id}")
+                else:
+                    print(f"  Warning: Could not delete source {source_registration.source_id}")
+            
+            if db_pod:
+                if cleanup_database_records(cluster_config.namespace, db_pod, cluster_id):
+                    print("  Cleaned up database records")
+                else:
+                    print("  Warning: Could not clean database records")
+        else:
+            print("COST VALIDATION TEST CLEANUP SKIPPED (E2E_CLEANUP_AFTER=false)")
+            print(f"{'='*60}")
+            print(f"  Data preserved for cluster: {cluster_id}")
+            if source_registration:
+                print(f"  Source ID: {source_registration.source_id}")
         
-        if db_pod:
-            if cleanup_database_records(cluster_config.namespace, db_pod, cluster_id):
-                print("  Cleaned up database records")
-            else:
-                print("  Warning: Could not clean database records")
-        
+        # Always clean up temp directory (local files only)
         if temp_dir and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir, ignore_errors=True)
             print("  Cleaned up temp directory")

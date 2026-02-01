@@ -5,6 +5,8 @@ Kubernetes Client
 Native Kubernetes API client - no kubectl subprocess calls.
 """
 
+from ..logging import log_debug, log_info, log_success, log_warning, log_error
+
 import time
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Iterator
@@ -74,7 +76,7 @@ class KubernetesClient:
             # Look for pod with database component label (Helm chart uses 'database')
             return self.get_pod_by_component("database")
         except Exception as e:
-            print(f"  ⚠️  Failed to discover PostgreSQL pod: {e}")
+            log_warning(f"  ⚠️  Failed to discover PostgreSQL pod: {e}")
             return None
 
     def get_pod_health(self) -> Dict[str, int]:
@@ -227,7 +229,7 @@ class KubernetesClient:
                             'key': env.value_from.secret_key_ref.key
                         }
         except Exception as e:
-            print(f"  ⚠️  Failed to discover database secret: {e}")
+            log_warning(f"  ⚠️  Failed to discover database secret: {e}")
 
         return None
 

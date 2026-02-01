@@ -5,6 +5,19 @@
 # for JWT authentication with the Cost Management Metrics Operator
 #
 # RHBK uses the Keycloak Operator API: k8s.keycloak.org/v2alpha1
+#
+# Environment Variables:
+#   LOG_LEVEL - Control output verbosity (ERROR|WARN|INFO|DEBUG, default: WARN)
+#
+# Examples:
+#   # Default (clean output)
+#   ./deploy-rhbk.sh
+#
+#   # Detailed output
+#   LOG_LEVEL=INFO ./deploy-rhbk.sh
+#
+#   # Quiet (errors only)
+#   LOG_LEVEL=ERROR ./deploy-rhbk.sh
 
 set -e  # Exit on any error
 
@@ -14,6 +27,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Logging configuration
+LOG_LEVEL=${LOG_LEVEL:-WARN}
 
 # Configuration
 NAMESPACE=${RHBK_NAMESPACE:-keycloak}
@@ -32,29 +48,50 @@ OAUTH_CALLBACK=""
 CONSOLE_URL=""
 UI_BASE_URL=${COST_MGMT_UI_BASE_URL:-}  # Can be set via COST_MGMT_UI_BASE_URL, otherwise auto-detected
 
-echo_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+# Logging functions with level-based filtering
+log_debug() {
+    [[ "$LOG_LEVEL" == "DEBUG" ]] && echo -e "${BLUE}[DEBUG]${NC} $1"
+    return 0
 }
 
-echo_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+log_info() {
+    [[ "$LOG_LEVEL" =~ ^(INFO|DEBUG)$ ]] && echo -e "${BLUE}[INFO]${NC} $1"
+    return 0
 }
 
-echo_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+log_success() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "${GREEN}[SUCCESS]${NC} $1"
+    return 0
 }
 
-echo_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+log_warning() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "${YELLOW}[WARNING]${NC} $1"
+    return 0
 }
 
-echo_header() {
-    echo ""
-    echo -e "${BLUE}============================================${NC}"
-    echo -e "${BLUE} $1${NC}"
-    echo -e "${BLUE}============================================${NC}"
-    echo ""
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1" >&2
+    return 0
 }
+
+log_header() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && {
+        echo ""
+        echo -e "${BLUE}============================================${NC}"
+        echo -e "${BLUE} $1${NC}"
+        echo -e "${BLUE}============================================${NC}"
+        echo ""
+    }
+    return 0
+    return 0
+}
+
+# Backward compatibility aliases
+echo_info() { log_info "$1"; }
+echo_success() { log_success "$1"; }
+echo_warning() { log_warning "$1"; }
+echo_error() { log_error "$1"; }
+echo_header() { log_header "$1"; }
 
 # Function to check prerequisites
 check_prerequisites() {

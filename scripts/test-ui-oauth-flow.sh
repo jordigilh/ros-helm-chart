@@ -7,6 +7,9 @@
 #   ./test-ui-oauth-flow.sh                    # Use default test user
 #   ./test-ui-oauth-flow.sh -u user -p pass    # Custom credentials
 #   ./test-ui-oauth-flow.sh -v                 # Verbose output
+#
+# Environment Variables:
+#   LOG_LEVEL - Control output verbosity (ERROR|WARN|INFO|DEBUG, default: WARN)
 
 # Color codes
 RED='\033[0;31m'
@@ -14,6 +17,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
+
+# Logging configuration
+LOG_LEVEL=${LOG_LEVEL:-WARN}
 
 # Configuration
 NAMESPACE=${NAMESPACE:-cost-onprem}
@@ -39,10 +45,30 @@ usage() {
     echo "  -h, --help               Show this help"
 }
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_pass() { echo -e "${GREEN}[PASS]${NC} $1"; TESTS_PASSED=$((TESTS_PASSED + 1)); }
-log_fail() { echo -e "${RED}[FAIL]${NC} $1"; TESTS_FAILED=$((TESTS_FAILED + 1)); }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+# Logging functions with level-based filtering
+log_debug() {
+    [[ "$LOG_LEVEL" == "DEBUG" ]] && echo -e "${BLUE}[DEBUG]${NC} $1"
+    return 0
+}
+
+log_info() {
+    [[ "$LOG_LEVEL" =~ ^(INFO|DEBUG)$ ]] && echo -e "${BLUE}[INFO]${NC} $1"
+    return 0
+}
+
+log_pass() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "${GREEN}[PASS]${NC} $1"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+}
+
+log_fail() {
+    echo -e "${RED}[FAIL]${NC} $1" >&2
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+}
+
+log_warn() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "${YELLOW}[WARN]${NC} $1"
+}
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do

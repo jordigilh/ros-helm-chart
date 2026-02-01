@@ -5,6 +5,8 @@ Phase 5-6: Data Processing
 Trigger and monitor MASU data processing.
 """
 
+from ..logging import log_debug, log_info, log_success, log_warning, log_error
+
 import time
 from typing import Dict
 
@@ -62,12 +64,12 @@ django.setup()
 from masu.celery.tasks import check_report_updates
 try:
     result = check_report_updates.delay()
-    print(f'TASK_ID={result.id}')
-    print(f'TASK_NAME=check_report_updates')
+    log_info(f'TASK_ID={result.id}')
+    log_info(f'TASK_NAME=check_report_updates')
 except Exception as e:
     import traceback
-    print(f'ERROR={e}')
-    print(f'TRACEBACK={traceback.format_exc()}')
+    log_error(f'ERROR={e}')
+    log_info(f'TRACEBACK={traceback.format_exc()}')
 """
 
             output = self.k8s.python_exec(masu_pod, python_code)
@@ -120,7 +122,7 @@ except Exception as e:
             result = self.k8s.postgres_exec(self.postgres_pod, self.database, sql)
             return int(result) if result and result.strip() else 0
         except Exception as e:
-            print(f"  ❓ Status check error: {str(e)[:50]}")
+            log_info(f"  ❓ Status check error: {str(e)[:50]}")
             return 0
 
     def fix_stuck_reports(self) -> Dict:
@@ -195,7 +197,7 @@ except Exception as e:
         Returns:
             Dict with population status and stability metrics
         """
-        print(f"\n📊 Monitoring summary table population (timeout: {timeout}s, stability: {stability_window}s)...")
+        log_info(f"\n📊 Monitoring summary table population (timeout: {timeout}s, stability: {stability_window}s)...")
 
         start_time = time.time()
         last_count = 0
@@ -211,7 +213,7 @@ except Exception as e:
             if current_count > 0:
                 if current_count != last_count:
                     schema = summary_result.get('schema', f"org{self.org_id}")
-                    print(f"  [{elapsed:2d}s] 📊 Summary data detected: {current_count} rows (schema: {schema})")
+                    log_info(f"  [{elapsed:2d}s] 📊 Summary data detected: {current_count} rows (schema: {schema})")
 
                     # Show initial progress sample
                     self._show_progress_sample(summary_result, current_count, elapsed)
@@ -225,13 +227,13 @@ except Exception as e:
             else:
                 # Still waiting for data
                 if elapsed % 15 == 0:  # Print every 15s
-                    print(f"  [{elapsed:2d}s] ⏳ Waiting for summary data...")
+                    log_info(f"  [{elapsed:2d}s] ⏳ Waiting for summary data...")
 
             time.sleep(5)
 
         # Timeout waiting for initial data
         elapsed = int(time.time() - start_time)
-        print(f"  [{elapsed:2d}s] ⏱️  Timeout waiting for summary data to appear")
+        log_info(f"  [{elapsed:2d}s] ⏱️  Timeout waiting for summary data to appear")
         return {'has_data': False, 'timeout': True, 'row_count': last_count, 'phase': 'data_detection'}
 
     def _monitor_stability(self, start_time: float, total_timeout: int, stability_window: int,
@@ -252,7 +254,7 @@ except Exception as e:
         Returns:
             Dict with completion status and stability metrics
         """
-        print(f"  📊 Entering stability monitoring phase (window: {stability_window}s, checks: {stability_checks})")
+        log_info(f"  📊 Entering stability monitoring phase (window: {stability_window}s, checks: {stability_checks})")
 
         stable_start = None
         stable_count = 0
@@ -271,7 +273,7 @@ except Exception as e:
                 if stable_start is None:
                     stable_start = time.time()
                     stable_count = 1
-                    print(f"  [{elapsed:2d}s] 🔒 Row count stable at {current_count}, monitoring for {stability_window}s...")
+                    log_info(f"  [{elapsed:2d}s] 🔒 Row count stable at {current_count}, monitoring for {stability_window}s...")
                 else:
                     stable_duration = time.time() - stable_start
                     stable_count += 1
@@ -280,7 +282,7 @@ except Exception as e:
                     if stable_duration >= stability_window and stable_count >= stability_checks:
                         # Verify completion before declaring success
                         if self._verify_completion(current_count, summary_result):
-                            print(f"  [{elapsed:2d}s] ✅ Summarization complete: {current_count} rows (stable for {stable_duration:.1f}s)")
+                            log_success(f"  [{elapsed:2d}s] ✅ Summarization complete: {current_count} rows (stable for {stable_duration:.1f}s)")
                             return {
                                 'has_data': True,
                                 'row_count': current_count,
@@ -291,21 +293,21 @@ except Exception as e:
                             }
                         else:
                             # Completion verification failed - reset stability and continue monitoring
-                            print(f"  [{elapsed:2d}s] ⚠️  Completion verification failed, continuing monitoring...")
+                            log_warning(f"  [{elapsed:2d}s] ⚠️  Completion verification failed, continuing monitoring...")
                             stable_start = None
                             stable_count = 0
                     else:
                         # Still monitoring for stability
                         if stable_count % 3 == 0:  # Log every 3rd check (every ~15s)
                             remaining = stability_window - stable_duration
-                            print(f"  [{elapsed:2d}s] ⏳ Stable for {stable_duration:.1f}s (need {remaining:.1f}s more)")
+                            log_info(f"  [{elapsed:2d}s] ⏳ Stable for {stable_duration:.1f}s (need {remaining:.1f}s more)")
 
             else:
                 # Count changed - reset stability tracking
                 if stable_start is not None:
-                    print(f"  [{elapsed:2d}s] 📈 Row count changed: {last_count} → {current_count}, resetting stability")
+                    log_info(f"  [{elapsed:2d}s] 📈 Row count changed: {last_count} → {current_count}, resetting stability")
                 else:
-                    print(f"  [{elapsed:2d}s] 📈 Row count increased: {last_count} → {current_count}")
+                    log_info(f"  [{elapsed:2d}s] 📈 Row count increased: {last_count} → {current_count}")
 
                 stable_start = None
                 stable_count = 0
@@ -325,7 +327,7 @@ except Exception as e:
         # Timeout during stability monitoring
         elapsed = int(time.time() - start_time)
         stable_duration = time.time() - stable_start if stable_start else 0
-        print(f"  [{elapsed:2d}s] ⏱️  Stability monitoring timeout")
+        log_info(f"  [{elapsed:2d}s] ⏱️  Stability monitoring timeout")
 
         return {
             'has_data': current_count > 0,
@@ -371,7 +373,7 @@ except Exception as e:
                     return False  # Still have incomplete manifests
             except Exception as e:
                 # If manifest check fails, continue with other verification
-                print(f"    ⚠️  Manifest completion check failed: {str(e)[:50]}...")
+                log_warning(f"    ⚠️  Manifest completion check failed: {str(e)[:50]}...")
 
         # Check 3: Verify we can actually query the summary data consistently
         try:
@@ -388,13 +390,13 @@ except Exception as e:
                 # Allow small variance (e.g., +/- 1 row) due to potential timing
                 count_match = abs(verification_count - row_count) <= 1
                 if not count_match:
-                    print(f"    ⚠️  Row count verification mismatch: {verification_count} vs {row_count}")
+                    log_warning(f"    ⚠️  Row count verification mismatch: {verification_count} vs {row_count}")
                     return False
             else:
                 return False  # Query failed
 
         except Exception as e:
-            print(f"    ⚠️  Data verification query failed: {str(e)[:50]}...")
+            log_warning(f"    ⚠️  Data verification query failed: {str(e)[:50]}...")
             return False  # If verification query fails, data might not be stable
 
         # Check 4: Verify data quality (optional - basic sanity check)
@@ -419,11 +421,11 @@ except Exception as e:
                 if int(unique_dates) == 0:
                     return False  # No date data
                 if int(rows_with_cpu) == 0:
-                    print(f"    ⚠️  No CPU usage data found (may be expected for some scenarios)")
+                    log_warning(f"    ⚠️  No CPU usage data found (may be expected for some scenarios)")
 
         except Exception as e:
             # Quality check is optional - don't fail on this
-            print(f"    ⚠️  Data quality check failed: {str(e)[:50]}...")
+            log_warning(f"    ⚠️  Data quality check failed: {str(e)[:50]}...")
 
         return True  # All verifications passed
 
@@ -459,7 +461,7 @@ except Exception as e:
             """, (self.cluster_id,))
 
             if sample:
-                print(f"    📊 OCP Usage Sample ({current_count} total rows):")
+                log_info(f"    📊 OCP Usage Sample ({current_count} total rows):")
                 for row in sample:
                     usage_start, namespace, cpu, memory, pods, items = row
                     # Convert string results from psql to float (kubectl exec returns strings)
@@ -468,12 +470,12 @@ except Exception as e:
                     cpu_str = f"{cpu_val:.2f}h"
                     mem_str = f"{mem_val:.2f}GB"
                     namespace_display = namespace[:20] + "..." if len(str(namespace)) > 23 else namespace
-                    print(f"       {usage_start} | {namespace_display:<23} | CPU: {cpu_str:>8} | Mem: {mem_str:>8} | {pods} pods | {items} items")
+                    log_info(f"       {usage_start} | {namespace_display:<23} | CPU: {cpu_str:>8} | Mem: {mem_str:>8} | {pods} pods | {items} items")
             else:
-                print(f"    📊 {current_count} rows populated (no sample data available)")
+                log_info(f"    📊 {current_count} rows populated (no sample data available)")
 
         except Exception as e:
-            print(f"    ⚠️  Could not fetch usage sample: {str(e)[:50]}")
+            log_warning(f"    ⚠️  Could not fetch usage sample: {str(e)[:50]}")
 
     def check_summary_status(self) -> Dict:
         """Check if OCP summary tables have been populated
@@ -592,9 +594,9 @@ except Exception as e:
 
     def monitor_processing(self) -> Dict:
         """Monitor data processing with detailed progress reporting"""
-        print(f"\n⏳ Monitoring processing (timeout: {self.timeout}s)...")
+        log_info(f"\n⏳ Monitoring processing (timeout: {self.timeout}s)...")
         if self.provider_uuid:
-            print(f"   Provider: {self.provider_uuid}\n")
+            log_info(f"   Provider: {self.provider_uuid}\n")
 
         start_count = self.check_processing_status()
         start_time = time.time()
@@ -612,12 +614,12 @@ except Exception as e:
 
             if elapsed >= self.timeout:
                 current_count = self.check_processing_status()
-                print(f"\n  ⏱️  Timeout reached ({self.timeout}s)")
+                log_info(f"\n  ⏱️  Timeout reached ({self.timeout}s)")
 
                 # For specific manifest monitoring, success = 1 (completed)
                 if monitoring_specific_manifest:
                     if current_count == 1:
-                        print(f"  ✅ Manifest completed")
+                        log_success(f"  ✅ Manifest completed")
                         return {
                             'success': True,
                             'timeout': True,
@@ -625,7 +627,7 @@ except Exception as e:
                             'elapsed': elapsed
                         }
                     else:
-                        print("  ⚠️  Manifest not completed")
+                        log_warning("  ⚠️  Manifest not completed")
                         return {
                             'success': False,
                             'timeout': True,
@@ -635,7 +637,7 @@ except Exception as e:
                 else:
                     # For general monitoring, check if count increased
                     if current_count > start_count:
-                        print(f"  ✅ Processing started ({current_count} manifests)")
+                        log_success(f"  ✅ Processing started ({current_count} manifests)")
                         return {
                             'success': True,
                             'timeout': True,
@@ -643,7 +645,7 @@ except Exception as e:
                             'elapsed': elapsed
                         }
                     else:
-                        print("  ⚠️  No manifests processed")
+                        log_warning("  ⚠️  No manifests processed")
                         return {
                             'success': False,
                             'timeout': True,
@@ -664,7 +666,7 @@ except Exception as e:
             periodic_update = iteration % 3 == 0
 
             if stage_changed or periodic_update:
-                print(f"\n  [{elapsed:3d}s] {current_stage}")
+                log_info(f"\n  [{elapsed:3d}s] {current_stage}")
 
                 # Print status breakdown
                 if 'status_breakdown' in details and details['status_breakdown']:
@@ -676,27 +678,27 @@ except Exception as e:
                         if count != prev_count and prev_count > 0:
                             delta = count - prev_count
                             delta_str = f" ({delta:+d})" if delta != 0 else ""
-                            print(f"         • {status_name}: {count} file(s){delta_str}")
+                            log_info(f"         • {status_name}: {count} file(s){delta_str}")
                         else:
-                            print(f"         • {status_name}: {count} file(s)")
+                            log_info(f"         • {status_name}: {count} file(s)")
 
                         last_file_count[status] = count
 
                 # Print active files with progress
                 if details.get('active_files'):
-                    print(f"         📂 Active files:")
+                    log_info(f"         📂 Active files:")
                     for file_row in details['active_files']:
                         name, status, started, elapsed_s = file_row
                         status_icon = "⬇️" if status == 2 else "⚙️"
                         elapsed_str = f"{int(elapsed_s)}s" if elapsed_s else "just started"
-                        print(f"            {status_icon} {name[:40]}... ({elapsed_str})")
+                        log_info(f"            {status_icon} {name[:40]}... ({elapsed_str})")
 
                 # Show error hint if files are stuck
                 if details.get('active_files'):
                     for file_row in details['active_files']:
                         _, status, _, elapsed_s = file_row
                         if elapsed_s and elapsed_s > 120:  # 2+ minutes
-                            print(f"         ⚠️  Warning: File processing for >2min (check worker logs/memory)")
+                            log_warning(f"         ⚠️  Warning: File processing for >2min (check worker logs/memory)")
                             break
 
                 last_stage = current_stage
@@ -711,8 +713,8 @@ except Exception as e:
                 is_complete = current_count > start_count
 
             if is_complete:
-                print(f"\n  ✅ Processing complete (elapsed: {elapsed}s)")
-                print(f"  ℹ️  Total manifests: {current_count}")
+                log_success(f"\n  ✅ Processing complete (elapsed: {elapsed}s)")
+                log_info(f"  ℹ️  Total manifests: {current_count}")
                 return {
                     'success': True,
                     'timeout': False,
@@ -726,9 +728,9 @@ except Exception as e:
         Returns:
             Results dict
         """
-        print("\n" + "="*70)
-        print("Phase 5-6: Data Processing")
-        print("="*70 + "\n")
+        log_info("\n" + "="*70)
+        log_info("Phase 5-6: Data Processing")
+        log_info("="*70 + "\n")
 
         # NOTE: We intentionally do NOT cleanup database records here anymore.
         # Doing so during fresh installs causes race conditions with the listener
@@ -737,70 +739,70 @@ except Exception as e:
 
         # Fix any stuck reports from previous runs (makes script work in existing environments)
         if self.provider_uuid:
-            print("🔧 Checking for stuck reports from previous runs...")
+            log_info("🔧 Checking for stuck reports from previous runs...")
             fix_result = self.fix_stuck_reports()
 
             if 'error' in fix_result:
-                print(f"  ⚠️  Error fixing stuck reports: {fix_result['error']}")
+                log_warning(f"  ⚠️  Error fixing stuck reports: {fix_result['error']}")
             elif fix_result['fixed'] > 0 or fix_result['cleared_task_ids'] > 0:
-                print(f"  ✅ Fixed {fix_result['fixed']} stuck report(s)")
+                log_success(f"  ✅ Fixed {fix_result['fixed']} stuck report(s)")
                 if fix_result['cleared_task_ids'] > 0:
-                    print(f"  ✅ Cleared {fix_result['cleared_task_ids']} stale task ID(s)")
+                    log_success(f"  ✅ Cleared {fix_result['cleared_task_ids']} stale task ID(s)")
             else:
-                print(f"  ✓ No stuck reports found")
+                log_success(f"  ✓ No stuck reports found")
 
         # Trigger processing
-        print("\n🚀 Triggering MASU data processing...")
-        print(f"  Timeout: {self.timeout}s")
+        log_info("\n🚀 Triggering MASU data processing...")
+        log_info(f"  Timeout: {self.timeout}s")
         if self.provider_uuid:
-            print(f"  Provider UUID: {self.provider_uuid}")
+            log_info(f"  Provider UUID: {self.provider_uuid}")
 
         trigger_result = self.trigger_processing()
 
         if not trigger_result['success']:
-            print(f"  ❌ Failed to trigger processing: {trigger_result.get('error')}")
+            log_error(f"  ❌ Failed to trigger processing: {trigger_result.get('error')}")
             if 'output' in trigger_result:
-                print(f"\n  Debug output:")
+                log_info(f"\n  Debug output:")
                 for line in trigger_result['output'].split('\n')[:10]:
                     if line.strip():
-                        print(f"    {line}")
+                        log_info(f"    {line}")
             return {'passed': False, 'trigger': trigger_result}
 
-        print(f"  ✅ Task triggered: {trigger_result['task_id']}")
-        print(f"     Task name: {trigger_result.get('task_name', 'unknown')}")
+        log_success(f"  ✅ Task triggered: {trigger_result['task_id']}")
+        log_info(f"     Task name: {trigger_result.get('task_name', 'unknown')}")
 
         if 'provider_type' in trigger_result:
-            print(f"     Provider: {trigger_result['provider_name']} ({trigger_result['provider_type']})")
-            print(f"     Org ID: {trigger_result['org_id']}")
+            log_info(f"     Provider: {trigger_result['provider_name']} ({trigger_result['provider_type']})")
+            log_info(f"     Org ID: {trigger_result['org_id']}")
 
         # Monitor processing
         monitor_result = self.monitor_processing()
 
         if monitor_result['success']:
-            print(f"\n  ✅ Processing complete")
-            print(f"  ℹ️  Manifests: {monitor_result['manifest_count']}")
-            print(f"  ℹ️  Time: {monitor_result['elapsed']}s")
+            log_success(f"\n  ✅ Processing complete")
+            log_info(f"  ℹ️  Manifests: {monitor_result['manifest_count']}")
+            log_info(f"  ℹ️  Time: {monitor_result['elapsed']}s")
         else:
-            print(f"\n  ⚠️  Processing timeout or incomplete")
-            print(f"  ℹ️  Manifests: {monitor_result['manifest_count']}")
-            print(f"  ℹ️  Elapsed: {monitor_result['elapsed']}s")
+            log_warning(f"\n  ⚠️  Processing timeout or incomplete")
+            log_info(f"  ℹ️  Manifests: {monitor_result['manifest_count']}")
+            log_info(f"  ℹ️  Elapsed: {monitor_result['elapsed']}s")
 
         # CRITICAL FIX: Mark manifests as complete to trigger summary
         # On-prem deployments don't auto-complete manifests after file processing
         # We do this even if monitoring timed out, as long as files are processed
         if self.provider_uuid:
-            print(f"\n📋 Checking manifest completion status...")
+            log_info(f"\n📋 Checking manifest completion status...")
             completion_result = self.mark_manifests_complete()
 
             if 'error' in completion_result:
-                print(f"  ⚠️  Error marking manifests complete: {completion_result['error']}")
+                log_warning(f"  ⚠️  Error marking manifests complete: {completion_result['error']}")
             elif completion_result['marked_complete'] > 0:
-                print(f"  ✅ Marked {completion_result['marked_complete']} manifest(s) as complete")
+                log_success(f"  ✅ Marked {completion_result['marked_complete']} manifest(s) as complete")
                 # If monitoring timed out but files are processed, consider it a success
-                print(f"  ℹ️  Manifests completed manually (chord callback issue)")
+                log_info(f"  ℹ️  Manifests completed manually (chord callback issue)")
                 monitor_result['success'] = True
             else:
-                print(f"  ℹ️  No manifests needed completion marking (may already be complete)")
+                log_info(f"  ℹ️  No manifests needed completion marking (may already be complete)")
 
             # Always monitor summary population after processing attempt
             # (files may have been processed even if timeout occurred)
@@ -817,7 +819,7 @@ except Exception as e:
 
                 # Include stability metrics for diagnostics
                 if summary_result.get('stable_duration') is not None:
-                    print(f"  ✅ Summary population stable for {summary_result['stable_duration']:.1f}s with {summary_result.get('stable_checks', 0)} checks")
+                    log_success(f"  ✅ Summary population stable for {summary_result['stable_duration']:.1f}s with {summary_result.get('stable_checks', 0)} checks")
             else:
                 # Enhanced failure mode distinction
                 phase = summary_result.get('phase', 'unknown')
@@ -825,35 +827,35 @@ except Exception as e:
 
                 if 'timeout' in summary_result:
                     if phase == 'data_detection':
-                        print(f"  ❌ No summary data appeared after {summary_timeout}s")
-                        print(f"  💡 This indicates summarization may not have started")
-                        print(f"     Check Celery worker logs for processing errors")
+                        log_error(f"  ❌ No summary data appeared after {summary_timeout}s")
+                        log_info(f"  💡 This indicates summarization may not have started")
+                        log_info(f"     Check Celery worker logs for processing errors")
                     elif phase == 'stability_timeout':
                         stable_duration = summary_result.get('stable_duration', 0)
                         stable_checks = summary_result.get('stable_checks', 0)
-                        print(f"  ⚠️  Summary data detected ({row_count} rows) but stability timeout after {summary_timeout}s")
-                        print(f"     Last stability: {stable_duration:.1f}s with {stable_checks} checks")
-                        print(f"  💡 Data may still be processing in batches (ONPREM characteristic)")
-                        print(f"     Consider increasing stability_window if this happens frequently")
+                        log_warning(f"  ⚠️  Summary data detected ({row_count} rows) but stability timeout after {summary_timeout}s")
+                        log_info(f"     Last stability: {stable_duration:.1f}s with {stable_checks} checks")
+                        log_info(f"  💡 Data may still be processing in batches (ONPREM characteristic)")
+                        log_info(f"     Consider increasing stability_window if this happens frequently")
                     else:
-                        print(f"  ⚠️  Summary monitoring timeout in {phase} phase after {summary_timeout}s")
+                        log_warning(f"  ⚠️  Summary monitoring timeout in {phase} phase after {summary_timeout}s")
                         if row_count > 0:
-                            print(f"     Found {row_count} rows but processing may still be ongoing")
+                            log_info(f"     Found {row_count} rows but processing may still be ongoing")
 
-                    print(f"  💡 To check summary table manually (looking for cluster_id='{self.cluster_id}'):")
+                    log_info(f"  💡 To check summary table manually (looking for cluster_id='{self.cluster_id}'):")
                     schema = summary_result.get('schema', f"org{self.org_id}")
-                    print(f"     oc exec -n {self.k8s.namespace} {self.postgres_pod} -- psql -U koku -d koku -c \\")
-                    print(f"       \"SELECT COUNT(*) FROM {schema}.reporting_ocpusagelineitem_daily_summary WHERE cluster_id = '{self.cluster_id}';\"")
+                    log_info(f"     oc exec -n {self.k8s.namespace} {self.postgres_pod} -- psql -U koku -d koku -c \\")
+                    log_info(f"       \"SELECT COUNT(*) FROM {schema}.reporting_ocpusagelineitem_daily_summary WHERE cluster_id = '{self.cluster_id}';\"")
 
                 elif 'error' in summary_result:
-                    print(f"  ❌ Summary check failed: {summary_result['error']}")
+                    log_error(f"  ❌ Summary check failed: {summary_result['error']}")
                     if phase:
-                        print(f"     Failure occurred in {phase} phase")
+                        log_info(f"     Failure occurred in {phase} phase")
 
                 else:
-                    print(f"  ❌ Summary population failed for unknown reason")
-                    print(f"     Phase: {phase}, Row count: {row_count}")
-                    print(f"     Result: {summary_result}")
+                    log_error(f"  ❌ Summary population failed for unknown reason")
+                    log_info(f"     Phase: {phase}, Row count: {row_count}")
+                    log_info(f"     Result: {summary_result}")
 
         return {
             'passed': monitor_result['success'],

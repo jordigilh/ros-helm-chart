@@ -66,6 +66,15 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Logging configuration
+# LOG_LEVEL controls output verbosity:
+#   DEBUG - Most verbose (default for CI/CD troubleshooting)
+#   INFO  - Detailed output
+#   WARN  - Clean output (successes, warnings, errors only)
+#   ERROR - Errors only
+# Default: DEBUG (helps triage issues in CI/CD quickly)
+LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+
 # Configuration
 NAMESPACE=${NAMESPACE:-cost-onprem}
 HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-cost-onprem}
@@ -127,21 +136,38 @@ check_prerequisites() {
     return 0
 }
 
-echo_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+# Logging functions with LOG_LEVEL support
+log_debug() {
+    [[ "$LOG_LEVEL" == "DEBUG" ]] && echo -e "${BLUE}[DEBUG]${NC} $1"
+    return 0
 }
 
-echo_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+log_info() {
+    [[ "$LOG_LEVEL" =~ ^(INFO|DEBUG)$ ]] && echo -e "${BLUE}[INFO]${NC} $1"
+    return 0
 }
 
-echo_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+log_success() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "${GREEN}[SUCCESS]${NC} $1"
+    return 0
 }
 
-echo_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+log_warning() {
+    [[ "$LOG_LEVEL" =~ ^(WARN|INFO|DEBUG)$ ]] && echo -e "${YELLOW}[WARNING]${NC} $1"
+    return 0
 }
+
+log_error() {
+    # Errors are always shown
+    echo -e "${RED}[ERROR]${NC} $1" >&2
+    return 0
+}
+
+# Backward compatibility aliases
+echo_info() { log_info "$1"; }
+echo_success() { log_success "$1"; }
+echo_warning() { log_warning "$1"; }
+echo_error() { log_error "$1"; }
 
 # JSON parsing helper function (uses jq)
 parse_json() {

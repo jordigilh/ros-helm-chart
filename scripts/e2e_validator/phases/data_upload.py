@@ -6,6 +6,8 @@ Generate test data with Nise and upload to S3.
 This creates predictable scenarios for financial validation.
 """
 
+from ..logging import log_debug, log_info, log_success, log_warning, log_error
+
 import os
 import gzip
 import json
@@ -155,7 +157,7 @@ generators:
                             self.s3.delete_object(Bucket=self.bucket, Key=obj['Key'])
                             files_deleted += 1
             except Exception as e:
-                print(f"  ⚠️  Warning: Could not delete files from {prefix}: {e}")
+                log_warning(f"  ⚠️  Warning: Could not delete files from {prefix}: {e}")
 
         return {
             'files_deleted': files_deleted,
@@ -174,11 +176,11 @@ generators:
 
         namespace = self.k8s.namespace if hasattr(self.k8s, 'namespace') else 'cost-onprem'
 
-        print(f"\n🔄 Clearing Koku caches (workaround for table_exists cache bug)...")
+        log_info(f"\n🔄 Clearing Koku caches (workaround for table_exists cache bug)...")
 
         try:
             # Restart Valkey to clear cache
-            print(f"  🗑️  Restarting Valkey to clear cache...")
+            log_info(f"  🗑️  Restarting Valkey to clear cache...")
             subprocess.run(
                 ['kubectl', 'delete', 'pod', '-n', namespace, '-l', 'app.kubernetes.io/component=cache'],
                 capture_output=True, timeout=30
@@ -190,10 +192,10 @@ generators:
                  '-l', 'app.kubernetes.io/component=cache', '-n', namespace, '--timeout=60s'],
                 capture_output=True, timeout=70
             )
-            print(f"  ✅ Valkey restarted")
+            log_success(f"  ✅ Valkey restarted")
 
             # Restart listener to clear in-memory state
-            print(f"  🔄 Restarting Koku listener...")
+            log_info(f"  🔄 Restarting Koku listener...")
             subprocess.run(
                 ['kubectl', 'delete', 'pod', '-n', namespace, '-l', 'app.kubernetes.io/component=listener'],
                 capture_output=True, timeout=30
@@ -205,14 +207,14 @@ generators:
                  '-l', 'app.kubernetes.io/component=listener', '-n', namespace, '--timeout=60s'],
                 capture_output=True, timeout=70
             )
-            print(f"  ✅ Listener restarted")
+            log_success(f"  ✅ Listener restarted")
 
             # Brief pause to let components stabilize
             time.sleep(3)
 
         except Exception as e:
-            print(f"  ⚠️  Warning: Could not restart components: {e}")
-            print(f"  ℹ️  You may need to manually restart Valkey and listener pods")
+            log_warning(f"  ⚠️  Warning: Could not restart components: {e}")
+            log_info(f"  ℹ️  You may need to manually restart Valkey and listener pods")
 
     def check_existing_data(self) -> Dict[str, any]:
         """Check if VALID test data already exists
@@ -256,7 +258,7 @@ generators:
                     valid_manifest = all(csv in keys for csv in referenced_files)
 
                 except Exception as e:
-                    print(f"    ⚠️  Manifest validation failed: {e}")
+                    log_warning(f"    ⚠️  Manifest validation failed: {e}")
                     valid_manifest = False
 
             return {
@@ -290,14 +292,14 @@ generators:
         Returns:
             Dict mapping scenario to local path
         """
-        print(f"📊 Generating {len(scenarios)} test scenarios with Nise...")
+        log_info(f"📊 Generating {len(scenarios)} test scenarios with Nise...")
 
         results = {}
         for scenario in scenarios:
-            print(f"  - Generating '{scenario}'...")
+            log_info(f"  - Generating '{scenario}'...")
             path = self.nise.generate_scenario(scenario, start_date, end_date)
             results[scenario] = path
-            print(f"    ✓ Generated at {path}")
+            log_success(f"    ✓ Generated at {path}")
 
         return results
 
@@ -315,9 +317,9 @@ generators:
         Returns:
             Path to generated data
         """
-        print("📊 Generating AWS CUR data with Nise...")
-        print(f"  - Account: {account_id}")
-        print(f"  - Period: {start_date.date()} to {end_date.date()}")
+        log_info("📊 Generating AWS CUR data with Nise...")
+        log_info(f"  - Account: {account_id}")
+        log_info(f"  - Period: {start_date.date()} to {end_date.date()}")
 
         # Generate with tags for testing
         path = self.nise.generate_aws_cur(
@@ -331,7 +333,7 @@ generators:
             ]
         )
 
-        print(f"  ✓ Data generated at {path}")
+        log_success(f"  ✓ Data generated at {path}")
         return path
 
     def upload_nise_data(self,
@@ -358,7 +360,7 @@ generators:
                 s3_key = f"{self.report_name}/{report_prefix}{rel_path}"
 
                 # Upload file
-                print(f"  ⬆️  Uploading {file}...")
+                log_info(f"  ⬆️  Uploading {file}...")
                 with open(local_path, 'rb') as f:
                     self.s3.put_object(
                         Bucket=self.bucket,
@@ -440,42 +442,42 @@ generators:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days_back)
 
-        print("\n" + "="*60)
-        print("Phase 4: Generate & Upload Test Data (Nise)")
-        print("="*60)
+        log_info("\n" + "="*60)
+        log_info("Phase 4: Generate & Upload Test Data (Nise)")
+        log_info("="*60)
 
         # Check existing data
-        print("\n🔍 Checking for existing data...")
+        log_info("\n🔍 Checking for existing data...")
         existing = self.check_existing_data()
 
         if existing['exists']:
-            print(f"  ⚠️  Found {existing['count']} existing objects")
-            print("  Skipping generation (use --force to regenerate)")
+            log_warning(f"  ⚠️  Found {existing['count']} existing objects")
+            log_info("  Skipping generation (use --force to regenerate)")
             return {
                 'skipped': True,
                 'existing_count': existing['count']
             }
 
         # Generate scenarios
-        print("\n📊 Generating test scenarios...")
+        log_info("\n📊 Generating test scenarios...")
         scenario_paths = self.generate_scenarios(scenarios, start_date, end_date)
 
         # Upload all scenario data
-        print("\n⬆️  Uploading to S3...")
+        log_info("\n⬆️  Uploading to S3...")
         all_keys = []
 
         for scenario, path in scenario_paths.items():
-            print(f"\n  Uploading scenario: {scenario}")
+            log_info(f"\n  Uploading scenario: {scenario}")
             keys = self.upload_nise_data(path, report_prefix=f"{scenario}/")
             all_keys.extend(keys)
-            print(f"  ✓ Uploaded {len(keys)} files")
+            log_success(f"  ✓ Uploaded {len(keys)} files")
 
         # Create manifest
-        print("\n📝 Creating CUR manifest...")
+        log_info("\n📝 Creating CUR manifest...")
         manifest_key = self.create_manifest_for_nise_data(
             all_keys, start_date, end_date
         )
-        print(f"  ✓ Manifest: {manifest_key}")
+        log_success(f"  ✓ Manifest: {manifest_key}")
 
         # Verify upload
         final_check = self.check_existing_data()
@@ -492,10 +494,10 @@ generators:
             }
         }
 
-        print("\n✅ Phase 4 Complete")
-        print(f"  - Scenarios: {len(scenarios)}")
-        print(f"  - Files uploaded: {len(all_keys)}")
-        print(f"  - Total S3 objects: {final_check['count']}")
+        log_success("\n✅ Phase 4 Complete")
+        log_info(f"  - Scenarios: {len(scenarios)}")
+        log_info(f"  - Files uploaded: {len(all_keys)}")
+        log_info(f"  - Total S3 objects: {final_check['count']}")
 
         return result
 
@@ -512,13 +514,13 @@ generators:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days_back)
 
-        print("\n🚀 Quick data upload (single scenario)...")
+        log_info("\n🚀 Quick data upload (single scenario)...")
 
         # Generate basic AWS data only
         data_path = self.generate_basic_aws_data(start_date, end_date)
 
         # Upload
-        print("\n⬆️  Uploading to S3...")
+        log_info("\n⬆️  Uploading to S3...")
         keys = self.upload_nise_data(data_path)
 
         # Create manifest
@@ -579,18 +581,18 @@ generators:
             Upload results dict
         """
         mode = "SMOKE TEST (fast 4-row CSV)" if smoke_test else "FULL VALIDATION (nise)"
-        print("\n" + "="*60)
-        print(f"Phase 4: Generate & Upload Test Data (AWS CUR Format) - {mode}")
-        print("="*60)
+        log_info("\n" + "="*60)
+        log_info(f"Phase 4: Generate & Upload Test Data (AWS CUR Format) - {mode}")
+        log_info("="*60)
 
         # Check existing
-        print("\n🔍 Checking for existing data...")
+        log_info("\n🔍 Checking for existing data...")
         existing = self.check_existing_data()
 
         # Surface S3 errors immediately
         if 'error' in existing:
-            print(f"\n❌ S3 access error: {existing['error']}")
-            print("   Check credentials and endpoint configuration")
+            log_error(f"\n❌ S3 access error: {existing['error']}")
+            log_info("   Check credentials and endpoint configuration")
             return {
                 'success': False,
                 'error': existing['error']
@@ -598,8 +600,8 @@ generators:
 
         if existing['exists'] and not force:
             if not existing.get('valid'):
-                print(f"  ⚠️  Found {existing['count']} objects but NO VALID MANIFEST")
-                print(f"  💡 Run with --force to regenerate")
+                log_warning(f"  ⚠️  Found {existing['count']} objects but NO VALID MANIFEST")
+                log_info(f"  💡 Run with --force to regenerate")
                 return {
                     'skipped': True,
                     'reason': 'invalid_data',
@@ -607,10 +609,10 @@ generators:
                     'existing_count': existing['count']
                 }
             else:
-                print(f"  ✅ Valid data exists:")
-                print(f"     - Manifest: {existing['manifest']}")
-                print(f"     - CSV files: {len(existing['csv_files'])}")
-                print(f"  💡 Run with --force to regenerate")
+                log_success(f"  ✅ Valid data exists:")
+                log_info(f"     - Manifest: {existing['manifest']}")
+                log_info(f"     - CSV files: {len(existing['csv_files'])}")
+                log_info(f"  💡 Run with --force to regenerate")
                 return {
                     'passed': True,
                     'skipped': True,
@@ -621,11 +623,11 @@ generators:
                 }
 
         if existing['exists'] and force:
-            print(f"  🗑️  Force mode: Deleting {existing['count']} existing objects...")
+            log_info(f"  🗑️  Force mode: Deleting {existing['count']} existing objects...")
             for key in existing.get('keys', []):
                 self.s3.delete_object(Bucket=self.bucket, Key=key)
-                print(f"     - Deleted: {key}")
-            print(f"  ✅ Cleaned existing data")
+                log_info(f"     - Deleted: {key}")
+            log_success(f"  ✅ Cleaned existing data")
 
         # Format dates - use MASU's monthly date format (YYYYMMDD-YYYYMMDD)
         start_str = start_date.strftime('%Y-%m-%d')
@@ -634,10 +636,10 @@ generators:
 
         if smoke_test:
             # SMOKE TEST MODE: Fast 4-row hardcoded CSV
-            print(f"\n📊 Generating AWS CUR data (smoke test mode - fast!)...")
-            print(f"   Date range: {start_str} to {end_str}")
-            print(f"   ⚡ Using hardcoded 4-row CSV (completes in ~1 second)")
-            print(f"   ℹ️  For smoke tests only - NOT for financial validation")
+            log_info(f"\n📊 Generating AWS CUR data (smoke test mode - fast!)...")
+            log_info(f"   Date range: {start_str} to {end_str}")
+            log_info(f"   ⚡ Using hardcoded 4-row CSV (completes in ~1 second)")
+            log_info(f"   ℹ️  For smoke tests only - NOT for financial validation")
 
             # Generate minimal CSV in memory
             csv_content = self._generate_minimal_aws_csv(start_date, end_date)
@@ -646,8 +648,8 @@ generators:
             prefix_path = f'{self.report_prefix}/' if self.report_prefix else ''
             csv_key = f'{prefix_path}{self.report_name}/{self.report_name}.csv'
 
-            print(f"\n⬆️  Uploading minimal CSV to S3...")
-            print(f"  ⬆️  Uploading: {csv_key}")
+            log_info(f"\n⬆️  Uploading minimal CSV to S3...")
+            log_info(f"  ⬆️  Uploading: {csv_key}")
             self.s3.put_object(
                 Bucket=self.bucket,
                 Key=csv_key,
@@ -657,10 +659,10 @@ generators:
 
         else:
             # FULL VALIDATION MODE: Nise-generated data
-            print(f"\n📊 Generating AWS CUR data with nise...")
-            print(f"   Date range: {start_str} to {end_str}")
-            print(f"   ⚠️  This uses nise for controlled test scenarios (may take 1-5 minutes)")
-            print(f"   ℹ️  This enables financial correctness validation")
+            log_info(f"\n📊 Generating AWS CUR data with nise...")
+            log_info(f"   Date range: {start_str} to {end_str}")
+            log_warning(f"   ⚠️  This uses nise for controlled test scenarios (may take 1-5 minutes)")
+            log_info(f"   ℹ️  This enables financial correctness validation")
 
             # Generate AWS CUR data using nise (controlled scenarios)
             output_dir = self.nise.generate_aws_cur(
@@ -669,10 +671,10 @@ generators:
                 account_id='123456789012'
             )
 
-            print(f"  ✅ Nise generation complete: {output_dir}")
+            log_success(f"  ✅ Nise generation complete: {output_dir}")
 
             # Upload all nise-generated files to S3
-            print(f"\n⬆️  Uploading nise-generated files to S3...")
+            log_info(f"\n⬆️  Uploading nise-generated files to S3...")
             prefix_path = f'{self.report_prefix}/' if self.report_prefix else ''
             uploaded_count = 0
 
@@ -683,7 +685,7 @@ generators:
                     relative_path = os.path.relpath(file_path, output_dir)
                     s3_key = f'{prefix_path}{self.report_name}/{relative_path}'
 
-                    print(f"  ⬆️  Uploading: {s3_key}")
+                    log_info(f"  ⬆️  Uploading: {s3_key}")
                     with open(file_path, 'rb') as f:
                         self.s3.put_object(
                             Bucket=self.bucket,
@@ -699,16 +701,16 @@ generators:
         )
         total_objects = response.get('KeyCount', 0)
 
-        print(f"\n✅ Upload Complete:")
-        print(f"   - Files uploaded: {uploaded_count}")
-        print(f"   - Total objects in S3: {total_objects}")
-        print(f"   - Source: {output_dir}")
+        log_success(f"\n✅ Upload Complete:")
+        log_info(f"   - Files uploaded: {uploaded_count}")
+        log_info(f"   - Total objects in S3: {total_objects}")
+        log_info(f"   - Source: {output_dir}")
 
         # Reset provider timestamps after upload (belt-and-suspenders approach)
         # NOTE: Processing phase also does this, but we do it here too
         # in case there's a delay between upload and processing trigger
         if self.db and self.provider_uuid:
-            print(f"\n🔄 Resetting provider timestamps to enable processing...")
+            log_info(f"\n🔄 Resetting provider timestamps to enable processing...")
             try:
                 result = self.db.execute_query("""
                     UPDATE api_provider
@@ -718,12 +720,12 @@ generators:
                     RETURNING uuid, polling_timestamp, data_updated_timestamp
                 """, (self.provider_uuid,))
                 if result:
-                    print(f"  ✅ Provider {self.provider_uuid} ready for polling")
+                    log_success(f"  ✅ Provider {self.provider_uuid} ready for polling")
                 else:
-                    print(f"  ⚠️  Provider not found in database")
+                    log_warning(f"  ⚠️  Provider not found in database")
             except Exception as e:
-                print(f"  ⚠️  Failed to reset timestamps: {e}")
-                print(f"  ℹ️  Processing may be delayed until next natural polling cycle")
+                log_warning(f"  ⚠️  Failed to reset timestamps: {e}")
+                log_info(f"  ℹ️  Processing may be delayed until next natural polling cycle")
 
         return {
             'passed': True,
@@ -759,42 +761,42 @@ generators:
             Upload results dict
         """
         mode = "SMOKE TEST (minimal nise scenario)" if smoke_test else "FULL VALIDATION (comprehensive nise scenario)"
-        print("\n" + "="*60)
-        print(f"Phase 4: Generate & Upload Test Data (OCP Format - TAR.GZ) - {mode}")
-        print("="*60)
+        log_info("\n" + "="*60)
+        log_info(f"Phase 4: Generate & Upload Test Data (OCP Format - TAR.GZ) - {mode}")
+        log_info("="*60)
 
         # Check existing
-        print("\n🔍 Checking for existing data...")
+        log_info("\n🔍 Checking for existing data...")
         existing = self.check_existing_data()
 
         if 'error' in existing:
-            print(f"\n❌ S3 access error: {existing['error']}")
+            log_error(f"\n❌ S3 access error: {existing['error']}")
             return {'success': False, 'error': existing['error']}
 
         if existing['exists'] and not force:
             # For TAR.GZ format, we check for .tar.gz files
             tarball_keys = [k for k in existing.get('keys', []) if k.endswith('.tar.gz')]
             if tarball_keys:
-                print(f"  ✅ Valid tarball exists: {tarball_keys[0]}")
-                print(f"  💡 Run with --force to regenerate")
+                log_success(f"  ✅ Valid tarball exists: {tarball_keys[0]}")
+                log_info(f"  💡 Run with --force to regenerate")
                 return {'passed': True, 'skipped': True, 'reason': 'valid_data_exists', 'valid': True}
             else:
-                print(f"  ⚠️  Found {existing['count']} objects but NO TARBALL")
-                print(f"  💡 Run with --force to regenerate")
+                log_warning(f"  ⚠️  Found {existing['count']} objects but NO TARBALL")
+                log_info(f"  💡 Run with --force to regenerate")
                 return {'skipped': True, 'reason': 'invalid_data', 'valid': False}
 
         if existing['exists'] and force:
-            print(f"  🗑️  Force mode: Deleting {existing['count']} existing objects...")
+            log_info(f"  🗑️  Force mode: Deleting {existing['count']} existing objects...")
             for key in existing.get('keys', []):
                 self.s3.delete_object(Bucket=self.bucket, Key=key)
-            print(f"  ✅ Cleaned existing data")
+            log_success(f"  ✅ Cleaned existing data")
 
             # Also clean up S3 data files
             # This ensures reports aren't seen as "already processed"
-            print(f"  🧹 Cleaning up processing artifacts...")
+            log_info(f"  🧹 Cleaning up processing artifacts...")
             cleanup_result = self.cleanup_ocp_processing_artifacts()
             if cleanup_result.get('files_deleted', 0) > 0:
-                print(f"     - Deleted {cleanup_result['files_deleted']} S3 files")
+                log_info(f"     - Deleted {cleanup_result['files_deleted']} S3 files")
 
         prefix_path = f'{self.report_prefix}/' if self.report_prefix else ''
         # cluster_id is now passed as a parameter (unique per test run for data isolation)
@@ -814,21 +816,21 @@ generators:
         end_str = nise_end.strftime('%Y-%m-%d')
 
         # Step 1: Generate OCP data using nise
-        print(f"\n📊 Generating OCP data with nise ({mode})...")
-        print(f"   Date range: {start_str} to {end_str}")
-        print(f"   Cluster: {cluster_id}")
+        log_info(f"\n📊 Generating OCP data with nise ({mode})...")
+        log_info(f"   Date range: {start_str} to {end_str}")
+        log_info(f"   Cluster: {cluster_id}")
 
         if smoke_test:
-            print(f"   📋 Mode: MINIMAL scenario for fast validation (~30-60 seconds)")
-            print(f"   ℹ️  - POD USAGE ONLY (excluding VM/storage to isolate issues)")
-            print(f"   ℹ️  - Suitable for smoke testing and CI/CD")
+            log_info(f"   📋 Mode: MINIMAL scenario for fast validation (~30-60 seconds)")
+            log_info(f"   ℹ️  - POD USAGE ONLY (excluding VM/storage to isolate issues)")
+            log_info(f"   ℹ️  - Suitable for smoke testing and CI/CD")
             # Generate dynamic static report with current dates
             static_report = self._generate_dynamic_ocp_static_report(nise_start, nise_end)
-            print(f"   📅 Using dynamic dates: {start_str} to {end_str}")
+            log_info(f"   📅 Using dynamic dates: {start_str} to {end_str}")
         else:
-            print(f"   📋 Mode: COMPREHENSIVE scenario (~1-3 minutes)")
-            print(f"   ℹ️  - Full data set with multiple days and resources")
-            print(f"   ℹ️  - Complete financial validation")
+            log_info(f"   📋 Mode: COMPREHENSIVE scenario (~1-3 minutes)")
+            log_info(f"   ℹ️  - Full data set with multiple days and resources")
+            log_info(f"   ℹ️  - Complete financial validation")
             static_report = None
 
         output_dir = self.nise.generate_ocp_usage(
@@ -838,7 +840,7 @@ generators:
             static_report_file=static_report if smoke_test else None
         )
 
-        print(f"  ✅ Nise generation complete: {output_dir}")
+        log_success(f"  ✅ Nise generation complete: {output_dir}")
 
         # Step 2: Collect CSV filenames
         csv_files = []
@@ -851,27 +853,27 @@ generators:
         if smoke_test:
             essential_files = [f for f in csv_files if any(x in f.lower() for x in ['pod_usage', 'node_label', 'namespace_label'])]
             if essential_files:
-                print(f"\n📋 Smoke test mode: Filtering to essential files (pod + labels)")
-                print(f"   - Found {len(csv_files)} total files")
-                print(f"   - Using {len(essential_files)} essential file(s)")
+                log_info(f"\n📋 Smoke test mode: Filtering to essential files (pod + labels)")
+                log_info(f"   - Found {len(csv_files)} total files")
+                log_info(f"   - Using {len(essential_files)} essential file(s)")
                 csv_files = essential_files
             else:
-                print(f"\n⚠️  No essential files found in {len(csv_files)} files!")
+                log_warning(f"\n⚠️  No essential files found in {len(csv_files)} files!")
 
-        print(f"\n📋 Found {len(csv_files)} CSV files")
+        log_info(f"\n📋 Found {len(csv_files)} CSV files")
 
         # Step 3: Create manifest.json
-        print(f"\n📝 Creating manifest.json...")
+        log_info(f"\n📝 Creating manifest.json...")
         manifest = self._create_ocp_manifest(
             csv_files=csv_files,
             cluster_id=cluster_id,
             start_date=start_date,
             end_date=end_date
         )
-        print(f"  ✅ Manifest UUID: {manifest['uuid']}")
+        log_success(f"  ✅ Manifest UUID: {manifest['uuid']}")
 
         # Step 4: Create TAR.GZ package
-        print(f"\n📦 Creating TAR.GZ package...")
+        log_info(f"\n📦 Creating TAR.GZ package...")
         try:
             tarball_path = self._create_tarball(
                 csv_directory=output_dir,
@@ -879,15 +881,15 @@ generators:
                 request_id=request_id
             )
         except Exception as e:
-            print(f"  ❌ Failed to create tarball: {e}")
+            log_error(f"  ❌ Failed to create tarball: {e}")
             return {'success': False, 'error': str(e)}
 
         # Step 5: Upload TAR.GZ to S3
         tarball_name = os.path.basename(tarball_path)
         s3_key = f'{prefix_path}{self.report_name}/{tarball_name}'
 
-        print(f"\n⬆️  Uploading TAR.GZ to S3...")
-        print(f"  ⬆️  Key: {s3_key}")
+        log_info(f"\n⬆️  Uploading TAR.GZ to S3...")
+        log_info(f"  ⬆️  Key: {s3_key}")
         try:
             with open(tarball_path, 'rb') as f:
                 self.s3.put_object(
@@ -895,9 +897,9 @@ generators:
                     Key=s3_key,
                     Body=f.read()
                 )
-            print(f"  ✅ Upload complete")
+            log_success(f"  ✅ Upload complete")
         except Exception as e:
-            print(f"  ❌ Upload failed: {e}")
+            log_error(f"  ❌ Upload failed: {e}")
             return {'success': False, 'error': str(e)}
         finally:
             # Clean up temp tarball
@@ -911,10 +913,10 @@ generators:
         )
         total_objects = response.get('KeyCount', 0)
 
-        print(f"\n✅ Upload Complete:")
-        print(f"   - Tarball uploaded: {tarball_name}")
-        print(f"   - CSVs packaged: {len(csv_files)}")
-        print(f"   - Total S3 objects: {total_objects}")
+        log_success(f"\n✅ Upload Complete:")
+        log_info(f"   - Tarball uploaded: {tarball_name}")
+        log_info(f"   - CSVs packaged: {len(csv_files)}")
+        log_info(f"   - Total S3 objects: {total_objects}")
 
         # Step 6: Generate S3 Presigned URL
         # The listener uses requests.get(url) which requires pre-authenticated URLs.
@@ -924,7 +926,7 @@ generators:
         # IMPORTANT: We generate presigned URLs from INSIDE the cluster (via pod exec) to use
         # the internal S3 endpoint (.svc). This allows Koku pods with automountServiceAccountToken: false
         # to download from S3 without needing the cluster root CA from the service account mount.
-        print(f"\n🔐 Generating presigned URL for listener download...")
+        log_info(f"\n🔐 Generating presigned URL for listener download...")
         try:
             # Try to generate internal presigned URL via pod exec (preferred)
             if self.s3_wrapper:
@@ -935,11 +937,11 @@ generators:
                 )
                 
                 if presigned_url:
-                    print(f"  ✅ Presigned URL generated from inside cluster (internal endpoint)")
-                    print(f"  ℹ️  URL uses internal S3 service (.svc) - compatible with full PSS")
+                    log_success(f"  ✅ Presigned URL generated from inside cluster (internal endpoint)")
+                    log_info(f"  ℹ️  URL uses internal S3 service (.svc) - compatible with full PSS")
                 else:
                     # Fallback to external presigned URL (requires service account CA)
-                    print(f"  ⚠️  Falling back to external presigned URL generation")
+                    log_warning(f"  ⚠️  Falling back to external presigned URL generation")
                     presigned_url = self.s3.generate_presigned_url(
                         'get_object',
                         Params={
@@ -948,8 +950,8 @@ generators:
                         },
                         ExpiresIn=3600
                     )
-                    print(f"  ✅ Presigned URL generated (expires in 1 hour)")
-                    print(f"  ⚠️  URL uses external route - requires cluster root CA in pod")
+                    log_success(f"  ✅ Presigned URL generated (expires in 1 hour)")
+                    log_warning(f"  ⚠️  URL uses external route - requires cluster root CA in pod")
             else:
                 # Legacy path - generate external presigned URL
                 presigned_url = self.s3.generate_presigned_url(
@@ -960,16 +962,16 @@ generators:
                     },
                     ExpiresIn=3600
                 )
-                print(f"  ✅ Presigned URL generated (expires in 1 hour)")
+                log_success(f"  ✅ Presigned URL generated (expires in 1 hour)")
         except Exception as e:
-            print(f"  ❌ Failed to generate presigned URL: {e}")
+            log_error(f"  ❌ Failed to generate presigned URL: {e}")
             return {'success': False, 'error': f'Presigned URL generation failed: {str(e)}'}
 
         # Step 7: Send Kafka message with presigned URL
         kafka_result = None
         if self.kafka:
-            print(f"\n📨 Publishing Kafka message to trigger OCP processing...")
-            print(f"  Presigned URL: {presigned_url[:80]}...")
+            log_info(f"\n📨 Publishing Kafka message to trigger OCP processing...")
+            log_info(f"  Presigned URL: {presigned_url[:80]}...")
 
             try:
                 kafka_result = self.kafka.send_ocp_report_message(
@@ -980,12 +982,12 @@ generators:
                 )
 
                 if kafka_result.get('success'):
-                    print(f"  ✅ Kafka message published successfully")
-                    print(f"     Request ID: {kafka_result.get('request_id')}")
+                    log_success(f"  ✅ Kafka message published successfully")
+                    log_info(f"     Request ID: {kafka_result.get('request_id')}")
                 else:
-                    print(f"  ⚠️  Kafka publishing failed: {kafka_result.get('error')}")
+                    log_warning(f"  ⚠️  Kafka publishing failed: {kafka_result.get('error')}")
             except Exception as e:
-                print(f"  ⚠️  Failed to publish Kafka message: {e}")
+                log_warning(f"  ⚠️  Failed to publish Kafka message: {e}")
 
         return {
             'passed': True,
@@ -1107,14 +1109,14 @@ generators:
                             # Add with just the filename (no directory structure)
                             tar.add(file_path, arcname=file)
 
-            print(f"  ✅ Created tarball: {tarball_name}")
-            print(f"     - manifest.json")
-            print(f"     - {len(manifest['files'])} CSV files")
+            log_success(f"  ✅ Created tarball: {tarball_name}")
+            log_info(f"     - manifest.json")
+            log_info(f"     - {len(manifest['files'])} CSV files")
 
             return tarball_path
 
         except Exception as e:
-            print(f"  ❌ Failed to create tarball: {e}")
+            log_error(f"  ❌ Failed to create tarball: {e}")
             # Clean up temp directory on error
             import shutil
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1137,22 +1139,22 @@ generators:
         Returns:
             Upload results dict
         """
-        print("\n" + "="*60)
-        print("Phase 4: Generate & Upload Test Data (Azure Export Format)")
-        print("="*60)
+        log_info("\n" + "="*60)
+        log_info("Phase 4: Generate & Upload Test Data (Azure Export Format)")
+        log_info("="*60)
 
         # Check existing
-        print("\n🔍 Checking for existing data...")
+        log_info("\n🔍 Checking for existing data...")
         existing = self.check_existing_data()
 
         if 'error' in existing:
-            print(f"\n❌ S3 access error: {existing['error']}")
+            log_error(f"\n❌ S3 access error: {existing['error']}")
             return {'success': False, 'error': existing['error']}
 
         if existing['exists'] and not force:
             if existing.get('valid'):
-                print(f"  ✅ Valid data exists")
-                print(f"  💡 Run with --force to regenerate")
+                log_success(f"  ✅ Valid data exists")
+                log_info(f"  💡 Run with --force to regenerate")
                 return {
                     'passed': True,
                     'skipped': True,
@@ -1161,18 +1163,18 @@ generators:
                 }
 
         if existing['exists'] and force:
-            print(f"  🗑️  Force mode: Deleting {existing['count']} existing objects...")
+            log_info(f"  🗑️  Force mode: Deleting {existing['count']} existing objects...")
             for key in existing.get('keys', []):
                 self.s3.delete_object(Bucket=self.bucket, Key=key)
-            print(f"  ✅ Cleaned existing data")
+            log_success(f"  ✅ Cleaned existing data")
 
         # Generate Azure CSV data inline (fast!)
         start_str = start_date.strftime('%Y-%m-%d')
         end_str = end_date.strftime('%Y-%m-%d')
         period = f"{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}"
 
-        print(f"\n📊 Generating Azure cost export data ({start_str} to {end_str})...")
-        print(f"   Period directory: {period}")
+        log_info(f"\n📊 Generating Azure cost export data ({start_str} to {end_str})...")
+        log_info(f"   Period directory: {period}")
 
         # Azure Cost Export CSV format
         csv_data = f"""Date,BillingPeriodStartDate,BillingPeriodEndDate,Quantity,ResourceRate,CostInBillingCurrency,EffectivePrice,UnitPrice,PayGPrice,SubscriptionId,ResourceGroup,MeterCategory,MeterSubCategory,ResourceLocation,ServiceName,ResourceId
@@ -1184,12 +1186,12 @@ generators:
 """
 
         # Upload CSV files to S3
-        print(f"\n⬆️  Uploading Azure files to S3...")
+        log_info(f"\n⬆️  Uploading Azure files to S3...")
         prefix_path = f'{self.report_prefix}/' if self.report_prefix else ''
 
         # Upload to current month
         csv_key = f'{prefix_path}{self.report_name}/{period}/costreport_{period}.csv'
-        print(f"  ⬆️  Uploading: {csv_key}")
+        log_info(f"  ⬆️  Uploading: {csv_key}")
         self.s3.put_object(
             Bucket=self.bucket,
             Key=csv_key,
@@ -1207,15 +1209,15 @@ generators:
         prev_period = f"{prev_month_start.strftime('%Y%m%d')}-{prev_month_end.strftime('%Y%m%d')}"
         prev_csv_key = f'{prefix_path}{self.report_name}/{prev_period}/costreport_{prev_period}.csv'
 
-        print(f"  ⬆️  Copying to previous month: {prev_csv_key}")
+        log_info(f"  ⬆️  Copying to previous month: {prev_csv_key}")
         self.s3.copy_object(
             Bucket=self.bucket,
             CopySource={'Bucket': self.bucket, 'Key': csv_key},
             Key=prev_csv_key
         )
 
-        print(f"\n✅ Azure data uploaded successfully")
-        print(f"  Files: 2 (current + previous month)")
+        log_success(f"\n✅ Azure data uploaded successfully")
+        log_info(f"  Files: 2 (current + previous month)")
 
         return {
             'passed': True,
@@ -1242,22 +1244,22 @@ generators:
         Returns:
             Upload results dict
         """
-        print("\n" + "="*60)
-        print("Phase 4: Generate & Upload Test Data (GCP Export Format)")
-        print("="*60)
+        log_info("\n" + "="*60)
+        log_info("Phase 4: Generate & Upload Test Data (GCP Export Format)")
+        log_info("="*60)
 
         # Check existing
-        print("\n🔍 Checking for existing data...")
+        log_info("\n🔍 Checking for existing data...")
         existing = self.check_existing_data()
 
         if 'error' in existing:
-            print(f"\n❌ S3 access error: {existing['error']}")
+            log_error(f"\n❌ S3 access error: {existing['error']}")
             return {'success': False, 'error': existing['error']}
 
         if existing['exists'] and not force:
             if existing.get('valid'):
-                print(f"  ✅ Valid data exists")
-                print(f"  💡 Run with --force to regenerate")
+                log_success(f"  ✅ Valid data exists")
+                log_info(f"  💡 Run with --force to regenerate")
                 return {
                     'passed': True,
                     'skipped': True,
@@ -1266,18 +1268,18 @@ generators:
                 }
 
         if existing['exists'] and force:
-            print(f"  🗑️  Force mode: Deleting {existing['count']} existing objects...")
+            log_info(f"  🗑️  Force mode: Deleting {existing['count']} existing objects...")
             for key in existing.get('keys', []):
                 self.s3.delete_object(Bucket=self.bucket, Key=key)
-            print(f"  ✅ Cleaned existing data")
+            log_success(f"  ✅ Cleaned existing data")
 
         # Generate GCP CSV data inline (fast!)
         start_str = start_date.strftime('%Y-%m-%d')
         end_str = end_date.strftime('%Y-%m-%d')
         period = f"{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}"
 
-        print(f"\n📊 Generating GCP billing export data ({start_str} to {end_str})...")
-        print(f"   Period directory: {period}")
+        log_info(f"\n📊 Generating GCP billing export data ({start_str} to {end_str})...")
+        log_info(f"   Period directory: {period}")
 
         # GCP Billing Export CSV format
         csv_data = f"""usage_start_time,usage_end_time,export_time,cost,currency_conversion_rate,usage_amount,usage_amount_in_pricing_units,credit_amount,invoice_month,project_id,project_name,service_description,sku_description,location_region
@@ -1289,12 +1291,12 @@ generators:
 """
 
         # Upload CSV files to S3
-        print(f"\n⬆️  Uploading GCP files to S3...")
+        log_info(f"\n⬆️  Uploading GCP files to S3...")
         prefix_path = f'{self.report_prefix}/' if self.report_prefix else ''
 
         # Upload to current month
         csv_key = f'{prefix_path}{self.report_name}/{period}/gcp_billing_{period}.csv'
-        print(f"  ⬆️  Uploading: {csv_key}")
+        log_info(f"  ⬆️  Uploading: {csv_key}")
         self.s3.put_object(
             Bucket=self.bucket,
             Key=csv_key,
@@ -1312,15 +1314,15 @@ generators:
         prev_period = f"{prev_month_start.strftime('%Y%m%d')}-{prev_month_end.strftime('%Y%m%d')}"
         prev_csv_key = f'{prefix_path}{self.report_name}/{prev_period}/gcp_billing_{prev_period}.csv'
 
-        print(f"  ⬆️  Copying to previous month: {prev_csv_key}")
+        log_info(f"  ⬆️  Copying to previous month: {prev_csv_key}")
         self.s3.copy_object(
             Bucket=self.bucket,
             CopySource={'Bucket': self.bucket, 'Key': csv_key},
             Key=prev_csv_key
         )
 
-        print(f"\n✅ GCP data uploaded successfully")
-        print(f"  Files: 2 (current + previous month)")
+        log_success(f"\n✅ GCP data uploaded successfully")
+        log_info(f"  Files: 2 (current + previous month)")
 
         return {
             'passed': True,

@@ -9,6 +9,8 @@ Provides methods to interact with the Sources API for Day 2 operations:
 This is the proper Red Hat-supported way to add providers to Cost Management.
 """
 
+from ..logging import log_debug, log_info, log_success, log_warning, log_error
+
 import json
 import subprocess
 from typing import Dict, Optional, List
@@ -93,8 +95,8 @@ class SourcesAPIClient:
             ]
             exec_result = subprocess.run(exec_cmd, capture_output=True, text=True, timeout=30)
             if exec_result.returncode != 0:
-                print(f"  DEBUG: curl_cmd = {curl_cmd}")
-                print(f"  DEBUG: stderr = {exec_result.stderr}")
+                log_info(f"  DEBUG: curl_cmd = {curl_cmd}")
+                log_info(f"  DEBUG: stderr = {exec_result.stderr}")
                 raise RuntimeError(f"kubectl exec failed: {exec_result.stderr}")
             result = exec_result.stdout
         else:
@@ -107,8 +109,8 @@ class SourcesAPIClient:
             try:
                 return json.loads(result)
             except json.JSONDecodeError as e:
-                print(f"  DEBUG: curl_cmd = {curl_cmd}")
-                print(f"  DEBUG: result = {result[:500]}")
+                log_info(f"  DEBUG: curl_cmd = {curl_cmd}")
+                log_info(f"  DEBUG: result = {result[:500]}")
                 raise RuntimeError(f"Failed to parse JSON response: {result[:200]}") from e
         return {}
 
@@ -320,29 +322,29 @@ class SourcesAPIClient:
         Returns:
             Dict with source, auth, and application info
         """
-        print(f"Creating AWS source via Sources API: {name}")
+        log_info(f"Creating AWS source via Sources API: {name}")
 
         # Step 1: Create source
-        print(f"  Creating source...")
+        log_info(f"  Creating source...")
         source = self.create_source(name=name, source_type_name="amazon")
         source_id = source['id']
-        print(f"    ✓ Source created: {source_id}")
+        log_success(f"    ✓ Source created: {source_id}")
 
         # Step 2: Create authentication (minimal for on-prem)
-        print(f"  Creating authentication...")
+        log_info(f"  Creating authentication...")
         try:
             auth = self.create_authentication(
                 source_id=source_id,
                 auth_type="cloud-meter-arn",
                 username="arn:aws:iam::123456789012:role/CostManagementRole"  # Dummy ARN
             )
-            print(f"    ✓ Authentication created: {auth['id']}")
+            log_success(f"    ✓ Authentication created: {auth['id']}")
         except Exception as e:
-            print(f"    ⚠️  Authentication creation failed (may not be required): {e}")
+            log_warning(f"    ⚠️  Authentication creation failed (may not be required): {e}")
             auth = None
 
         # Step 3: Create Cost Management application with S3 config
-        print(f"  Creating Cost Management application...")
+        log_info(f"  Creating Cost Management application...")
         app_extra = {
             "bucket": bucket,
             "report_name": report_name,
@@ -354,9 +356,9 @@ class SourcesAPIClient:
             source_id=source_id,
             extra=app_extra
         )
-        print(f"    ✓ Application created: {application['id']}")
+        log_success(f"    ✓ Application created: {application['id']}")
 
-        print(f"  ✅ AWS source fully configured")
+        log_success(f"  ✅ AWS source fully configured")
 
         return {
             'source': source,
@@ -382,16 +384,16 @@ class SourcesAPIClient:
         Returns:
             Dict with source, auth, and application info
         """
-        print(f"Creating OCP source via Sources API: {name}")
+        log_info(f"Creating OCP source via Sources API: {name}")
 
         # Step 1: Create source with cluster_id as source_ref
         # CRITICAL: For OCP, the cluster_id MUST be in source_ref for Koku Sources Listener
-        print(f"  Creating source...")
+        log_info(f"  Creating source...")
 
         # Check if source already exists
         existing_source = self.get_source_by_name(name)
         if existing_source:
-            print(f"    ℹ️  Source already exists: {existing_source['id']}")
+            log_info(f"    ℹ️  Source already exists: {existing_source['id']}")
             source = existing_source
             source_id = source['id']
         else:
@@ -401,10 +403,10 @@ class SourcesAPIClient:
             if 'id' not in source:
                 raise ValueError(f"Source creation failed: response missing 'id' field. Response: {source}")
             source_id = source['id']
-            print(f"    ✓ Source created: {source_id} (source_ref={cluster_id})")
+            log_success(f"    ✓ Source created: {source_id} (source_ref={cluster_id})")
 
         # Step 2: Create authentication with cluster_id
-        print(f"  Creating authentication...")
+        log_info(f"  Creating authentication...")
         try:
             # For OCP, authentication stores the cluster_id
             auth = self.create_authentication(
@@ -412,13 +414,13 @@ class SourcesAPIClient:
                 auth_type="token",  # OCP uses token auth
                 username=cluster_id  # Store cluster_id in username field
             )
-            print(f"    ✓ Authentication created: {auth['id']}")
+            log_success(f"    ✓ Authentication created: {auth['id']}")
         except Exception as e:
-            print(f"    ⚠️  Authentication creation failed: {e}")
+            log_warning(f"    ⚠️  Authentication creation failed: {e}")
             auth = None
 
         # Step 3: Create Cost Management application with S3 config
-        print(f"  Creating Cost Management application...")
+        log_info(f"  Creating Cost Management application...")
 
         # Check if application already exists for this source
         applications = self.list_applications(filters={'source_id': source_id})
@@ -431,7 +433,7 @@ class SourcesAPIClient:
                 break
 
         if existing_app:
-            print(f"    ℹ️  Application already exists: {existing_app['id']}")
+            log_info(f"    ℹ️  Application already exists: {existing_app['id']}")
             application = existing_app
         else:
             app_extra = {
@@ -448,9 +450,9 @@ class SourcesAPIClient:
                 raise ValueError(f"Application creation failed: {application['errors']}")
             if 'id' not in application:
                 raise ValueError(f"Application creation failed: response missing 'id' field. Response: {application}")
-            print(f"    ✓ Application created: {application['id']}")
+            log_success(f"    ✓ Application created: {application['id']}")
 
-        print(f"  ✅ OCP source fully configured")
+        log_success(f"  ✅ OCP source fully configured")
 
         return {
             'source': source,
@@ -479,7 +481,7 @@ class SourcesAPIClient:
             if status == 'available':
                 return True
             elif status in ['unavailable', 'partially_available']:
-                print(f"  Source status: {status}")
+                log_info(f"  Source status: {status}")
 
             time.sleep(5)
 
