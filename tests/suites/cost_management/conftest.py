@@ -1,6 +1,10 @@
 """
 Cost Management (Koku) suite fixtures.
 
+Note: Sources API has been merged into Koku. All sources endpoints are now
+available via the Koku API at /api/cost-management/v1/ using X-Rh-Identity
+header for authentication instead of x-rh-sources-org-id.
+
 Includes the cost_validation_data fixture that runs the full E2E flow for cost validation tests.
 This makes cost_validation tests SELF-CONTAINED - they don't depend on other test modules.
 """
@@ -21,13 +25,15 @@ from e2e_helpers import (
     ensure_nise_available,
     generate_cluster_id,
     generate_nise_data,
-    get_sources_api_url,
+    get_koku_api_reads_url,
+    get_koku_api_writes_url,
     register_source,
     upload_with_retry,
     wait_for_provider,
     wait_for_summary_tables,
 )
 from utils import (
+    create_rh_identity_header,
     create_upload_package_from_files,
     execute_db_query,
     exec_in_pod,
@@ -35,7 +41,14 @@ from utils import (
 )
 
 
-def cleanup_old_cost_val_clusters(namespace: str, db_pod: str, listener_pod: str, sources_api_url: str, org_id: str):
+def cleanup_old_cost_val_clusters(
+    namespace: str,
+    db_pod: str,
+    ingress_pod: str,
+    api_reads_url: str,
+    api_writes_url: str,
+    rh_identity_header: str,
+):
     """Clean up any leftover cost-val clusters from previous test runs.
     
     This ensures cost_validation tests start with a clean slate and don't
@@ -47,13 +60,13 @@ def cleanup_old_cost_val_clusters(namespace: str, db_pod: str, listener_pod: str
     try:
         result = exec_in_pod(
             namespace,
-            listener_pod,
+            ingress_pod,
             [
-                "curl", "-s", f"{sources_api_url}/sources",
+                "curl", "-s", f"{api_reads_url}/sources",
                 "-H", "Content-Type: application/json",
-                "-H", f"x-rh-sources-org-id: {org_id}",
+                "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
-            container="sources-listener",
+            container="ingress",
         )
         
         if result:
@@ -65,13 +78,13 @@ def cleanup_old_cost_val_clusters(namespace: str, db_pod: str, listener_pod: str
                     print(f"       Deleting old source: {source.get('name')} (ref: {source_ref})")
                     exec_in_pod(
                         namespace,
-                        listener_pod,
+                        ingress_pod,
                         [
                             "curl", "-s", "-X", "DELETE",
-                            f"{sources_api_url}/sources/{source_id}",
-                            "-H", f"x-rh-sources-org-id: {org_id}",
+                            f"{api_writes_url}/sources/{source_id}",
+                            "-H", f"X-Rh-Identity: {rh_identity_header}",
                         ],
-                        container="sources-listener",
+                        container="ingress",
                     )
     except Exception as e:
         print(f"       Warning: Could not clean old sources: {e}")
@@ -143,26 +156,61 @@ def cleanup_old_cost_val_clusters(namespace: str, db_pod: str, listener_pod: str
 
 
 @pytest.fixture(scope="module")
-def sources_api_url(cluster_config) -> str:
-    """Get Sources API internal URL."""
-    return get_sources_api_url(cluster_config.helm_release_name, cluster_config.namespace)
+def koku_api_reads_url_cost_mgmt(cluster_config) -> str:
+    """Get Koku API reads URL for cost management tests."""
+    return get_koku_api_reads_url(cluster_config.helm_release_name, cluster_config.namespace)
 
 
 @pytest.fixture(scope="module")
-def sources_listener_pod(cluster_config) -> str:
-    """Get sources-listener pod name for executing API calls."""
+def koku_api_writes_url_cost_mgmt(cluster_config) -> str:
+    """Get Koku API writes URL for cost management tests."""
+    return get_koku_api_writes_url(cluster_config.helm_release_name, cluster_config.namespace)
+
+
+@pytest.fixture(scope="module")
+def koku_api_writes_url(cluster_config) -> str:
+    """Get Koku API writes URL for operations that modify state (POST, PUT, DELETE).
+    
+    The Koku deployment separates reads/writes for scalability.
+    """
+    return (
+        f"http://{cluster_config.helm_release_name}-koku-api-writes."
+        f"{cluster_config.namespace}.svc.cluster.local:8000/api/cost-management/v1"
+    )
+
+
+@pytest.fixture(scope="module")
+def koku_api_reads_url(cluster_config) -> str:
+    """Get Koku API reads URL for read-only operations (GET).
+    
+    The Koku deployment separates reads/writes for scalability.
+    """
+    return (
+        f"http://{cluster_config.helm_release_name}-koku-api-reads."
+        f"{cluster_config.namespace}.svc.cluster.local:8000/api/cost-management/v1"
+    )
+
+
+@pytest.fixture(scope="module")
+def ingress_pod(cluster_config) -> str:
+    """Get ingress pod name for executing API calls.
+    
+    The ingress pod has NetworkPolicy access to koku-api, so we use it
+    to make internal API calls.
+    """
     pod = get_pod_by_label(
         cluster_config.namespace,
-        "app.kubernetes.io/component=sources-listener"
+        "app.kubernetes.io/component=ingress"
     )
     if not pod:
-        pod = get_pod_by_label(
-            cluster_config.namespace,
-            "app.kubernetes.io/component=listener"
-        )
-    if not pod:
-        pytest.skip("Sources listener pod not found")
+        pytest.skip("Ingress pod not found for API calls")
     return pod
+
+
+@pytest.fixture(scope="module")
+def rh_identity_header(org_id) -> str:
+    """Get X-Rh-Identity header value for the test org."""
+    return create_rh_identity_header(org_id)
 
 
 # =============================================================================
@@ -175,7 +223,7 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
     
     This fixture:
     1. Generates NISE data with known expected values
-    2. Registers a source in Sources API
+    2. Registers a source in Koku Sources API
     3. Uploads data via JWT-authenticated ingress
     4. Waits for Koku to process and populate summary tables
     5. Yields the test context
@@ -201,15 +249,17 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
     if not db_pod:
         pytest.skip("Database pod not found")
     
-    listener_pod = get_pod_by_label(cluster_config.namespace, "app.kubernetes.io/component=sources-listener")
-    if not listener_pod:
-        listener_pod = get_pod_by_label(cluster_config.namespace, "app.kubernetes.io/component=listener")
-    if not listener_pod:
-        pytest.skip("Listener pod not found")
+    ingress_pod = get_pod_by_label(cluster_config.namespace, "app.kubernetes.io/component=ingress")
+    if not ingress_pod:
+        pytest.skip("Ingress pod not found")
     
     temp_dir = tempfile.mkdtemp(prefix="cost_validation_")
     source_registration = None
-    sources_url = get_sources_api_url(cluster_config.helm_release_name, cluster_config.namespace)
+    
+    # Use Koku API URLs (sources are now part of Koku)
+    api_reads_url = get_koku_api_reads_url(cluster_config.helm_release_name, cluster_config.namespace)
+    api_writes_url = get_koku_api_writes_url(cluster_config.helm_release_name, cluster_config.namespace)
+    rh_identity = create_rh_identity_header(org_id)
     
     # Use centralized NISE config
     nise_config = NISEConfig()
@@ -225,7 +275,10 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
         # Pre-test cleanup: Remove any leftover cost-val clusters from previous runs
         if cleanup_before:
             print("\n  [0/5] Pre-test cleanup...")
-            cleanup_old_cost_val_clusters(cluster_config.namespace, db_pod, listener_pod, sources_url, org_id)
+            cleanup_old_cost_val_clusters(
+            cluster_config.namespace, db_pod, ingress_pod,
+            api_reads_url, api_writes_url, rh_identity
+        )
             print("       Cleanup complete")
         else:
             print("\n  [0/5] Pre-test cleanup SKIPPED (E2E_CLEANUP_BEFORE=false)")
@@ -245,15 +298,18 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
         if not files["all_files"]:
             pytest.skip("NISE generated no CSV files")
         
-        # Step 2: Register source
+        # Step 2: Register source via Koku API
         print("\n  [2/5] Registering source...")
         source_registration = register_source(
             namespace=cluster_config.namespace,
-            listener_pod=listener_pod,
-            sources_api_url=sources_url,
+            pod=ingress_pod,
+            api_reads_url=api_reads_url,
+            api_writes_url=api_writes_url,
+            rh_identity_header=rh_identity,
             cluster_id=cluster_id,
             org_id=org_id,
             source_name=f"cost-validation-{cluster_id[:16]}",
+            container="ingress",
         )
         print(f"       Source ID: {source_registration.source_id}")
         
@@ -341,10 +397,11 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
             if source_registration:
                 if delete_source(
                     cluster_config.namespace,
-                    listener_pod,
-                    sources_url,
-                    source_registration.source_id,
-                    org_id,
+                    ingress_pod,
+                    api_writes_url,
+                    rh_identity,
+                source_registration.source_id,
+                    container="ingress",
                 ):
                     print(f"  Deleted source {source_registration.source_id}")
                 else:
