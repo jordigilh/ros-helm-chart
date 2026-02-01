@@ -388,14 +388,6 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
   - Ingress from OpenShift router/ingress (for external REST API access via Envoy sidecar on port 9080)
 - **Applies to**: Cost Management On-Premise API
 
-#### 5. Koku API Access Network Policy
-
-**File**: `cost-onprem/templates/cost-management/api/networkpolicy.yaml`
-
-- **Allows**:
-  - Ingress from `openshift-ingress` namespace (for external REST API access via Envoy sidecar on port 9080)
-- **Applies to**: Koku API (includes Sources API endpoints)
-
 ### Prometheus Metrics Access
 
 **Important**: Network policies specifically allow Prometheus (running in `openshift-monitoring` namespace) to scrape metrics endpoints:
