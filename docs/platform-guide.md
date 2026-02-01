@@ -41,15 +41,13 @@ graph TB
     subgraph Backend["Backend Services (Internal)"]
         direction TB
         Ingress["Ingress<br/>(File Upload)"]
-        Koku["Koku API<br/>(Cost Management)"]
+        Koku["Koku API<br/>(Cost Management)<br/>(includes Sources API)"]
         ROS["ROS API<br/>(Recommendations)"]
-        Sources["Sources API<br/>(Providers)"]
     end
 
     Gateway --> Ingress
     Gateway --> Koku
     Gateway --> ROS
-    Gateway --> Sources
 
     style Router fill:#e57373,stroke:#333,stroke-width:2px,color:#000
     style Gateway fill:#fff59d,stroke:#333,stroke-width:2px,color:#000
@@ -57,7 +55,6 @@ graph TB
     style Ingress fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
     style Koku fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
     style ROS fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
-    style Sources fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ### Networking
@@ -97,10 +94,9 @@ https://cost-onprem-api-cost-onprem.apps.cluster.com       # API Gateway (all AP
 https://cost-onprem-ui-cost-onprem.apps.cluster.com        # UI (web interface)
 
 # API endpoints via gateway:
-# - /api/ingress/*           - File upload
-# - /api/cost-management/*   - Cost management API
-# - /api/sources/*           - Sources API
-# - /api/ros/*               - ROS recommendations
+# - /api/ingress/*                      - File upload
+# - /api/cost-management/*              - Cost management API (includes Sources API at /v1/sources/)
+# - /api/cost-management/v1/recommendations/openshift - ROS recommendations
 ```
 
 ### Storage

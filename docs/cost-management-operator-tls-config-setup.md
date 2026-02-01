@@ -175,11 +175,11 @@ spec:
     collect_previous_data: true
     context_timeout: 120
 
-  # Source configuration
+  # Source configuration (Sources API is now part of Koku at /api/cost-management/v1/sources/)
   source:
     create_source: false
     check_cycle: 1440
-    sources_path: "/api/sources/v1.0/"
+    sources_path: "/api/cost-management/v1/"
 ```
 
 ### 3. Create Custom CA Bundle Script

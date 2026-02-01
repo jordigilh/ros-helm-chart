@@ -32,7 +32,7 @@ Get Main Route URL:
 
 API Endpoints:
   - Cost Management API: /api/cost-management/v1
-  - Sources API: /api/sources/*
+  - Sources API: /api/cost-management/v1/sources/ (integrated in Koku)
   - Upload API: /api/ingress/*
 
 Health Check:

@@ -39,7 +39,8 @@ graph TB
 
 **Key Points**:
 - **Centralized Gateway** validates JWT signature and injects `X-Rh-Identity` header for all backend services
-- **Backend Services** (Ingress, Koku API, ROS API, Sources API) receive pre-authenticated requests with `X-Rh-Identity`
+- **Backend Services** (Ingress, Koku API, ROS API) receive pre-authenticated requests with `X-Rh-Identity`
+- **Sources API** is now integrated into Koku API at `/api/cost-management/v1/sources/`
 - **XRHID Format**: `{"org_id":"...","identity":{"org_id":"...","account_number":"...","type":"User"}}` (base64-encoded)
 - The `org_id` claim from JWT is required and used throughout the system
 
@@ -311,7 +312,8 @@ The gateway routes requests to backend services based on URL path:
 | `/api/cost-management/v1/recommendations/openshift` | ROS API | 8000 |
 | `/api/cost-management/*` (GET, HEAD) | Koku API Reads | 8000 |
 | `/api/cost-management/*` (POST, PUT, DELETE, PATCH) | Koku API Writes | 8000 |
-| `/api/sources/*` | Sources API | 8000 |
+
+**Note**: Sources API is now integrated into Koku at `/api/cost-management/v1/sources/`
 
 **Request Flow**:
 ```

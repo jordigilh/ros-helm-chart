@@ -24,7 +24,6 @@ This document provides detailed information about the Helm templates used in the
 | `cost-management/api/deployment.yaml` | Koku API | X-Rh-Identity header from Gateway |
 | `ingress/deployment.yaml` | Ingress | Receives pre-authenticated requests from Gateway |
 | `ros/api/deployment.yaml` | ROS API | Receives pre-authenticated requests from Gateway |
-| `sources-api/deployment.yaml` | Sources API | Mixed: X-Rh-Identity middleware for protected endpoints |
 | `kruize/deployment.yaml` | Kruize | Internal service accessed via ROS API |
 
 **Gateway Architecture:**
@@ -133,20 +132,17 @@ graph TB
     end
 
     Ingress["Ingress Backend<br/>/api/ingress/*"]
-    RosAPI["ROS API Backend<br/>/api/ros/*"]
-    Koku["Koku API Backend<br/>/api/cost-management/*"]
-    Sources["Sources API Backend<br/>/api/sources/*"]
+    RosAPI["ROS API Backend<br/>/api/cost-management/v1/recommendations/openshift/*"]
+    Koku["Koku API Backend<br/>/api/cost-management/*<br/>(includes Sources API at /v1/sources/)"]
 
     Router --> Ingress
     Router --> RosAPI
     Router --> Koku
-    Router --> Sources
 
     style Gateway fill:#fff59d,stroke:#333,stroke-width:2px,color:#000
     style Ingress fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
     style RosAPI fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
     style Koku fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
-    style Sources fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
     style HCM fill:#90caf9,stroke:#333,stroke-width:2px,color:#000
     style JWT fill:#f48fb1,stroke:#333,stroke-width:2px,color:#000
     style Lua fill:#ce93d8,stroke:#333,stroke-width:2px,color:#000
@@ -210,9 +206,11 @@ end
 
 **Backend Clusters** (Gateway routes to multiple backends):
 - **ingress-backend**: Ingress service for file uploads (`/api/ingress/*`)
-- **ros-api-backend**: ROS API service (`/api/ros/*`)
-- **koku-api-backend**: Koku API service (`/api/cost-management/*`)
-- **sources-api-backend**: Sources API service (`/api/sources/*`)
+- **ros-api-backend**: ROS API service (`/api/cost-management/v1/recommendations/openshift/*`)
+- **koku-api-reads-backend**: Koku API read service (`/api/cost-management/*` GET/HEAD)
+- **koku-api-writes-backend**: Koku API write service (`/api/cost-management/*` POST/PUT/DELETE/PATCH)
+
+**Note**: Sources API is now integrated into Koku API at `/api/cost-management/v1/sources/`
 
 All backends use:
 - **Type**: STRICT_DNS

@@ -15,21 +15,18 @@ graph TB
     Client["Client<br/>(with JWT)"]
     Gateway["Centralized Gateway<br/>(Port 9080)<br/><br/>1. jwt_authn filter<br/>   - Fetches JWKS from Keycloak<br/>   - Validates JWT signature<br/>   - Extracts claims to metadata<br/><br/>2. Lua filter<br/>   - Reads JWT claims<br/>   - Injects X-Rh-Identity header<br/><br/>3. Routes to backend based on path"]
     Ingress["Ingress Service<br/>(Port 8081)"]
-    Koku["Koku API<br/>(Port 8000)"]
-    Sources["Sources API<br/>(Port 8000)"]
+    Koku["Koku API<br/>(Port 8000)<br/>(includes Sources API)"]
     RosApi["ROS API<br/>(Port 8000)"]
 
     Client -->|"Authorization: Bearer &lt;JWT&gt;"| Gateway
     Gateway -->|"/api/ingress/*<br/>X-Rh-Identity header"| Ingress
-    Gateway -->|"/api/cost-management/*<br/>X-Rh-Identity header"| Koku
-    Gateway -->|"/api/sources/*<br/>X-Rh-Identity header"| Sources
+    Gateway -->|"/api/cost-management/*<br/>(includes Sources API at /v1/sources/)<br/>X-Rh-Identity header"| Koku
     Gateway -->|"/api/cost-management/v1/recommendations/openshift<br/>X-Rh-Identity header"| RosApi
 
     style Client fill:#90caf9,stroke:#333,stroke-width:2px,color:#000
     style Gateway fill:#fff59d,stroke:#333,stroke-width:2px,color:#000
     style Ingress fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
     style Koku fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
-    style Sources fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
     style RosApi fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
 ```
 
@@ -40,10 +37,9 @@ The centralized gateway handles JWT authentication and routes requests to backen
 | Priority | Path | Method | Backend | Description |
 |----------|------|--------|---------|-------------|
 | 1 | `/api/cost-management/v1/recommendations/openshift` | GET | ROS API (port 8000) | Resource optimization recommendations |
-| 2 | `/api/cost-management/*` | GET, HEAD | Koku API Reads (port 8000) | Cost management read operations |
-| 3 | `/api/cost-management/*` | POST, PUT, DELETE, PATCH | Koku API Writes (port 8000) | Cost management write operations |
-| 4 | `/api/sources/*` | ALL | Sources API (port 8000) | Provider and source management |
-| 5 | `/api/ingress/*` | ALL | Ingress (port 8081) | File uploads |
+| 2 | `/api/cost-management/*` | GET, HEAD | Koku API Reads (port 8000) | Cost management read operations (includes Sources API at `/v1/sources/`) |
+| 3 | `/api/cost-management/*` | POST, PUT, DELETE, PATCH | Koku API Writes (port 8000) | Cost management write operations (includes Sources API at `/v1/sources/`) |
+| 4 | `/api/ingress/*` | ALL | Ingress (port 8081) | File uploads |
 
 ### Backend Services
 
@@ -51,9 +47,8 @@ All backend services receive pre-authenticated traffic from the gateway:
 
 | Service | Port | Authentication Method |
 |---------|------|----------------------|
-| **Koku API (Reads)** | 8000 | X-Rh-Identity header from gateway |
-| **Koku API (Writes)** | 8000 | X-Rh-Identity header from gateway |
-| **Sources API** | 8000 | X-Rh-Identity header from gateway or internal access |
+| **Koku API (Reads)** | 8000 | X-Rh-Identity header from gateway (includes Sources API at `/v1/sources/`) |
+| **Koku API (Writes)** | 8000 | X-Rh-Identity header from gateway (includes Sources API at `/v1/sources/`) |
 | **Ingress** | 8081 | X-Rh-Identity header from gateway |
 | **ROS API** | 8000 | X-Rh-Identity header from gateway |
 | **Kruize** | 8080 | Internal service (accessed via ROS API) |

@@ -92,8 +92,8 @@ data:
                   # 1. ROS recommendations (most specific path, must match before /api/cost-management/)
                   # 2. Cost Management API - Read operations (GET, HEAD)
                   # 3. Cost Management API - Write operations (POST, PUT, DELETE, PATCH)
-                  # 4. Sources API
-                  # 5. Ingress (file upload)
+                  #    Note: Sources API is now part of Cost Management API at /api/cost-management/v1/sources/
+                  # 4. Ingress (file upload)
                   # =========================================================================
 
                   # 1. ROS Recommendations - Route to ROS API service
@@ -109,6 +109,7 @@ data:
                         per_try_timeout: 15s
 
                   # 2. Cost Management API - Read operations (GET, HEAD) route to reads service
+                  #    Includes Sources API at /api/cost-management/v1/sources/
                   - match:
                       prefix: "/api/cost-management/"
                       headers:
@@ -137,6 +138,7 @@ data:
                         per_try_timeout: 30s
 
                   # 3. Cost Management API - Write operations (POST, PUT, DELETE, PATCH) route to writes service
+                  #    This also handles Sources API requests at /api/cost-management/v1/sources/
                   - match:
                       prefix: "/api/cost-management/"
                     route:
@@ -147,18 +149,7 @@ data:
                         num_retries: 2
                         per_try_timeout: 30s
 
-                  # 4. Sources API - routes to Sources API service
-                  - match:
-                      prefix: "/api/sources/"
-                    route:
-                      cluster: sources-api-backend
-                      timeout: 30s
-                      retry_policy:
-                        retry_on: 5xx,reset,connect-failure,refused-stream
-                        num_retries: 2
-                        per_try_timeout: 15s
-
-                  # 5. File upload ingress - routes to ingress backend
+                  # 4. Ingress - File upload endpoint
                   - match:
                       prefix: "/api/ingress/"
                     route:
@@ -502,28 +493,6 @@ data:
             max_connections: 1024
             max_pending_requests: 1024
             max_requests: 1024
-            max_retries: 3
-
-      # Sources API backend for provider management
-      - name: sources-api-backend
-        connect_timeout: 5s
-        type: STRICT_DNS
-        dns_refresh_rate: 30s
-        load_assignment:
-          cluster_name: sources-api-backend
-          endpoints:
-          - lb_endpoints:
-            - endpoint:
-                address:
-                  socket_address:
-                    address: {{ include "cost-onprem.fullname" . }}-sources-api.{{ .Release.Namespace }}.svc.cluster.local
-                    port_value: {{ .Values.sourcesApi.port }}
-        circuit_breakers:
-          thresholds:
-          - priority: DEFAULT
-            max_connections: 512
-            max_pending_requests: 512
-            max_requests: 512
             max_retries: 3
 
       # Ingress backend for file upload
