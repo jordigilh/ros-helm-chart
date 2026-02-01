@@ -41,7 +41,7 @@ echo "   (These should only come from helpers, not be explicitly set)"
 # We're looking for app.kubernetes.io/name that appear to override the helper
 HARDCODED_NAMES=$(grep -n "app.kubernetes.io/name:" "$RENDERED_FILE" | \
   grep -v "app.kubernetes.io/name: cost-onprem" | \
-  grep -E "(database|cache|valkey|minio|storage|ros-api|ros-processor|ros-partition-cleaner|sources-api|kruize|kruize-partitions|ingress|ros-rec-poller)" || true)
+  grep -E "(database|cache|valkey|minio|storage|ros-api|ros-processor|ros-partition-cleaner|gateway|kruize|kruize-partitions|ingress|ros-rec-poller)" || true)
 
 if [[ -n "$HARDCODED_NAMES" ]]; then
   add_issue "ERROR" "Found hardcoded app.kubernetes.io/name labels that override helper templates:"
@@ -160,7 +160,6 @@ echo "   (Looking for non-standard component names)"
 # Allowed component names:
 #   - cost-* prefix: cost-management-api, cost-processor, cost-scheduler, cost-worker
 #   - ros-* prefix: ros-api, ros-processor, ros-housekeeper, ros-recommendation-poller, ros-optimization, ros-optimization-maintenance, ros-database-maintenance
-#   - sources-* prefix: sources-api, sources-listener
 #   - Shared infrastructure: database, cache, storage, ingress, ui, networkpolicy
 # Flag deprecated names that should no longer be used
 OLD_COMPONENT_NAMES=$(grep -n "app.kubernetes.io/component:" "$RENDERED_FILE" | \

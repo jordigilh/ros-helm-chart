@@ -109,7 +109,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /metrics
-              port: 9000
+              port: {{ .Values.ros.processor.metricsPort }}
             initialDelaySeconds: 120
             periodSeconds: 30
             timeoutSeconds: 10
@@ -117,7 +117,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /metrics
-              port: 9000
+              port: {{ .Values.ros.processor.metricsPort }}
             initialDelaySeconds: 90
             periodSeconds: 20
             timeoutSeconds: 10

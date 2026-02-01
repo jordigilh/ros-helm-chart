@@ -63,6 +63,28 @@ Usage: {{ include "cost-onprem.koku.celery.worker.name" (dict "context" . "type"
 
 {{/*
 =============================================================================
+Internal Port Constants
+=============================================================================
+These are hardcoded application defaults - not configurable via values.yaml
+because the koku application itself uses fixed ports.
+*/}}
+
+{{/*
+Koku API container port (hardcoded in Django/gunicorn)
+*/}}
+{{- define "cost-onprem.koku.api.port" -}}
+8000
+{{- end -}}
+
+{{/*
+Koku metrics/probes port (hardcoded in the application)
+*/}}
+{{- define "cost-onprem.koku.metrics.port" -}}
+9000
+{{- end -}}
+
+{{/*
+=============================================================================
 Database Connection Helpers
 =============================================================================
 */}}

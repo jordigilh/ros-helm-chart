@@ -11,7 +11,7 @@ spec:
   ports:
   - name: http
     port: {{ .Values.costManagement.api.service.port }}
-    targetPort: {{ .Values.costManagement.api.service.targetPort }}
+    targetPort: {{ include "cost-onprem.koku.api.port" . }}
     protocol: TCP
   selector:
     {{- include "cost-onprem.selectorLabels" . | nindent 4 }}

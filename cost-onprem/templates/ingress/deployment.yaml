@@ -30,58 +30,19 @@ spec:
         {{- include "cost-onprem.initContainer.prepareCABundle" . | nindent 8 }}
       serviceAccountName: {{ .Values.ingress.serviceAccount.name }}
       containers:
-        # Envoy sidecar for native JWT authentication
-        - name: envoy-proxy
-          image: "{{ .Values.jwtAuth.envoy.image.repository }}:{{ .Values.jwtAuth.envoy.image.tag }}"
-          imagePullPolicy: {{ .Values.global.pullPolicy }}
-          ports:
-            - name: http-proxy
-              containerPort: {{ .Values.jwtAuth.envoy.port }}
-              protocol: TCP
-            - name: admin
-              containerPort: {{ .Values.jwtAuth.envoy.adminPort }}
-              protocol: TCP
-          command:
-            - /usr/local/bin/envoy
-          args:
-            - -c
-            - /etc/envoy/envoy.yaml
-            - --log-level
-            - {{ .Values.jwtAuth.envoy.logLevel | default "info" }}
-          volumeMounts:
-            - name: envoy-config
-              mountPath: /etc/envoy
-              readOnly: true
-            - name: ca-bundle
-              mountPath: /etc/ca-certificates
-              readOnly: true
-          livenessProbe:
-            httpGet:
-              path: /ready
-              port: {{ .Values.jwtAuth.envoy.adminPort }}
-            initialDelaySeconds: 15
-            periodSeconds: 20
-            timeoutSeconds: 3
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: {{ .Values.jwtAuth.envoy.adminPort }}
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 3
-          resources:
-            {{- toYaml .Values.jwtAuth.envoy.resources | nindent 12 }}
+        # Ingress service - receives pre-authenticated traffic from centralized gateway
+        # Gateway validates JWT and injects X-Rh-Identity header
         - name: ingress
           image: "{{ .Values.ingress.image.repository }}:{{ .Values.ingress.image.tag }}"
           imagePullPolicy: {{ .Values.ingress.image.pullPolicy | default .Values.global.pullPolicy }}
           ports:
             - name: http
-              containerPort: 8081
+              containerPort: {{ .Values.ingress.server.port }}
               protocol: TCP
           env:
             # Port configuration (insights-ingress-go uses INGRESS_ prefix)
             - name: INGRESS_WEBPORT
-              value: "8081"
+              value: {{ .Values.ingress.server.port | quote }}
             - name: INGRESS_METRICSPORT
               value: {{ .Values.ingress.metrics.port | quote }}
             - name: INGRESS_DEBUG
@@ -127,18 +88,23 @@ spec:
               value: {{ .Values.ingress.kafka.groupId | default "ingress" | quote }}
 
             # Authentication configuration
-            # JWT is handled by Envoy sidecar, the backend trusts X-Rh-Identity header
+            # JWT is handled by centralized gateway, backend trusts X-Rh-Identity header
             - name: INGRESS_AUTH
-              value: "false"  # Auth is handled by Envoy sidecar, backend trusts X-Rh-Identity
+              value: "false"  # Auth is handled by gateway, backend trusts X-Rh-Identity
 
             # Logging configuration
             - name: INGRESS_LOGLEVEL
               value: {{ .Values.ingress.logging.level | upper | quote }}
 
+            # SSL_CERT_FILE is used by Go's crypto/x509 to load CA certificates
+            # Points to combined bundle with system CAs + OpenShift cluster CA + Service CA
+            - name: SSL_CERT_FILE
+              value: "/etc/ssl/certs/ca-bundle/ca-bundle.crt"
+
           livenessProbe:
             httpGet:
               path: /
-              port: 8081
+              port: {{ .Values.ingress.server.port }}
             initialDelaySeconds: {{ .Values.probes.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
@@ -146,7 +112,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /
-              port: 8081
+              port: {{ .Values.ingress.server.port }}
             initialDelaySeconds: 10
             periodSeconds: {{ .Values.probes.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
@@ -157,37 +123,23 @@ spec:
             - name: aws-config
               mountPath: /etc/aws
               readOnly: true
-            - name: service-ca-cert
-              mountPath: /etc/ssl/certs/service-ca.crt
-              subPath: service-ca.crt
+            - name: ca-bundle
+              mountPath: /etc/ssl/certs/ca-bundle
               readOnly: true
       volumes:
-        # Envoy configuration volume
-        - name: envoy-config
+        - name: aws-config
           configMap:
-            name: {{ include "cost-onprem.fullname" . }}-envoy-config-ingress
-            items:
-              - key: envoy.yaml
-                path: envoy.yaml
-        # CA bundle preparation volumes
+            name: {{ include "cost-onprem.fullname" . }}-aws-config
+        # Volumes for CA bundle preparation
         - name: ca-scripts
           configMap:
-            name: {{ include "cost-onprem.fullname" . }}-ca-scripts
+            name: {{ include "cost-onprem.fullname" . }}-ca-combine
             items:
               - key: combine-ca.sh
                 path: combine-ca.sh
                 mode: 0755
         - name: ca-source
           configMap:
-            name: {{ include "cost-onprem.fullname" . }}-ca-scripts
+            name: {{ include "cost-onprem.fullname" . }}-service-ca
         - name: ca-bundle
           emptyDir: {}
-        - name: aws-config
-          configMap:
-            name: {{ include "cost-onprem.fullname" . }}-aws-config
-        - name: service-ca-cert
-          configMap:
-            name: {{ include "cost-onprem.fullname" . }}-service-ca
-            items:
-              - key: service-ca.crt
-                path: service-ca.crt

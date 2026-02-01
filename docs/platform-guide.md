@@ -32,38 +32,53 @@ graph TB
 
     subgraph Router["OpenShift Router (HAProxy)"]
         direction TB
-        Routes["Routes (separate hostnames)"]
+        Routes["Routes"]
     end
 
-    Routes -->|"cost-onprem-main-cost-onprem.apps..."| Main["ROS Main Service"]
-    Routes -->|"cost-onprem-ingress-cost-onprem.apps..."| Ingress["Ingress Service"]
+    Routes -->|"cost-onprem-api-cost-onprem.apps..."| Gateway["Centralized API Gateway<br/>(Port 9080)<br/>JWT Authentication"]
     Routes -->|"cost-onprem-ui-cost-onprem.apps..."| UI["UI Service<br/>(OAuth Proxy + App)"]
-    Routes -->|"cost-onprem-kruize-cost-onprem.apps..."| Kruize["Kruize Service"]
+
+    subgraph Backend["Backend Services (Internal)"]
+        direction TB
+        Ingress["Ingress<br/>(File Upload)"]
+        Koku["Koku API<br/>(Cost Management)<br/>(includes Sources API)"]
+        ROS["ROS API<br/>(Recommendations)"]
+    end
+
+    Gateway --> Ingress
+    Gateway --> Koku
+    Gateway --> ROS
 
     style Router fill:#e57373,stroke:#333,stroke-width:2px,color:#000
-    style Main fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
-    style Ingress fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style Gateway fill:#fff59d,stroke:#333,stroke-width:2px,color:#000
     style UI fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
-    style Kruize fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style Ingress fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style Koku fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style ROS fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ### Networking
+
+**Centralized Gateway Architecture:**
+- All external API traffic routes through a single **API Gateway** on port 9080
+- Gateway handles JWT authentication and routes to backend services
+- Backend services are not directly exposed externally
 
 **Route Configuration:**
 ```yaml
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: cost-onprem-main
+  name: cost-onprem-api
   annotations:
     haproxy.router.openshift.io/timeout: "30s"
 spec:
-  host: ""  # Auto-generated: cost-onprem-main-namespace.apps.cluster.com
+  host: ""  # Auto-generated: cost-onprem-api-namespace.apps.cluster.com
   to:
     kind: Service
-    name: cost-onprem-ros-api
+    name: cost-onprem-gateway
   port:
-    targetPort: 8000
+    targetPort: 9080
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
@@ -75,10 +90,13 @@ spec:
 oc get routes -n cost-onprem
 
 # Example routes
-https://cost-onprem-main-cost-onprem.apps.cluster.com      # ROS API
-https://cost-onprem-ingress-cost-onprem.apps.cluster.com   # Ingress API (file upload)
+https://cost-onprem-api-cost-onprem.apps.cluster.com       # API Gateway (all APIs)
 https://cost-onprem-ui-cost-onprem.apps.cluster.com        # UI (web interface)
-https://cost-onprem-kruize-cost-onprem.apps.cluster.com    # Kruize API
+
+# API endpoints via gateway:
+# - /api/ingress/*                      - File upload
+# - /api/cost-management/*              - Cost management API (includes Sources API at /v1/sources/)
+# - /api/cost-management/v1/recommendations/openshift - ROS recommendations
 ```
 
 ### Storage
@@ -236,14 +254,17 @@ global:
 ```bash
 # Check routes
 oc get routes -n cost-onprem
-oc describe route cost-onprem-main -n cost-onprem
+oc describe route cost-onprem-api -n cost-onprem
 
 # Check router pods
 oc get pods -n openshift-ingress
 
-# Test internal connectivity
-oc rsh deployment/cost-onprem-ros-api
-curl http://cost-onprem-ros-api:8000/status
+# Check gateway pods
+oc get pods -n cost-onprem -l app.kubernetes.io/component=gateway
+
+# Test internal connectivity via gateway
+oc rsh deployment/cost-onprem-gateway
+curl http://localhost:9080/ready
 ```
 
 **ODF issues:**
