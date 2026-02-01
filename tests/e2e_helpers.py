@@ -511,10 +511,8 @@ def register_source(
             # 5xx errors might be transient, retry
             if http_code.startswith("5"):
                 continue
-            # 4xx errors (except 409 conflict) are not retryable
-            if http_code != "409":
-                break
-            continue
+            # 4xx errors are not retryable - break and fail
+            break
         
         try:
             source_data = json.loads(result)
