@@ -4,6 +4,8 @@ Preflight checks for E2E validation suite.
 Verifies system readiness before running main E2E phases.
 """
 
+from ..logging import log_debug, log_info, log_success, log_warning, log_error
+
 import subprocess
 from typing import Dict, Any
 
@@ -38,23 +40,23 @@ class PreflightPhase:
         Returns:
             Dictionary with check results and overall pass/fail status
         """
-        print("\n" + "="*70)
-        print("🔍 PREFLIGHT CHECKS")
-        print("="*70 + "\n")
+        log_info("\n" + "="*70)
+        log_info("🔍 PREFLIGHT CHECKS")
+        log_info("="*70 + "\n")
 
         results = {}
         warnings = []
 
         # Check 1: Database connectivity (BLOCKING)
-        print("1️⃣  Checking database connectivity...")
+        log_info("1️⃣  Checking database connectivity...")
         results['database'] = self._check_database_connectivity()
         if results['database']['passed']:
-            print(f"   ✅ Database: Connected")
-            print(f"      - Migrations: {results['database']['migrations']}")
-            print(f"      - Customers: {results['database']['customers']}")
-            print(f"      - Tenants: {results['database']['tenants']}")
+            log_success(f"   ✅ Database: Connected")
+            log_info(f"      - Migrations: {results['database']['migrations']}")
+            log_info(f"      - Customers: {results['database']['customers']}")
+            log_info(f"      - Tenants: {results['database']['tenants']}")
         else:
-            print(f"   ❌ Database: {results['database'].get('error', 'FAILED')}")
+            log_error(f"   ❌ Database: {results['database'].get('error', 'FAILED')}")
             return {
                 'passed': False,
                 'checks': results,
@@ -62,40 +64,40 @@ class PreflightPhase:
             }
 
         # Check 2: Provider existence (NON-BLOCKING)
-        print("\n2️⃣  Checking provider data...")
+        log_info("\n2️⃣  Checking provider data...")
         results['provider'] = self._check_provider_exists()
         if results['provider']['passed']:
-            print(f"   ✅ Provider: Found {results['provider']['count']} provider(s)")
+            log_success(f"   ✅ Provider: Found {results['provider']['count']} provider(s)")
             if results['provider']['details']:
                 for p in results['provider']['details']:
-                    print(f"      - {p['name']} ({p['type']}, UUID: {p['uuid']})")
+                    log_info(f"      - {p['name']} ({p['type']}, UUID: {p['uuid']})")
         else:
-            print(f"   ⚠️  Provider: {results['provider'].get('warning', 'None found')}")
-            print(f"      → Will create provider in provider phase")
+            log_warning(f"   ⚠️  Provider: {results['provider'].get('warning', 'None found')}")
+            log_info(f"      → Will create provider in provider phase")
             warnings.append(results['provider'].get('warning', 'No providers found'))
 
         # Check 3: S3 data verification (OPTIONAL, NON-BLOCKING)
-        print("\n3️⃣  Checking S3 data availability...")
+        log_info("\n3️⃣  Checking S3 data availability...")
         results['s3_data'] = self._check_s3_data()
         if results['s3_data']['passed']:
-            print(f"   ✅ S3 Data: Found {results['s3_data']['file_count']} files")
+            log_success(f"   ✅ S3 Data: Found {results['s3_data']['file_count']} files")
             if results['s3_data'].get('has_manifest'):
-                print(f"      - Manifest: Present")
+                log_info(f"      - Manifest: Present")
             if results['s3_data'].get('csv_count', 0) > 0:
-                print(f"      - CSV files: {results['s3_data']['csv_count']}")
+                log_info(f"      - CSV files: {results['s3_data']['csv_count']}")
         elif results['s3_data'].get('skipped'):
-            print(f"   ⏭️  S3 Data: Check skipped ({results['s3_data'].get('reason', 'unknown')})")
+            log_info(f"   ⏭️  S3 Data: Check skipped ({results['s3_data'].get('reason', 'unknown')})")
         else:
-            print(f"   ⚠️  S3 Data: {results['s3_data'].get('warning', 'Not found')}")
-            print(f"      → Will upload fresh data in data_upload phase")
+            log_warning(f"   ⚠️  S3 Data: {results['s3_data'].get('warning', 'Not found')}")
+            log_info(f"      → Will upload fresh data in data_upload phase")
             warnings.append(results['s3_data'].get('warning', 'No S3 data found'))
 
-        print("\n" + "="*70)
+        log_info("\n" + "="*70)
         if warnings:
-            print(f"⚠️  Preflight completed with {len(warnings)} warning(s)")
+            log_warning(f"⚠️  Preflight completed with {len(warnings)} warning(s)")
         else:
-            print("✅ All preflight checks passed")
-        print("="*70 + "\n")
+            log_success("✅ All preflight checks passed")
+        log_info("="*70 + "\n")
 
         return {
             'passed': True,  # Non-blocking warnings don't fail preflight

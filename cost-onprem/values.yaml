@@ -41,12 +41,6 @@ global:
       tag: "RELEASE.2025-07-21T05-28-08Z"
 
 # -----------------------------------------------------------------------------
-# Authentication Provider Configuration
-# -----------------------------------------------------------------------------
-auth:
-  provider: "oauth2"
-
-# -----------------------------------------------------------------------------
 # ROS (Resource Optimization Service) - Top-level Service
 # -----------------------------------------------------------------------------
 ros:
@@ -55,7 +49,7 @@ ros:
   # use the same image
   image:
     repository: quay.io/insights-onprem/ros-ocp-backend
-    tag: "latest"
+    tag: "sources"
     pullPolicy: Always
 
   # Service Account
@@ -153,7 +147,7 @@ costManagement:
 
     image:
       repository: quay.io/insights-onprem/koku
-      tag: "postgres"
+      tag: "sources"
       pullPolicy: Always
 
     reads:
@@ -258,7 +252,6 @@ costManagement:
     service:
       type: ClusterIP
       port: 8000
-      targetPort: 8000
       name: koku-api
 
   # ---------------------------------------------------------------------------
@@ -713,23 +706,6 @@ kruize:
         cpu: "300m"
 
 # -----------------------------------------------------------------------------
-# Sources API (Top-level Service - Shared by ROS and Cost Management)
-# -----------------------------------------------------------------------------
-sourcesApi:
-  image:
-    repository: quay.io/insights-onprem/sources-api-go
-    tag: "latest"
-    pullPolicy: Always
-
-  port: 8000
-  logLevel: DEBUG
-  bypassRbac: true
-  sourcesEnv: prod
-  # encryptionKey removed - stored in cost-onprem-sources-credentials secret
-  # Created by: scripts/install-helm-chart.sh (24-char random key)
-  platformSourcesEventStreamTopic: platform.sources.event-stream
-
-# -----------------------------------------------------------------------------
 # Ingress Service (Shared entry point for uploads and routing)
 # -----------------------------------------------------------------------------
 # Uses insights-ingress-go which requires INGRESS_* prefixed environment variables
@@ -745,7 +721,7 @@ ingress:
 
   # Server configuration
   server:
-    port: 8080
+    port: 8081
     debug: false
 
   # Upload handling
@@ -767,13 +743,6 @@ ingress:
     topic: "platform.upload.announce"  # INGRESS_KAFKAANNOUNCETOPIC
     groupId: "ingress"                 # INGRESS_KAFKAGROUPID
 
-  # Authentication configuration
-  # Note: Authentication is available with Keycloak (RHBK).
-  # When JWT is enabled via Envoy sidecar, INGRESS_AUTH is set to false
-  # because the backend trusts the X-Rh-Identity header injected by Envoy.
-  auth:
-    enabled: true
-
   # Logging
   logging:
     level: "INFO"      # INGRESS_LOGLEVEL (uppercase)
@@ -786,7 +755,7 @@ ingress:
 # Shared Infrastructure - Database (Unified PostgreSQL for all services)
 # -----------------------------------------------------------------------------
 # Unified PostgreSQL server for all on-prem services
-# Single StatefulSet hosts separate databases: ros_db, kruize_db, koku, sources
+# Single StatefulSet hosts separate databases: ros_db, kruize_db, koku
 #
 # ⚠️  SECURITY: Credential Management
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -868,13 +837,6 @@ database:
     name: koku
     # user removed - stored in cost-onprem-db-credentials secret (key: koku-user)
     # password removed - stored in cost-onprem-db-credentials secret (key: koku-password)
-
-  # Sources Database Configuration
-  sources:
-    # Database name on the unified server (dedicated database for Sources API)
-    name: sources
-    # user removed - stored in cost-onprem-db-credentials secret (key: sources-user)
-    # password removed - stored in cost-onprem-db-credentials secret (key: sources-password)
 
 # -----------------------------------------------------------------------------
 # Shared Infrastructure - Kafka
@@ -964,10 +926,11 @@ odf:
 # JWT authentication with RHBK using Envoy's native JWT filter
 # Requires RHBK (Red Hat Build of Keycloak) to be deployed
 #
-# Architecture: Envoy sidecar validates JWT tokens inline using native jwt_authn filter
-# with Lua scripting to extract claims into X-ROS headers for the backend service.
+# Architecture: Centralized Envoy gateway validates JWT tokens inline using
+# native jwt_authn filter with Lua scripting to extract claims and inject
+# X-Rh-Identity header for backend services.
 jwtAuth:
-  # Envoy proxy sidecar (for JWT validation)
+  # Envoy proxy configuration (used by centralized gateway)
   envoy:
     image:
       repository: registry.redhat.io/openshift-service-mesh/proxyv2-rhel9
@@ -975,6 +938,7 @@ jwtAuth:
       pullPolicy: IfNotPresent
 
     port: 9080
+    servicePort: 80  # Service port exposed to other components (nginx, etc.)
     adminPort: 9901
     logLevel: info
 
@@ -1040,6 +1004,7 @@ ui:
       repository: registry.redhat.io/rhceph/oauth2-proxy-rhel9
       pullPolicy: IfNotPresent
       tag: "v7.6.0"
+    port: 8443  # OAuth proxy HTTPS port
     resources:
       limits:
         cpu: "100m"
@@ -1079,7 +1044,7 @@ service:
   type: ClusterIP
 
 # OpenShift Routes
-serviceRoute:
+gatewayRoute:
   annotations:
     # OpenShift-specific route annotations
     haproxy.router.openshift.io/timeout: "30s"

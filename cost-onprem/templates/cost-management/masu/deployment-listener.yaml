@@ -34,7 +34,7 @@ spec:
           {{- include "cost-onprem.securityContext.container" . | nindent 10 }}
 
         ports:
-        - containerPort: 9000
+        - containerPort: {{ include "cost-onprem.koku.metrics.port" . }}
           protocol: TCP
           name: probes
 
@@ -42,7 +42,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /livez
-            port: 9000
+            port: {{ include "cost-onprem.koku.metrics.port" . }}
           initialDelaySeconds: 30
           periodSeconds: 20
           timeoutSeconds: 3
@@ -52,7 +52,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /readyz
-            port: 9000
+            port: {{ include "cost-onprem.koku.metrics.port" . }}
           initialDelaySeconds: 30
           periodSeconds: 20
           timeoutSeconds: 3

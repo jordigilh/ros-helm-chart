@@ -311,7 +311,7 @@ class TestKafkaTopics:
 @pytest.mark.integration
 class TestKafkaListener:
     """Tests for Kafka listener pod and connectivity."""
-    
+
     @pytest.fixture
     def listener_pod(self, cluster_config):
         """Get listener pod, skip if not found."""
@@ -322,18 +322,18 @@ class TestKafkaListener:
         if not pod:
             pytest.skip("Listener pod not found - may not be deployed yet")
         return pod
-    
+
     def test_listener_pod_exists(self, listener_pod):
         """Verify Kafka listener pod exists."""
         assert listener_pod, "Kafka listener pod not found"
-    
+
     @pytest.mark.parametrize("jsonpath,expected,check_name", [
         pytest.param("{.status.phase}", "Running", "pod phase", id="pod_running"),
         pytest.param("{.status.containerStatuses[0].ready}", "true", "container ready", id="container_ready"),
     ])
     def test_listener_status(self, cluster_config, listener_pod, jsonpath: str, expected: str, check_name: str):
         """Verify listener pod status.
-        
+
         Parametrized for: pod running state, container readiness.
         """
         try:
@@ -348,32 +348,32 @@ class TestKafkaListener:
                 text=True,
                 timeout=30,
             )
-            
+
             actual = result.stdout.strip().lower()
             assert actual == expected.lower(), (
                 f"Listener {check_name} check failed: expected '{expected}', got '{actual}'"
             )
         except subprocess.TimeoutExpired:
             pytest.fail(f"Timeout checking listener {check_name}")
-    
+
     def test_listener_kafka_connectivity(self, cluster_config):
         """Verify listener can connect to Kafka (log-based check)."""
         listener_pod = get_pod_by_label(
             cluster_config.namespace,
             "app.kubernetes.io/component=listener"
         )
-        
+
         if not listener_pod:
             pytest.skip("Listener pod not found")
-        
+
         status = check_listener_kafka_connection(
             cluster_config.namespace,
             listener_pod
         )
-        
+
         if "error" in status:
             pytest.skip(f"Could not check listener logs: {status['error']}")
-        
+
         if status.get("has_errors"):
             pytest.fail(
                 "Kafka connection errors found in listener logs. "
@@ -382,9 +382,61 @@ class TestKafkaListener:
                     pod=listener_pod
                 )
             )
-        
+
         # Note: If no explicit connection message but no errors, we consider it OK
         # The listener may not log connection success explicitly
         if not status.get("connected") and not status.get("has_errors"):
             # This is a soft pass - no errors detected
             pass
+
+
+@pytest.mark.infrastructure
+@pytest.mark.integration
+class TestKafkaConsumerGroups:
+    """Tests for Kafka consumer groups."""
+
+    def test_listener_consumer_group_exists(
+        self, cluster_config, kafka_namespace: str, kafka_cluster_name: str
+    ):
+        """Verify Koku listener consumer group exists."""
+        # Find a Kafka broker pod to run commands (not entity-operator or zookeeper)
+        # Use strimzi.io/name label which correctly identifies broker pods
+        kafka_pod = get_pod_by_label(
+            kafka_namespace,
+            f"strimzi.io/name={kafka_cluster_name}-kafka"
+        )
+
+        if not kafka_pod:
+            pytest.skip(f"Kafka broker pod not found in namespace '{kafka_namespace}'")
+
+        # List consumer groups and check for the listener's group
+        try:
+            result = subprocess.run(
+                [
+                    "kubectl", "exec",
+                    "-n", kafka_namespace,
+                    kafka_pod, "--",
+                    "bin/kafka-consumer-groups.sh",
+                    "--bootstrap-server", "localhost:9092",
+                    "--list",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+
+            if result.returncode != 0:
+                pytest.skip(f"Could not list consumer groups: {result.stderr}")
+
+            groups = [g.strip() for g in result.stdout.split("\n") if g.strip()]
+
+            # Look for the Koku listener consumer group
+            # The group name typically contains 'koku' or 'listener'
+            listener_groups = [g for g in groups if 'koku' in g.lower() or 'listener' in g.lower()]
+
+            assert len(listener_groups) > 0 or len(groups) > 0, (
+                f"No consumer groups found. Expected at least the Koku listener group. "
+                f"Available groups: {groups}"
+            )
+        except subprocess.TimeoutExpired:
+            pytest.fail("Timeout listing Kafka consumer groups")

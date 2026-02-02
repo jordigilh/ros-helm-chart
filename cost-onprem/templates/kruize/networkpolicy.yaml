@@ -22,7 +22,7 @@ spec:
               app.kubernetes.io/component: ros-processor
       ports:
         - protocol: TCP
-          port: 8080
+          port: {{ .Values.kruize.port }}
     # Allow traffic from recommendation-poller to Kruize REST endpoints
     - from:
         - podSelector:
@@ -31,7 +31,7 @@ spec:
               app.kubernetes.io/component: ros-recommendation-poller
       ports:
         - protocol: TCP
-          port: 8080
+          port: {{ .Values.kruize.port }}
     # Allow traffic from housekeeper to Kruize (for init container health check)
     - from:
         - podSelector:
@@ -40,4 +40,4 @@ spec:
               app.kubernetes.io/component: housekeeper
       ports:
         - protocol: TCP
-          port: 8080
+          port: {{ .Values.kruize.port }}

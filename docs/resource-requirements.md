@@ -11,7 +11,7 @@
 | **CPU** | 10.3 cores | 12-14 cores | 17.5 cores |
 | **Memory** | 24 Gi | 32-40 Gi | 52 Gi |
 | **Worker Nodes** | 3 nodes @ 8 Gi each | 3 nodes @ 12-16 Gi each | - |
-| **Total Pods** | 55 | - | - |
+| **Total Pods** | ~51 | - | - |
 
 ---
 
@@ -22,7 +22,7 @@ The Cost Management stack consists of the cost-onprem Helm chart plus infrastruc
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         cost-onprem                             │
-│  Koku APIs, Celery Workers, ROS, Kruize, Sources, UI, Ingress   │
+│  Koku APIs, Celery Workers, ROS, Kruize, Gateway, UI, Ingress   │
 │  PostgreSQL, Valkey                                             │
 └─────────────────────────────────────────────────────────────────┘
                               +
@@ -115,11 +115,13 @@ The system deploys **24 Celery pods** across different queues:
 
 | Component | Replicas | CPU Request | CPU Limit | Memory Request | Memory Limit |
 |-----------|----------|-------------|-----------|----------------|--------------|
-| sources-api | 1 | 200m | 500m | 512 Mi | 1 Gi |
+| gateway (Envoy) | 2 | 100m | 500m | 128 Mi | 256 Mi |
 | ingress | 1 | 300m | 1000m | 640 Mi | 1.25 Gi |
 | ui | 1 | 100m | 200m | 128 Mi | 256 Mi |
 
-**Subtotal**: 3 pods, **600m** request, **~1.3 Gi** memory request
+**Subtotal**: 4 pods, **600m** request, **~1.0 Gi** memory request
+
+> **Note**: Sources API functionality is embedded within the Koku API deployments and is not a separate deployment.
 
 ---
 
@@ -149,15 +151,15 @@ Kafka pods typically don't have explicit resource requests set by default. Based
 | Celery Workers | 24 | 2.4 cores | 6.5 Gi |
 | ROS Services | 6 | 1.3 cores | 4.2 Gi |
 | Infrastructure | 3 | 0.8 cores | 1.8 Gi |
-| Supporting Services | 3 | 0.6 cores | 1.3 Gi |
+| Supporting Services | 4 | 0.6 cores | 1.0 Gi |
 | Kafka (recommended) | 7 | 3.2 cores | 7.0 Gi |
-| **TOTAL** | **50** | **~10.2 cores** | **~25 Gi** |
+| **TOTAL** | **51** | **~10.2 cores** | **~25 Gi** |
 
 ### Grand Total
 
 | Metric | Value |
 |--------|-------|
-| **Total Pods** | 49-50 |
+| **Total Pods** | 50-51 |
 | **CPU Requests** | ~9-11 cores |
 | **CPU Limits** | ~15-16 cores |
 | **Memory Requests** | ~22-26 Gi |
@@ -342,13 +344,6 @@ The authoritative resource configuration is defined in the Koku repository:
 | **worker-hcs** | 100m | 300Mi | 200m | 500Mi | 1 |
 | **worker-subs-extraction** | 100m | 300Mi | 200m | 500Mi | 0 (disabled) |
 | **worker-subs-transmission** | 100m | 300Mi | 200m | 500Mi | 0 (disabled) |
-
-#### Sources Integration
-
-| Component | SaaS CPU Req | SaaS Mem Req | SaaS CPU Lim | SaaS Mem Lim | Replicas |
-|-----------|--------------|--------------|--------------|--------------|----------|
-| **sources-client** | 50m | 650Mi | 100m | 768Mi | 1 |
-| **sources-listener** | 100m | 250Mi | 200m | 500Mi | 1 |
 
 ### Required Helm Chart Changes
 

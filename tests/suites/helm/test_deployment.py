@@ -87,12 +87,13 @@ class TestDeploymentHealth:
             "app.kubernetes.io/component=ros-processor"
         ), "ROS Processor pod is not ready"
 
-    def test_sources_api_pod_ready(self, cluster_config):
-        """Verify Sources API pod is ready."""
+    def test_koku_api_pod_ready(self, cluster_config):
+        """Verify Koku API pod is ready (provides cost management and sources endpoints)."""
+        # Check the writes pod since it handles source registration
         assert check_pod_ready(
             cluster_config.namespace,
-            "app.kubernetes.io/component=sources-api"
-        ), "Sources API pod is not ready"
+            "app.kubernetes.io/component=cost-management-api-writes"
+        ), "Koku API (writes) pod is not ready"
 
 
 @pytest.mark.helm
@@ -123,15 +124,25 @@ class TestServices:
 class TestRoutes:
     """Tests for OpenShift routes."""
 
-    def test_ingress_route_exists(self, cluster_config):
-        """Verify ingress route exists."""
+    def test_api_gateway_route_exists(self, cluster_config):
+        """Verify API gateway route exists."""
         result = run_oc_command([
             "get", "route",
-            f"{cluster_config.helm_release_name}-ingress",
+            f"{cluster_config.helm_release_name}-api",
             "-n", cluster_config.namespace,
         ], check=False)
-        
-        assert result.returncode == 0, "Ingress route not found"
+
+        assert result.returncode == 0, "API gateway route not found"
+
+    def test_ui_route_exists(self, cluster_config):
+        """Verify UI route exists."""
+        result = run_oc_command([
+            "get", "route",
+            f"{cluster_config.helm_release_name}-ui",
+            "-n", cluster_config.namespace,
+        ], check=False)
+
+        assert result.returncode == 0, "UI route not found"
 
     def test_routes_have_hosts(self, cluster_config):
         """Verify routes have assigned hosts."""

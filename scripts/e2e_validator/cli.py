@@ -8,6 +8,7 @@ Main command-line interface for E2E validation.
 import click
 import time
 import os
+import sys
 from datetime import datetime, timedelta
 
 # Suppress urllib3 SSL warnings (expected in local/test environments with self-signed certs)
@@ -26,6 +27,7 @@ from .phases.processing import ProcessingPhase
 from .phases.smoke_validation import SmokeValidationPhase
 from .phases.deployment_validation import DeploymentValidationPhase
 from .phases.kafka_validation import KafkaValidationPhase
+from .logging import log_debug, log_info, log_success, log_warning, log_error
 
 
 def fetch_org_id_from_keycloak(keycloak_namespace: str = "keycloak", username: str = "test") -> str:
@@ -53,7 +55,7 @@ def fetch_org_id_from_keycloak(keycloak_namespace: str = "keycloak", username: s
             capture_output=True, text=True, timeout=30
         )
         if result.returncode != 0:
-            print(f"  ⚠️  Could not get Keycloak admin credentials: {result.stderr}")
+            log_warning(f"  ⚠️  Could not get Keycloak admin credentials: {result.stderr}")
             return None
 
         admin_password = base64.b64decode(result.stdout.strip()).decode('utf-8')
@@ -65,7 +67,7 @@ def fetch_org_id_from_keycloak(keycloak_namespace: str = "keycloak", username: s
             capture_output=True, text=True, timeout=30
         )
         if result.returncode != 0:
-            print(f"  ⚠️  Could not get Keycloak route: {result.stderr}")
+            log_warning(f"  ⚠️  Could not get Keycloak route: {result.stderr}")
             return None
 
         keycloak_host = result.stdout.strip()
@@ -87,7 +89,7 @@ def fetch_org_id_from_keycloak(keycloak_namespace: str = "keycloak", username: s
         )
 
         if token_response.status_code != 200:
-            print(f"  ⚠️  Could not get admin token: {token_response.status_code}")
+            log_warning(f"  ⚠️  Could not get admin token: {token_response.status_code}")
             return None
 
         admin_token = token_response.json().get("access_token")
@@ -106,12 +108,12 @@ def fetch_org_id_from_keycloak(keycloak_namespace: str = "keycloak", username: s
         )
 
         if users_response.status_code != 200:
-            print(f"  ⚠️  Could not get users: {users_response.status_code}")
+            log_warning(f"  ⚠️  Could not get users: {users_response.status_code}")
             return None
 
         users = users_response.json()
         if not users:
-            print(f"  ⚠️  User '{username}' not found in Keycloak")
+            log_warning(f"  ⚠️  User '{username}' not found in Keycloak")
             return None
 
         # Extract org_id from user attributes
@@ -119,47 +121,37 @@ def fetch_org_id_from_keycloak(keycloak_namespace: str = "keycloak", username: s
         org_id = user.get("attributes", {}).get("org_id", [None])[0]
 
         if org_id:
-            print(f"  ✓ Fetched org_id from Keycloak user '{username}': {org_id}")
+            log_success(f"  ✓ Fetched org_id from Keycloak user '{username}': {org_id}")
             return org_id
         else:
-            print(f"  ⚠️  User '{username}' has no org_id attribute")
+            log_warning(f"  ⚠️  User '{username}' has no org_id attribute")
             return None
 
     except subprocess.TimeoutExpired:
-        print("  ⚠️  Timeout fetching org_id from Keycloak")
+        log_warning("  ⚠️  Timeout fetching org_id from Keycloak")
         return None
     except Exception as e:
-        print(f"  ⚠️  Error fetching org_id from Keycloak: {e}")
+        log_warning(f"  ⚠️  Error fetching org_id from Keycloak: {e}")
         return None
 
 
 def discover_sources_api_info(namespace: str) -> tuple:
-    """Auto-discover Sources API service and route info
+    """Auto-discover Sources API service info.
+
+    With the centralized gateway architecture, Sources API is accessed
+    internally via the Kubernetes service, not via an external route.
 
     Args:
         namespace: Kubernetes namespace
 
     Returns:
         Tuple of (route_url, service_ip, route_hostname) or (None, None, None)
+        Note: route_url and route_hostname may be None if no external route exists
     """
     try:
         from kubernetes import client
 
-        # Get route info
-        custom_api = client.CustomObjectsApi()
-        route = custom_api.get_namespaced_custom_object(
-            group="route.openshift.io",
-            version="v1",
-            namespace=namespace,
-            plural="routes",
-            name="sources-api"
-        )
-        route_host = route['spec']['host']
-        tls = route['spec'].get('tls')
-        scheme = 'https' if tls else 'http'
-        route_url = f"{scheme}://{route_host}"
-
-        # Get service ClusterIP (for --resolve fallback)
+        # Get service ClusterIP - this is what we actually use for internal access
         v1 = client.CoreV1Api()
         service = v1.read_namespaced_service(
             name="cost-onprem-sources-api",
@@ -167,13 +159,34 @@ def discover_sources_api_info(namespace: str) -> tuple:
         )
         service_ip = service.spec.cluster_ip
 
-        print(f"  ✓ Auto-discovered Sources API:")
-        print(f"    Route: {route_url}")
-        print(f"    Service IP: {service_ip} (for --resolve if needed)")
+        log_success(f"  ✓ Auto-discovered Sources API:")
+        log_info(f"    Service IP: {service_ip}")
+        log_info(f"    Internal URL: http://cost-onprem-sources-api:8000")
+
+        # Route is optional - with centralized gateway, external access goes through gateway
+        route_url = None
+        route_host = None
+        try:
+            custom_api = client.CustomObjectsApi()
+            route = custom_api.get_namespaced_custom_object(
+                group="route.openshift.io",
+                version="v1",
+                namespace=namespace,
+                plural="routes",
+                name="sources-api"
+            )
+            route_host = route['spec']['host']
+            tls = route['spec'].get('tls')
+            scheme = 'https' if tls else 'http'
+            route_url = f"{scheme}://{route_host}"
+            log_info(f"    External Route: {route_url}")
+        except Exception:
+            # No external route - this is expected with centralized gateway
+            log_info(f"    External Route: N/A (uses centralized gateway)")
 
         return (route_url, service_ip, route_host)
     except Exception as e:
-        print(f"  ℹ️  Sources API not found: {e}")
+        log_info(f"  ℹ️  Sources API service not found: {e}")
         return (None, None, None)
 
 
@@ -206,17 +219,17 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
 
     # Auto-fetch org_id from Keycloak if not provided
     if org_id is None:
-        print("\n🔑 Auto-fetching org_id from Keycloak...")
+        log_info("\n🔑 Auto-fetching org_id from Keycloak...")
         org_id = fetch_org_id_from_keycloak(keycloak_namespace=keycloak_namespace)
         if org_id is None:
-            print("  ⚠️  Could not auto-fetch org_id, using default 'org1234567'")
+            log_warning("  ⚠️  Could not auto-fetch org_id, using default 'org1234567'")
             org_id = 'org1234567'
 
     # Generate unique cluster ID for this test run to ensure data isolation
     # This prevents conflicts from previous test runs and mimics production behavior
     import time
     cluster_id = f"test-cluster-{int(time.time())}"
-    print(f"  ✓ Generated unique cluster ID: {cluster_id}")
+    log_success(f"  ✓ Generated unique cluster ID: {cluster_id}")
 
     # Quick mode skips slow operations but RUNS critical setup and data upload
     if quick:
@@ -227,20 +240,20 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
     # Smoke test optimizations: skip expensive operations but KEEP validation
     if smoke_test:
         timeout = 180  # Use 180s for smoke test (processing + summarization)
-        print("\n🚀 Smoke test mode enabled:")
-        print("   - Running standalone validation (YAML-driven)")
-        print("   - Processing timeout: 180s")
-        print("   - Minimal data (1 pod, 1 node, 1 cluster)")
-        print("   - Estimated completion: ~90 seconds")
-        print("")
+        log_info("\n🚀 Smoke test mode enabled:")
+        log_info("   - Running standalone validation (YAML-driven)")
+        log_info("   - Processing timeout: 180s")
+        log_info("   - Minimal data (1 pod, 1 node, 1 cluster)")
+        log_info("   - Estimated completion: ~90 seconds")
+        log_info("")
 
     # Infrastructure-only mode warning
     if infrastructure_only:
-        print("\n⚠️  WARNING: Infrastructure-only mode enabled")
-        print("   - Data upload, processing, and validation will be SKIPPED")
-        print("   - This is NOT a complete E2E test")
-        print("   - Use only for quick infrastructure checks (preflight, Kafka, Sources API)")
-        print("")
+        log_warning("\n⚠️  WARNING: Infrastructure-only mode enabled")
+        log_info("   - Data upload, processing, and validation will be SKIPPED")
+        log_info("   - This is NOT a complete E2E test")
+        log_info("   - Use only for quick infrastructure checks (preflight, Kafka, Sources API)")
+        log_info("")
 
     # Normalize provider type to uppercase for internal use
     provider_type = provider_type.upper()
@@ -252,45 +265,45 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
         scenario_list = [s.strip() for s in scenarios.split(',')]
 
     # Print header
-    print("\n" + "="*70)
-    print("  Cost Management E2E Validation Suite")
-    print("  Database-Agnostic Testing (Nise + IQE)")
-    print("="*70)
-    print(f"\nConfiguration:")
-    print(f"  Namespace:  {namespace}")
-    print(f"  Org ID:     {org_id}")
-    print(f"  Provider:   {provider_type}")
-    print(f"  Mode:       {'SMOKE TEST (fast 4-row CSV)' if smoke_test else 'FULL VALIDATION (nise)'}")
-    print(f"  Scenarios:  {len(scenario_list)}")
-    print(f"  Timeout:    {timeout}s")
-    print()
+    log_info("\n" + "="*70)
+    log_info("  Cost Management E2E Validation Suite")
+    log_info("  Database-Agnostic Testing (Nise + IQE)")
+    log_info("="*70)
+    log_info(f"\nConfiguration:")
+    log_info(f"  Namespace:  {namespace}")
+    log_info(f"  Org ID:     {org_id}")
+    log_info(f"  Provider:   {provider_type}")
+    log_info(f"  Mode:       {'SMOKE TEST (fast 4-row CSV)' if smoke_test else 'FULL VALIDATION (nise)'}")
+    log_info(f"  Scenarios:  {len(scenario_list)}")
+    log_info(f"  Timeout:    {timeout}s")
+    log_info()
 
     start_time = time.time()
     results = {}
 
     try:
         # Initialize clients
-        print("🔧 Initializing clients...")
+        log_info("🔧 Initializing clients...")
         k8s = KubernetesClient(namespace=namespace)
-        print("  ✓ Kubernetes client")
+        log_success("  ✓ Kubernetes client")
 
         # Dynamically discover PostgreSQL pod by label
-        print("  🔍 Discovering PostgreSQL pod...")
+        log_info("  🔍 Discovering PostgreSQL pod...")
         postgres_pod = k8s.discover_postgresql_pod()
         if not postgres_pod:
-            print("  ❌ Failed to discover PostgreSQL pod with label app.kubernetes.io/component=database")
+            log_error("  ❌ Failed to discover PostgreSQL pod with label app.kubernetes.io/component=database")
             ctx.exit(1)
 
-        print(f"  ✓ Discovered PostgreSQL pod: {postgres_pod}")
+        log_success(f"  ✓ Discovered PostgreSQL pod: {postgres_pod}")
 
         # Dynamically discover database secret from postgres pod
-        print("  🔍 Discovering database secret...")
+        log_info("  🔍 Discovering database secret...")
         db_secret_info = k8s.discover_database_secret(pod_name=postgres_pod)
         if not db_secret_info:
-            print(f"  ❌ Failed to discover database secret from {postgres_pod} pod")
+            log_error(f"  ❌ Failed to discover database secret from {postgres_pod} pod")
             ctx.exit(1)
 
-        print(f"  ✓ Discovered secret: {db_secret_info['secret_name']}")
+        log_success(f"  ✓ Discovered secret: {db_secret_info['secret_name']}")
 
         # Get DB credentials from discovered secret
         # Try multiple key names for compatibility with different chart versions
@@ -299,10 +312,10 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
         for key in password_keys:
             db_password = k8s.get_secret(db_secret_info['secret_name'], key)
             if db_password:
-                print(f"  ✓ Using password from key: {key}")
+                log_success(f"  ✓ Using password from key: {key}")
                 break
         if not db_password:
-            print(f"  ❌ Failed to get password from secret {db_secret_info['secret_name']} (tried: {', '.join(password_keys)})")
+            log_error(f"  ❌ Failed to get password from secret {db_secret_info['secret_name']} (tried: {', '.join(password_keys)})")
             ctx.exit(1)
 
         # Get database user from secret
@@ -311,10 +324,10 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
         for key in user_keys:
             db_user = k8s.get_secret(db_secret_info['secret_name'], key)
             if db_user:
-                print(f"  ✓ Using username from key: {key}")
+                log_success(f"  ✓ Using username from key: {key}")
                 break
         if not db_user:
-            print(f"  ❌ Failed to get username from secret {db_secret_info['secret_name']} (tried: {', '.join(user_keys)})")
+            log_error(f"  ❌ Failed to get username from secret {db_secret_info['secret_name']} (tried: {', '.join(user_keys)})")
             ctx.exit(1)
 
         # Use kubectl exec for database queries - no port-forward needed!
@@ -325,13 +338,13 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
             database='koku',
             user=db_user
         )
-        print("  ✓ Database client (kubectl exec - no port-forward needed)")
+        log_success("  ✓ Database client (kubectl exec - no port-forward needed)")
 
         nise = NiseClient()
-        print("  ✓ Nise client")
+        log_success("  ✓ Nise client")
 
         # Initialize Sources API client (production flow)
-        print("\n📡 Discovering Sources API...")
+        log_info("\n📡 Discovering Sources API...")
         route_url, service_ip, route_hostname = discover_sources_api_info(namespace)
         sources_api = None
 
@@ -339,8 +352,8 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
             try:
                 # Use internal service URL (curl will be executed from within the cluster)
                 service_url = f"http://cost-onprem-sources-api:8000"
-                print(f"    Using internal service: {service_url}")
-                print(f"    Requests will be executed from within the cluster")
+                log_info(f"    Using internal service: {service_url}")
+                log_info(f"    Requests will be executed from within the cluster")
 
                 sources_api = SourcesAPIClient(
                     base_url=service_url,
@@ -351,23 +364,23 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                 # Test connection
                 source_types = sources_api.get_source_types()
                 if source_types:
-                    print(f"  ✓ Sources API client initialized")
-                    print(f"  ℹ️  Available source types: {len(source_types)}")
-                    print(f"  🎯 Will use Production Flow (HTTP → Kafka → Listener)")
+                    log_success(f"  ✓ Sources API client initialized")
+                    log_info(f"  ℹ️  Available source types: {len(source_types)}")
+                    log_info(f"  🎯 Will use Production Flow (HTTP → Kafka → Listener)")
                 else:
-                    print(f"  ⚠️  Sources API responded but returned no source types")
+                    log_warning(f"  ⚠️  Sources API responded but returned no source types")
                     sources_api = None
             except Exception as e:
-                print(f"  ⚠️  Sources API connection failed: {e}")
+                log_warning(f"  ⚠️  Sources API connection failed: {e}")
                 import traceback
                 traceback.print_exc()
                 sources_api = None
         else:
-            print(f"  ℹ️  Sources API not available")
-            print(f"  Will use Development Flow (kubectl exec)")
+            log_info(f"  ℹ️  Sources API not available")
+            log_info(f"  Will use Development Flow (kubectl exec)")
 
         # Database queries will be done via kubectl exec (no port-forward needed!)
-        print("\n✓ Database queries will use kubectl exec from within cluster")
+        log_success("\n✓ Database queries will use kubectl exec from within cluster")
 
         # Get S3 configuration for preflight checks
         # Try external route first for local execution
@@ -390,7 +403,7 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
         preflight = PreflightPhase(db, namespace, s3_endpoint, bucket, k8s_client=k8s, postgres_pod=postgres_pod)
         results['preflight'] = preflight.run()
         if not results['preflight']['passed'] and not results['preflight'].get('skipped'):
-            print("\n❌ Pre-flight checks failed - skipping remaining phases")
+            log_error("\n❌ Pre-flight checks failed - skipping remaining phases")
             should_skip_remaining = True
             failed_phase = 'preflight'
 
@@ -403,7 +416,7 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
             migrations = MigrationsPhase(k8s, db)
             results['migrations'] = migrations.run(skip=skip_migrations)
             if not results['migrations']['passed'] and not results['migrations'].get('skipped'):
-                print("\n❌ Migrations failed - skipping remaining phases")
+                log_error("\n❌ Migrations failed - skipping remaining phases")
                 should_skip_remaining = True
                 failed_phase = 'migrations'
 
@@ -421,8 +434,8 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
             # Kafka validation is informational - don't fail the pipeline if it fails
             # (This allows graceful degradation if Kafka listener isn't deployed yet)
             if not results['kafka_validation']['passed']:
-                print("\n⚠️  Kafka validation failed - continuing with remaining phases")
-                print("   (Kafka listener is optional - orchestrator will use chords as fallback)")
+                log_warning("\n⚠️  Kafka validation failed - continuing with remaining phases")
+                log_info("   (Kafka listener is optional - orchestrator will use chords as fallback)")
 
         # Phase 3: Provider (with k8s client for Django ORM operations)
         if should_skip_remaining:
@@ -438,7 +451,7 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
             )
             results['provider'] = provider_phase.run(skip=skip_provider, provider_type=provider_type, cluster_id=cluster_id)
             if not results['provider']['passed'] and not results['provider'].get('skipped'):
-                print("\n❌ Provider setup failed - skipping remaining phases")
+                log_error("\n❌ Provider setup failed - skipping remaining phases")
                 should_skip_remaining = True
                 failed_phase = 'provider'
             provider_uuid = results['provider'].get('provider_uuid')
@@ -468,11 +481,11 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                 s3_access_key = k8s.get_secret(secret_name, 'access-key')
                 s3_secret_key = k8s.get_secret(secret_name, 'secret-key')
                 if s3_access_key and s3_secret_key:
-                    print(f"  ✓ Found S3 credentials in secret: {secret_name}")
+                    log_success(f"  ✓ Found S3 credentials in secret: {secret_name}")
                     break
 
             if not s3_access_key or not s3_secret_key:
-                print("\n❌ Failed to get S3 credentials")
+                log_error("\n❌ Failed to get S3 credentials")
                 should_skip_remaining = True
                 failed_phase = 'data_upload'
                 results['data_upload'] = {'passed': False, 'error': 'Missing S3 credentials'}
@@ -484,14 +497,14 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                 route_output = k8s.exec_in_pod('', ['oc', 'get', 'route', '-n', 'openshift-storage', 's3', '-o', 'jsonpath={.spec.host}'])
                 if route_output and route_output.strip():
                     s3_endpoint = f"https://{route_output.strip()}"
-                    print(f"  ℹ️  Using external S3 route: {s3_endpoint}")
+                    log_info(f"  ℹ️  Using external S3 route: {s3_endpoint}")
                 else:
                     raise Exception("No route found")
             except:
                 # Fallback: Get from MASU pod (internal endpoint - may not work locally)
                 masu_pod = k8s.get_pod_by_component('masu')
                 if not masu_pod:
-                    print("\n❌ MASU pod not found")
+                    log_error("\n❌ MASU pod not found")
                     ctx.exit(1)
 
                 s3_endpoint_output = k8s.exec_in_pod(masu_pod, ['env'])
@@ -504,12 +517,12 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                 if not s3_endpoint:
                     # Try common ODF S3 endpoint
                     s3_endpoint = "https://s3.openshift-storage.svc:443"
-                    print(f"  ⚠️  S3_ENDPOINT not in env, using default: {s3_endpoint}")
+                    log_warning(f"  ⚠️  S3_ENDPOINT not in env, using default: {s3_endpoint}")
 
                 # Convert internal endpoints to external for local execution
                 if '.svc' in s3_endpoint:
-                    print(f"  ⚠️  Internal endpoint detected: {s3_endpoint}")
-                    print(f"  ⚠️  Attempting to find external route...")
+                    log_warning(f"  ⚠️  Internal endpoint detected: {s3_endpoint}")
+                    log_warning(f"  ⚠️  Attempting to find external route...")
                     # Try to get the OpenShift cluster domain using kubectl
                     try:
                         import subprocess
@@ -526,11 +539,11 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                             # Convert api.X to apps.X
                             domain = host.replace('api.', 'apps.')
                             s3_endpoint = f"https://s3-openshift-storage.{domain}"
-                            print(f"  ✓ Using external route: {s3_endpoint}")
+                            log_success(f"  ✓ Using external route: {s3_endpoint}")
                         else:
-                            print(f"  ❌ Could not get cluster server from kubectl config")
+                            log_error(f"  ❌ Could not get cluster server from kubectl config")
                     except Exception as e:
-                        print(f"  ❌ Could not determine external route: {e}")
+                        log_error(f"  ❌ Could not determine external route: {e}")
 
             # Create S3 client using wrapper (pass k8s_client for internal presigned URLs)
             s3_client = S3Client(
@@ -546,10 +559,10 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
             if provider_type == 'OCP':
                 try:
                     kafka_client = KafkaProducerClient()
-                    print(f"  ✓ Kafka producer client initialized for OCP processing")
+                    log_success(f"  ✓ Kafka producer client initialized for OCP processing")
                 except Exception as e:
-                    print(f"  ⚠️  Kafka client initialization failed: {e}")
-                    print(f"     OCP processing may not be automatically triggered")
+                    log_warning(f"  ⚠️  Kafka client initialization failed: {e}")
+                    log_info(f"     OCP processing may not be automatically triggered")
 
             # DataUploadPhase with S3 client (direct upload via HTTPS)
             data_upload = DataUploadPhase(
@@ -574,7 +587,7 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
             else:
                 end_date = datetime(now.year, now.month + 1, 1)
 
-            print(f"  ℹ️  Using monthly period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+            log_info(f"  ℹ️  Using monthly period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
 
             results['data_upload'] = data_upload.upload_provider_data(
                 provider_type=provider_type,
@@ -588,7 +601,7 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
             # Check for S3 errors
             if 'data_upload' in results:
                 if not results['data_upload'].get('success', True) and 'error' in results['data_upload']:
-                    print("\n❌ Data upload failed - S3 error")
+                    log_error("\n❌ Data upload failed - S3 error")
                     should_skip_remaining = True
                     failed_phase = 'data_upload'
 
@@ -598,13 +611,13 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                     valid = results['data_upload'].get('valid', False)
 
                     if reason == 'invalid_data' or not valid:
-                        print("\n❌ Data upload skipped - INVALID DATA IN S3")
-                        print("   Found files but no valid manifest")
-                        print("   Run with --force to regenerate")
+                        log_error("\n❌ Data upload skipped - INVALID DATA IN S3")
+                        log_info("   Found files but no valid manifest")
+                        log_info("   Run with --force to regenerate")
                         should_skip_remaining = True
                         failed_phase = 'data_upload'
                     elif reason == 'valid_data_exists':
-                        print("\n✅ Using existing valid data")
+                        log_success("\n✅ Using existing valid data")
                         # Continue with processing
 
         # Phase 5-6: Processing (with provider UUID for targeted download)
@@ -614,7 +627,7 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
             # Extract manifest_uuid from data_upload result for targeted monitoring
             manifest_uuid = results.get('data_upload', {}).get('manifest_uuid')
             if manifest_uuid:
-                print(f"  ℹ️  Monitoring specific manifest: {manifest_uuid} (faster)")
+                log_info(f"  ℹ️  Monitoring specific manifest: {manifest_uuid} (faster)")
 
             processing = ProcessingPhase(
                 k8s,
@@ -628,14 +641,14 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
             )
             results['processing'] = processing.run()
             if not results['processing']['passed'] and not results['processing'].get('skipped'):
-                print("\n❌ Processing failed - skipping remaining phases")
+                log_error("\n❌ Processing failed - skipping remaining phases")
                 should_skip_remaining = True
                 failed_phase = 'processing'
 
         # Look up actual schema_name from Customer table (Koku prefixes 'org' to org_id)
         # This is needed for the Validation phase
         tenant_schema = db.get_schema_name_for_org(org_id)
-        print(f"  ℹ️  Using tenant schema: {tenant_schema}")
+        log_info(f"  ℹ️  Using tenant schema: {tenant_schema}")
 
         # Phase 7: Validation (PostgreSQL-based)
         if should_skip_remaining:
@@ -645,7 +658,7 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
             results['validation'] = {'passed': True, 'skipped': True, 'reason': '--skip-tests flag'}
         else:
             # Run standalone validation (uses dynamic dates matching data generation)
-            print("\n📋 Running data validation...")
+            log_info("\n📋 Running data validation...")
             # Calculate validation dates (same as data generation)
             now = datetime.now()
             val_start_date = datetime(now.year, now.month, 1)
@@ -663,33 +676,33 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
             )
             results['validation'] = validation.run()
             if not results['validation']['passed']:
-                print("\n❌ Validation failed")
+                log_error("\n❌ Validation failed")
                 should_skip_remaining = True
                 failed_phase = 'validation'
 
         # Final Summary
-        print("\n" + "="*70)
-        print("FINAL SUMMARY")
-        print("="*70)
+        log_info("\n" + "="*70)
+        log_info("FINAL SUMMARY")
+        log_info("="*70)
 
         elapsed = time.time() - start_time
-        print(f"\nTotal Time: {elapsed:.1f}s ({elapsed/60:.1f} minutes)")
+        log_info(f"\nTotal Time: {elapsed:.1f}s ({elapsed/60:.1f} minutes)")
 
         # Define critical phases that MUST pass (never be skipped or failed)
         critical_phases = ['preflight', 'provider', 'data_upload', 'processing']
 
-        print(f"    DEBUG: smoke_test={smoke_test}")
+        log_info(f"    DEBUG: smoke_test={smoke_test}")
 
         # Validation is critical in smoke test mode (validates costs match nise YAML)
         if smoke_test:
             critical_phases.append('validation')
-            print(f"    DEBUG: Added 'validation' to critical_phases")
+            log_info(f"    DEBUG: Added 'validation' to critical_phases")
 
         # IQE tests are critical in full validation mode only
         if not smoke_test:
             critical_phases.append('iqe_tests')
 
-        print(f"    DEBUG: final critical_phases={critical_phases}")
+        log_info(f"    DEBUG: final critical_phases={critical_phases}")
 
         # Check critical phase status
         critical_failures = []
@@ -699,7 +712,7 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
         for phase in critical_phases:
             result = results.get(phase, {'passed': False, 'skipped': False})
             # Debug: Print phase status
-            print(f"    DEBUG: {phase} -> passed={result.get('passed')}, skipped={result.get('skipped')}")
+            log_info(f"    DEBUG: {phase} -> passed={result.get('passed')}, skipped={result.get('skipped')}")
             if result.get('skipped', False):
                 critical_skipped.append(phase)
             elif not result.get('passed', False):
@@ -708,12 +721,12 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                 critical_passed.append(phase)
 
         # Debug: Print critical phase lists
-        print(f"    DEBUG: critical_passed={critical_passed}")
-        print(f"    DEBUG: critical_skipped={critical_skipped}")
-        print(f"    DEBUG: critical_failures={critical_failures}")
-        print(f"    DEBUG: bool(critical_failures)={bool(critical_failures)}")
-        print(f"    DEBUG: bool(critical_skipped)={bool(critical_skipped)}")
-        print(f"    DEBUG: (critical_failures or critical_skipped)={(critical_failures or critical_skipped)}")
+        log_info(f"    DEBUG: critical_passed={critical_passed}")
+        log_info(f"    DEBUG: critical_skipped={critical_skipped}")
+        log_info(f"    DEBUG: critical_failures={critical_failures}")
+        log_info(f"    DEBUG: bool(critical_failures)={bool(critical_failures)}")
+        log_info(f"    DEBUG: bool(critical_skipped)={bool(critical_skipped)}")
+        log_info(f"    DEBUG: (critical_failures or critical_skipped)={(critical_failures or critical_skipped)}")
 
         # Count all phases for summary
         phases_passed = sum(1 for r in results.values() if r.get('passed', False) and not r.get('skipped', False))
@@ -721,11 +734,11 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
         phases_failed = sum(1 for r in results.values() if not r.get('passed', False) and not r.get('skipped', False))
         phases_total = len(results) - phases_skipped
 
-        print(f"\nPhases: {phases_passed}/{phases_total} passed", end="")
+        log_info(f"\nPhases: {phases_passed}/{phases_total} passed", end="")
         if phases_skipped > 0:
-            print(f" ({phases_skipped} skipped)")
+            log_info(f" ({phases_skipped} skipped)")
         else:
-            print()
+            log_info()
 
         for phase_name, phase_result in results.items():
             if phase_result.get('skipped'):
@@ -734,39 +747,39 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                 status = "✅"
             else:
                 status = "❌"
-            print(f"  {status} {phase_name}")
+            log_info(f"  {status} {phase_name}")
 
         # Overall result - ALL critical phases must pass
         validation_mode = "SMOKE TEST" if smoke_test else "FULL VALIDATION"
         test_failed = bool(critical_failures or critical_skipped)
 
         if test_failed:
-            print(f"\n❌ E2E {validation_mode} FAILED")
+            log_error(f"\n❌ E2E {validation_mode} FAILED")
             if critical_failures:
-                print(f"\nCritical phases failed: {', '.join(critical_failures)}")
+                log_info(f"\nCritical phases failed: {', '.join(critical_failures)}")
             if critical_skipped:
-                print(f"Critical phases skipped: {', '.join(critical_skipped)}")
-            print("\n⚠️  Validation cannot pass with critical phase failures/skips")
+                log_info(f"Critical phases skipped: {', '.join(critical_skipped)}")
+            log_warning("\n⚠️  Validation cannot pass with critical phase failures/skips")
             exit_code = 1
         else:
-            print(f"\n✅ E2E {validation_mode} PASSED")
-            print(f"\nAll {len(critical_passed)} critical phases completed successfully!")
-            print(f"Critical phases: {', '.join(critical_passed)}")
+            log_success(f"\n✅ E2E {validation_mode} PASSED")
+            log_info(f"\nAll {len(critical_passed)} critical phases completed successfully!")
+            log_info(f"Critical phases: {', '.join(critical_passed)}")
             if provider_type == 'OCP':
-                print("OCP provider validated (architecture-agnostic)")
+                log_info("OCP provider validated (architecture-agnostic)")
             else:
-                print("Database layer validated (architecture-agnostic)")
+                log_info("Database layer validated (architecture-agnostic)")
             exit_code = 0
 
         # Run diagnostics: automatically on failure OR when --diagnose flag is passed
         if test_failed or diagnose:
-            print("\n" + "="*70)
+            log_info("\n" + "="*70)
             if test_failed:
-                print("🔍 RUNNING DIAGNOSTICS (auto-triggered by failure)")
+                log_info("🔍 RUNNING DIAGNOSTICS (auto-triggered by failure)")
             else:
-                print("🔍 RUNNING DIAGNOSTICS (--diagnose flag)")
-            print("="*70)
-            print("\nCollecting infrastructure health information...\n")
+                log_info("🔍 RUNNING DIAGNOSTICS (--diagnose flag)")
+            log_info("="*70)
+            log_info("\nCollecting infrastructure health information...\n")
 
             try:
                 diagnostic = DeploymentValidationPhase(k8s, db)
@@ -777,23 +790,23 @@ def main(ctx, namespace, org_id, keycloak_namespace, provider_type, skip_migrati
                     summary = diagnostic_results['summary']
                     score = summary.get('score', 0)
                     if score >= 95:
-                        print("\n✅ Infrastructure appears healthy - issue likely in application logic")
+                        log_success("\n✅ Infrastructure appears healthy - issue likely in application logic")
                     elif score >= 70:
-                        print("\n⚠️  Some infrastructure issues detected - review above for details")
+                        log_warning("\n⚠️  Some infrastructure issues detected - review above for details")
                     else:
-                        print("\n❌ Significant infrastructure issues - likely root cause of failure")
+                        log_error("\n❌ Significant infrastructure issues - likely root cause of failure")
             except Exception as diag_error:
-                print(f"\n⚠️  Diagnostic collection failed: {diag_error}")
-                print("   (This doesn't affect the test result)")
+                log_warning(f"\n⚠️  Diagnostic collection failed: {diag_error}")
+                log_info("   (This doesn't affect the test result)")
 
     except KeyboardInterrupt:
-        print("\n\n⚠️  Interrupted by user")
+        log_warning("\n\n⚠️  Interrupted by user")
         exit_code = 130
     except (click.exceptions.Exit, SystemExit):
         # Let Click handle exit codes properly
         raise
     except Exception as e:
-        print(f"\n\n❌ Unexpected error: {e}")
+        log_error(f"\n\n❌ Unexpected error: {e}")
         import traceback
         traceback.print_exc()
         exit_code = 1

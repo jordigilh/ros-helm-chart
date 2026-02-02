@@ -42,7 +42,7 @@ spec:
 
         ports:
         - name: http
-          containerPort: 8000
+          containerPort: {{ include "cost-onprem.koku.api.port" . }}
           protocol: TCP
 
         env:

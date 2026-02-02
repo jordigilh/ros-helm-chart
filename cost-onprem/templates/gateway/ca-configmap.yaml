@@ -1,20 +1,4 @@
 {{- $keycloakUrl := .Values.jwtAuth.keycloak.url | default (include "cost-onprem.keycloak.url" .) }}
----
-# ConfigMap for OpenShift service CA injection
-# Note: OpenShift will manage this configmap's data when inject-cabundle is true
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ include "cost-onprem.fullname" . }}-keycloak-ca
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: ca-trust
-  annotations:
-    # Auto-inject OpenShift service CA
-    service.beta.openshift.io/inject-cabundle: "true"
-data: {}
----
 # ConfigMap for CA bundle scripts and custom certificates
 # Separate from keycloak-ca to avoid OpenShift CA injection overwriting our data
 apiVersion: v1
@@ -71,7 +55,7 @@ data:
         echo "" >> /tmp/combined-ca.crt
     fi
 
-    # Add custom Keycloak CA (if provided manually)
+    # Add custom Keycloak CA (if provided manually via values.yaml)
     if [ -f /ca-source/keycloak-ca.crt ] && [ -s /ca-source/keycloak-ca.crt ]; then
         # Validate it's a proper certificate
         if openssl x509 -in /ca-source/keycloak-ca.crt -noout -text >/dev/null 2>&1; then
@@ -84,6 +68,28 @@ data:
         fi
     else
         echo "ℹ️  No custom CA certificate provided in values.yaml (this is fine - will auto-fetch)"
+    fi
+
+    # Add OpenShift ingress CA (from keycloak-ca-cert secret created by deployment script)
+    # This CA is needed when accessing Keycloak via external OpenShift route
+    if [ -f /ca-source/keycloak-ingress-ca.crt ] && [ -s /ca-source/keycloak-ingress-ca.crt ]; then
+        # Validate it's a proper certificate
+        if openssl x509 -in /ca-source/keycloak-ingress-ca.crt -noout -text >/dev/null 2>&1; then
+            echo "📋 Adding OpenShift ingress CA (from keycloak-ca-cert secret)..."
+            cat /ca-source/keycloak-ingress-ca.crt >> /tmp/combined-ca.crt
+            echo "" >> /tmp/combined-ca.crt
+        else
+            # The file may contain multiple certificates (CA bundle), try to add them individually
+            if grep -q 'BEGIN CERTIFICATE' /ca-source/keycloak-ingress-ca.crt 2>/dev/null; then
+                echo "📋 Adding OpenShift ingress CA bundle..."
+                cat /ca-source/keycloak-ingress-ca.crt >> /tmp/combined-ca.crt
+                echo "" >> /tmp/combined-ca.crt
+            else
+                echo "⚠️  Invalid certificate in keycloak-ca-cert secret"
+            fi
+        fi
+    else
+        echo "ℹ️  No keycloak-ca-cert secret found (optional - only needed for external Keycloak route)"
     fi
 
     # Dynamically fetch Keycloak CA certificate from running instance if not already added

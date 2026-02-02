@@ -252,7 +252,8 @@ The `e2e_helpers.py` module centralizes common E2E functionality to avoid duplic
 | `is_nise_available()` / `install_nise()` | NISE availability checking and installation |
 | `generate_nise_data()` | Generate NISE data with categorized file output |
 | `generate_cluster_id()` | Generate unique cluster IDs |
-| `get_sources_api_url()` | Get internal Sources API URL |
+| `get_koku_api_reads_url()` | Get internal Koku API URL for GET operations |
+| `get_koku_api_writes_url()` | Get internal Koku API URL for POST/PUT/DELETE operations |
 | `register_source()` / `delete_source()` | Source registration with proper `source_ref` |
 | `upload_with_retry()` | Upload with retry logic for transient errors |
 | `wait_for_provider()` / `wait_for_summary_tables()` | Processing wait utilities |

@@ -12,35 +12,35 @@ This document describes how to configure Red Hat Build of Keycloak (RHBK) to pro
 graph TB
     Operator["<b>Cost Management Operator</b><br/>Uploads metrics with JWT"]
     Keycloak["<b>Red Hat Build of Keycloak (RHBK)</b><br/><br/>• Realm: kubernetes<br/>• Client: cost-management-operator<br/>• org_id claim mapper"]
-    Envoy["<b>Envoy Sidecar</b><br/>(Port 8080)<br/><br/>• JWT signature validation<br/>• Inject X-ROS-Authenticated<br/>• Forward JWT token"]
-    Ingress["<b>Ingress Service</b><br/>(Port 8081)<br/><br/>• Parse JWT claims<br/>• Extract org_id/account<br/>• Process upload<br/>• Publish to Kafka"]
+    Gateway["<b>Centralized API Gateway</b><br/>(Port 9080)<br/><br/>• JWT signature validation<br/>• Inject X-Rh-Identity header<br/>• Route to backend services"]
+    Ingress["<b>Ingress Service</b><br/>(Port 8081)<br/><br/>• Receive pre-authenticated requests<br/>• Extract org_id/account from X-Rh-Identity<br/>• Process upload<br/>• Publish to Kafka"]
     Kafka["<b>Kafka</b><br/><br/>• Topic: platform.upload.ros<br/>• Message includes org_id"]
     Backend["<b>ROS Backend Processor</b><br/><br/>• Consumes from Kafka<br/>• Creates XRHID header<br/>• Calls API with org_id"]
 
     Operator -->|"① Get JWT<br/>(client_credentials)"| Keycloak
-    Operator -->|"② Upload<br/>Authorization: Bearer &lt;JWT&gt;"| Envoy
-    Envoy -->|"③ Validate JWT<br/>X-ROS-Authenticated: true<br/>X-Bearer-Token: &lt;JWT&gt;"| Ingress
-    Ingress -->|"④ Parse JWT claims<br/>Publish message"| Kafka
+    Operator -->|"② Upload<br/>Authorization: Bearer &lt;JWT&gt;"| Gateway
+    Gateway -->|"③ Validate JWT<br/>X-Rh-Identity: &lt;base64&gt;"| Ingress
+    Ingress -->|"④ Parse identity<br/>Publish message"| Kafka
     Kafka -->|"⑤ Message with<br/>org_id metadata"| Backend
 
     style Operator fill:#e1f5ff,stroke:#01579b,stroke-width:2px,color:#000
     style Keycloak fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#000
-    style Envoy fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000
+    style Gateway fill:#fff59d,stroke:#333,stroke-width:2px,color:#000
     style Ingress fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px,color:#000
     style Kafka fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
     style Backend fill:#fce4ec,stroke:#880e4f,stroke-width:2px,color:#000
 ```
 
 **Authentication Flow**:
-- **Operator** → Envoy: `Authorization: Bearer <JWT>` (Standard OAuth 2.0)
-- **Envoy** → Ingress: `X-ROS-Authenticated: true` + `X-Bearer-Token: <JWT>` (JWT-based auth)
-- **Ingress** → Kafka: Message with `org_id` extracted from JWT claims
+- **Operator** → Gateway: `Authorization: Bearer <JWT>` (Standard OAuth 2.0)
+- **Gateway** → Backend Services: `X-Rh-Identity: <base64-XRHID>` (Pre-authenticated)
+- **Ingress** → Kafka: Message with `org_id` extracted from X-Rh-Identity
 - **Backend Processor** → Cost Management On-Premise API: `X-Rh-Identity: <base64-XRHID>` (XRHID-based auth)
 
 **Key Points**:
-- **Envoy** validates JWT signature and injects authentication headers
-- **Ingress Service** parses JWT claims directly (does NOT use X-Rh-Identity)
-- **ROS Backend API** uses X-Rh-Identity header (XRHID format)
+- **Centralized Gateway** validates JWT signature and injects `X-Rh-Identity` header for all backend services
+- **Backend Services** (Ingress, Koku API, ROS API) receive pre-authenticated requests with `X-Rh-Identity`
+- **Sources API** is now integrated into Koku API at `/api/cost-management/v1/sources/`
 - **XRHID Format**: `{"org_id":"...","identity":{"org_id":"...","account_number":"...","type":"User"}}` (base64-encoded)
 - The `org_id` claim from JWT is required and used throughout the system
 
@@ -68,12 +68,12 @@ graph TB
    - `organization_id` (fallback)
    - `tenant_id` (second fallback)
 
-3. **Supported account_number Claim Names** (Envoy Lua filter supports multiple alternatives):
+3. **Supported account_number Claim Names** (Gateway Lua filter supports multiple alternatives):
    - `account_number` (preferred)
    - `account_id` (fallback)
    - `account` (second fallback)
 
-   **Implementation Reference**: See `cost-onprem/templates/envoy-config-ingress.yaml` Lua filter section
+   **Implementation Reference**: See `cost-onprem/templates/gateway/configmap-envoy.yaml` Lua filter section
 
 4. **Keycloak Configuration**:
    - Service account client (client_credentials grant type)
@@ -196,44 +196,42 @@ curl -X POST "$KEYCLOAK_URL/admin/realms/kubernetes/users" \
 
 ### How org_id and account_number are Extracted (Technical Details)
 
-The authentication flow involves **two Envoy sidecars** with different responsibilities:
+The authentication flow uses a **centralized API gateway** that handles JWT validation for all external traffic:
 
-#### Stage 1: Ingress Envoy - JWT Validation and Header Injection
+#### Centralized Gateway - JWT Validation and Header Injection
 
-**Service**: `cost-onprem-ingress` (Port 8080 - Envoy, Port 8081 - Application)
+**Service**: `cost-onprem-gateway` (Port 9080)
 
-**Location**: `cost-onprem/templates/envoy-config-ingress.yaml`
+**Location**: `cost-onprem/templates/gateway/configmap-envoy.yaml`
 
-**Purpose**: Accept JWT tokens from Cost Management Operator, validate them, and inject authentication headers.
-
-**Note**: While Envoy injects both `X-Bearer-Token` and `X-Rh-Identity` headers, the Ingress application **only uses `X-Bearer-Token`** (parses JWT claims directly). The `X-Rh-Identity` header is ignored by this service.
+**Purpose**: Single point of authentication for all external API traffic. Validates JWT tokens, extracts claims, and injects `X-Rh-Identity` header for all backend services.
 
 **Authentication Flow (Sequence Diagram)**:
 
 ```mermaid
 sequenceDiagram
     participant Operator as Cost Management<br/>Operator
-    participant Envoy as Envoy Sidecar<br/>(Port 8080)
+    participant Gateway as API Gateway<br/>(Port 9080)
     participant Keycloak as Keycloak<br/>JWKS Endpoint
     participant Lua as Lua Filter
-    participant App as Ingress App<br/>(Port 8081)
+    participant Backend as Backend Services<br/>(Ingress, Koku, ROS, Sources)
 
-    Note over Operator,App: Step 1: Request with JWT
-    Operator->>Envoy: POST /v1/upload<br/>Authorization: Bearer <JWT>
+    Note over Operator,Backend: Step 1: Request with JWT
+    Operator->>Gateway: POST /api/ingress/v1/upload<br/>Authorization: Bearer <JWT>
 
-    Note over Envoy,Keycloak: Step 2: JWT Validation
-    Envoy->>Keycloak: GET /auth/realms/kubernetes/protocol/openid-connect/certs
-    Keycloak-->>Envoy: JWKS (public keys)
+    Note over Gateway,Keycloak: Step 2: JWT Validation
+    Gateway->>Keycloak: GET /auth/realms/kubernetes/protocol/openid-connect/certs
+    Keycloak-->>Gateway: JWKS (public keys)
 
-    Note over Envoy: jwt_authn filter:<br/>- Validates JWT signature<br/>- Verifies issuer<br/>- Verifies audience<br/>- Extracts payload
+    Note over Gateway: jwt_authn filter:<br/>- Validates JWT signature<br/>- Verifies issuer<br/>- Verifies audience<br/>- Extracts payload
 
     alt JWT Invalid
-        Envoy-->>Operator: 401 Unauthorized<br/>"Jwt verification fails"
+        Gateway-->>Operator: 401 Unauthorized<br/>"Jwt verification fails"
     else JWT Valid
-        Note over Envoy: Store JWT payload in metadata<br/>Key: "keycloak"
+        Note over Gateway: Store JWT payload in metadata<br/>Key: "keycloak"
 
-        Note over Envoy,Lua: Step 3: Transform JWT to XRHID
-        Envoy->>Lua: envoy_on_request()
+        Note over Gateway,Lua: Step 3: Transform JWT to XRHID
+        Gateway->>Lua: envoy_on_request()
 
         Note over Lua: Extract claims:<br/>- org_id (or fallbacks)<br/>- account_number (or fallbacks)<br/>- user_id (sub)
 
@@ -241,26 +239,24 @@ sequenceDiagram
 
         Note over Lua: Base64 encode XRHID
 
-        Note over Lua: Inject headers:<br/>- X-Rh-Identity<br/>- X-ROS-Authenticated<br/>- X-ROS-User-ID<br/>- X-Bearer-Token
+        Lua-->>Gateway: Modified request with X-Rh-Identity header
 
-        Lua-->>Envoy: Modified request with headers
+        Note over Gateway,Backend: Step 4: Route to Backend
+        Gateway->>Backend: POST /api/ingress/v1/upload<br/>X-Rh-Identity: <base64-XRHID>
 
-        Note over Envoy,App: Step 4: Forward to Application
-        Envoy->>App: POST /v1/upload<br/>X-Rh-Identity: <base64-XRHID><br/>X-ROS-Authenticated: true
-
-        App-->>Envoy: 202 Accepted
-        Envoy-->>Operator: 202 Accepted
+        Backend-->>Gateway: 202 Accepted
+        Gateway-->>Operator: 202 Accepted
     end
 ```
 
-**Envoy JWT Validation Steps**:
+**Gateway JWT Validation Steps**:
 1. Receives request with `Authorization: Bearer <JWT>` header
 2. Validates JWT signature against Keycloak JWKS endpoint (cached for 5 minutes)
 3. Verifies `issuer` matches Keycloak realm URL
 4. Verifies `audience` contains expected client ID (e.g., `cost-management-operator`)
 5. Stores validated JWT payload in Envoy metadata under key `keycloak` for Lua filter access
 
-**Envoy Lua Filter**: Transforms JWT to XRHID format
+**Gateway Lua Filter**: Transforms JWT to XRHID format
 1. Retrieves JWT payload from Envoy metadata:
    ```lua
    local metadata = request_handle:streamInfo():dynamicMetadata()
@@ -294,196 +290,65 @@ sequenceDiagram
    )
    ```
 
-5. Base64 encodes the XRHID JSON:
+5. Base64 encodes the XRHID JSON and injects headers:
    ```lua
    local b64_xrhid = request_handle:base64Escape(xrhid)
+   request_handle:headers():add("X-Rh-Identity", b64_xrhid)
    ```
 
-6. Injects headers into the request forwarded to the application:
-   ```lua
-   request_handle:headers():add("X-Rh-Identity", b64_xrhid)          -- REQUIRED by backend
-   request_handle:headers():add("X-ROS-Authenticated", "true")       -- Optional: debugging/logging
-   request_handle:headers():add("X-ROS-User-ID", user_id)            -- Optional: debugging/logging
-   request_handle:headers():add("X-Bearer-Token", token)             -- Optional: reference/logging
-   ```
+**Header Injection**:
+- **`X-Rh-Identity`** (REQUIRED): Base64-encoded XRHID JSON used by all backend services for:
+  - Authentication and authorization
+  - Multi-tenancy (org_id and account_number extraction)
+  - Database query filtering
+  - Audit logging
 
-   **Header Requirements**:
-   - **`X-Rh-Identity`** (REQUIRED): Base64-encoded XRHID JSON used by cost-onprem-backend for:
-     - Authentication and authorization
-     - Multi-tenancy (org_id and account_number extraction)
-     - Database query filtering
-     - Audit logging
-   - **`X-ROS-Authenticated`** (Optional): Simple boolean flag for debugging
-   - **`X-ROS-User-ID`** (Optional): User/service account ID for logging
-   - **`X-Bearer-Token`** (Optional): Original JWT token for reference/debugging
+**Gateway Routing**:
+The gateway routes requests to backend services based on URL path:
 
-7. Forwards request to Ingress application on port 8081 with transformed headers
+| Path | Backend Service | Port |
+|------|-----------------|------|
+| `/api/ingress/*` | Ingress | 8081 |
+| `/api/cost-management/v1/recommendations/openshift` | ROS API | 8000 |
+| `/api/cost-management/*` (GET, HEAD) | Koku API Reads | 8000 |
+| `/api/cost-management/*` (POST, PUT, DELETE, PATCH) | Koku API Writes | 8000 |
+
+**Note**: Sources API is now integrated into Koku at `/api/cost-management/v1/sources/`
 
 **Request Flow**:
 ```
 Cost Management Operator
   ↓ Authorization: Bearer <JWT>
-Envoy Sidecar (port 8080)
+Centralized Gateway (port 9080)
   ↓ Validates JWT, Transforms to XRHID
+  ↓ Routes based on path
   ↓ X-Rh-Identity: <base64-encoded-JSON>
-Ingress Application (port 8081)
+Backend Service (Ingress, Koku, ROS, Sources)
   ↓ Decodes XRHID, extracts org_id
-  ↓ Processes upload, publishes to Kafka
+  ↓ Processes request with tenant isolation
 ```
 
-#### Stage 2: Cost Management On-Premise API Envoy - JWT Validation (Same as Ingress)
+#### Backend Services
 
-**Service**: `cost-onprem-ros-api` (Port 8080 - Envoy, Port 8001 - Application)
+All backend services receive pre-authenticated requests from the gateway with the `X-Rh-Identity` header.
 
-**Location**: `cost-onprem/templates/envoy-config-ros-api.yaml`
+**Services**:
+- **Ingress** (port 8081): File upload processing
+- **Koku API** (port 8000): Cost management read/write operations
+- **ROS API** (port 8000): Resource optimization recommendations
+- **Sources API** (port 8000): Provider and source management
 
-**Purpose**: Provide the same JWT authentication capability as Ingress for direct API access.
+**Authentication**:
+- All services use `X-Rh-Identity` header from gateway
+- Services decode base64 XRHID and extract `org_id`, `account_number`
+- Multi-tenancy enforced via database query filtering
 
-**Important**: This Envoy sidecar uses **the exact same configuration** as the Ingress Envoy (same jwt_authn filter, same Lua script). It provides JWT authentication for the Cost Management On-Premise API.
-
-**How It Works**:
-
-1. **Receives requests** in one of two formats:
-   - `X-Rh-Identity` header (from internal services) - **passed through unchanged**
-   - `Authorization: Bearer <JWT>` header (for direct external access) - **validated and transformed**
-
-2. **JWT validation** (same as Ingress):
-   - Uses identical `jwt_authn` filter configuration
-   - Validates JWT against Keycloak JWKS
-   - Uses same Lua script to transform JWT → XRHID
-   - Injects same headers (`X-Rh-Identity`, `X-ROS-Authenticated`, etc.)
-
-3. **X-Rh-Identity pass-through** (no validation by Envoy):
-   - When requests already have `X-Rh-Identity` header (from internal services)
-   - Envoy simply forwards them to the application unchanged
-   - **The application validates the XRHID**, not Envoy
-
-4. **Forwards to Cost Management On-Premise API application** on port 8001:
-   ```
-   Internal Service (Processor, Poller, Housekeeper)
-     ↓ X-Rh-Identity: <base64-XRHID>
-   Envoy Sidecar (port 8080)
-     ↓ Pass-through (no JWT, no transformation)
-     ↓ X-Rh-Identity: <base64-XRHID>
-   Cost Management On-Premise API Application (port 8001)
-     ↓ Validates XRHID, extracts org_id
-     ↓ Uses org_id for database queries
-
-   OR (for direct external access):
-
-   External Client
-     ↓ Authorization: Bearer <JWT>
-   Envoy Sidecar (port 8080)
-     ↓ Validates JWT, transforms to XRHID (same as Ingress)
-     ↓ X-Rh-Identity: <base64-XRHID>
-   Cost Management On-Premise API Application (port 8001)
-     ↓ Validates XRHID, extracts org_id
-     ↓ Uses org_id for database queries
-   ```
-
-**Key Differences Between Ingress and Cost Management On-Premise API Envoy**:
-
-| Aspect | Ingress Envoy | Cost Management On-Premise API Envoy |
-|--------|---------------|-------------------|
-| **Configuration** | JWT validation + Lua transformation | **IDENTICAL** JWT validation + Lua transformation |
-| **Primary Use** | External JWT from Cost Management Operator | Internal XRHID pass-through + optional JWT |
-| **JWT Support** | ✅ Always used (operator sends JWT) | ✅ Optional (used for direct API access) |
-| **XRHID Pass-Through** | ❌ Not used (always receives JWT) | ✅ Primary use (internal services send XRHID) |
-| **XRHID Validation** | ❌ Not applicable | ❌ Envoy doesn't validate XRHID (app does) |
-| **Backend Port** | 8081 (Ingress app) | 8001 (Cost Management On-Premise API app) |
-| **Use Case** | Entry point for operator uploads | Internal API + optional direct access |
-
-#### Stage 3: Backend Services Parse Identity
-
-**Ingress Service** (`ingress`):
-- **Authentication Pattern**: JWT-based (different from cost-onprem-backend)
-- **Location**: `internal/upload/handler.go`
-- **REQUIRES** (application validates, Envoy injects):
-  - `X-ROS-Authenticated: "true"` - Confirms Envoy JWT validation succeeded
-  - JWT token via `X-Bearer-Token` header (or fallback to `Authorization: Bearer <token>`)
-- **Does NOT use** `X-Rh-Identity` header (though Envoy injects it, the application ignores it)
-- **Parses JWT claims directly** to extract identity:
-  ```go
-  // Application extracts claims from JWT token:
-  claims := map[string]interface{}{
-      "org_id":             // Primary, or fallback to "organization_id", "tenant_id", or from "clientId" pattern
-      "account_number":     // Primary, or fallback to "account_id", "account"
-      "sub":                // User/service account ID
-      "preferred_username": // Username
-  }
-  ```
-- Uses JWT claims for:
-  - Kafka message metadata (org_id, account_number)
-  - S3/MinIO storage paths: `{org_id}/{account_number}/...`
-  - Database partitioning
-  - Logging and tracing
-
-**Why JWT instead of XRHID for Ingress?**
-- `ingress` is a shared upload service that handles file uploads and API routing
-- Designed for direct JWT parsing to support flexible claim extraction
-- Uses Envoy for JWT validation security, but needs raw token for claims
-
----
-
-**ROS Backend API** (`cost-onprem-backend`):
-- **Authentication Pattern**: XRHID-based (Red Hat standard)
-- **Location**: `internal/api/middleware/identity.go`
-- **ONLY requires**: `X-Rh-Identity` header from Envoy sidecar
-  - Other headers (`X-ROS-Authenticated`, `X-Bearer-Token`) are not used by the application
-- **Decodes base64 XRHID** structure:
-  ```go
-  // Decodes X-Rh-Identity header
-  decodedIdentity := base64.StdEncoding.DecodeString(header)
-
-  // XRHID with dual org_id placement and ENHANCED_ORG_ADMIN support
-  type XRHID struct {
-      OrgID    string `json:"org_id"`  // Top-level org_id for middleware compatibility
-      Identity struct {
-          OrgID         string `json:"org_id"`          // Correct location per Red Hat schema
-          AccountNumber string `json:"account_number"`
-          Type          string `json:"type"`
-          User          struct {
-              Username   string `json:"username"`
-              IsOrgAdmin bool   `json:"is_org_admin"`  // Triggers ENHANCED_ORG_ADMIN bypass
-          } `json:"user"`
-      } `json:"identity"`
-      Entitlements struct {
-          CostManagement struct {
-              IsEntitled bool `json:"is_entitled"`
-          } `json:"cost_management"`
-      } `json:"entitlements"`
-  }
-  ```
-- Extracts `org_id` and `account_number` for multi-tenancy
-- Uses in database queries: `WHERE org_id = '...' AND account_number = '...'`
-- Enforces data isolation at the organization and account level
-
-**Why Two Different Authentication Patterns?**
-
-| Service | Pattern | Reason |
-|---------|---------|--------|
-| **Ingress** | JWT-based | Shared upload service, predates XRHID, needs flexible claim extraction |
-| **Cost Management On-Premise Backend** | XRHID-based | Red Hat standard, optimized for multi-tenancy, simpler validation |
-
-**Why Two Envoy Sidecars?**
-
-1. **Ingress Envoy** (Port 8080):
-   - Validates JWT from Cost Management Operator
-   - Injects `X-ROS-Authenticated` and `X-Bearer-Token` headers
-   - Application parses JWT for claims (org_id, account_number)
-   - Entry point for external traffic
-
-2. **Cost Management On-Premise API Envoy** (Port 8080):
-   - **Primary use**: Pass-through for internal XRHID headers (from Processor, Poller, Housekeeper)
-   - **Secondary use**: JWT validation for direct external API access
-   - Application uses XRHID for multi-tenant database queries
-   - Dual-mode authentication (XRHID or JWT)
-
-**Benefits**:
-- ✅ **Security**: All external traffic validated by Envoy (no authentication logic in app)
-- ✅ **Performance**: JWT validation handled by fast C++ Envoy proxy
-- ✅ **Flexibility**: Each service uses the authentication pattern that fits its use case
-- ✅ **Defense in Depth**: Multiple authentication layers across system
+**Benefits of Centralized Gateway**:
+- ✅ **Single authentication point**: All JWT validation in one place
+- ✅ **Simplified architecture**: No per-service Envoy sidecars needed
+- ✅ **Easy debugging**: All authentication logs in gateway
+- ✅ **Consistent security**: Same authentication for all APIs
+- ✅ **Performance**: JWT validation cached at gateway level
 
 **Complete End-to-End Flow**:
 
@@ -492,41 +357,30 @@ Ingress Application (port 8081)
    Request: client_credentials grant
    Response: JWT token with org_id and account_number claims
 
-2. Operator → Ingress Envoy (port 8080)
+2. Operator → Gateway (port 9080)
    Request: Authorization: Bearer <JWT>
-   Envoy: Validates JWT signature, extracts payload, stores in metadata
+   Gateway: Validates JWT signature, extracts payload
 
-3. Ingress Envoy → Ingress App (port 8081)
-   Headers: X-ROS-Authenticated: true
-            X-Bearer-Token: <JWT>
-            X-Rh-Identity: <base64-XRHID> (injected but NOT used by app)
-   App: Parses JWT token directly for org_id/account_number claims
-        Processes upload, publishes to Kafka
+3. Gateway → Backend Service
+   Headers: X-Rh-Identity: <base64-XRHID>
+   Service: Decodes XRHID, extracts org_id
+            Processes request with tenant isolation
 
-4. Kafka → ROS Backend Processor
-   Message: Contains org_id and account_number metadata (from JWT claims)
-   Processor: Reads message, processes data, creates XRHID header
+4. For Ingress uploads:
+   Ingress → Kafka: Message with org_id metadata
+   Kafka → Processors: Message consumed
+   Processors → APIs: Internal calls with X-Rh-Identity
 
-5. Processor → Cost Management On-Premise API Envoy (port 8080)
-   Request: X-Rh-Identity: <base64-XRHID> (built from Kafka message)
-   Envoy: Pass-through (no JWT validation for internal traffic)
-
-6. Cost Management On-Premise API Envoy → Cost Management On-Premise API App (port 8001)
-   Request: X-Rh-Identity: <base64-XRHID>
-   App: Decodes XRHID, extracts org_id, queries database with org_id filter
-
-7. Cost Management On-Premise API → Kruize (internal service)
-   Request: HTTP call with org_id in query parameters
-   Kruize: Generates recommendations
+5. For API requests:
+   Gateway → Koku/ROS/Sources: Pre-authenticated request
+   Service → Database: Query with org_id filter
 ```
 
 **Summary**:
-- **Envoy does NOT generate JWT tokens** - those come from Keycloak
-- **Ingress Envoy validates JWT** and injects `X-ROS-Authenticated` + `X-Bearer-Token` headers
-- **Ingress Service parses JWT claims directly** (does NOT use X-Rh-Identity)
-- **Cost Management On-Premise API Envoy forwards XRHID** from internal services (Processor, Poller, Housekeeper)
-- **Cost Management On-Premise API Service uses XRHID** for multi-tenant database queries
-- **Two authentication patterns coexist**: JWT-based (Ingress) and XRHID-based (ROS Backend)
+- **Gateway validates all JWT tokens** from external traffic
+- **Gateway injects X-Rh-Identity header** for all backend services
+- **Backend services use X-Rh-Identity** for multi-tenant database queries
+- **No per-service Envoy sidecars** - centralized authentication at gateway
 
 ---
 
@@ -1058,17 +912,17 @@ jwt_auth:
 
 **Check what URL is being used:**
 ```bash
-kubectl get configmap -n cost-onprem cost-onprem-envoy-ingress-config -o yaml | grep issuer
+kubectl get configmap -n cost-onprem cost-onprem-gateway-envoy-config -o yaml | grep issuer
 ```
 
 **Check CA bundle contents:**
 ```bash
 # Number of certificates in bundle
-kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-gateway -c envoy -- \
   cat /etc/ca-certificates/ca-bundle.crt | grep -c "BEGIN CERTIFICATE"
 
 # Check init container logs
-kubectl logs -n cost-onprem deploy/cost-onprem-ingress -c prepare-ca-bundle | grep -E "(Adding|Fetched)"
+kubectl logs -n cost-onprem deploy/cost-onprem-gateway -c prepare-ca-bundle | grep -E "(Adding|Fetched)"
 ```
 
 **Expected output:**
@@ -1384,15 +1238,14 @@ This ensures proper tenant lookup regardless of which code path reads the org_id
 
 **Root Cause:**
 - JWT doesn't contain `org_id`
-- Envoy not deployed or misconfigured
+- Gateway not deployed or misconfigured
 
 **Fix:**
 1. Verify `org_id` in JWT (see Part 3, Step 1)
-2. Check Envoy sidecar is running:
+2. Check gateway is running:
    ```bash
-   oc get pod -n cost-onprem -l app.kubernetes.io/component=ingress \
-     -o jsonpath='{.items[0].spec.containers[*].name}'
-   # Should show: envoy-proxy ingress
+   oc get pod -n cost-onprem -l app.kubernetes.io/component=gateway
+   # Should show gateway pods running
    ```
 3. Verify Helm chart version includes JWT support (v0.1.5+)
 
@@ -1403,13 +1256,13 @@ This ensures proper tenant lookup regardless of which code path reads the org_id
 - Still get 401 Unauthorized
 
 **Root Cause:**
-- Envoy JWT filter not recognizing the token
+- Gateway JWT filter not recognizing the token
 - Wrong issuer or audience
 
 **Fix:**
-1. Check Envoy configuration:
+1. Check gateway Envoy configuration:
    ```bash
-   oc get configmap cost-onprem-envoy-config -n cost-onprem -o yaml
+   oc get configmap cost-onprem-gateway-envoy-config -n cost-onprem -o yaml
    ```
 2. Verify `issuer` matches Keycloak:
    ```yaml
@@ -1622,16 +1475,16 @@ echo "  3. Check ingress logs: oc logs -n cost-onprem deployment/cost-onprem-ing
 
 **Critical Steps:**
 1. ✅ Deploy Red Hat Build of Keycloak using `deploy-rhbk.sh`
-2. ✅ Add `org_id` mapper to client (REQUIRED for ROS backend)
+2. ✅ Add `org_id` mapper to client (REQUIRED for backend services)
 3. ✅ Add `account_number` mapper to client (RECOMMENDED for account-level isolation)
 4. ✅ Verify JWT contains both `org_id` and `account_number` claims
 5. ✅ Configure operator with client credentials
-6. ✅ Verify end-to-end flow (operator → envoy → ingress → backend)
+6. ✅ Verify end-to-end flow (operator → centralized gateway → backend services)
 
 **Key Takeaway:** The `org_id` claim is **mandatory** for ROS backend compatibility. The `account_number` claim is **recommended** for proper multi-tenant account isolation. The basic Keycloak deployment does not include these claims by default, so they must be added as a post-deployment step.
 
 For questions or issues, refer to:
 - `scripts/deploy-rhbk.sh` - Automated deployment
-- `scripts/test-ocp-dataflow-jwt.sh` - JWT testing
+- `scripts/run-pytest.sh --auth` - JWT authentication testing
 - `docs/troubleshooting.md` - Common issues
 

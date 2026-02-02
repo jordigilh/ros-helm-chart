@@ -2,63 +2,65 @@
 
 ## Overview
 
-The ROS Helm Chart uses **Envoy's native JWT authentication filter** for validating JWT tokens from Keycloak (RHBK). This provides secure, low-latency authentication for file uploads and API requests.
+The Cost Management On-Premise Helm Chart uses **Envoy's native JWT authentication filter** for validating JWT tokens from Keycloak (RHBK). This provides secure, low-latency authentication for file uploads and API requests.
 
 ## Architecture
 
-### Single Service Authentication Flow
+### Centralized Gateway Authentication Flow
+
+All external API traffic routes through a single centralized Envoy gateway that handles JWT validation:
 
 ```mermaid
 graph TB
     Client["Client<br/>(with JWT)"]
-    Envoy["Envoy Sidecar<br/>(Port 8080)<br/><br/>1. jwt_authn filter<br/>   - Fetches JWKS from Keycloak<br/>   - Validates JWT signature<br/>   - Extracts claims to metadata<br/><br/>2. Lua filter<br/>   - Reads JWT claims<br/>   - Injects X-ROS-* headers<br/><br/>3. Routes to backend"]
-    Ingress["Ingress Service<br/>(Port 8081)<br/><br/>- Trusts X-RH-Identity headers<br/>- Processes authenticated upload"]
+    Gateway["Centralized Gateway<br/>(Port 9080)<br/><br/>1. jwt_authn filter<br/>   - Fetches JWKS from Keycloak<br/>   - Validates JWT signature<br/>   - Extracts claims to metadata<br/><br/>2. Lua filter<br/>   - Reads JWT claims<br/>   - Injects X-Rh-Identity header<br/><br/>3. Routes to backend based on path"]
+    Ingress["Ingress Service<br/>(Port 8081)"]
+    Koku["Koku API<br/>(Port 8000)<br/>(includes Sources API)"]
+    RosApi["ROS API<br/>(Port 8000)"]
 
-    Client -->|"Authorization: Bearer &lt;JWT&gt;"| Envoy
-    Envoy -->|"X-ROS-Authenticated: true<br/>X-ROS-User-ID: &lt;sub&gt;<br/>X-Bearer-Token: &lt;token&gt;"| Ingress
+    Client -->|"Authorization: Bearer &lt;JWT&gt;"| Gateway
+    Gateway -->|"/api/ingress/*<br/>X-Rh-Identity header"| Ingress
+    Gateway -->|"/api/cost-management/*<br/>(includes Sources API at /v1/sources/)<br/>X-Rh-Identity header"| Koku
+    Gateway -->|"/api/cost-management/v1/recommendations/openshift<br/>X-Rh-Identity header"| RosApi
 
     style Client fill:#90caf9,stroke:#333,stroke-width:2px,color:#000
-    style Envoy fill:#fff59d,stroke:#333,stroke-width:2px,color:#000
+    style Gateway fill:#fff59d,stroke:#333,stroke-width:2px,color:#000
     style Ingress fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style Koku fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style RosApi fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
 ```
 
-### Services with Envoy Sidecars
+### Gateway Routing
 
-**Two services** are deployed with Envoy sidecars on OpenShift for authentication:
+The centralized gateway handles JWT authentication and routes requests to backend services based on path and HTTP method:
 
-| Service | Main Port | Envoy Port | Authentication Method |
-|---------|-----------|------------|----------------------|
-| **Ingress** | 8081 | 9080 | ✅ JWT validation, routes to multiple backends |
-| **ROS API** | 8000 | 9080 | ✅ X-Rh-Identity header validation |
+| Priority | Path | Method | Backend | Description |
+|----------|------|--------|---------|-------------|
+| 1 | `/api/cost-management/v1/recommendations/openshift` | GET | ROS API (port 8000) | Resource optimization recommendations |
+| 2 | `/api/cost-management/*` | GET, HEAD | Koku API Reads (port 8000) | Cost management read operations (includes Sources API at `/v1/sources/`) |
+| 3 | `/api/cost-management/*` | POST, PUT, DELETE, PATCH | Koku API Writes (port 8000) | Cost management write operations (includes Sources API at `/v1/sources/`) |
+| 4 | `/api/ingress/*` | ALL | Ingress (port 8081) | File uploads |
 
-**Ingress Envoy Routing:**
+### Backend Services
 
-The Ingress Envoy proxy handles JWT authentication and routes requests to multiple backend services:
-
-| Path | Backend | Description |
-|------|---------|-------------|
-| `/api/cost-management/*` | Koku API (port 8000) | Cost management reports and analytics |
-| `/api/sources/*` | Sources API (port 8000) | Provider and source management |
-| `/api/ingress/*` | Ingress (port 8081) | File uploads |
-| `/` (default) | Ingress (port 8081) | Default route |
-
-**Services without Envoy sidecars** (direct authentication):
+All backend services receive pre-authenticated traffic from the gateway:
 
 | Service | Port | Authentication Method |
 |---------|------|----------------------|
-| **Koku API** | 8000 | X-Rh-Identity header from Envoy |
-| **Sources API** | 8000 | X-Rh-Identity header from Envoy or internal access |
+| **Koku API (Reads)** | 8000 | X-Rh-Identity header from gateway (includes Sources API at `/v1/sources/`) |
+| **Koku API (Writes)** | 8000 | X-Rh-Identity header from gateway (includes Sources API at `/v1/sources/`) |
+| **Ingress** | 8081 | X-Rh-Identity header from gateway |
+| **ROS API** | 8000 | X-Rh-Identity header from gateway |
 | **Kruize** | 8080 | Internal service (accessed via ROS API) |
-| **Cost Management On-Premise Processor** | N/A | Kafka consumer (no HTTP API) |
-| **Cost Management On-Premise Recommendation Poller** | N/A | Internal service (no external API) |
-| **Cost Management On-Premise Housekeeper** | N/A | Internal service (no external API) |
+| **ROS Processor** | N/A | Kafka consumer (no HTTP API) |
+| **ROS Recommendation Poller** | N/A | Internal service (no external API) |
+| **Housekeeper** | N/A | Internal service (no external API) |
 
 **How It Works:**
-1. **Ingress Service (Envoy sidecar)**: Validates JWT from Keycloak, extracts claims (`org_id`, `account_number`, `access`), builds `X-Rh-Identity` header, and routes to appropriate backend based on path
-2. **ROS API (Envoy sidecar)**: Validates JWT and transforms to headers for ROS-specific endpoints
-3. **Koku API (no sidecar)**: Receives `X-Rh-Identity` header from Envoy, uses it for tenant identification and RBAC
-4. **Sources API (no sidecar)**: Receives `X-Rh-Identity` header from Envoy for protected endpoints; certain endpoints (e.g., `/application_types`) are unauthenticated for internal service access
-5. **Internal Services**: Communicate with each other using service accounts or inherit authentication context
+1. **Centralized Gateway**: Validates JWT from Keycloak, extracts claims (`org_id`, `account_number`, `access`), builds `X-Rh-Identity` header, and routes to appropriate backend based on path and HTTP method
+2. **Backend Services**: Receive pre-authenticated requests with `X-Rh-Identity` header for tenant identification and RBAC
+3. **Sources API**: Has per-endpoint protection; certain endpoints (e.g., `/application_types`) are unauthenticated for internal service access
+4. **Internal Services**: Communicate with each other using service accounts or inherit authentication context
 
 ### X-Rh-Identity Header Format
 
@@ -98,7 +100,7 @@ The Envoy Lua filter constructs the `X-Rh-Identity` header from JWT claims:
 
 **Network Security:**
 - Network policies restrict external access to backend services
-- Envoy sidecars provide an additional authentication layer for external-facing APIs
+- The centralized gateway provides JWT authentication for all external-facing APIs
 - Metrics endpoints remain accessible to Prometheus on dedicated ports (see Network Policies section below)
 
 ## Why Native JWT?
@@ -107,7 +109,7 @@ Envoy's native JWT authentication provides:
 
 - ✅ **Multipart upload support** - Inline validation works with all request types including file uploads
 - ✅ **Low latency** - Sub-millisecond authentication overhead (<1ms)
-- ✅ **Simple architecture** - Single sidecar component with no external dependencies
+- ✅ **Simple architecture** - Single gateway component with no external dependencies
 - ✅ **Easy debugging** - All authentication configuration in one place
 - ✅ **Battle-tested** - Envoy's JWT filter is production-ready and widely used
 - ✅ **Secure TLS validation** - Full certificate verification prevents MITM attacks
@@ -265,16 +267,12 @@ jwt_auth:
 
 ### JWT Claims to Headers Mapping
 
-The Lua filter extracts JWT claims and injects these headers:
+The Lua filter extracts JWT claims and constructs these headers:
 
-| JWT Claim            | HTTP Header         | Description                |
-|----------------------|---------------------|----------------------------|
-| `sub`                | `X-ROS-User-ID`     | User/service account ID    |
-| `preferred_username` | `X-ROS-User-Name`   | Username                   |
-| `azp` or `client_id` | `X-Client-ID`       | Client ID                  |
-| (authentication)     | `X-ROS-Authenticated` | Always "true" when valid   |
-| (method)             | `X-ROS-Auth-Method` | "Envoy-Native-JWT"         |
-| Authorization header | `X-Bearer-Token`    | JWT token without "Bearer" |
+| Source | HTTP Header | Description |
+|--------|-------------|-------------|
+| JWT claims (org_id, account_number, username, email) | `X-Rh-Identity` | Base64-encoded identity JSON for Koku |
+| Authorization header | `X-Bearer-Token` | JWT token without "Bearer" prefix |
 
 ## Testing
 
@@ -296,21 +294,24 @@ curl -F "file=@payload.tar.gz;type=application/vnd.redhat.hccm.filename+tgz" \
   "http://cost-onprem-ingress-cost-onprem.apps.example.com/api/ingress/v1/upload"
 ```
 
-### Automated Test Script
+### Automated Test Suite
 
-Use the provided test script to verify end-to-end JWT authentication:
+Use the pytest test suite to verify end-to-end JWT authentication:
 
 ```bash
-cd scripts
-./test-ocp-dataflow-jwt.sh
+# Run authentication tests
+NAMESPACE=cost-onprem ./scripts/run-pytest.sh --auth
+
+# Run full E2E tests (includes authentication)
+NAMESPACE=cost-onprem ./scripts/run-pytest.sh --e2e
 ```
 
-This script:
+The test suite:
 1. Auto-detects Red Hat Build of Keycloak configuration
 2. Obtains JWT token using client credentials
-3. Creates test payload with `manifest.json` and CSV data
-4. Uploads using JWT Bearer authentication
-5. Verifies processing in ingress and backend services
+3. Verifies gateway JWT validation (valid/invalid tokens)
+4. Tests API routing through centralized gateway
+5. Validates end-to-end data upload and processing
 
 ## Payload Requirements
 
@@ -340,7 +341,7 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 
 ### Purpose
 
-1. **Enforce Authentication**: Only traffic through Envoy sidecars (port 8080) is allowed for external requests
+1. **Enforce Authentication**: Only traffic through the centralized gateway (port 9080) is allowed for external requests
 2. **Isolate Backend Ports**: Direct access to application containers (ports 8000, 8001, 8081) is restricted
 3. **Enable Metrics Collection**: Prometheus can access metrics endpoints without authentication
 4. **Service Communication**: Internal services can communicate with each other as needed
@@ -349,9 +350,9 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 
 | Service | Port | Access Policy |
 |---------|------|---------------|
-| **Envoy Sidecar** | 8080 | ✅ External access allowed (authenticated) |
-| **Application Container** | 8000-8001, 8081 | ⚠️ Restricted to same namespace only |
-| **Metrics Endpoint** | 8000, 8080 `/metrics` | ✅ Prometheus access allowed |
+| **API Gateway** | 9080 | ✅ External access allowed (authenticated) |
+| **Application Container** | 8000-8001, 8081 | ⚠️ Restricted to gateway and internal services only |
+| **Metrics Endpoint** | 9000, 9901 `/metrics` | ✅ Prometheus access allowed |
 | **Database** | 5432 | ⚠️ Backend services only |
 | **Kafka** | 29092 | ⚠️ Backend services only |
 
@@ -367,13 +368,15 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 - **Blocks**:
   - All other external ingress traffic
 
-#### 2. Ingress Service Network Policy
+#### 2. API Gateway Network Policy
 
-**File**: `cost-onprem/templates/ingress/networkpolicy.yaml`
+**File**: `cost-onprem/templates/gateway/networkpolicy.yaml`
 
 - **Allows**:
-  - Ingress from `openshift-ingress` namespace (for external file uploads via Envoy sidecar on port 9080)
-- **Applies to**: Ingress service (file uploads from Cost Management Operator)
+  - Ingress from `openshift-ingress` namespace (for external API access via gateway on port 9080)
+  - Ingress from UI pods (for API proxying)
+  - Ingress from `openshift-monitoring` namespace (for Prometheus metrics on port 9901)
+- **Applies to**: API Gateway (all external API traffic)
 
 #### 3. Cost Management On-Premise Metrics Network Policies
 
@@ -388,16 +391,8 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 **File**: `cost-onprem/templates/ros/networkpolicies.yaml`
 
 - **Allows**:
-  - Ingress from OpenShift router/ingress (for external REST API access via Envoy sidecar on port 9080)
-- **Applies to**: Cost Management On-Premise API
-
-#### 5. Sources API Network Policy
-
-**File**: `cost-onprem/templates/sources-api/networkpolicy.yaml`
-
-- **Allows**:
-  - Ingress from `cost-onprem` namespace (for internal service communication on port 8000)
-- **Applies to**: Sources API (accessed by cost-onprem-housekeeper)
+  - Ingress from centralized gateway (for pre-authenticated API requests on port 8000)
+- **Applies to**: Cost Management On-Premise API (ROS API)
 
 ### Prometheus Metrics Access
 
@@ -418,32 +413,31 @@ Network policies are automatically deployed on OpenShift to secure service-to-se
 - **Cost Management On-Premise Processor**: `http://ros-processor:9000/metrics`
 - **Cost Management On-Premise Recommendation Poller**: `http://ros-recommendation-poller:9000/metrics`
 
-### Sources API Authentication Details
+### Koku Sources API Authentication Details
 
-**Architecture**: Sources API is a Go application using the Echo web framework with middleware-based authentication.
+**Architecture**: Sources API is now integrated in Koku API (Django application) and uses the same authentication mechanism as other Koku endpoints.
 
 **Authentication Model**:
-- **Has X-Rh-Identity validation middleware**: The application includes middleware to parse and validate `X-Rh-Identity` headers for protected endpoints
-- **Per-endpoint protection**: Authentication is applied selectively via middleware configuration in `routes.go`
-- **BYPASS_RBAC configuration**: When `BYPASS_RBAC=true`, RBAC authorization checks are skipped (useful for development)
+- **X-Rh-Identity header**: All Sources API endpoints use Koku's standard authentication middleware
+- **JWT validation**: Requests go through Envoy sidecar which validates JWT and injects `X-Rh-Identity` header
+- **Tenant isolation**: Uses `org_id` from `X-Rh-Identity` header for multi-tenancy
 
 **Endpoint Categories**:
 
 1. **Protected Endpoints** (require `X-Rh-Identity` header):
-   - Source management: `POST/PATCH/DELETE /sources`
-   - Application management: `POST/PATCH/DELETE /applications`
-   - Authentication management: `POST/PATCH/DELETE /authentications`
-   - Uses `permissionMiddleware` and `tenancyMiddleware`
+   - Source management: `POST/PATCH/DELETE /api/cost-management/v1/sources/`
+   - Application management: `POST/PATCH/DELETE /api/cost-management/v1/applications/`
+   - Authentication management: `POST/PATCH/DELETE /api/cost-management/v1/authentications/`
 
-2. **Unauthenticated Endpoints** (no header required):
-   - Application types: `GET /application_types` - Used by cost-onprem-housekeeper for internal lookups
-   - Source types: `GET /source_types`
-   - Metadata: `GET /app_meta_data`
-   - Health check: `GET /health`
+2. **On-Premise Mode**:
+   - When `ONPREM=true`, application type ID is hardcoded to `0` for cost-management applications
+   - ros-ocp-backend housekeeper no longer queries for application type ID
+   - Receives Kafka events directly from Koku via `platform.sources.event-stream` topic
 
 **Internal Service Communication**:
-- **cost-onprem-housekeeper** → Sources API: Calls unauthenticated `/application_types` endpoint to look up cost-management application type ID
-- No `X-Rh-Identity` header needed for this specific endpoint
+- **ros-ocp-backend housekeeper**: Uses `ONPREM` environment variable and hardcoded application type ID
+- **Kafka events**: Koku publishes source deletion events (`source.delete`, `application.delete`) to `platform.sources.event-stream` topic, which are consumed by ros-ocp-backend housekeeper for cleanup
+- **Environment Variable**: `SOURCES_EVENT_TOPIC: "platform.sources.event-stream"` configures the topic name in ros-ocp-backend
 - Network policies restrict access to internal `cost-onprem` namespace
 
 ### Troubleshooting Network Policies
@@ -487,22 +481,22 @@ oc exec -n openshift-monitoring prometheus-k8s-0 -- \
 
 **Issue**: Service-to-service communication failing
 - **Cause**: Network policy blocking legitimate traffic
-- **Fix**: Verify both services are in the `cost-onprem` namespace and network policy allows same-namespace traffic
+- **Fix**: Verify both services are in the `cost-onprem` namespace and network policy allows gateway traffic
 
 **Issue**: Prometheus not scraping metrics
 - **Cause**: Network policy missing `openshift-monitoring` namespace selector
 - **Fix**: Verify network policy includes `namespaceSelector` for `openshift-monitoring`
 
-**Issue**: External access to Envoy sidecar failing
+**Issue**: External access via gateway failing
 - **Cause**: Route or ingress not configured correctly
-- **Fix**: Check OpenShift routes are pointing to port 8080 (Envoy) not application ports
+- **Fix**: Check OpenShift routes are pointing to gateway service on port 9080
 
 ## Troubleshooting
 
-### Check Envoy logs
+### Check Gateway logs
 
 ```bash
-oc logs -n cost-onprem -l app.kubernetes.io/component=ingress -c envoy-proxy
+oc logs -n cost-onprem -l app.kubernetes.io/component=gateway
 ```
 
 Look for:
@@ -513,19 +507,19 @@ Look for:
 ### Check ingress logs
 
 ```bash
-oc logs -n cost-onprem -l app.kubernetes.io/component=ingress -c ingress
+oc logs -n cost-onprem -l app.kubernetes.io/component=ingress
 ```
 
 Look for:
 - `"account":"<id>","org_id":"<id>"` - Authentication headers received
-- `"X-ROS-Authenticated header missing"` - Envoy didn't inject headers
-- `"no JWT token found"` - Token not forwarded
+- `"X-Rh-Identity header missing"` - Gateway didn't inject headers
+- `"no identity found"` - Identity header not forwarded
 
 ### Verify JWKS connectivity
 
 ```bash
-# Port-forward to Envoy admin
-oc port-forward -n cost-onprem deployment/cost-onprem-ingress 9901:9901
+# Port-forward to Gateway admin
+oc port-forward -n cost-onprem deployment/cost-onprem-gateway 9901:9901
 
 # Check cluster status
 curl http://localhost:9901/clusters | grep keycloak_jwks

@@ -63,6 +63,28 @@ Usage: {{ include "cost-onprem.koku.celery.worker.name" (dict "context" . "type"
 
 {{/*
 =============================================================================
+Internal Port Constants
+=============================================================================
+These are hardcoded application defaults - not configurable via values.yaml
+because the koku application itself uses fixed ports.
+*/}}
+
+{{/*
+Koku API container port (hardcoded in Django/gunicorn)
+*/}}
+{{- define "cost-onprem.koku.api.port" -}}
+8000
+{{- end -}}
+
+{{/*
+Koku metrics/probes port (hardcoded in the application)
+*/}}
+{{- define "cost-onprem.koku.metrics.port" -}}
+9000
+{{- end -}}
+
+{{/*
+=============================================================================
 Database Connection Helpers
 =============================================================================
 */}}
@@ -208,6 +230,19 @@ Selector labels for Celery Beat
 {{ include "cost-onprem.selectorLabels" . }}
 app.kubernetes.io/component: cost-scheduler
 cost-onprem.io/celery-type: beat
+{{- end -}}
+
+{{/*
+Full labels for Celery Worker (includes all koku labels + component labels)
+Usage: {{ include "cost-onprem.koku.celery.worker.labels" (dict "context" . "type" "default") }}
+*/}}
+{{- define "cost-onprem.koku.celery.worker.labels" -}}
+{{- $context := .context -}}
+{{- $type := .type -}}
+{{ include "cost-onprem.koku.labels" $context }}
+app.kubernetes.io/component: cost-worker
+cost-onprem.io/celery-type: worker
+cost-onprem.io/worker-queue: {{ $type }}
 {{- end -}}
 
 {{/*

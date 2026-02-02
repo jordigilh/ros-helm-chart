@@ -1,0 +1,84 @@
+{{- /* Define a common host for all API routes that go through the gateway */}}
+{{- $clusterDomain := include "cost-onprem.platform.clusterDomain" . }}
+{{- $defaultApiHost := printf "%s-gateway-%s.%s" (include "cost-onprem.fullname" .) .Release.Namespace $clusterDomain }}
+{{- $apiHost := (index .Values.gatewayRoute.hosts 0).host | default $defaultApiHost }}
+{{- /*
+ROUTES CONFIGURATION (Centralized Gateway Architecture)
+
+This file contains 2 routes for external access:
+
+1. API route (/api/) - All API traffic through centralized Envoy Gateway
+   - Handles JWT authentication via Keycloak
+   - Routes to: koku-api-reads, koku-api-writes, ingress, ros-api
+   - Sources API is now part of Koku at /api/cost-management/v1/sources/
+   - Injects X-Rh-Identity header for backend services
+
+2. UI route (/) - User interface with OAuth proxy
+
+The centralized Envoy Gateway handles:
+- JWT validation for all API requests
+- Path-based routing to appropriate backend services
+- Method-based routing (GET/HEAD vs POST/PUT/DELETE) for Koku read/write split
+- X-Rh-Identity header injection for backend authentication
+
+INTERNAL-ONLY SERVICES (no routes, accessed via network policies):
+- Kruize - Accessed only by internal services (processor, poller, housekeeper)
+- ROS /status endpoint - Use port-forward if external access needed
+*/ -}}
+---
+# Unified API route - All API traffic through centralized gateway
+# Cost Management Metrics Operator and all API clients use this route with JWT auth
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+  annotations:
+    {{- with .Values.gatewayRoute.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    # Uncomment to extend timeout for large API responses
+    # haproxy.router.openshift.io/timeout: "60s"
+spec:
+  host: {{ $apiHost | quote }}
+  path: /api
+  to:
+    kind: Service
+    name: {{ include "cost-onprem.gateway.serviceName" . }}
+    weight: 100
+  port:
+    targetPort: http
+  {{- if and .Values.gatewayRoute.tls .Values.gatewayRoute.tls.termination }}
+  tls:
+    termination: {{ .Values.gatewayRoute.tls.termination }}
+    {{- if .Values.gatewayRoute.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ .Values.gatewayRoute.tls.insecureEdgeTerminationPolicy }}
+    {{- end }}
+  {{- end }}
+---
+# UI route
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "cost-onprem.fullname" . }}-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cost-onprem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+spec:
+  {{- with (index .Values.gatewayRoute.hosts 0) }}
+  {{- if .host }}
+  host: {{ .host | quote }}
+  {{- end }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "cost-onprem.fullname" . }}-ui
+  port:
+    targetPort: https
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect

@@ -42,35 +42,35 @@ jwt_auth:
 graph TB
     subgraph ocp["OpenShift Cluster (Cost Management On-Premise)"]
         User["👤 User Request<br/>(with JWT token)"]
-        Route["🌐 OpenShift Route<br/>cost-onprem-main-cost-onprem.apps..."]
-        Envoy["🔒 Envoy Sidecar<br/>Port 9080<br/><br/>• Validates JWT signature<br/>• Fetches JWKS from Keycloak<br/>• Forwards authenticated requests"]
-        Backend["⚙️ Cost Management On-Premise Backend<br/>Port 8000<br/><br/>• Processes authenticated requests<br/>• Extracts org_id from JWT"]
+        Route["🌐 OpenShift Route<br/>cost-onprem-api-cost-onprem.apps..."]
+        Gateway["🔒 API Gateway<br/>Port 9080<br/><br/>• Validates JWT signature<br/>• Fetches JWKS from Keycloak<br/>• Routes to backend services"]
+        Backend["⚙️ Backend Services<br/>(Ingress, Koku, ROS, Sources)<br/><br/>• Processes authenticated requests<br/>• Extracts org_id from X-Rh-Identity"]
 
         User -->|"Authorization: Bearer &lt;JWT&gt;"| Route
-        Route -->|Forward request| Envoy
-        Envoy -->|"✅ Authenticated<br/>(JWT validated)"| Backend
+        Route -->|Forward request| Gateway
+        Gateway -->|"✅ Authenticated<br/>(X-Rh-Identity header)"| Backend
     end
 
     subgraph external["External Cluster / Data Center"]
         Keycloak["🔑 Red Hat Build of Keycloak<br/>keycloak.external-company.com<br/><br/>• /realms/production<br/>• /protocol/openid-connect/certs<br/>• Issues JWT tokens<br/>• Provides JWKS endpoint"]
     end
 
-    Envoy -.->|"🌍 HTTPS Egress<br/>Fetch JWKS<br/>(requires network connectivity)"| Keycloak
+    Gateway -.->|"🌍 HTTPS Egress<br/>Fetch JWKS<br/>(requires network connectivity)"| Keycloak
 
     style ocp fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000
     style external fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
     style User fill:#90caf9,stroke:#0d47a1,stroke-width:2px,color:#000
     style Route fill:#81c784,stroke:#2e7d32,stroke-width:2px,color:#000
-    style Envoy fill:#ffb74d,stroke:#e65100,stroke-width:3px,color:#000
+    style Gateway fill:#fff59d,stroke:#e65100,stroke-width:3px,color:#000
     style Backend fill:#a5d6a7,stroke:#388e3c,stroke-width:2px,color:#000
     style Keycloak fill:#fff59d,stroke:#f57f17,stroke-width:3px,color:#000
 ```
 
 **Key Points:**
-- 🔒 **Envoy** validates JWT tokens by fetching JWKS from external Keycloak
-- 🌍 **Egress Required**: Envoy must be able to reach `keycloak.external-company.com:443`
+- 🔒 **API Gateway** validates JWT tokens by fetching JWKS from external Keycloak
+- 🌍 **Egress Required**: Gateway must be able to reach `keycloak.external-company.com:443`
 - 🔑 **External Keycloak**: Issues JWT tokens and provides public keys for validation
-- ⚙️ **Backend**: Receives only authenticated requests from Envoy
+- ⚙️ **Backend Services**: Receive only authenticated requests from Gateway with `X-Rh-Identity` header
 
 ---
 
@@ -78,12 +78,12 @@ graph TB
 
 ### 1. Network Connectivity
 
-**Envoy must be able to reach the external Keycloak:**
+**API Gateway must be able to reach the external Keycloak:**
 
 | Traffic Type | Source | Destination | Port | Protocol | Required? |
 |--------------|--------|-------------|------|----------|-----------|
-| JWKS Fetch | Envoy pods | External Keycloak | 443 | HTTPS | ✅ Yes |
-| Token Validation | Envoy pods | External Keycloak | 443 | HTTPS | ✅ Yes |
+| JWKS Fetch | Gateway pods | External Keycloak | 443 | HTTPS | ✅ Yes |
+| Token Validation | Gateway pods | External Keycloak | 443 | HTTPS | ✅ Yes |
 | CA Fetch (init) | Init container | External Keycloak | 443 | HTTPS | ⚠️ Optional |
 
 **Required Network Policies:**
@@ -130,8 +130,8 @@ spec:
 The external Keycloak hostname must be resolvable from within pods:
 
 ```bash
-# Test from a pod
-kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
+# Test from gateway pod
+kubectl exec -n cost-onprem deploy/cost-onprem-gateway -- \
   nslookup keycloak.external-company.com
 
 # Should return a valid IP address
@@ -199,7 +199,7 @@ jwt_auth:
 
 ### Failure Mode 2: CA Fetch Fails (Egress Blocked)
 
-**Symptom:** Pods start, but Envoy logs show:
+**Symptom:** Pods start, but gateway logs show:
 
 ```
 Invalid path: /etc/ca-certificates/ca-bundle.crt
@@ -215,7 +215,7 @@ Failed to load trusted CA certificates
 
 ### Failure Mode 3: JWT Validation Fails (Runtime)
 
-**Symptom:** All requests return `401 Unauthorized`, Envoy logs show:
+**Symptom:** All requests return `401 Unauthorized`, gateway logs show:
 
 ```
 Jwks remote fetch is failed
@@ -223,26 +223,26 @@ Failed to fetch JWKS from https://keycloak.external-company.com/...
 ```
 
 **Cause:**
-- Envoy pods cannot reach external Keycloak (egress blocked)
+- Gateway cannot reach external Keycloak (egress blocked)
 - DNS resolution fails
 - Certificate validation fails (CA bundle incomplete)
 
 **Debug:**
 
 ```bash
-# Test connectivity from Envoy pod
-kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
+# Test connectivity from gateway pod
+kubectl exec -n cost-onprem deploy/cost-onprem-gateway -- \
   curl -v https://keycloak.external-company.com/auth/realms/production/protocol/openid-connect/certs
 
 # Test CA validation
-kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-gateway -- \
   openssl s_client -connect keycloak.external-company.com:443 \
     -CAfile /etc/ca-certificates/ca-bundle.crt
 ```
 
 ### Failure Mode 4: Token Issuer Mismatch
 
-**Symptom:** Valid tokens rejected, Envoy logs show:
+**Symptom:** Valid tokens rejected, gateway logs show:
 
 ```
 Jwt issuer is not configured
@@ -311,28 +311,28 @@ cat external-keycloak-ca.crt
 ### 1. Test DNS Resolution
 
 ```bash
-kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-gateway -- \
   nslookup keycloak.external-company.com
 ```
 
 ### 2. Test Network Connectivity
 
 ```bash
-kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-gateway -- \
   curl -v https://keycloak.external-company.com/auth/realms/production
 ```
 
 ### 3. Test CA Bundle
 
 ```bash
-kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-gateway -- \
   cat /etc/ca-certificates/ca-bundle.crt | grep -c "BEGIN CERTIFICATE"
 ```
 
 ### 4. Test JWKS Endpoint
 
 ```bash
-kubectl exec -n cost-onprem deploy/cost-onprem-ingress -c envoy-proxy -- \
+kubectl exec -n cost-onprem deploy/cost-onprem-gateway -- \
   curl -v --cacert /etc/ca-certificates/ca-bundle.crt \
   https://keycloak.external-company.com/auth/realms/production/protocol/openid-connect/certs
 ```
