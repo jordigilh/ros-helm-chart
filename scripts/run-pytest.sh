@@ -157,20 +157,30 @@ setup_venv() {
     log_info "Installing test dependencies..."
     pip install --quiet -r "$TESTS_DIR/requirements.txt"
 
-    # Install Playwright browsers (required for UI tests)
-    if command -v playwright &> /dev/null; then
-        log_info "Installing Playwright browsers..."
-        # Try with system deps first (requires sudo), fall back to browser-only install
-        if playwright install chromium --with-deps 2>/dev/null; then
-            log_success "Playwright browsers installed with system dependencies"
-        elif playwright install chromium 2>/dev/null; then
-            log_success "Playwright browsers installed (system deps may be missing)"
-        else
-            log_warning "Failed to install Playwright browsers - UI tests may be skipped"
-        fi
-    fi
-
     log_success "Virtual environment ready"
+}
+
+install_playwright_browsers() {
+    # Install Playwright browsers (required for UI tests)
+    # Note: Playwright requires system libraries (libnspr4, libnss3, etc.)
+    # In CI, these must be installed by the CI step before running tests.
+    # See: https://playwright.dev/python/docs/browsers#install-system-dependencies
+    if ! command -v playwright &> /dev/null; then
+        log_error "Playwright not found in PATH"
+        return 1
+    fi
+    
+    log_info "Installing Playwright browsers for UI tests..."
+    # Try with system deps first (requires root), fall back to browser-only install
+    if playwright install chromium --with-deps 2>/dev/null; then
+        log_success "Playwright browsers installed with system dependencies"
+    elif playwright install chromium 2>/dev/null; then
+        log_warning "Playwright browsers installed WITHOUT system deps - may fail at runtime"
+        log_warning "Linux requires: dnf install -y nspr nss nss-util atk cups-libs libdrm libXcomposite libXdamage libXrandr mesa-libgbm pango alsa-lib"
+    else
+        log_error "Failed to install Playwright browsers"
+        return 1
+    fi
 }
 
 setup_reports_dir() {
@@ -220,6 +230,7 @@ run_pytest() {
 main() {
     local pytest_markers=()
     local pytest_extra_args=()
+    local include_ui=false
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -251,6 +262,7 @@ main() {
                 ;;
             --ui)
                 pytest_markers+=("ui")
+                include_ui=true
                 shift
                 ;;
             # Filter options
@@ -274,6 +286,14 @@ main() {
             --help|-h)
                 show_help
                 ;;
+            -m)
+                # Check if marker expression includes UI or is empty (all tests)
+                if [[ -z "$2" ]] || [[ "$2" == *"ui"* ]]; then
+                    include_ui=true
+                fi
+                pytest_extra_args+=("$1" "$2")
+                shift 2
+                ;;
             *)
                 # Pass through to pytest
                 pytest_extra_args+=("$1")
@@ -292,6 +312,11 @@ main() {
 
     # Setup virtual environment
     setup_venv
+
+    # Install Playwright browsers only if UI tests are requested
+    if [[ "$include_ui" == "true" ]]; then
+        install_playwright_browsers
+    fi
 
     # Setup reports directory
     setup_reports_dir
