@@ -126,6 +126,5 @@ serviceRoute:
   annotations:
     haproxy.router.openshift.io/timeout: "300s"
   tls:
-    # TLS disabled by default for testing; enable for production:
-    # termination: edge
-    # insecureEdgeTerminationPolicy: Redirect
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
