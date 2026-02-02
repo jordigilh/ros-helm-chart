@@ -104,14 +104,14 @@ See [Sources API Production Flow](../architecture/sources-api-production-flow.md
 **Quick Example:**
 
 ```bash
-# Get Sources API endpoint
-SOURCES_API=$(oc get route cost-onprem-sources -n cost-onprem -o jsonpath='{.spec.host}')
+# Get API gateway endpoint
+API_ROUTE=$(oc get route cost-onprem-api -n cost-onprem -o jsonpath='{.spec.host}')
 
 # Get JWT token (if JWT auth enabled)
 JWT_TOKEN=$(./scripts/get-jwt-token.sh)
 
-# Create source
-curl -X POST "https://${SOURCES_API}/api/sources/v1.0/sources" \
+# Create source (Sources API is now integrated in Koku at /api/cost-management/v1/sources/)
+curl -X POST "https://${API_ROUTE}/api/cost-management/v1/sources" \
   -H "Content-Type: application/json" \
   -H "x-rh-identity: ${JWT_TOKEN}" \
   -d '{
@@ -339,7 +339,7 @@ oc logs -n cost-onprem deployment/cost-onprem-koku-masu --tail=100 | grep "Proce
 oc port-forward -n cost-onprem service/cost-onprem-database 5432:5432 &
 
 # Query latest data
-psql -h localhost -U postgres -d koku -c "
+psql -h localhost -U postgres -d costonprem_koku -c "
   SELECT usage_date, namespace, SUM(cpu_request_hours) as total_cpu
   FROM reporting_ocpusagelineitem_daily_summary
   WHERE usage_date >= CURRENT_DATE - 7

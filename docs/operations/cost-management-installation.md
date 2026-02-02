@@ -313,7 +313,7 @@ USE_LOCAL_CHART=true ./install-helm-chart.sh
 **Verify Deployment:**
 ```bash
 # Check PostgreSQL
-oc exec -n $NAMESPACE cost-onprem-database-0 -- psql -U koku -d koku -c "SELECT version();"
+oc exec -n $NAMESPACE cost-onprem-database-0 -- psql -U koku -d costonprem_koku -c "SELECT version();"
 
 # Check Koku API health
 oc exec -n $NAMESPACE $(oc get pod -n $NAMESPACE -l app.kubernetes.io/component=cost-management-api-reads -o name | head -1) \
@@ -350,7 +350,7 @@ cost-onprem-kruize-*                            1/1     Running   0          3m
 
 ```bash
 # Check PostgreSQL connectivity and schema
-oc exec -n $NAMESPACE cost-onprem-database-0 -- psql -U koku -d koku -c "\dt" | head -20
+oc exec -n $NAMESPACE cost-onprem-database-0 -- psql -U koku -d costonprem_koku -c "\dt" | head -20
 
 # Expected: Many tables (reporting_*, api_*, etc.)
 ```
@@ -563,7 +563,7 @@ Once the E2E test completes, verify the aggregated data:
 oc port-forward -n cost-onprem pod/cost-onprem-database-0 5432:5432 &
 
 # Connect and query
-psql -h localhost -U koku -d koku << 'SQL'
+psql -h localhost -U koku -d costonprem_koku << 'SQL'
 -- View summary data for test cluster
 SELECT
     usage_start,
@@ -672,7 +672,7 @@ oc logs -n $NAMESPACE $(oc get pod -n $NAMESPACE -l app=koku-api-listener -o nam
 ./cost-onprem-ocp-dataflow.sh --force
 
 # Or manually clear summary table
-oc exec -n $NAMESPACE cost-onprem-database-0 -- psql -U koku -d koku -c \
+oc exec -n $NAMESPACE cost-onprem-database-0 -- psql -U koku -d costonprem_koku -c \
   "DELETE FROM org1234567.reporting_ocpusagelineitem_daily_summary WHERE cluster_id = 'test-cluster-123';"
 ```
 
@@ -723,7 +723,7 @@ oc scale deployment cost-onprem-celery-worker-summary -n $NAMESPACE --replicas=3
 
 ```bash
 # Backup PostgreSQL (Koku DB)
-oc exec -n $NAMESPACE cost-onprem-database-0 -- pg_dump -U koku koku > koku-backup-$(date +%Y%m%d).sql
+oc exec -n $NAMESPACE cost-onprem-database-0 -- pg_dump -U koku costonprem_koku > koku-backup-$(date +%Y%m%d).sql
 ```
 
 ### Monitoring
