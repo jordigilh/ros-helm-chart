@@ -1044,7 +1044,7 @@ service:
   type: ClusterIP
 
 # OpenShift Routes
-serviceRoute:
+gatewayRoute:
   annotations:
     # OpenShift-specific route annotations
     haproxy.router.openshift.io/timeout: "30s"

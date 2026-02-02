@@ -1,7 +1,7 @@
 {{- /* Define a common host for all API routes that go through the gateway */}}
 {{- $clusterDomain := include "cost-onprem.platform.clusterDomain" . }}
 {{- $defaultApiHost := printf "%s-gateway-%s.%s" (include "cost-onprem.fullname" .) .Release.Namespace $clusterDomain }}
-{{- $apiHost := (index .Values.serviceRoute.hosts 0).host | default $defaultApiHost }}
+{{- $apiHost := (index .Values.gatewayRoute.hosts 0).host | default $defaultApiHost }}
 {{- /*
 ROUTES CONFIGURATION (Centralized Gateway Architecture)
 
@@ -37,7 +37,7 @@ metadata:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: gateway
   annotations:
-    {{- with .Values.serviceRoute.annotations }}
+    {{- with .Values.gatewayRoute.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
     # Uncomment to extend timeout for large API responses
@@ -51,11 +51,11 @@ spec:
     weight: 100
   port:
     targetPort: http
-  {{- if and .Values.serviceRoute.tls .Values.serviceRoute.tls.termination }}
+  {{- if and .Values.gatewayRoute.tls .Values.gatewayRoute.tls.termination }}
   tls:
-    termination: {{ .Values.serviceRoute.tls.termination }}
-    {{- if .Values.serviceRoute.tls.insecureEdgeTerminationPolicy }}
-    insecureEdgeTerminationPolicy: {{ .Values.serviceRoute.tls.insecureEdgeTerminationPolicy }}
+    termination: {{ .Values.gatewayRoute.tls.termination }}
+    {{- if .Values.gatewayRoute.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ .Values.gatewayRoute.tls.insecureEdgeTerminationPolicy }}
     {{- end }}
   {{- end }}
 ---
@@ -69,7 +69,7 @@ metadata:
     {{- include "cost-onprem.labels" . | nindent 4 }}
     app.kubernetes.io/component: ui
 spec:
-  {{- with (index .Values.serviceRoute.hosts 0) }}
+  {{- with (index .Values.gatewayRoute.hosts 0) }}
   {{- if .host }}
   host: {{ .host | quote }}
   {{- end }}

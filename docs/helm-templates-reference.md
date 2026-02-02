@@ -479,7 +479,7 @@ spec:
 - **Certificate**: Managed by OpenShift service serving certificates
 
 **Host Configuration**:
-- Uses `serviceRoute.hosts[0].host` from values (empty = cluster default domain)
+- Uses `gatewayRoute.hosts[0].host` from values (empty = cluster default domain)
 - Example: `cost-onprem-ui-cost-onprem.apps.cluster.example.com`
 
 **Access Pattern**:

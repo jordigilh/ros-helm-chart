@@ -269,7 +269,7 @@ echo "UI available at: https://$UI_ROUTE"
 Enable TLS edge termination for API routes:
 
 ```yaml
-serviceRoute:
+gatewayRoute:
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
@@ -278,8 +278,8 @@ serviceRoute:
 Or via Helm:
 ```bash
 helm upgrade cost-onprem ./cost-onprem -n cost-onprem \
-  --set serviceRoute.tls.termination=edge \
-  --set serviceRoute.tls.insecureEdgeTerminationPolicy=Redirect
+  --set gatewayRoute.tls.termination=edge \
+  --set gatewayRoute.tls.insecureEdgeTerminationPolicy=Redirect
 ```
 
 ### Port Forwarding (Alternative Access)
@@ -304,7 +304,7 @@ oc port-forward svc/cost-onprem-database 5432:5432 -n cost-onprem
 
 **OpenShift Routes:**
 ```yaml
-serviceRoute:
+gatewayRoute:
   annotations:
     haproxy.router.openshift.io/timeout: "30s"
   hosts:
@@ -499,7 +499,7 @@ odf:
     secretName: "cost-onprem-odf-credentials"
 
 # OpenShift Routes
-serviceRoute:
+gatewayRoute:
   enabled: true
   tls:
     termination: edge
