@@ -121,7 +121,7 @@ jwtAuth:
 
 # OpenShift Routes configuration
 # Override: longer timeout (300s vs 30s default) for large file uploads
-serviceRoute:
+gatewayRoute:
   enabled: true
   annotations:
     haproxy.router.openshift.io/timeout: "300s"
