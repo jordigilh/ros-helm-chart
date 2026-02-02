@@ -36,16 +36,19 @@
 #   PYTHON                 Python interpreter (default: python3)
 #
 # Examples:
-#   ./run-pytest.sh                         # Run all tests
+#   ./run-pytest.sh                         # Run all tests (excludes UI by default)
 #   ./run-pytest.sh --smoke                 # Run smoke tests only
 #   ./run-pytest.sh --helm                  # Run Helm suite only
 #   ./run-pytest.sh --auth --ros            # Run auth and ROS suites
 #   ./run-pytest.sh --e2e --smoke           # Run E2E smoke tests
 #   ./run-pytest.sh --e2e                   # Run full E2E flow
-#   ./run-pytest.sh --ui                    # Run UI tests
+#   ./run-pytest.sh --ui                    # Run UI tests (requires Playwright deps)
 #   ./run-pytest.sh -k "test_jwt"           # Run tests matching pattern
 #   ./run-pytest.sh suites/helm/            # Run specific suite directory
 #   ./run-pytest.sh -m "smoke and auth"     # Custom marker expression
+#
+# Note: UI tests are excluded by default because they require Playwright system
+# dependencies. Use --ui to run them explicitly. This wil change in the future.
 
 set -e
 

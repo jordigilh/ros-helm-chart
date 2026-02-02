@@ -11,16 +11,92 @@ These tests validate:
 
 ## Prerequisites
 
-### Install Playwright Browsers
+### Platform-Specific Setup
 
-After installing dependencies, install the Playwright browsers:
+Playwright requires both the Python package and browser binaries with system dependencies.
+
+#### macOS
+
+macOS includes most required dependencies. Just install the browsers:
 
 ```bash
-# Install browsers (run once)
+# Activate the test virtual environment
+cd tests && source .venv/bin/activate
+
+# Install Playwright browsers
 playwright install chromium
 
 # Or install all browsers
 playwright install
+```
+
+#### Linux (Fedora/RHEL)
+
+Linux requires additional system libraries for Chromium:
+
+```bash
+# Install system dependencies
+sudo dnf install -y \
+    nspr \
+    nss \
+    nss-util \
+    atk \
+    at-spi2-atk \
+    cups-libs \
+    libdrm \
+    libXcomposite \
+    libXdamage \
+    libXrandr \
+    mesa-libgbm \
+    pango \
+    alsa-lib
+
+# Activate the test virtual environment
+cd tests && source .venv/bin/activate
+
+# Install Playwright browsers
+playwright install chromium
+```
+
+#### Linux (Ubuntu/Debian)
+
+```bash
+# Install system dependencies (requires sudo)
+sudo apt-get update && sudo apt-get install -y \
+    libnspr4 \
+    libnss3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libasound2
+
+# Activate the test virtual environment
+cd tests && source .venv/bin/activate
+
+# Install Playwright browsers
+playwright install chromium
+```
+
+#### Alternative: Install All Dependencies via Playwright
+
+Playwright can attempt to install system dependencies automatically (requires root):
+
+```bash
+# This tries to install system deps AND browsers
+playwright install --with-deps chromium
+```
+
+### Verify Installation
+
+```bash
+# Check that Playwright can launch the browser
+python -c "from playwright.sync_api import sync_playwright; p = sync_playwright().start(); b = p.chromium.launch(); b.close(); p.stop(); print('Playwright OK')"
 ```
 
 ### Environment Variables
@@ -214,17 +290,38 @@ class TestProtectedFeature:
 
 ## CI Integration
 
-UI tests run as part of the default test suite:
+**UI tests are excluded by default** because they require Playwright system dependencies that may not be available in all CI environments.
 
 ```bash
-# Run all tests including UI
-pytest
+# Default: runs all tests EXCEPT UI
+./scripts/run-pytest.sh
 
-# Run only UI tests
-pytest -m ui
+# Run ONLY UI tests (when Playwright deps are available)
+./scripts/run-pytest.sh --ui
+
+# Run all tests INCLUDING UI
+pytest -m ""  # Empty marker expression overrides default exclusion
 ```
 
-For CI, ensure:
-1. Playwright browsers are installed in the CI image
-2. `PLAYWRIGHT_HEADLESS=true` is set
-3. Screenshots directory is preserved as artifacts
+### Enabling UI Tests in CI
+
+To enable UI tests in CI, the CI environment must:
+
+1. **Install system dependencies** before running tests:
+   ```bash
+   # Fedora/RHEL
+   dnf install -y nspr nss nss-util atk at-spi2-atk cups-libs libdrm \
+       libXcomposite libXdamage libXrandr mesa-libgbm pango alsa-lib
+   ```
+
+2. **Install Playwright browsers** (handled by `run-pytest.sh`):
+   ```bash
+   playwright install chromium
+   ```
+
+3. **Set headless mode** (default):
+   ```bash
+   export PLAYWRIGHT_HEADLESS=true
+   ```
+
+4. **Preserve screenshots** as artifacts on failure
