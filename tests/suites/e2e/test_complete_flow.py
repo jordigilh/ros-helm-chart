@@ -523,7 +523,7 @@ class TestCompleteDataFlow:
                 break
         
         # Create source with unique name
-        source_name = f"e2e-source-{e2e_cluster_id[:8]}"
+        source_name = f"e2e-source-{e2e_cluster_id[-8:]}"
         
         # Check for existing e2e sources and delete them
         print(f"  🔍 Checking for existing e2e sources...")

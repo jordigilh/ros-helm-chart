@@ -32,13 +32,15 @@ from e2e_helpers import (
     ensure_nise_available,
     generate_cluster_id,
     generate_nise_data,
-    get_sources_api_url,
+    get_koku_api_reads_url,
+    get_koku_api_writes_url,
     register_source,
     upload_with_retry,
     wait_for_provider,
     wait_for_summary_tables,
 )
 from utils import (
+    create_rh_identity_header,
     create_upload_package_from_files,
     execute_db_query,
     get_pod_by_label,
@@ -84,15 +86,17 @@ def recommendations_test_data(cluster_config, s3_config, jwt_token, ingress_url,
     if not db_pod:
         pytest.skip("Database pod not found")
     
-    listener_pod = get_pod_by_label(cluster_config.namespace, "app.kubernetes.io/component=sources-listener")
-    if not listener_pod:
-        listener_pod = get_pod_by_label(cluster_config.namespace, "app.kubernetes.io/component=listener")
-    if not listener_pod:
-        pytest.skip("Listener pod not found")
+    ingress_pod = get_pod_by_label(cluster_config.namespace, "app.kubernetes.io/component=ingress")
+    if not ingress_pod:
+        pytest.skip("Ingress pod not found")
     
     temp_dir = tempfile.mkdtemp(prefix="ui_ros_")
     source_registration = None
-    sources_url = get_sources_api_url(cluster_config.helm_release_name, cluster_config.namespace)
+    
+    # Use Koku API URLs (sources are now part of Koku)
+    api_reads_url = get_koku_api_reads_url(cluster_config.helm_release_name, cluster_config.namespace)
+    api_writes_url = get_koku_api_writes_url(cluster_config.helm_release_name, cluster_config.namespace)
+    rh_identity = create_rh_identity_header(org_id)
     
     nise_config = NISEConfig()
     
@@ -117,15 +121,18 @@ def recommendations_test_data(cluster_config, s3_config, jwt_token, ingress_url,
         if not files["all_files"]:
             pytest.skip("NISE generated no CSV files")
         
-        # Step 2: Register source
+        # Step 2: Register source via Koku API
         print("\n  [2/6] Registering source...")
         source_registration = register_source(
             namespace=cluster_config.namespace,
-            listener_pod=listener_pod,
-            sources_api_url=sources_url,
+            pod=ingress_pod,
+            api_reads_url=api_reads_url,
+            api_writes_url=api_writes_url,
+            rh_identity_header=rh_identity,
             cluster_id=cluster_id,
             org_id=org_id,
-            source_name=f"ui-ros-{cluster_id[:16]}",
+            source_name=f"ui-ros-{cluster_id[-8:]}",
+            container="ingress",
         )
         print(f"       Source ID: {source_registration.source_id}")
         
@@ -225,10 +232,11 @@ def recommendations_test_data(cluster_config, s3_config, jwt_token, ingress_url,
             if source_registration:
                 if delete_source(
                     cluster_config.namespace,
-                    listener_pod,
-                    sources_url,
+                    ingress_pod,
+                    api_writes_url,
+                    rh_identity,
                     source_registration.source_id,
-                    org_id,
+                    container="ingress",
                 ):
                     print(f"  Deleted source {source_registration.source_id}")
             
