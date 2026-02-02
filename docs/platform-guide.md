@@ -160,7 +160,7 @@ oc get pod <pod-name> -n cost-onprem -o yaml | grep scc
 
 **Automatic TLS Termination:**
 ```yaml
-serviceRoute:
+gatewayRoute:
   tls:
     termination: edge                # TLS at router
     insecureEdgeTerminationPolicy: Redirect  # Redirect HTTP to HTTPS
@@ -224,7 +224,7 @@ ui:
 
 ```yaml
 # values-openshift.yaml
-serviceRoute:
+gatewayRoute:
   enabled: true
   annotations:
     haproxy.router.openshift.io/timeout: "30s"
