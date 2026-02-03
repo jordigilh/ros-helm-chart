@@ -101,38 +101,6 @@ Usage: {{ include "cost-onprem.database.secretName" . }}
 {{- end }}
 
 {{/*
-Get ROS database username - returns value from values.yaml (used for both secret generation and ConfigMap)
-Usage: {{ include "cost-onprem.database.ros.user" . }}
-*/}}
-{{- define "cost-onprem.database.ros.user" -}}
-{{- .Values.database.ros.user -}}
-{{- end }}
-
-{{/*
-Get ROS database password - returns value from values.yaml (used for both secret generation and ConfigMap)
-Usage: {{ include "cost-onprem.database.ros.password" . }}
-*/}}
-{{- define "cost-onprem.database.ros.password" -}}
-{{- .Values.database.ros.password -}}
-{{- end }}
-
-{{/*
-Get Kruize database username - returns value from values.yaml (used for both secret generation and ConfigMap)
-Usage: {{ include "cost-onprem.database.kruize.user" . }}
-*/}}
-{{- define "cost-onprem.database.kruize.user" -}}
-{{- .Values.database.kruize.user -}}
-{{- end }}
-
-{{/*
-Get Kruize database password - returns value from values.yaml (used for both secret generation and ConfigMap)
-Usage: {{ include "cost-onprem.database.kruize.password" . }}
-*/}}
-{{- define "cost-onprem.database.kruize.password" -}}
-{{- .Values.database.kruize.password -}}
-{{- end }}
-
-{{/*
 =============================================================================
 Database Name Helpers
 =============================================================================
