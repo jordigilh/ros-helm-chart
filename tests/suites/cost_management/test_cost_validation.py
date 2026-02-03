@@ -55,8 +55,8 @@ class TestSummaryTableData:
         result = execute_db_query(
             ctx["namespace"],
             ctx["db_pod"],
-            "koku",
-            "koku",
+            "costonprem_koku",
+            "koku_user",
             f"""
             SELECT EXISTS (
                 SELECT FROM information_schema.tables
@@ -77,8 +77,8 @@ class TestSummaryTableData:
         result = execute_db_query(
             ctx["namespace"],
             ctx["db_pod"],
-            "koku",
-            "koku",
+            "costonprem_koku",
+            "koku_user",
             f"""
             SELECT COUNT(*)
             FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
@@ -125,8 +125,8 @@ class TestMetricValidation:
         result = execute_db_query(
             ctx["namespace"],
             ctx["db_pod"],
-            "koku",
-            "koku",
+            "costonprem_koku",
+            "koku_user",
             f"""
             SELECT SUM({db_column}) as total
             FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
@@ -163,8 +163,8 @@ class TestMetricValidation:
         result = execute_db_query(
             ctx["namespace"],
             ctx["db_pod"],
-            "koku",
-            "koku",
+            "costonprem_koku",
+            "koku_user",
             f"""
             SELECT SUM({db_column}) as total_usage
             FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
@@ -203,8 +203,8 @@ class TestResourceCounts:
         result = execute_db_query(
             ctx["namespace"],
             ctx["db_pod"],
-            "koku",
-            "koku",
+            "costonprem_koku",
+            "koku_user",
             f"""
             SELECT COUNT(DISTINCT {db_column}) as count
             FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
@@ -247,8 +247,8 @@ class TestResourceNames:
         result = execute_db_query(
             ctx["namespace"],
             ctx["db_pod"],
-            "koku",
-            "koku",
+            "costonprem_koku",
+            "koku_user",
             f"""
             SELECT DISTINCT {db_column}
             FROM {ctx["schema_name"]}.reporting_ocpusagelineitem_daily_summary
@@ -282,8 +282,8 @@ class TestInfrastructureCost:
         result = execute_db_query(
             ctx["namespace"],
             ctx["db_pod"],
-            "koku",
-            "koku",
+            "costonprem_koku",
+            "koku_user",
             f"""
             SELECT 
                 COUNT(*) as rows_with_cost,

@@ -31,7 +31,7 @@ class PreflightPhase:
         self.bucket = bucket
         self.k8s_client = k8s_client
         self.postgres_pod = postgres_pod
-        self.database = 'koku'
+        self.database = 'costonprem_koku'
 
     def run(self) -> Dict[str, Any]:
         """

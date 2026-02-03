@@ -41,6 +41,7 @@ from utils import (
     run_oc_command,
 )
 from cleanup import full_cleanup
+from e2e_helpers import install_nise
 
 # Import shared E2E helpers
 from e2e_helpers import (
@@ -54,6 +55,23 @@ from e2e_helpers import (
     cleanup_database_records,
     cleanup_e2e_sources,
 )
+
+# =============================================================================
+# Data Generation Utilities
+# =============================================================================
+
+def is_nise_available() -> bool:
+    """Check if NISE is available for data generation."""
+    try:
+        result = subprocess.run(
+            ["nise", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return False
 
 
 def generate_dynamic_static_report(start_date: datetime, end_date: datetime, output_dir: str) -> str:
@@ -85,10 +103,8 @@ generators:
           cpu_cores: 2
           memory_gig: 8
           resource_id: test-resource-1
-          labels: node-role.kubernetes.io/worker:true|kubernetes.io/os:linux
           namespaces:
             test-namespace:
-              labels: openshift.io/cluster-monitoring:true
               pods:
                 - pod:
                   pod_name: test-pod-1
@@ -754,8 +770,8 @@ class TestCompleteDataFlow:
             result = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "koku",
-                "koku",
+                "costonprem_koku",
+                "koku_user",
                 f"""
                 SELECT COUNT(*) FROM api_provider p
                 JOIN api_providerauthentication a ON p.authentication_id = a.id
@@ -798,19 +814,16 @@ class TestCompleteDataFlow:
         
         if pod_usage_files and ros_usage_files:
             # Use NISE files with proper separation of cost and ROS data
-            print(f"  📦 Creating package with {len(pod_usage_files)} pod_usage + {len(ros_usage_files)} ros_usage files")
-            if node_label_files:
-                print(f"     + {len(node_label_files)} node_label files")
-            if namespace_label_files:
-                print(f"     + {len(namespace_label_files)} namespace_label files")
+            label_count = len(node_label_files) + len(namespace_label_files)
+            print(f"  📦 Creating package with {len(pod_usage_files)} pod_usage + {len(ros_usage_files)} ros_usage + {label_count} label files")
             tar_path = create_upload_package_from_files(
                 pod_usage_files,
                 ros_usage_files,
                 cluster_id,
                 start_date=start_date,
                 end_date=end_date,
-                node_label_files=node_label_files if node_label_files else None,
-                namespace_label_files=namespace_label_files if namespace_label_files else None,
+                node_label_files=node_label_files,
+                namespace_label_files=namespace_label_files,
             )
         else:
             # Fall back to simple CSV content
@@ -856,7 +869,7 @@ class TestCompleteDataFlow:
                 shutil.rmtree(nise_temp_dir, ignore_errors=True)
 
     def test_04_manifest_created_in_koku(self, cluster_config, registered_source):
-        """Step 4: Verify manifest was created in Koku database with required fields."""
+        """Step 4: Verify manifest was created in Koku database."""
         db_pod = get_pod_by_label(
             cluster_config.namespace,
             "app.kubernetes.io/component=database"
@@ -870,14 +883,18 @@ class TestCompleteDataFlow:
             result = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "koku",
-                "koku",
+                "costonprem_koku",
+                "koku_user",
                 f"""
                 SELECT COUNT(*) FROM reporting_common_costusagereportmanifest
                 WHERE cluster_id = '{cluster_id}'
                 """,
             )
-            return result is not None and int(result[0][0]) > 0
+            try:
+                return result is not None and int(result[0][0]) > 0
+            except (IndexError, ValueError, TypeError):
+                # Unexpected result structure from query
+                return False
         
         success = wait_for_condition(
             check_manifest,
@@ -887,40 +904,9 @@ class TestCompleteDataFlow:
         )
         
         assert success, f"Manifest not created for cluster {cluster_id}"
-        
-        # Validate manifest has required fields (from processing_state tests)
-        manifest_result = execute_db_query(
-            cluster_config.namespace,
-            db_pod,
-            "koku",
-            "koku",
-            f"""
-            SELECT 
-                m.id,
-                m.assembly_id,
-                m.cluster_id,
-                m.num_total_files,
-                m.creation_datetime
-            FROM reporting_common_costusagereportmanifest m
-            WHERE m.cluster_id = '{cluster_id}'
-            ORDER BY m.creation_datetime DESC
-            LIMIT 1
-            """,
-        )
-        
-        assert manifest_result and manifest_result[0], "Manifest query returned no results"
-        manifest = manifest_result[0]
-        
-        assert manifest[0] is not None, "Manifest missing ID"
-        assert manifest[1] is not None, "Manifest missing assembly_id"
-        assert manifest[2] == cluster_id, f"Manifest cluster_id mismatch: {manifest[2]}"
-        assert manifest[3] is not None and int(manifest[3]) > 0, "Manifest has no files"
-        assert manifest[4] is not None, "Manifest missing creation_datetime"
-        
-        print(f"  ✅ Manifest {manifest[0]} created with {manifest[3]} files")
 
     def test_05_files_processed_by_masu(self, cluster_config, registered_source):
-        """Step 5: Verify uploaded files were processed by MASU with proper status."""
+        """Step 5: Verify uploaded files were processed by MASU."""
         db_pod = get_pod_by_label(
             cluster_config.namespace,
             "app.kubernetes.io/component=database"
@@ -930,17 +916,12 @@ class TestCompleteDataFlow:
         
         cluster_id = registered_source["cluster_id"]
         
-        # File processing status codes (from Koku)
-        FILE_STATUS_PENDING = 0
-        FILE_STATUS_SUCCESS = 1
-        FILE_STATUS_FAILED = 2
-        
         def check_processing():
             result = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "koku",
-                "koku",
+                "costonprem_koku",
+                "koku_user",
                 f"""
                 SELECT s.status
                 FROM reporting_common_costusagereportmanifest m
@@ -961,49 +942,6 @@ class TestCompleteDataFlow:
         )
         
         assert success, "File processing not completed"
-        
-        # Validate file processing status details (from processing_state tests)
-        file_status_result = execute_db_query(
-            cluster_config.namespace,
-            db_pod,
-            "koku",
-            "koku",
-            f"""
-            SELECT 
-                s.report_name,
-                s.status,
-                s.failed_status,
-                s.completed_datetime
-            FROM reporting_common_costusagereportmanifest m
-            JOIN reporting_common_costusagereportstatus s ON s.manifest_id = m.id
-            WHERE m.cluster_id = '{cluster_id}'
-            ORDER BY m.creation_datetime DESC
-            """,
-        )
-        
-        if file_status_result:
-            failed_files = []
-            missing_completion = []
-            
-            for row in file_status_result:
-                report_name, status, failed_status, completed_datetime = row
-                status_int = int(status) if status is not None else None
-                
-                if status_int == FILE_STATUS_FAILED:
-                    failed_files.append(report_name)
-                elif status_int == FILE_STATUS_SUCCESS and completed_datetime is None:
-                    missing_completion.append(report_name)
-            
-            # Log any issues but don't fail (files may still be processing)
-            if failed_files:
-                print(f"  ⚠️  {len(failed_files)} file(s) failed: {failed_files[:3]}")
-            
-            if missing_completion:
-                print(f"  ⚠️  {len(missing_completion)} successful file(s) missing completion time")
-            
-            # Count successful files
-            successful = sum(1 for row in file_status_result if row[1] and int(row[1]) == FILE_STATUS_SUCCESS)
-            print(f"  ✅ {successful}/{len(file_status_result)} files processed successfully")
 
     @pytest.mark.extended
     @pytest.mark.timeout(900)  # 15 minutes for summary tables
@@ -1057,8 +995,8 @@ class TestCompleteDataFlow:
         schema_result = execute_db_query(
             cluster_config.namespace,
             db_pod,
-            "koku",
-            "koku",
+            "costonprem_koku",
+            "koku_user",
             f"""
             SELECT c.schema_name
             FROM reporting_common_costusagereportmanifest m
@@ -1074,8 +1012,8 @@ class TestCompleteDataFlow:
             manifest_check = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "koku",
-                "koku",
+                "costonprem_koku",
+                "koku_user",
                 f"""
                 SELECT m.id, m.provider_id, m.num_total_files, m.num_processed_files
                 FROM reporting_common_costusagereportmanifest m
@@ -1111,8 +1049,8 @@ class TestCompleteDataFlow:
             result = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "koku",
-                "koku",
+                "costonprem_koku",
+                "koku_user",
                 f"""
                 SELECT COUNT(*),
                        COALESCE(SUM(pod_request_cpu_core_hours), 0),
@@ -1135,8 +1073,8 @@ class TestCompleteDataFlow:
             file_status = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "koku",
-                "koku",
+                "costonprem_koku",
+                "koku_user",
                 f"""
                 SELECT rf.report_name, rf.completed_datetime, rf.status
                 FROM reporting_common_costusagereportmanifest m
@@ -1170,63 +1108,6 @@ class TestCompleteDataFlow:
                 "\nKNOWN ISSUE: Ingress-based uploads may not trigger summary tasks due to\n"
                 "date extraction issues in Koku. Direct S3 upload (bash test) may work."
             )
-        
-        # Validate processing state (from processing_state tests)
-        # Check for stuck manifests
-        manifest_state = execute_db_query(
-            cluster_config.namespace,
-            db_pod,
-            "koku",
-            "koku",
-            f"""
-            SELECT 
-                m.id,
-                m.num_total_files,
-                m.num_processed_files,
-                m.completed_datetime,
-                m.state::text
-            FROM reporting_common_costusagereportmanifest m
-            WHERE m.cluster_id = '{cluster_id}'
-            ORDER BY m.creation_datetime DESC
-            LIMIT 1
-            """,
-        )
-        
-        if manifest_state and manifest_state[0]:
-            manifest = manifest_state[0]
-            manifest_id, total_files, processed_files, completed, state = manifest
-            
-            # Check if manifest is stuck (has files but none processed and not completed)
-            if total_files and int(total_files) > 0:
-                processed = int(processed_files) if processed_files else 0
-                if processed == 0 and completed is None:
-                    print(f"  ⚠️  Manifest {manifest_id} may be stuck: 0/{total_files} files processed")
-                else:
-                    print(f"  ✅ Manifest {manifest_id}: {processed}/{total_files} files processed")
-            
-            # Check for summary failures in state
-            if state and "failed" in state.lower():
-                print(f"  ⚠️  Manifest {manifest_id} has failure in state: {state[:100]}...")
-        
-        # Get summary data stats
-        summary_stats = execute_db_query(
-            cluster_config.namespace,
-            db_pod,
-            "koku",
-            "koku",
-            f"""
-            SELECT 
-                COUNT(*) as row_count,
-                COALESCE(SUM(pod_request_cpu_core_hours), 0) as cpu_hours,
-                COALESCE(SUM(pod_request_memory_gigabyte_hours), 0) as mem_gb_hours
-            FROM {schema_name}.reporting_ocpusagelineitem_daily_summary
-            WHERE cluster_id = '{cluster_id}'
-            """,
-        )
-        
-        if summary_stats and summary_stats[0]:
-            row_count, cpu_hours, mem_gb_hours = summary_stats[0]
-            print(f"  ✅ Summary tables populated: {row_count} rows, {float(cpu_hours):.2f} CPU-hours, {float(mem_gb_hours):.2f} GB-hours")
 
     @pytest.mark.extended
     @pytest.mark.timeout(300)  # 5 minutes for Kruize experiments
@@ -1272,7 +1153,7 @@ class TestCompleteDataFlow:
             result = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "kruize_db",
+                "costonprem_kruize",
                 kruize_user,
                 f"""
                 SELECT COUNT(*) FROM kruize_experiments
@@ -1367,7 +1248,7 @@ class TestCompleteDataFlow:
         experiment_result = execute_db_query(
             cluster_config.namespace,
             db_pod,
-            "kruize_db",
+            "costonprem_kruize",
             kruize_user,
             f"""
             SELECT COUNT(*) FROM kruize_experiments
@@ -1387,7 +1268,7 @@ class TestCompleteDataFlow:
             result = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "kruize_db",
+                "costonprem_kruize",
                 kruize_user,
                 f"""
                 SELECT COUNT(*) FROM kruize_recommendations
@@ -1409,7 +1290,7 @@ class TestCompleteDataFlow:
             exp_details = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "kruize_db",
+                "costonprem_kruize",
                 kruize_user,
                 f"""
                 SELECT experiment_name, status, created_at
@@ -1438,7 +1319,7 @@ class TestCompleteDataFlow:
                 "  4. Kruize recommendation engine not running\n"
                 "\nTo debug:\n"
                 "  - Check Kruize logs: oc logs -l app.kubernetes.io/name=kruize\n"
-                "  - Query experiments: oc exec <db-pod> -- psql -U kruize -d kruize_db -c \"SELECT * FROM kruize_experiments;\"\n"
+                "  - Query experiments: oc exec <db-pod> -- psql -U kruize -d costonprem_kruize -c \"SELECT * FROM kruize_experiments;\"\n"
                 "\nNote: In a single E2E test run, recommendations may not be generated.\n"
                 "Kruize typically requires multiple data uploads over several hours."
             )

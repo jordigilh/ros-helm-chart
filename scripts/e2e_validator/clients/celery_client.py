@@ -12,14 +12,14 @@ from typing import Dict, Optional
 class CeleryClient:
     """Direct Celery connection via Valkey"""
 
-    def __init__(self, redis_url: str):
+    def __init__(self, valkey_url: str):
         """Initialize Celery client
 
         Args:
-            redis_url: Valkey connection URL (e.g., redis://valkey:6379/0)
+            valkey_url: Valkey connection URL (e.g., redis://valkey:6379/0)
         """
-        self.redis_url = redis_url
-        self.celery = Celery(broker=redis_url, backend=redis_url)
+        self.valkey_url = valkey_url
+        self.celery = Celery(broker=valkey_url, backend=valkey_url)
 
     def trigger_task(self, task_name: str, **kwargs) -> str:
         """Trigger a Celery task
