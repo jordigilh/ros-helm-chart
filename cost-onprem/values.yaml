@@ -820,23 +820,29 @@ database:
   # ROS Database Configuration
   ros:
     # Database name on the unified server
-    name: ros_db
-    # user removed - stored in cost-onprem-db-credentials secret (key: ros-user)
-    # password removed - stored in cost-onprem-db-credentials secret (key: ros-password)
+    # Standardized naming: costonprem_<service> (underscores for PostgreSQL compatibility)
+    name: costonprem_ros
+    # Dedicated user for ROS service (only used if existingSecret is empty)
+    user: ros_user
+    password: ros_password
 
   # Kruize Database Configuration
   kruize:
     # Database name on the unified server
-    name: kruize_db
-    # user removed - stored in cost-onprem-db-credentials secret (key: kruize-user)
-    # password removed - stored in cost-onprem-db-credentials secret (key: kruize-password)
+    # Standardized naming: costonprem_<service> (underscores for PostgreSQL compatibility)
+    name: costonprem_kruize
+    # Dedicated user for Kruize service (only used if existingSecret is empty)
+    user: kruize_user
+    password: kruize_password
 
   # Koku Database Configuration
   koku:
     # Database name on the unified server
-    name: koku
-    # user removed - stored in cost-onprem-db-credentials secret (key: koku-user)
-    # password removed - stored in cost-onprem-db-credentials secret (key: koku-password)
+    # Standardized naming: costonprem_<service> (underscores for PostgreSQL compatibility)
+    name: costonprem_koku
+    # Dedicated user for Koku service (only used if existingSecret is empty)
+    user: koku_user
+    password: koku_password
 
 # -----------------------------------------------------------------------------
 # Shared Infrastructure - Kafka

@@ -340,9 +340,9 @@ from celery import Celery
 from kombu import Connection
 
 # Test Valkey connection
-redis_url = os.environ.get('REDIS_URL', 'redis://valkey:6379/0')
+valkey_url = os.environ.get('REDIS_URL', 'redis://valkey:6379/0')
 try:
-    conn = Connection(redis_url)
+    conn = Connection(valkey_url)
     conn.connect()
     print("VALKEY_CONNECTED=True")
     conn.release()

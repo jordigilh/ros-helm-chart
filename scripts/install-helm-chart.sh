@@ -381,7 +381,6 @@ create_database_credentials_secret() {
     local ros_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
     local kruize_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
     local koku_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
-    local sources_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
 
     # Create the secret
     kubectl create secret generic "$secret_name" \
@@ -392,10 +391,8 @@ create_database_credentials_secret() {
         --from-literal=ros-password="$ros_password" \
         --from-literal=kruize-user=kruize_user \
         --from-literal=kruize-password="$kruize_password" \
-        --from-literal=koku-user=koku \
-        --from-literal=koku-password="$koku_password" \
-        --from-literal=sources-user=sources \
-        --from-literal=sources-password="$sources_password"
+        --from-literal=koku-user=koku_user \
+        --from-literal=koku-password="$koku_password"
 
     if [ $? -eq 0 ]; then
         echo_success "Database credentials secret created successfully"

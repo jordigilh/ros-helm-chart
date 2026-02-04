@@ -82,8 +82,8 @@ class DatabaseConfig:
 
     pod_name: str
     namespace: str
-    database: str = "koku"
-    user: str = "koku"
+    database: str = "costonprem_koku"
+    user: str = "costonprem_koku"
     password: Optional[str] = None
 
 
@@ -156,9 +156,22 @@ def keycloak_config(cluster_config: ClusterConfig) -> KeycloakConfig:
     )
 
 
-@pytest.fixture(scope="session")
-def jwt_token(keycloak_config: KeycloakConfig) -> JWTToken:
-    """Obtain a JWT token from Keycloak using client credentials flow."""
+def obtain_jwt_token(keycloak_config: KeycloakConfig) -> JWTToken:
+    """Obtain a fresh JWT token from Keycloak using client credentials flow.
+    
+    This is a helper function that can be called by fixtures or tests that need
+    to generate their own tokens. Use this directly when you need control over
+    token lifecycle (e.g., module-scoped fixtures that run longer than 5 minutes).
+    
+    Args:
+        keycloak_config: Keycloak configuration with URL and credentials
+        
+    Returns:
+        JWTToken object with access token and expiration time
+        
+    Raises:
+        pytest.fail: If token request fails
+    """
     response = requests.post(
         keycloak_config.token_url,
         data={
@@ -181,6 +194,21 @@ def jwt_token(keycloak_config: KeycloakConfig) -> JWTToken:
         access_token=token_data["access_token"],
         expires_at=datetime.now(timezone.utc) + timedelta(seconds=expires_in),
     )
+
+
+@pytest.fixture(scope="function")
+def jwt_token(keycloak_config: KeycloakConfig) -> JWTToken:
+    """Obtain a JWT token from Keycloak using client credentials flow.
+    
+    Scope: function - Each test gets a fresh token to prevent expiration.
+    Keycloak tokens expire after 5 minutes. Using function scope ensures each
+    test gets a fresh token, eliminating any possibility of expiration during
+    test execution.
+    
+    For fixtures that need tokens and run longer than 5 minutes, call
+    obtain_jwt_token(keycloak_config) directly instead of depending on this fixture.
+    """
+    return obtain_jwt_token(keycloak_config)
 
 
 @pytest.fixture(scope="session")
@@ -242,12 +270,12 @@ def database_config(cluster_config: ClusterConfig) -> DatabaseConfig:
     db_password = get_secret_value(cluster_config.namespace, secret_name, "koku-password")
     
     if not db_user:
-        db_user = "koku"
+        db_user = "costonprem_koku"
     
     return DatabaseConfig(
         pod_name=db_pod,
         namespace=cluster_config.namespace,
-        database="koku",
+        database="costonprem_koku",
         user=db_user,
         password=db_password,
     )
