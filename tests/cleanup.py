@@ -169,7 +169,7 @@ def cleanup_database_records(
             result = subprocess.run(
                 [
                     "oc", "exec", "-n", namespace, db_pod, "--",
-                    "psql", "-U", "koku", "-d", "koku", "-t", "-c", query
+                    "psql", "-U", "koku_user", "-d", "costonprem_koku", "-t", "-c", query
                 ],
                 capture_output=True,
                 text=True,

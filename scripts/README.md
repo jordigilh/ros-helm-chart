@@ -12,7 +12,6 @@ Automation scripts for deploying, configuring, and testing the Cost Management O
 | `install-helm-chart.sh` | Deploy CoP Helm chart | All environments |
 | `deploy-rhbk.sh` | Deploy Red Hat Build of Keycloak | OpenShift |
 | `setup-cost-mgmt-tls.sh` | Configure TLS certificates | OpenShift |
-| `cost-mgmt-ocp-dataflow.sh` | **E2E Cost Management test** | All environments |
 | `query-kruize.sh` | Query Kruize database | All environments |
 
 ## 🚀 Quick Start
@@ -306,89 +305,6 @@ pytest -m "not extended" --junit-xml=reports/junit.xml
 
 ---
 
-### `cost-mgmt-ocp-dataflow.sh`
-End-to-end validation of Cost Management data pipeline (OCP provider).
-
-**Test flow:**
-1. Preflight checks (database, S3, Kafka connectivity)
-2. Database migrations verification
-3. Kafka cluster health validation
-4. Provider setup (creates OCP provider via Sources API → Kafka → Listener)
-5. Data generation with nise + upload to S3
-6. Kafka message triggers MASU processing
-7. Data processing validation (PostgreSQL tables populated)
-8. Cost validation (PostgreSQL summary tables match expected values)
-
-**Usage:**
-```bash
-# Run smoke test (recommended - ~3 minutes)
-./cost-mgmt-ocp-dataflow.sh
-
-# Run with diagnostics on failure
-./cost-mgmt-ocp-dataflow.sh --diagnose
-
-# Custom namespace
-NAMESPACE=my-cost-mgmt ./cost-mgmt-ocp-dataflow.sh
-```
-
-**Expected Output (Success):**
-```
-======================================================================
-  ✅ SMOKE VALIDATION PASSED
-======================================================================
-
-  📊 DATA PROOF - Actual rows from PostgreSQL:
-  ------------------------------------------------------------------
-  Date         Namespace            CPU(h)     CPU Req    Mem(GB)
-  ------------------------------------------------------------------
-  2025-12-01   test-namespace           6.00     12.00     12.00
-  ------------------------------------------------------------------
-  TOTALS       (1 rows)                 6.00     12.00     12.00
-  ------------------------------------------------------------------
-
-  📋 EXPECTED vs ACTUAL (from nise YAML):
-  --------------------------------------------------
-  Metric                      Expected     Actual Match
-  --------------------------------------------------
-  CPU Request (hours)            12.00      12.00 ✅
-  Memory Request (GB-hrs)        24.00      24.00 ✅
-  --------------------------------------------------
-
-  ✅ File Processing: 3 checks passed
-  ✅ Cost: 2 checks passed
-======================================================================
-
-Phases: 7/7 passed
-  ✅ preflight
-  ✅ migrations
-  ✅ kafka_validation
-  ✅ provider
-  ✅ data_upload
-  ✅ processing
-  ✅ validation
-
-✅ E2E SMOKE TEST PASSED
-
-╔═══════════════════════════════════════════════════════════════╗
-║  ✓ OCP E2E Validation PASSED                                  ║
-║  Total time: 3m 19s                                          ║
-╚═══════════════════════════════════════════════════════════════╝
-```
-
-**Key Validation Points:**
-- **Data Proof**: Shows actual rows from PostgreSQL `reporting_ocpusagelineitem_daily_summary`
-- **Expected vs Actual**: Compares nise-generated values against PostgreSQL aggregates
-- **Match Icons**: ✅ indicates values match within 5% tolerance
-
-**Requirements:**
-- Cost Management deployed with `cost-onprem` chart
-- Kafka cluster running (Strimzi)
-- S3/ODF storage accessible
-
-**Best for:** CI/CD pipelines, deployment validation, data flow verification
-
----
-
 ### `query-kruize.sh`
 Query Kruize database for experiments and recommendations.
 
@@ -444,21 +360,21 @@ Use the orchestration script for comprehensive E2E deployment and validation:
 # Full deployment + tests (recommended)
 ./deploy-test-cost-onprem.sh
 
-# 2. Deploy Cost Management
+# Or deploy and test separately:
+# 1. Deploy Cost Management
 ./install-helm-chart.sh
 
-# 3. Validate Cost Management data flow (~3 minutes)
-./cost-mgmt-ocp-dataflow.sh || exit 1
+# 2. Validate Cost Management data flow (~3 minutes)
+NAMESPACE=cost-onprem ./run-pytest.sh || exit 1
 ```
 
-The `cost-mgmt-ocp-dataflow.sh` script validates:
+The pytest test suite validates:
 - ✅ Sources API → Kafka → Sources Listener integration
 - ✅ OCP provider creation via production flow
 - ✅ S3 upload → Kafka → MASU processing
 - ✅ PostgreSQL data tables populated
 - ✅ PostgreSQL summary aggregation
 - ✅ Cost calculations match expected values
-- ✅ **Shows actual data proof** (not just PASSED/FAILED)
 
 **JWT Authentication Validation (if Keycloak enabled):**
 ```bash

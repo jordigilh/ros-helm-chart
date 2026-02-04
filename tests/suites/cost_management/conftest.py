@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 import pytest
 import requests
 
+from conftest import obtain_jwt_token
 from e2e_helpers import (
     DEFAULT_S3_BUCKET,
     NISEConfig,
@@ -93,7 +94,7 @@ def cleanup_old_cost_val_clusters(
     try:
         # Delete manifest statuses
         execute_db_query(
-            namespace, db_pod, "koku", "koku",
+            namespace, db_pod, "costonprem_koku", "koku_user",
             """
             DELETE FROM reporting_common_costusagereportstatus 
             WHERE manifest_id IN (
@@ -105,13 +106,13 @@ def cleanup_old_cost_val_clusters(
         
         # Delete manifests
         execute_db_query(
-            namespace, db_pod, "koku", "koku",
+            namespace, db_pod, "costonprem_koku", "koku_user",
             "DELETE FROM reporting_common_costusagereportmanifest WHERE cluster_id LIKE 'cost-val-%'"
         )
         
         # Get all schemas and clean summary tables + tenant provider mappings
         schemas = execute_db_query(
-            namespace, db_pod, "koku", "koku",
+            namespace, db_pod, "costonprem_koku", "koku_user",
             "SELECT DISTINCT schema_name FROM api_customer WHERE schema_name IS NOT NULL"
         )
         
@@ -121,7 +122,7 @@ def cleanup_old_cost_val_clusters(
                 if schema:
                     try:
                         execute_db_query(
-                            namespace, db_pod, "koku", "koku",
+                            namespace, db_pod, "costonprem_koku", "koku_user",
                             f"DELETE FROM {schema}.reporting_ocpusagelineitem_daily_summary WHERE cluster_id LIKE 'cost-val-%'"
                         )
                     except Exception:
@@ -130,7 +131,7 @@ def cleanup_old_cost_val_clusters(
                     # Delete tenant-provider mappings (FK constraint on api_provider)
                     try:
                         execute_db_query(
-                            namespace, db_pod, "koku", "koku",
+                            namespace, db_pod, "costonprem_koku", "koku_user",
                             f"""
                             DELETE FROM {schema}.reporting_tenant_api_provider 
                             WHERE provider_id IN (
@@ -145,7 +146,7 @@ def cleanup_old_cost_val_clusters(
         # Delete providers (after FK references are removed)
         try:
             execute_db_query(
-                namespace, db_pod, "koku", "koku",
+                namespace, db_pod, "costonprem_koku", "koku_user",
                 "DELETE FROM public.api_provider WHERE name LIKE 'cost-validation%'"
             )
         except Exception:
@@ -218,7 +219,7 @@ def rh_identity_header(org_id) -> str:
 # =============================================================================
 
 @pytest.fixture(scope="module")
-def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_id):
+def cost_validation_data(cluster_config, s3_config, keycloak_config, ingress_url, org_id):
     """Run full E2E setup for cost validation tests - SELF-CONTAINED.
     
     This fixture:
@@ -228,6 +229,10 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
     4. Waits for Koku to process and populate summary tables
     5. Yields the test context
     6. Cleans up all test data on teardown (if E2E_CLEANUP_AFTER=true)
+    
+    Note: This fixture obtains its own JWT token using obtain_jwt_token() rather
+    than depending on the jwt_token fixture. This allows the jwt_token fixture to
+    use function scope while this module-scoped fixture can still operate correctly.
     
     Environment Variables:
     - E2E_CLEANUP_BEFORE: Run cleanup before tests (default: true)
@@ -336,6 +341,14 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
         print(f"       Ingress URL: {upload_url}")
         print(f"       Package size: {os.path.getsize(package_path)} bytes")
         
+        # Obtain a fresh JWT token for upload
+        # We need to retrieve a new token here because this test fixture can last over
+        # the 5-minute TTL for Keycloak tokens. This fixture is module-scoped and runs
+        # expensive setup (NISE data generation, source registration, data processing)
+        # that can take 3-5 minutes total, so we generate our own token rather than
+        # depending on the function-scoped jwt_token fixture.
+        upload_token = obtain_jwt_token(keycloak_config)
+        
         # Create a session with SSL verification disabled
         session = requests.Session()
         session.verify = False
@@ -344,7 +357,7 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
             session,
             upload_url,
             package_path,
-            jwt_token.authorization_header,
+            upload_token.authorization_header,
         )
         
         if response.status_code not in [200, 201, 202]:
@@ -366,7 +379,7 @@ def cost_validation_data(cluster_config, s3_config, jwt_token, ingress_url, org_
         # Query the actual number of days of data in the DB
         # Koku aggregates hourly data into daily summaries
         result = execute_db_query(
-            cluster_config.namespace, db_pod, "koku", "koku",
+            cluster_config.namespace, db_pod, "costonprem_koku", "koku",
             f"""
             SELECT COUNT(DISTINCT usage_start)
             FROM {schema_name}.reporting_ocpusagelineitem_daily_summary

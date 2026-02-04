@@ -41,6 +41,7 @@ from utils import (
     run_oc_command,
 )
 from cleanup import full_cleanup
+from e2e_helpers import install_nise
 
 # Import shared E2E helpers
 from e2e_helpers import (
@@ -54,6 +55,23 @@ from e2e_helpers import (
     cleanup_database_records,
     cleanup_e2e_sources,
 )
+
+# =============================================================================
+# Data Generation Utilities
+# =============================================================================
+
+def is_nise_available() -> bool:
+    """Check if NISE is available for data generation."""
+    try:
+        result = subprocess.run(
+            ["nise", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return False
 
 
 def generate_dynamic_static_report(start_date: datetime, end_date: datetime, output_dir: str) -> str:
@@ -85,10 +103,8 @@ generators:
           cpu_cores: 2
           memory_gig: 8
           resource_id: test-resource-1
-          labels: node-role.kubernetes.io/worker:true|kubernetes.io/os:linux
           namespaces:
             test-namespace:
-              labels: openshift.io/cluster-monitoring:true
               pods:
                 - pod:
                   pod_name: test-pod-1
@@ -754,8 +770,8 @@ class TestCompleteDataFlow:
             result = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "koku",
-                "koku",
+                "costonprem_koku",
+                "koku_user",
                 f"""
                 SELECT COUNT(*) FROM api_provider p
                 JOIN api_providerauthentication a ON p.authentication_id = a.id
@@ -856,7 +872,7 @@ class TestCompleteDataFlow:
                 shutil.rmtree(nise_temp_dir, ignore_errors=True)
 
     def test_04_manifest_created_in_koku(self, cluster_config, registered_source):
-        """Step 4: Verify manifest was created in Koku database with required fields."""
+        """Step 4: Verify manifest was created in Koku database."""
         db_pod = get_pod_by_label(
             cluster_config.namespace,
             "app.kubernetes.io/component=database"
@@ -870,8 +886,8 @@ class TestCompleteDataFlow:
             result = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "koku",
-                "koku",
+                "costonprem_koku",
+                "koku_user",
                 f"""
                 SELECT COUNT(*) FROM reporting_common_costusagereportmanifest
                 WHERE cluster_id = '{cluster_id}'
@@ -892,8 +908,8 @@ class TestCompleteDataFlow:
         manifest_result = execute_db_query(
             cluster_config.namespace,
             db_pod,
-            "koku",
-            "koku",
+            "costonprem_koku",
+            "koku_user",
             f"""
             SELECT 
                 m.id,
@@ -939,8 +955,8 @@ class TestCompleteDataFlow:
             result = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "koku",
-                "koku",
+                "costonprem_koku",
+                "koku_user",
                 f"""
                 SELECT s.status
                 FROM reporting_common_costusagereportmanifest m
@@ -966,8 +982,8 @@ class TestCompleteDataFlow:
         file_status_result = execute_db_query(
             cluster_config.namespace,
             db_pod,
-            "koku",
-            "koku",
+            "costonprem_koku",
+            "koku_user",
             f"""
             SELECT 
                 s.report_name,
@@ -1053,8 +1069,8 @@ class TestCompleteDataFlow:
         schema_result = execute_db_query(
             cluster_config.namespace,
             db_pod,
-            "koku",
-            "koku",
+            "costonprem_koku",
+            "koku_user",
             f"""
             SELECT c.schema_name
             FROM reporting_common_costusagereportmanifest m
@@ -1070,8 +1086,8 @@ class TestCompleteDataFlow:
             manifest_check = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "koku",
-                "koku",
+                "costonprem_koku",
+                "koku_user",
                 f"""
                 SELECT m.id, m.provider_id, m.num_total_files, m.num_processed_files
                 FROM reporting_common_costusagereportmanifest m
@@ -1107,8 +1123,8 @@ class TestCompleteDataFlow:
             result = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "koku",
-                "koku",
+                "costonprem_koku",
+                "koku_user",
                 f"""
                 SELECT COUNT(*),
                        COALESCE(SUM(pod_request_cpu_core_hours), 0),
@@ -1131,8 +1147,8 @@ class TestCompleteDataFlow:
             file_status = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "koku",
-                "koku",
+                "costonprem_koku",
+                "koku_user",
                 f"""
                 SELECT rf.report_name, rf.completed_datetime, rf.status
                 FROM reporting_common_costusagereportmanifest m
@@ -1172,8 +1188,8 @@ class TestCompleteDataFlow:
         manifest_state = execute_db_query(
             cluster_config.namespace,
             db_pod,
-            "koku",
-            "koku",
+            "costonprem_koku",
+            "koku_user",
             f"""
             SELECT 
                 m.id,
@@ -1208,8 +1224,8 @@ class TestCompleteDataFlow:
         summary_stats = execute_db_query(
             cluster_config.namespace,
             db_pod,
-            "koku",
-            "koku",
+            "costonprem_koku",
+            "koku_user",
             f"""
             SELECT 
                 COUNT(*) as row_count,
@@ -1264,7 +1280,7 @@ class TestCompleteDataFlow:
             result = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "kruize_db",
+                "costonprem_kruize",
                 kruize_user,
                 f"""
                 SELECT COUNT(*) FROM kruize_experiments
@@ -1355,7 +1371,7 @@ class TestCompleteDataFlow:
         experiment_result = execute_db_query(
             cluster_config.namespace,
             db_pod,
-            "kruize_db",
+            "costonprem_kruize",
             kruize_user,
             f"""
             SELECT COUNT(*) FROM kruize_experiments
@@ -1375,7 +1391,7 @@ class TestCompleteDataFlow:
             result = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "kruize_db",
+                "costonprem_kruize",
                 kruize_user,
                 f"""
                 SELECT COUNT(*) FROM kruize_recommendations
@@ -1397,7 +1413,7 @@ class TestCompleteDataFlow:
             exp_details = execute_db_query(
                 cluster_config.namespace,
                 db_pod,
-                "kruize_db",
+                "costonprem_kruize",
                 kruize_user,
                 f"""
                 SELECT experiment_name, status, created_at
@@ -1426,7 +1442,7 @@ class TestCompleteDataFlow:
                 "  4. Kruize recommendation engine not running\n"
                 "\nTo debug:\n"
                 "  - Check Kruize logs: oc logs -l app.kubernetes.io/name=kruize\n"
-                "  - Query experiments: oc exec <db-pod> -- psql -U kruize -d kruize_db -c \"SELECT * FROM kruize_experiments;\"\n"
+                "  - Query experiments: oc exec <db-pod> -- psql -U kruize -d costonprem_kruize -c \"SELECT * FROM kruize_experiments;\"\n"
                 "\nNote: In a single E2E test run, recommendations may not be generated.\n"
                 "Kruize typically requires multiple data uploads over several hours."
             )

@@ -678,7 +678,7 @@ def wait_for_provider(
     """
     def check_provider():
         result = execute_db_query(
-            namespace, db_pod, "koku", "koku",
+            namespace, db_pod, "costonprem_koku", "koku_user",
             f"""
             SELECT p.uuid FROM api_provider p
             JOIN api_providerauthentication pa ON p.authentication_id = pa.id
@@ -706,7 +706,7 @@ def wait_for_summary_tables(
     
     def check_summary():
         result = execute_db_query(
-            namespace, db_pod, "koku", "koku",
+            namespace, db_pod, "costonprem_koku", "koku_user",
             f"""
             SELECT c.schema_name FROM reporting_common_costusagereportmanifest m
             JOIN api_provider p ON m.provider_id = p.uuid
@@ -719,7 +719,7 @@ def wait_for_summary_tables(
         
         schema = result[0][0].strip()
         result = execute_db_query(
-            namespace, db_pod, "koku", "koku",
+            namespace, db_pod, "costonprem_koku", "koku_user",
             f"SELECT COUNT(*) FROM {schema}.reporting_ocpusagelineitem_daily_summary WHERE cluster_id = '{cluster_id}'"
         )
         
@@ -746,7 +746,7 @@ def cleanup_database_records(
     try:
         # Delete file statuses first (foreign key constraint)
         execute_db_query(
-            namespace, db_pod, "koku", "koku",
+            namespace, db_pod, "costonprem_koku", "koku_user",
             f"""
             DELETE FROM reporting_common_costusagereportstatus
             WHERE manifest_id IN (
@@ -758,7 +758,7 @@ def cleanup_database_records(
         
         # Delete manifests
         execute_db_query(
-            namespace, db_pod, "koku", "koku",
+            namespace, db_pod, "costonprem_koku", "koku_user",
             f"DELETE FROM reporting_common_costusagereportmanifest WHERE cluster_id = '{cluster_id}'"
         )
         

@@ -139,7 +139,7 @@ class TestKruizeDatabase:
         result = execute_db_query(
             cluster_config.namespace,
             database_config.pod_name,
-            "kruize_db",
+            "costonprem_kruize",
             kruize_credentials["user"],
             "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'kruize_experiments')",
             password=kruize_credentials["password"],
@@ -155,7 +155,7 @@ class TestKruizeDatabase:
         result = execute_db_query(
             cluster_config.namespace,
             database_config.pod_name,
-            "kruize_db",
+            "costonprem_kruize",
             kruize_credentials["user"],
             "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'kruize_recommendations')",
             password=kruize_credentials["password"],

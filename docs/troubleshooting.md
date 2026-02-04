@@ -362,7 +362,7 @@ kubectl exec -n cost-onprem -l app.kubernetes.io/name=minio -- \
     mc rm --recursive --force myminio/koku-bucket/reports/
 
 # 4. Run E2E test
-./scripts/cost-mgmt-ocp-dataflow.sh --force
+NAMESPACE=cost-onprem ./scripts/run-pytest.sh --e2e
 ```
 
 **Warning**: This is a destructive operation. Only use when you need a complete reset.

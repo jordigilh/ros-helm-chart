@@ -111,7 +111,7 @@ Koku database port
 Koku database name
 */}}
 {{- define "cost-onprem.koku.database.dbname" -}}
-{{- .Values.database.koku.name | default "koku" -}}
+{{- .Values.database.koku.name | default "costonprem_koku" -}}
 {{- end -}}
 
 {{/*
