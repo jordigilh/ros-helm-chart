@@ -620,8 +620,7 @@ NAMESPACE=cost-onprem ./scripts/run-pytest.sh
 ./scripts/run-pytest.sh --ros        # ROS-specific tests
 
 # Option 3: Full Cost Management E2E test (~3 minutes)
-cd scripts
-./cost-mgmt-ocp-dataflow.sh --namespace cost-onprem --force
+NAMESPACE=cost-onprem ./scripts/run-pytest.sh --e2e
 ```
 
 ### What the Pytest Suite Validates

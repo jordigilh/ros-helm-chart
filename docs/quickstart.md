@@ -157,8 +157,8 @@ curl -k https://$INGRESS_ROUTE/api/ingress/v1/version
 
 ### Run Complete Test
 ```bash
-# This tests the full data pipeline
-./cost-mgmt-ocp-dataflow.sh
+# Run the pytest E2E test suite (~3 minutes)
+NAMESPACE=cost-onprem ./scripts/run-pytest.sh --e2e
 ```
 
 The test will:
@@ -294,7 +294,7 @@ if [ -n "$MAIN_ROUTE" ]; then
     curl -sk https://$MAIN_ROUTE/ready >/dev/null && echo "✓ ROS API" || echo "✗ ROS API failed"
 fi
 
-echo -e "\nFor detailed troubleshooting, run: ./cost-mgmt-ocp-dataflow.sh --diagnose"
+echo -e "\nFor detailed troubleshooting, run: NAMESPACE=cost-onprem ./scripts/run-pytest.sh -v"
 ```
 
 ## Next Steps
@@ -311,6 +311,6 @@ After successful deployment:
 
 For issues or questions:
 - Check [Troubleshooting Guide](troubleshooting.md)
-- Run E2E test: `./scripts/cost-mgmt-ocp-dataflow.sh`
+- Run E2E test: `NAMESPACE=cost-onprem ./scripts/run-pytest.sh --e2e`
 - Check pod logs: `oc logs -n cost-onprem <pod-name>`
 - Verify configuration: `helm get values cost-onprem -n cost-onprem`
