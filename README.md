@@ -20,7 +20,7 @@ Complete Helm chart for deploying the full Cost Management stack with OCP cost a
 - **[Cost Management Installation Guide](docs/cost-management-installation.md)** - Complete deployment guide
 - **Prerequisites**: OpenShift 4.18+, ODF with Direct Ceph RGW (150GB+), Kafka/Strimzi
 - **Architecture**: Single unified chart with all components
-- **E2E Testing**: Automated validation with `./scripts/run-pytest.sh` (pytest-based test suite) or `./scripts/cost-mgmt-ocp-dataflow.sh` (shell-based validation)
+- **E2E Testing**: Automated validation with `./scripts/run-pytest.sh` (pytest-based test suite)
 
 **Key Features:**
 - 📊 Complete OCP cost data pipeline (Kafka → CSV → PostgreSQL)

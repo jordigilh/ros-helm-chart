@@ -40,20 +40,17 @@ Browser → UI Route → oauth2-proxy → Keycloak Login → JWT Token → Sessi
 
 ## Quick Test
 
-Run the test script:
+Run the pytest authentication tests:
 
 ```bash
-# Default test user (test/test)
-./scripts/test-ui-oauth-flow.sh
+# Run UI OAuth authentication tests
+NAMESPACE=cost-onprem ./scripts/run-pytest.sh --auth
 
-# Custom credentials
-./scripts/test-ui-oauth-flow.sh -u myuser -p mypassword
-
-# Verbose output (shows JWT claims)
-./scripts/test-ui-oauth-flow.sh -v
+# Run specific UI OAuth test
+NAMESPACE=cost-onprem ./scripts/run-pytest.sh -k "test_ui_oauth"
 ```
 
-### What the Script Tests
+### What the Tests Validate
 
 | Test | What it Validates |
 |------|-------------------|
@@ -62,6 +59,8 @@ Run the test script:
 | OIDC Discovery | Keycloak accessible, realm configured |
 | Token Acquisition | Password grant works, JWT returned |
 | JWT Claims | Token contains required claims |
+
+**See also:** [Test Suite Documentation](../tests/README.md) for detailed test options.
 
 ## Manual Testing
 

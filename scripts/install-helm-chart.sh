@@ -964,7 +964,7 @@ show_status() {
     echo_info "Useful Commands:"
     echo_info "  - View logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/instance=$HELM_RELEASE_NAME"
     echo_info "  - Delete deployment: kubectl delete namespace $NAMESPACE"
-    echo_info "  - Run tests: ./cost-mgmt-ocp-dataflow.sh"
+    echo_info "  - Run tests: NAMESPACE=$NAMESPACE ./run-pytest.sh"
 }
 
 # Function to check ingress controller readiness (OpenShift uses Routes, not Ingress)
@@ -1780,7 +1780,7 @@ main() {
     echo ""
     echo_success "Cost Management On Prem Helm chart installation completed!"
     echo_info "The services are now running in namespace '$NAMESPACE'"
-    echo_info "Next: Run ./cost-mgmt-ocp-dataflow.sh to test the deployment"
+    echo_info "Next: Run NAMESPACE=$NAMESPACE ./run-pytest.sh to test the deployment"
 
     # Cleanup downloaded chart if we used GitHub release
     if [ "$USE_LOCAL_CHART" != "true" ]; then
