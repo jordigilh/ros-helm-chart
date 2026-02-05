@@ -3,8 +3,7 @@
 # =============================================================================
 # This chart deploys the complete Cost Management on-premise solution:
 # - ROS (Resource Optimization Service)
-# - Cost Management Service (future)
-# - Sources API
+# - Cost Management Service (Koku and Sources API)
 # - Shared infrastructure (PostgreSQL, Kafka, Valkey, MinIO/ODF)
 #
 # Naming conventions:
