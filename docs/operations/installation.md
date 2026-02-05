@@ -52,7 +52,7 @@ curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 Ensure you have:
 - Valid kubeconfig with cluster admin or appropriate namespace permissions
 - Ability to create namespaces (or existing target namespace)
-- Sufficient cluster resources (see [Configuration Guide](configuration.md))
+- Sufficient cluster resources (see [Configuration Guide](../operations/configuration.md))
 
 ---
 
@@ -88,14 +88,15 @@ The script deploys a unified chart containing all components:
 - Valkey (caching and Celery broker)
 
 **Applications:**
-- Koku API (reads, writes, masu, listener) - includes Sources API endpoints
+- Koku API (reads, writes, masu, listener)
 - Celery Workers (background processing)
 - ROS components (API, processor, housekeeper)
+- Sources API
 - UI and Ingress
 
 **Features:**
 - ✅ Two-phase deployment (infrastructure first, then application)
-- ✅ Automatic secret creation (Django, S3 credentials)
+- ✅ Automatic secret creation (Django, Sources, S3 credentials)
 - ✅ Auto-discovers ODF S3 credentials
 - ✅ OpenShift platform verification
 - ✅ Automatic upgrade detection
@@ -333,7 +334,7 @@ oc auth can-i create routes -n cost-onprem
 - Additional 6GB RAM for Cost Management On-Premise workloads
 - Additional 2 CPU cores
 
-**See [Configuration Guide](configuration.md) for detailed requirements**
+**See [Configuration Guide](../operations/configuration.md) for detailed requirements**
 
 ### 5. Kafka (Strimzi)
 
@@ -584,7 +585,7 @@ oc rsh -n cost-onprem deployment/cost-onprem-ingress -- \
 | **OCP-Only (minimal)** | ~24 | ~7.5 cores | ~15 cores | ~16 Gi | ~28 Gi |
 | **OCP on Cloud** | ~34 | ~9 cores | ~18 cores | ~21 Gi | ~36 Gi |
 
-**Note:** See [Worker Deployment Scenarios](worker-deployment-scenarios.md) for detailed worker requirements by scenario.
+**Note:** See [Worker Deployment Scenarios](../operations/worker-deployment-scenarios.md) for detailed worker requirements by scenario.
 
 ---
 
@@ -623,15 +624,14 @@ NAMESPACE=cost-onprem ./scripts/run-pytest.sh
 NAMESPACE=cost-onprem ./scripts/run-pytest.sh --e2e
 ```
 
-### What the Pytest Suite Validates
+### What the ROS E2E Test Validates
 
-1. ✅ **Gateway Authentication** - JWT validation through centralized gateway
-2. ✅ **Data Upload** - Generates test data and uploads via gateway with JWT auth
-3. ✅ **Ingress Processing** - File uploaded to S3
-4. ✅ **ROS Processing** - CSV downloaded from S3, parsed successfully
+1. ✅ **NISE Integration** - Automatic installation and production-like data generation (73 lines)
+2. ✅ **Data Upload** - Generates realistic test data and uploads via JWT auth
+3. ✅ **Ingress Processing** - CSV file uploaded to S3
+4. ✅ **ROS Processing** - CSV downloaded from S3, parsed successfully (CRLF conversion)
 5. ✅ **Kruize Integration** - Recommendations generated with actual CPU/memory values
-6. ✅ **Koku Processing** - Cost data processing and summary generation
-7. ✅ **Database Validation** - Verifies data in PostgreSQL tables
+6. ✅ **ROS-Only Mode** - Skips Koku processing for faster validation
 
 ### What the Cost Management Test Validates
 
@@ -644,18 +644,26 @@ NAMESPACE=cost-onprem ./scripts/run-pytest.sh --e2e
 7. ✅ **Aggregation** - Summary table generation
 8. ✅ **Validation** - Verifies cost calculations
 
-### Expected Output (Pytest Suite)
+### Expected Output (ROS E2E Test)
 
 ```
-========================= test session starts ==========================
-collected 88 items
+[SUCCESS] ===== ROS E2E Test Summary =====
 
-tests/suites/auth/test_gateway_auth.py::TestGatewayJWTAuthentication::test_gateway_reachable PASSED
-tests/suites/auth/test_gateway_auth.py::TestGatewayJWTAuthentication::test_valid_token_accepted PASSED
-tests/suites/e2e/test_complete_flow.py::TestCompleteFlow::test_upload_accepted PASSED
-...
+Upload Status: ✅ HTTP 202 Accepted
+Koku Processing: ⏭️  Skipped (ROS-only test)
+ROS Processing: ✅ CSV downloaded and parsed successfully
+Kruize Status: ✅ Recommendations generated
 
-========================= 88 passed in 180.25s =========================
+Recommendation details (short_term cost optimization):
+ experiment_name                    | interval_end_time | cpu_request | cpu_limit | memory_request | memory_limit
+------------------------------------+-------------------+-------------+-----------+----------------+--------------
+ org1234567;test-cluster-1769027891 | 2026-01-21 20:00  | 1.78 cores  | 1.78 cores| 3.64 GB        | 3.64 GB
+
+[SUCCESS] ✅ ROS-ONLY TEST PASSED!
+[SUCCESS] Found 1 recommendation(s) for cluster test-cluster-1769027891
+
+Test Duration: ~5 minutes
+Pipeline Validated: Ingress → ROS → Kruize → Recommendations
 ```
 
 ### Expected Output (Cost Management Test)
@@ -683,7 +691,7 @@ Total Time: ~2-3 minutes
 kubectl port-forward -n cost-onprem pod/cost-onprem-database-0 5432:5432 &
 
 # Query aggregated cost data
-psql -h localhost -U koku -d koku -c "
+psql -h localhost -U koku -d costonprem_koku -c "
 SELECT
     cluster_id,
     COUNT(*) as daily_rows,
@@ -756,7 +764,7 @@ kubectl describe nodes | grep -A 5 "Allocated resources"
 kubectl top nodes  # requires metrics-server
 ```
 
-**See [Troubleshooting Guide](troubleshooting.md) for comprehensive solutions**
+**See [Troubleshooting Guide](../operations/troubleshooting.md) for comprehensive solutions**
 
 ---
 
@@ -764,16 +772,16 @@ kubectl top nodes  # requires metrics-server
 
 After successful installation:
 
-1. **Configure Access**: See [Configuration Guide](configuration.md)
-2. **Set Up JWT Auth**: See [JWT Authentication Guide](native-jwt-authentication.md)
-3. **Configure TLS**: See [TLS Setup Guide](cost-management-operator-tls-setup.md)
+1. **Configure Access**: See [Configuration Guide](../operations/configuration.md)
+2. **Set Up JWT Auth**: See [JWT Authentication Guide](../api/native-jwt-authentication.md)
+3. **Configure TLS**: See [TLS Setup Guide](../operations/cost-management-operator-tls-config-setup.md)
 4. **Run Tests**: See [Scripts Reference](../scripts/README.md)
 
 ---
 
 **Related Documentation:**
-- [Configuration Guide](configuration.md)
-- [Platform Guide](platform-guide.md)
-- [Quick Start Guide](quickstart.md)
-- [Troubleshooting Guide](troubleshooting.md)
+- [Configuration Guide](../operations/configuration.md)
+- [Platform Guide](../architecture/platform-guide.md)
+- [Quick Start Guide](../operations/quickstart.md)
+- [Troubleshooting Guide](../operations/troubleshooting.md)
 

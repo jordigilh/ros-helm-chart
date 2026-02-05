@@ -915,7 +915,6 @@ show_status() {
             echo_info "    All API traffic goes through the centralized Envoy gateway (JWT auth required)"
             echo_info "    - Cost Management API: https://$api_route/api/cost-management/v1/status"
             echo_info "    - Ingress API:         https://$api_route/api/ingress/ready"
-            echo_info "    - Sources API:         https://$api_route/api/sources/v3.1/applications"
             echo_info "    - ROS Recommendations: https://$api_route/api/cost-management/v1/recommendations/openshift"
         fi
         if [ -n "$ui_route" ]; then
