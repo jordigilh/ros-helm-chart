@@ -682,10 +682,6 @@ kruize:
 # -----------------------------------------------------------------------------
 # Uses insights-ingress-go which requires INGRESS_* prefixed environment variables
 ingress:
-  serviceAccount:
-    create: true
-    name: ingress
-
   image:
     repository: quay.io/insights-onprem/insights-ingress-go
     tag: "latest"
