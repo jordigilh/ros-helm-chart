@@ -1,3 +1,4 @@
+{{- if eq (include "cost-onprem.koku.cloudProviderSupported" .) "true" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -59,4 +60,4 @@ spec:
 
       volumes:
       {{- include "cost-onprem.koku.volumes" . | nindent 6 }}
-
+{{- end }}

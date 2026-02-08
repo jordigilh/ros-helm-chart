@@ -1,19 +1,20 @@
+{{- if eq (include "cost-onprem.koku.cloudProviderSupported" .) "true" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-onprem.koku.celery.worker.name" (dict "context" . "type" "download-xl") }}
+  name: {{ include "cost-onprem.koku.celery.worker.name" (dict "context" . "type" "refresh-xl") }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-onprem.koku.celery.worker.labels" (dict "context" . "type" "download-xl") | nindent 4 }}
+    {{- include "cost-onprem.koku.celery.worker.labels" (dict "context" . "type" "refresh-xl") | nindent 4 }}
 spec:
-  replicas: {{ .Values.costManagement.celery.workers.downloadXl.replicas }}
+  replicas: {{ .Values.costManagement.celery.workers.refreshXl.replicas }}
   selector:
     matchLabels:
-      {{- include "cost-onprem.koku.celery.worker.selectorLabels" (dict "context" . "type" "download-xl") | nindent 6 }}
+      {{- include "cost-onprem.koku.celery.worker.selectorLabels" (dict "context" . "type" "refresh-xl") | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "cost-onprem.koku.celery.worker.labels" (dict "context" . "type" "download-xl") | nindent 8 }}
+        {{- include "cost-onprem.koku.celery.worker.labels" (dict "context" . "type" "refresh-xl") | nindent 8 }}
     spec:
       serviceAccountName: {{ include "cost-onprem.koku.serviceAccountName" . }}
       automountServiceAccountToken: false
@@ -41,7 +42,7 @@ spec:
         - name: CELERY_LOG_LEVEL
           value: "info"
         - name: WORKER_QUEUES
-          value: {{ .Values.costManagement.celery.workers.downloadXl.queue | quote }}
+          value: {{ .Values.costManagement.celery.workers.refreshXl.queue | quote }}
         {{- include "cost-onprem.koku.commonEnv" . | nindent 8 }}
         {{- range $key, $value := .Values.costManagement.celery.workers.commonEnv }}
         - name: {{ $key }}
@@ -49,7 +50,7 @@ spec:
         {{- end }}
 
         resources:
-          {{- toYaml .Values.costManagement.celery.workers.downloadXl.resources | nindent 10 }}
+          {{- toYaml .Values.costManagement.celery.workers.refreshXl.resources | nindent 10 }}
 
         volumeMounts:
         {{- include "cost-onprem.koku.volumeMounts" . | nindent 8 }}
@@ -59,4 +60,4 @@ spec:
 
       volumes:
       {{- include "cost-onprem.koku.volumes" . | nindent 6 }}
-
+{{- end }}

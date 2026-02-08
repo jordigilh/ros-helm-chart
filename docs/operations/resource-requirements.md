@@ -8,10 +8,12 @@
 
 | Resource | Minimum (Requests) | Recommended | Maximum (Limits) |
 |----------|-------------------|-------------|------------------|
-| **CPU** | 10.3 cores | 12-14 cores | 17.5 cores |
-| **Memory** | 24 Gi | 32-40 Gi | 52 Gi |
+| **CPU** | 9.4 cores | 11-13 cores | 16 cores |
+| **Memory** | 21 Gi | 28-36 Gi | 48 Gi |
 | **Worker Nodes** | 3 nodes @ 8 Gi each | 3 nodes @ 12-16 Gi each | - |
-| **Total Pods** | ~51 | - | - |
+| **Total Pods** | ~42 | - | - |
+
+> **Note**: Default deployment excludes 9 cloud-only Celery workers (gated on `cloudProviderSupported`). With cloud providers enabled, add ~0.9 cores and ~2.8 Gi memory (see Celery section).
 
 ---
 
@@ -53,7 +55,9 @@ The Cost Management stack consists of the cost-onprem Helm chart plus infrastruc
 
 ### 2. Celery Workers (Background Processing)
 
-The system deploys **24 Celery pods** across different queues:
+By default the chart deploys **15 Celery pods** (OCP/supported queues only). Nine cloud-only workers are **gated** on `cost-onprem.koku.cloudProviderSupported` (hard-coded `false` until cloud support is enabled, FLPATH-3098) and are not deployed unless that helper is set to `true`.
+
+#### Deployed by default (15 workers)
 
 | Worker Type | Replicas | CPU Request | CPU Limit | Memory Request | Memory Limit | Purpose |
 |-------------|----------|-------------|-----------|----------------|--------------|---------|
@@ -61,9 +65,6 @@ The system deploys **24 Celery pods** across different queues:
 | cost-model | 1 | 100m | 200m | 256 Mi | 512 Mi | Cost model calculations |
 | cost-model-penalty | 1 | 100m | 200m | 256 Mi | 512 Mi | Penalty queue overflow |
 | cost-model-xl | 1 | 100m | 200m | 256 Mi | 512 Mi | Large cost model jobs |
-| download | 1 | 100m | 200m | 512 Mi | 1 Gi | Report downloads |
-| download-penalty | 1 | 100m | 200m | 512 Mi | 1 Gi | Penalty queue overflow |
-| download-xl | 1 | 100m | 200m | 512 Mi | 1 Gi | Large downloads |
 | ocp | 1 | 100m | 200m | 256 Mi | 512 Mi | OpenShift processing |
 | ocp-penalty | 1 | 100m | 200m | 256 Mi | 512 Mi | Penalty queue overflow |
 | ocp-xl | 1 | 100m | 200m | 256 Mi | 512 Mi | Large OCP jobs |
@@ -73,15 +74,25 @@ The system deploys **24 Celery pods** across different queues:
 | priority | 1 | 100m | 200m | 200 Mi | 400 Mi | High-priority tasks |
 | priority-penalty | 1 | 100m | 200m | 200 Mi | 400 Mi | Penalty queue overflow |
 | priority-xl | 1 | 100m | 200m | 200 Mi | 400 Mi | Large priority jobs |
+| default | 1 | 100m | 200m | 200 Mi | 400 Mi | Default queue |
+
+**Subtotal (default)**: 15 pods, **1.5 cores** request, **~3.7 Gi** memory request
+
+#### Cloud-only workers (gated; 9 workers, not deployed by default)
+
+| Worker Type | Replicas | CPU Request | CPU Limit | Memory Request | Memory Limit | Purpose |
+|-------------|----------|-------------|-----------|----------------|--------------|---------|
+| download | 1 | 100m | 200m | 512 Mi | 1 Gi | Report downloads |
+| download-penalty | 1 | 100m | 200m | 512 Mi | 1 Gi | Penalty queue overflow |
+| download-xl | 1 | 100m | 200m | 512 Mi | 1 Gi | Large downloads |
 | refresh | 1 | 100m | 200m | 200 Mi | 400 Mi | Data refresh |
 | refresh-penalty | 1 | 100m | 200m | 200 Mi | 400 Mi | Penalty queue overflow |
 | refresh-xl | 1 | 100m | 200m | 200 Mi | 400 Mi | Large refresh jobs |
-| default | 1 | 100m | 200m | 200 Mi | 400 Mi | Default queue |
 | hcs | 1 | 100m | 200m | 200 Mi | 400 Mi | HCS processing |
 | subs-extraction | 1 | 100m | 200m | 256 Mi | 512 Mi | Subscription extraction |
 | subs-transmission | 1 | 100m | 200m | 256 Mi | 512 Mi | Subscription transmission |
 
-**Subtotal**: 24 pods, **2.4 cores** request, **~6.5 Gi** memory request
+**When cloud providers enabled**: +9 pods, **+0.9 cores** request, **+~2.8 Gi** memory request (24 Celery pods total, ~2.4 cores, ~6.5 Gi).
 
 ---
 
@@ -148,22 +159,24 @@ Kafka pods typically don't have explicit resource requests set by default. Based
 | Category | Pods | CPU Request | Memory Request |
 |----------|------|-------------|----------------|
 | Koku Core Services | 7 | 1.9 cores | 4.5 Gi |
-| Celery Workers | 24 | 2.4 cores | 6.5 Gi |
+| Celery Workers (default) | 15 | 1.5 cores | 3.7 Gi |
 | ROS Services | 6 | 1.3 cores | 4.2 Gi |
 | Infrastructure | 3 | 0.8 cores | 1.8 Gi |
 | Supporting Services | 4 | 0.6 cores | 1.0 Gi |
 | Kafka (recommended) | 7 | 3.2 cores | 7.0 Gi |
-| **TOTAL** | **51** | **~10.2 cores** | **~25 Gi** |
+| **TOTAL (default)** | **42** | **~9.3 cores** | **~22 Gi** |
+
+With cloud providers enabled (9 additional Celery workers): **51** pods, **~10.2 cores**, **~25 Gi**.
 
 ### Grand Total
 
-| Metric | Value |
-|--------|-------|
-| **Total Pods** | 50-51 |
-| **CPU Requests** | ~9-11 cores |
-| **CPU Limits** | ~15-16 cores |
-| **Memory Requests** | ~22-26 Gi |
-| **Memory Limits** | ~45-50 Gi |
+| Metric | Default (OCP-only) | With cloud workers |
+|--------|--------------------|--------------------|
+| **Total Pods** | 41-42 | 50-51 |
+| **CPU Requests** | ~9-10 cores | ~10-11 cores |
+| **CPU Limits** | ~14-15 cores | ~15-16 cores |
+| **Memory Requests** | ~21-23 Gi | ~24-26 Gi |
+| **Memory Limits** | ~42-47 Gi | ~45-50 Gi |
 
 ---
 
@@ -506,7 +519,7 @@ The MASU reduction alone saves: **250m CPU** and **500Mi memory** per pod.
 
 ## 🎯 OCP-Only Deployment (Reduced Footprint)
 
-For deployments that **only process OpenShift data** (no AWS, Azure, or GCP providers), many workers can be disabled to significantly reduce resource requirements.
+The chart **default is now OCP-only**: cloud-only Celery workers (download, refresh, hcs, subs*) are gated on `cloudProviderSupported` (false) and are not deployed. For deployments that **only process OpenShift data** (no AWS, Azure, or GCP providers), no extra configuration is needed. The following section documents which workers are required vs optional when tuning manually.
 
 ### Worker Classification for OCP-Only
 
@@ -637,11 +650,11 @@ celery:
 
 | Deployment | Workers | CPU Request | Memory Request |
 |------------|---------|-------------|----------------|
-| **Full (all providers)** | 24 | ~2.4 cores | ~6.5 Gi |
-| **OCP-Only** | 11 | ~1.1 cores | ~3.0 Gi |
-| **OCP-Only (minimal)** | 8 | ~0.8 cores | ~2.2 Gi |
+| **Before (all workers enabled)** | 24 | ~2.4 cores | ~6.5 Gi |
+| **After (default, cloud gated)** | 15 | ~1.5 cores | ~3.7 Gi |
+| **OCP-Only (minimal, manual)** | 8 | ~0.8 cores | ~2.2 Gi |
 
-**Savings**: 13 fewer pods, ~1.3 cores CPU, ~3.5 Gi memory
+**Default savings** (cloud workers gated): 9 fewer pods, ~0.9 cores CPU, ~2.8 Gi memory
 
 ### Queue to Worker Reference
 
@@ -661,8 +674,7 @@ celery:
 
 ## Version Information
 
-- **Document Version**: 1.2
-- **Based on**: Production deployment observations + Clowder SaaS configuration + OCP-only code analysis (December 2024)
+- **Based on**: Production deployment observations + Clowder SaaS configuration + OCP-only code analysis (December 2024). Updated for cloud-only Celery worker gating (FLPATH-3098): default deployment now 15 Celery workers; 9 cloud-only workers gated on `cloudProviderSupported`.
 - **Helm Chart Version**: cost-onprem v0.2.x
 - **Koku Image**: `quay.io/insights-onprem/koku:latest`
 - **SaaS Config Source**: `deploy/kustomize/patches/*.yaml` in koku repository

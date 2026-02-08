@@ -1,19 +1,20 @@
+{{- if eq (include "cost-onprem.koku.cloudProviderSupported" .) "true" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cost-onprem.koku.celery.worker.name" (dict "context" . "type" "download-penalty") }}
+  name: {{ include "cost-onprem.koku.celery.worker.name" (dict "context" . "type" "subs-transmission") }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cost-onprem.koku.celery.worker.labels" (dict "context" . "type" "download-penalty") | nindent 4 }}
+    {{- include "cost-onprem.koku.celery.worker.labels" (dict "context" . "type" "subs-transmission") | nindent 4 }}
 spec:
-  replicas: {{ .Values.costManagement.celery.workers.downloadPenalty.replicas }}
+  replicas: {{ .Values.costManagement.celery.workers.subsTransmission.replicas }}
   selector:
     matchLabels:
-      {{- include "cost-onprem.koku.celery.worker.selectorLabels" (dict "context" . "type" "download-penalty") | nindent 6 }}
+      {{- include "cost-onprem.koku.celery.worker.selectorLabels" (dict "context" . "type" "subs-transmission") | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "cost-onprem.koku.celery.worker.labels" (dict "context" . "type" "download-penalty") | nindent 8 }}
+        {{- include "cost-onprem.koku.celery.worker.labels" (dict "context" . "type" "subs-transmission") | nindent 8 }}
     spec:
       serviceAccountName: {{ include "cost-onprem.koku.serviceAccountName" . }}
       automountServiceAccountToken: false
@@ -41,7 +42,7 @@ spec:
         - name: CELERY_LOG_LEVEL
           value: "info"
         - name: WORKER_QUEUES
-          value: {{ .Values.costManagement.celery.workers.downloadPenalty.queue | quote }}
+          value: {{ .Values.costManagement.celery.workers.subsTransmission.queue | quote }}
         {{- include "cost-onprem.koku.commonEnv" . | nindent 8 }}
         {{- range $key, $value := .Values.costManagement.celery.workers.commonEnv }}
         - name: {{ $key }}
@@ -49,7 +50,7 @@ spec:
         {{- end }}
 
         resources:
-          {{- toYaml .Values.costManagement.celery.workers.downloadPenalty.resources | nindent 10 }}
+          {{- toYaml .Values.costManagement.celery.workers.subsTransmission.resources | nindent 10 }}
 
         volumeMounts:
         {{- include "cost-onprem.koku.volumeMounts" . | nindent 8 }}
@@ -59,4 +60,4 @@ spec:
 
       volumes:
       {{- include "cost-onprem.koku.volumes" . | nindent 6 }}
-
+{{- end }}
