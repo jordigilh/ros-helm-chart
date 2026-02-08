@@ -26,9 +26,6 @@ global:
   # Storage class for persistent volumes (auto-detected if empty)
   storageClass: ""
 
-  # Storage type (ODF is used for OpenShift)
-  storageType: ""
-
   # Init container images (shared across all services)
   # Using alternative registries to avoid docker.io rate limits
   initContainers:
@@ -621,30 +618,6 @@ costManagement:
     create: true
     name: koku
     annotations: {}
-
-# =============================================================================
-# Mock RBAC Service Configuration
-# =============================================================================
-# Lightweight RBAC service for on-prem environments
-
-mockRbac:
-  enabled: true
-  replicaCount: 1
-  image:
-    repository: python
-    tag: "3.11-slim"
-    pullPolicy: IfNotPresent
-  service:
-    type: ClusterIP
-    port: 8111
-  debug: false
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 200m
-      memory: 128Mi
 
 # -----------------------------------------------------------------------------
 # Kruize - Optimization Engine (ROS Dependency)

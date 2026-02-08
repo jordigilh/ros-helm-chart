@@ -10,13 +10,6 @@ Koku Service Names
 */}}
 
 {{/*
-Koku API service name
-*/}}
-{{- define "cost-onprem.koku.api.name" -}}
-{{- printf "%s-koku-api" (include "cost-onprem.fullname" .) -}}
-{{- end -}}
-
-{{/*
 Koku API reads deployment name
 */}}
 {{- define "cost-onprem.koku.api.reads.name" -}}
@@ -147,13 +140,6 @@ Uses configurable value from .Values.costManagement.kafka.host
 */}}
 {{- define "cost-onprem.koku.kafka.host" -}}
 {{- .Values.costManagement.kafka.host | default "kafka" -}}
-{{- end -}}
-
-{{/*
-Kafka bootstrap servers (uses shared Kafka from PR #27)
-*/}}
-{{- define "cost-onprem.koku.kafka.bootstrapServers" -}}
-{{- include "cost-onprem.kafka.bootstrapServers" . -}}
 {{- end -}}
 
 {{/*
@@ -470,52 +456,3 @@ Combines system CA bundle with OpenShift cluster root CA and Service CA for Pyth
     {{- include "cost-onprem.securityContext.container" . | nindent 4 }}
 {{- end -}}
 
-{{/*
-Init container for running Django migrations
-This should be added to ONE koku deployment (typically koku-api-reads)
-to ensure migrations run before the application starts
-*/}}
-{{- define "cost-onprem.koku.initContainer.migrations" -}}
-- name: run-migrations
-  image: "{{ include "cost-onprem.koku.image" . }}"
-  imagePullPolicy: {{ .Values.costManagement.api.image.pullPolicy }}
-  command:
-    - bash
-    - -c
-    - |
-      set -e
-      echo "=== Koku Django Migrations Init Container ==="
-      echo "Timestamp: $(date)"
-
-      # Wait for database to be ready
-      echo "Waiting for database..."
-      until timeout 5 bash -c "cat < /dev/null > /dev/tcp/${DATABASE_SERVICE_HOST}/${DATABASE_SERVICE_PORT}" 2>/dev/null; do
-        echo "Database not ready, waiting..."
-        sleep 2
-      done
-      echo "Database is ready"
-
-      # Set up environment
-      mkdir -p /tmp/prometheus
-      cd /opt/koku/koku
-
-      # Run migrations
-      echo "Running Django migrations..."
-      python manage.py migrate --noinput
-
-      echo "Migrations completed successfully"
-  env:
-  {{- include "cost-onprem.koku.commonEnv" . | nindent 2 }}
-  volumeMounts:
-  - name: tmp
-    mountPath: /tmp
-  securityContext:
-    {{- include "cost-onprem.securityContext.container" . | nindent 4 }}
-  resources:
-    requests:
-      cpu: 250m
-      memory: 512Mi
-    limits:
-      cpu: 500m
-      memory: 1Gi
-{{- end -}}

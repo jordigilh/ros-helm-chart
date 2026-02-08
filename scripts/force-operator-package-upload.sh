@@ -134,7 +134,7 @@ EOF
         echo "            enableUserWorkload: true"
         echo "        EOF"
         echo ""
-        echo "   See docs/installation.md for more details."
+        echo "   See docs/operations/installation.md for more details."
         echo ""
         echo "   Continuing anyway, but metrics may not be available..."
         echo ""

@@ -17,7 +17,7 @@ Complete Helm chart for deploying the full Cost Management stack with OCP cost a
 ```
 
 **📖 Documentation:**
-- **[Cost Management Installation Guide](docs/cost-management-installation.md)** - Complete deployment guide
+- **[Cost Management Installation Guide](docs/operations/cost-management-installation.md)** - Complete deployment guide
 - **Prerequisites**: OpenShift 4.18+, ODF with Direct Ceph RGW (150GB+), Kafka/Strimzi
 - **Architecture**: Single unified chart with all components
 - **E2E Testing**: Automated validation with `./scripts/run-pytest.sh` (pytest-based test suite)
@@ -55,7 +55,7 @@ helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --creat
 
 **Note:** See [Authentication Setup](#-authentication-setup) section for required prerequisites (Keycloak)
 
-📖 **See [Installation Guide](docs/installation.md) for detailed installation options**
+📖 **See [Installation Guide](docs/operations/installation.md) for detailed installation options**
 
 ## 📚 Documentation
 
@@ -66,10 +66,10 @@ helm install cost-onprem cost-onprem/cost-onprem --namespace cost-onprem --creat
 
 | 🚀 Getting Started | 🏭 Production Setup | 🔧 Operations |
 |-------------------|-------------------|---------------|
-| [Quick Start](docs/quickstart.md)<br/>*Fast deployment walkthrough* | [Installation Guide](docs/installation.md)<br/>*Detailed installation instructions* | [Troubleshooting](docs/troubleshooting.md)<br/>*Common issues & solutions* |
-| [Platform Guide](docs/platform-guide.md)<br/>*OpenShift deployment details* | [JWT Authentication](docs/native-jwt-authentication.md)<br/>*Ingress authentication (Keycloak)* | [Force Upload](docs/force-operator-upload.md)<br/>*Testing & validation* |
+| [Quick Start](docs/operations/quickstart.md)<br/>*Fast deployment walkthrough* | [Installation Guide](docs/operations/installation.md)<br/>*Detailed installation instructions* | [Troubleshooting](docs/operations/troubleshooting.md)<br/>*Common issues & solutions* |
+| [Platform Guide](docs/architecture/platform-guide.md)<br/>*OpenShift deployment details* | [JWT Authentication](docs/api/native-jwt-authentication.md)<br/>*Ingress authentication (Keycloak)* | [Force Upload](docs/operations/force-operator-upload.md)<br/>*Testing & validation* |
 | | [Scripts Reference](scripts/README.md)<br/>*Automation scripts* |
-| | [Keycloak Setup](docs/keycloak-jwt-authentication-setup.md)<br/>*SSO configuration* | |
+| | [Keycloak Setup](docs/api/keycloak-jwt-authentication-setup.md)<br/>*SSO configuration* | |
 
 **Need more?** Configuration, security, templates, and specialized guides are available in the [Complete Documentation Index](docs/README.md).
 
@@ -165,7 +165,7 @@ Available endpoints:
 - Sources API: `/api/cost-management/v1/sources/` (via Koku API)
 - Upload API: `/api/ingress/*`
 
-**See [Platform Guide](docs/platform-guide.md) for detailed access information**
+**See [Platform Guide](docs/architecture/platform-guide.md) for detailed access information**
 
 ## 🔐 Authentication Setup
 
@@ -184,7 +184,7 @@ JWT authentication is **automatically enabled** and requires Keycloak configurat
 ./scripts/install-helm-chart.sh
 ```
 
-**📖 See [Keycloak Setup Guide](docs/keycloak-jwt-authentication-setup.md) for detailed configuration instructions**
+**📖 See [Keycloak Setup Guide](docs/api/keycloak-jwt-authentication-setup.md) for detailed configuration instructions**
 
 Key requirements:
 - ✅ Keycloak realm with `org_id` and `account_number` claims
@@ -195,7 +195,7 @@ Key requirements:
 **Operator Support:**
 - ✅ Red Hat Build of Keycloak (RHBK) v22+ - `k8s.keycloak.org/v2alpha1`
 
-**Architecture**: [JWT Authentication Overview](docs/native-jwt-authentication.md)
+**Architecture**: [JWT Authentication Overview](docs/api/native-jwt-authentication.md)
 
 ## 🔧 Common Operations
 
@@ -265,7 +265,7 @@ kubectl logs -n cost-onprem -l app.kubernetes.io/component=api
 kubectl get pvc -n cost-onprem
 ```
 
-**See [Troubleshooting Guide](docs/troubleshooting.md) for comprehensive solutions**
+**See [Troubleshooting Guide](docs/operations/troubleshooting.md) for comprehensive solutions**
 
 ## 📄 License
 
@@ -273,7 +273,7 @@ This project is licensed under the terms specified in the [LICENSE](LICENSE) fil
 
 ## 🤝 Contributing
 
-See [Quick Start Guide](docs/quickstart.md) for development environment setup.
+See [Quick Start Guide](docs/operations/quickstart.md) for development environment setup.
 
 ## 📞 Support
 
