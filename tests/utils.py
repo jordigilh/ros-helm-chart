@@ -45,22 +45,6 @@ def run_oc_command(
     )
 
 
-def run_kubectl_command(
-    args: list[str],
-    check: bool = True,
-    timeout: int = 60,
-) -> subprocess.CompletedProcess:
-    """Run a kubectl command and return the result."""
-    cmd = ["kubectl"] + args
-    return subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        check=check,
-        timeout=timeout,
-    )
-
-
 def get_route_url(namespace: str, route_name: str) -> Optional[str]:
     """Get the URL for an OpenShift route."""
     try:

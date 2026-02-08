@@ -57,7 +57,7 @@ Verify Keycloak connectivity:
   oc get keycloak -A
 
 For authentication setup details:
-  https://github.com/insights-onprem/cost-onprem-chart/blob/main/docs/keycloak-jwt-authentication-setup.md
+  https://github.com/insights-onprem/cost-onprem-chart/blob/main/docs/api/keycloak-jwt-authentication-setup.md
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -99,7 +99,7 @@ Common issues:
   - Connection errors: Check service endpoints
 
 Full troubleshooting guide:
-  https://github.com/insights-onprem/cost-onprem-chart/blob/main/docs/troubleshooting.md
+  https://github.com/insights-onprem/cost-onprem-chart/blob/main/docs/operations/troubleshooting.md
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -109,10 +109,10 @@ Complete guides available at:
   https://github.com/insights-onprem/cost-onprem-chart/tree/main/docs
 
 Key resources:
-  - Installation Guide: docs/installation.md
-  - Configuration Guide: docs/configuration.md
-  - JWT Authentication: docs/keycloak-jwt-authentication-setup.md
-  - Troubleshooting: docs/troubleshooting.md
+  - Installation Guide: docs/operations/installation.md
+  - Configuration Guide: docs/operations/configuration.md
+  - JWT Authentication: docs/api/keycloak-jwt-authentication-setup.md
+  - Troubleshooting: docs/operations/troubleshooting.md
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

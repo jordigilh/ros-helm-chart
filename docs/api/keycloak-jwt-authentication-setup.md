@@ -1486,5 +1486,5 @@ echo "  3. Check ingress logs: oc logs -n cost-onprem deployment/cost-onprem-ing
 For questions or issues, refer to:
 - `scripts/deploy-rhbk.sh` - Automated deployment
 - `scripts/run-pytest.sh --auth` - JWT authentication testing
-- `docs/troubleshooting.md` - Common issues
+- `docs/operations/troubleshooting.md` - Common issues
 

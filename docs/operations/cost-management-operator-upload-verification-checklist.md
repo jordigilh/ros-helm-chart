@@ -153,7 +153,7 @@ Verify Kruize has new or updated experiments:
 
 ```bash
 # Query Kruize database for experiments
-./scripts/query-kruize.sh --list-experiments
+./scripts/query-kruize.sh --experiments
 
 # Or query Kruize API directly
 KRUIZE_POD=$(oc get pods -n cost-onprem -l app.kubernetes.io/component=ros-optimization -o jsonpath='{.items[0].metadata.name}')
@@ -177,7 +177,7 @@ After sufficient data is collected (15+ minutes), check for recommendations:
 
 ```bash
 # Query for recommendations
-./scripts/query-kruize.sh --list-recommendations
+./scripts/query-kruize.sh --recommendations
 
 # Or check via Kruize API
 oc exec -n cost-onprem $KRUIZE_POD -- curl -s http://localhost:8080/listRecommendations
@@ -247,7 +247,7 @@ PROCESSOR_POD=$(oc get pods -n cost-onprem -l app.kubernetes.io/component=ros-pr
 oc logs -n cost-onprem $PROCESSOR_POD --tail=50 | grep -E "Kruize|experiment"
 
 echo -e "\n=== Step 6: Kruize Experiments ==="
-./scripts/query-kruize.sh --list-experiments | head -20
+./scripts/query-kruize.sh --experiments | head -20
 
 echo -e "\n=== Verification Complete ==="
 ```
