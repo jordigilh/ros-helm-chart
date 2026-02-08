@@ -55,6 +55,15 @@ Usage: {{ include "cost-onprem.koku.celery.worker.name" (dict "context" . "type"
 {{- end -}}
 
 {{/*
+Cloud provider support (AWS, Azure, GCP). When false, cloud-only celery workers
+(download, refresh, hcs, subs*) are not deployed. Hard-coded until cloud support
+is introduced (FLPATH-3098).
+*/}}
+{{- define "cost-onprem.koku.cloudProviderSupported" -}}
+false
+{{- end -}}
+
+{{/*
 =============================================================================
 Internal Port Constants
 =============================================================================
