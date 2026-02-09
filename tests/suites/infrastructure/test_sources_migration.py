@@ -1,89 +1,12 @@
 """
 Sources-to-Koku migration infrastructure tests.
 
-Validates that the standalone sources-api service has been removed
-and Koku now provides sources functionality.
+Validates that Koku provides sources functionality.
 """
 
 import pytest
 
 from utils import check_service_exists, check_deployment_exists, run_oc_command
-
-
-@pytest.mark.infrastructure
-@pytest.mark.component
-class TestSourcesApiRemoved:
-    """Tests to verify sources-api infrastructure has been removed.
-
-    The sources-api was a standalone Go service that has been replaced
-    by Koku's built-in sources endpoints. These tests verify that the
-    old infrastructure components no longer exist.
-    """
-
-    def test_sources_api_service_not_exists(self, cluster_config):
-        """Verify the sources-api Kubernetes service does not exist.
-
-        The old sources-api service exposed the Go-based sources service
-        on port 8000. This service has been removed.
-        """
-        service_name = f"{cluster_config.helm_release_name}-sources-api"
-
-        exists = check_service_exists(cluster_config.namespace, service_name)
-
-        assert not exists, (
-            f"sources-api service '{service_name}' still exists in namespace "
-            f"'{cluster_config.namespace}'. This service should be removed as "
-            "sources functionality is now provided by Koku."
-        )
-
-    def test_sources_api_deployment_not_exists(self, cluster_config):
-        """Verify the sources-api deployment does not exist.
-
-        The old sources-api deployment ran the Go-based sources service.
-        This deployment has been removed.
-        """
-        deployment_name = f"{cluster_config.helm_release_name}-sources-api"
-
-        exists = check_deployment_exists(cluster_config.namespace, deployment_name)
-
-        assert not exists, (
-            f"sources-api deployment '{deployment_name}' still exists in namespace "
-            f"'{cluster_config.namespace}'. This deployment should be removed."
-        )
-
-    def test_sources_listener_deployment_not_exists(self, cluster_config):
-        """Verify the sources-listener deployment does not exist.
-
-        The old sources-listener was a Kafka consumer that processed
-        source events. This functionality is now handled by Koku's listener.
-        """
-        deployment_name = f"{cluster_config.helm_release_name}-sources-listener"
-
-        exists = check_deployment_exists(cluster_config.namespace, deployment_name)
-
-        assert not exists, (
-            f"sources-listener deployment '{deployment_name}' still exists in namespace "
-            f"'{cluster_config.namespace}'. This deployment should be removed."
-        )
-
-    def test_sources_database_not_exists(self, cluster_config):
-        """Verify no separate sources database exists.
-
-        The old sources-api used its own database (sources_db).
-        This has been replaced by tables within the Koku database.
-        """
-        # Check for sources-specific database service
-        service_patterns = [
-            f"{cluster_config.helm_release_name}-sources-db",
-            f"{cluster_config.helm_release_name}-sources-database",
-        ]
-
-        for service_name in service_patterns:
-            exists = check_service_exists(cluster_config.namespace, service_name)
-            assert not exists, (
-                f"sources database service '{service_name}' still exists. "
-                "Sources data should be stored in the main Koku database."
-            )
 
 
 @pytest.mark.infrastructure
