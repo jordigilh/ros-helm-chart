@@ -14,7 +14,7 @@ from typing import Any, Dict, Generator, Optional
 
 import pytest
 
-from e2e_helpers import get_source_type_id
+from e2e_helpers import get_koku_api_reads_url, get_koku_api_writes_url, get_source_type_id
 from utils import (
     create_identity_header_custom,
     create_rh_identity_header,
@@ -25,26 +25,14 @@ from utils import (
 
 @pytest.fixture(scope="module")
 def koku_api_writes_url(cluster_config) -> str:
-    """Get Koku API writes URL for operations that modify state (POST, PUT, DELETE).
-    
-    The Koku deployment separates reads/writes for scalability.
-    """
-    return (
-        f"http://{cluster_config.helm_release_name}-koku-api-writes."
-        f"{cluster_config.namespace}.svc.cluster.local:8000/api/cost-management/v1"
-    )
+    """Get Koku API writes URL for operations that modify state (POST, PUT, DELETE)."""
+    return get_koku_api_writes_url(cluster_config.helm_release_name, cluster_config.namespace)
 
 
 @pytest.fixture(scope="module")
 def koku_api_reads_url(cluster_config) -> str:
-    """Get Koku API reads URL for read-only operations (GET).
-    
-    The Koku deployment separates reads/writes for scalability.
-    """
-    return (
-        f"http://{cluster_config.helm_release_name}-koku-api-reads."
-        f"{cluster_config.namespace}.svc.cluster.local:8000/api/cost-management/v1"
-    )
+    """Get Koku API reads URL for read-only operations (GET)."""
+    return get_koku_api_reads_url(cluster_config.helm_release_name, cluster_config.namespace)
 
 
 @pytest.fixture(scope="module")
