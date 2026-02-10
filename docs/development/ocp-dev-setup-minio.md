@@ -1,0 +1,163 @@
+# OCP Development Setup with MinIO
+
+Guide for setting up a development environment on OpenShift (OCP) using MinIO
+instead of ODF for S3-compatible object storage.
+
+> **This setup is for development and testing only.** Production deployments
+> must use ODF (OpenShift Data Foundation).
+
+## When to Use This
+
+Use MinIO when:
+
+- Your OCP cluster does not have ODF installed
+- You are on a Single Node OpenShift (SNO) or resource-constrained cluster
+- You want to avoid ODF's multi-node and storage requirements
+- You are developing or testing chart changes locally
+
+## Cluster Requirements
+
+### Minimum Resources (with MinIO instead of ODF)
+
+| Resource | Requirement |
+|----------|-------------|
+| **Nodes** | 1 (SNO supported) |
+| **CPU** | 10 cores |
+| **Memory** | 22 Gi |
+| **Storage** | 10 Gi block storage |
+
+MinIO runs as a single-replica Deployment with a PersistentVolumeClaim using the
+cluster's default StorageClass. On SNO with LVMS, this typically uses a local
+volume on the node's disk.
+
+### Infrastructure Dependencies
+
+The following must be deployed **before** the chart:
+
+| Component | How to Deploy | Notes |
+|-----------|---------------|-------|
+| **Kafka (Strimzi)** | `./scripts/deploy-strimzi.sh` | Required for event streaming |
+| **Keycloak (RHBK)** | `./scripts/deploy-rhbk.sh` | Required for JWT authentication |
+| **MinIO** | `./scripts/deploy-minio-test.sh cost-onprem` | S3 storage (replaces ODF) |
+
+## Step-by-Step Setup
+
+### 1. Deploy infrastructure
+
+```bash
+# Deploy Strimzi (Kafka)
+./scripts/deploy-strimzi.sh
+
+# Deploy Red Hat Build of Keycloak
+./scripts/deploy-rhbk.sh
+
+# Deploy MinIO into the chart namespace
+./scripts/deploy-minio-test.sh cost-onprem
+```
+
+### 2. Install the Helm chart
+
+```bash
+MINIO_ENDPOINT=http://minio.cost-onprem.svc.cluster.local \
+  ./scripts/install-helm-chart.sh
+```
+
+The install script detects `MINIO_ENDPOINT` and automatically:
+
+- Locates the `minio-credentials` secret (by parsing the namespace from the FQDN)
+- Creates the `cost-onprem-storage-credentials` secret used by the chart
+- Passes `odf.endpoint`, `odf.port=80`, `odf.useSSL=false` to Helm
+- Creates the S3 buckets (`insights-upload-perma`, `koku-bucket`, `ros-data`)
+
+### 3. Verify the deployment
+
+```bash
+# Check all pods are running
+kubectl get pods -n cost-onprem -l app.kubernetes.io/instance=cost-onprem
+
+# Verify S3 connectivity (ingress should show the MinIO endpoint)
+kubectl get deployment cost-onprem-ingress -n cost-onprem \
+  -o jsonpath='{.spec.template.spec.containers[0].env}' | python3 -m json.tool | grep -A1 MINIOENDPOINT
+
+# Check ingress logs for upload errors
+kubectl logs -n cost-onprem -l app.kubernetes.io/component=ingress --tail=20
+```
+
+### 4. Run tests
+
+```bash
+NAMESPACE=cost-onprem ./scripts/run-pytest.sh
+```
+
+## How It Works
+
+The chart itself has no MinIO-specific configuration. The existing `odf.*` values
+in `values.yaml` are generic S3 settings:
+
+| Helm Value | Set By Install Script | Effect |
+|------------|----------------------|--------|
+| `odf.endpoint` | `minio.cost-onprem.svc.cluster.local` | S3 hostname for all components |
+| `odf.port` | `80` | Service port (MinIO Service maps 80 → 9000) |
+| `odf.useSSL` | `false` | Use HTTP instead of HTTPS |
+
+These values flow into the chart's template helpers:
+
+- **Ingress**: `INGRESS_MINIOENDPOINT` gets the hostname
+- **Koku/MASU**: `S3_ENDPOINT` gets `http://minio.cost-onprem.svc.cluster.local`
+- **Bucket job**: Uses `http://endpoint:port` to connect with `mc`
+- **Init containers**: TCP check against `endpoint:port`
+
+## Troubleshooting
+
+### Ingress upload fails with "dial tcp ...:80: i/o timeout"
+
+The MinIO Service is not reachable. Check:
+
+```bash
+kubectl get svc minio -n cost-onprem
+kubectl get pods -l app=minio -n cost-onprem
+```
+
+### Ingress upload fails with port 9000 errors
+
+The MinIO Service is still using port 9000 (old configuration). Redeploy:
+
+```bash
+./scripts/deploy-minio-test.sh cost-onprem
+```
+
+The updated script creates the Service with `port: 80, targetPort: 9000`.
+
+### Bucket creation fails
+
+Verify MinIO credentials:
+
+```bash
+kubectl get secret minio-credentials -n cost-onprem -o jsonpath='{.data.access-key}' | base64 -d
+kubectl get secret cost-onprem-storage-credentials -n cost-onprem -o jsonpath='{.data.access-key}' | base64 -d
+```
+
+Both should return the same access key.
+
+### "ODF not detected" error during helm install
+
+Make sure `MINIO_ENDPOINT` is set when running the install script:
+
+```bash
+MINIO_ENDPOINT=http://minio.cost-onprem.svc.cluster.local ./scripts/install-helm-chart.sh
+```
+
+## Cleanup
+
+```bash
+# Remove MinIO
+kubectl delete deployment minio -n cost-onprem
+kubectl delete svc minio -n cost-onprem
+kubectl delete pvc minio-pvc -n cost-onprem
+kubectl delete secret minio-credentials -n cost-onprem
+
+# Or if deployed to a separate namespace
+kubectl delete namespace minio-test
+```
+
+[← Back to Development Documentation](README.md)
