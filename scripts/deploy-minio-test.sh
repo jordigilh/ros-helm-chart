@@ -196,7 +196,7 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - port: 9000
+    - port: 80
       targetPort: 9000
       name: api
     - port: 9001
@@ -262,7 +262,7 @@ echo "════════════════════════�
 echo ""
 
 # Internal endpoint
-INTERNAL_ENDPOINT="http://minio.$NAMESPACE.svc.cluster.local:9000"
+INTERNAL_ENDPOINT="http://minio.$NAMESPACE.svc.cluster.local"
 echo_success "✓ MinIO API Endpoint (internal): $INTERNAL_ENDPOINT"
 
 # External console URL (OpenShift only)
