@@ -26,10 +26,14 @@ from utils import get_pod_by_label, get_secret_value
 def get_s3_endpoint_from_cluster(namespace: str) -> Optional[str]:
     """Get S3 endpoint from cluster configuration.
     
-    Tries multiple methods:
-    1. OpenShift route (external access)
-    2. Environment variable from MASU pod
+    Tries multiple methods (in priority order):
+    1. Environment variable from MASU pod (authoritative — reflects Helm config)
+    2. OpenShift route (external access, for ODF-based clusters)
     3. Default ODF endpoint
+    
+    The MASU pod's S3_ENDPOINT is checked first because it reflects the actual
+    Helm values the chart was deployed with (e.g. MinIO or ODF). The OpenShift
+    route is a fallback for clusters where the MASU pod isn't available yet.
     
     Args:
         namespace: Application namespace
@@ -37,25 +41,7 @@ def get_s3_endpoint_from_cluster(namespace: str) -> Optional[str]:
     Returns:
         S3 endpoint URL or None
     """
-    # Try 1: Get from OpenShift route (for external access)
-    try:
-        result = subprocess.run(
-            [
-                "oc", "get", "route",
-                "-n", "openshift-storage",
-                "s3",
-                "-o", "jsonpath={.spec.host}",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return f"https://{result.stdout.strip()}"
-    except Exception:
-        pass
-    
-    # Try 2: Get from MASU pod environment
+    # Try 1: Get from MASU pod environment (authoritative source)
     try:
         masu_pod = get_pod_by_label(namespace, "app.kubernetes.io/component=cost-processor")
         if masu_pod:
@@ -72,6 +58,24 @@ def get_s3_endpoint_from_cluster(namespace: str) -> Optional[str]:
             )
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()
+    except Exception:
+        pass
+    
+    # Try 2: Get from OpenShift route (for external access)
+    try:
+        result = subprocess.run(
+            [
+                "oc", "get", "route",
+                "-n", "openshift-storage",
+                "s3",
+                "-o", "jsonpath={.spec.host}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return f"https://{result.stdout.strip()}"
     except Exception:
         pass
     
