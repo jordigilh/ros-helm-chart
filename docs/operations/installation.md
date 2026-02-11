@@ -311,12 +311,54 @@ kubectl create secret generic cost-onprem-odf-credentials \
 - ✅ Use least-privilege access (specific buckets only)
 - ❌ Never commit credentials to version control
 
-### 3. Namespace Permissions
+### 3. Using MinIO Instead of ODF (Development/Testing Only)
+
+For development and testing on OCP clusters without ODF, you can use a standalone
+MinIO instance. This avoids the resource overhead of ODF (which requires 3+ nodes,
+30GB+ block devices, and the ODF operator).
+
+> **Warning**: MinIO is not supported for production deployments. Use ODF for
+> production environments.
+
+**Step 1: Deploy MinIO**
+
+```bash
+# Deploy MinIO into the cost-onprem namespace
+./scripts/deploy-minio-test.sh cost-onprem
+```
+
+This creates:
+- A MinIO Deployment (single replica, 512Mi memory)
+- A Service on port 80 (forwarding to MinIO's container port 9000)
+- A `minio-credentials` secret with access/secret keys
+- A PersistentVolumeClaim (10Gi, uses default StorageClass)
+
+**Step 2: Install the chart with `MINIO_ENDPOINT`**
+
+```bash
+MINIO_ENDPOINT=http://minio.cost-onprem.svc.cluster.local \
+  ./scripts/install-helm-chart.sh
+```
+
+The install script automatically:
+- Detects the `minio-credentials` secret and creates `cost-onprem-storage-credentials`
+- Sets `odf.endpoint`, `odf.port=80`, and `odf.useSSL=false` for the Helm chart
+- Creates the required S3 buckets via `mc`
+
+**MinIO Resource Requirements:**
+
+| Resource | Request | Limit |
+|----------|---------|-------|
+| CPU | 250m | 500m |
+| Memory | 512Mi | 1Gi |
+| Storage | 10Gi PVC | - |
+
+### 4. Namespace Permissions
 
 Ensure you have permissions to:
 - Create secrets in target namespace
 - Deploy Helm charts
-- Access ODF resources
+- Access ODF resources (or MinIO for dev)
 - Create routes (OpenShift)
 
 ```bash
@@ -326,7 +368,7 @@ oc auth can-i create deployments -n cost-onprem
 oc auth can-i create routes -n cost-onprem
 ```
 
-### 4. Resource Requirements
+### 5. Resource Requirements
 
 **Single Node OpenShift (SNO):**
 - SNO cluster with ODF installed

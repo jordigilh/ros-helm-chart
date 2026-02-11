@@ -271,6 +271,15 @@ kubectl get pvc -n cost-onprem
 
 This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
 
+## 🛠️ Development Environment
+
+New to this project? See the **[OCP Dev Setup with MinIO](docs/development/ocp-dev-setup-minio.md)** guide to set up a development environment on OpenShift using MinIO instead of ODF. This is the recommended approach for developers who don't have access to a multi-node OCP cluster with ODF.
+
+| Setup | Nodes | Storage Backend | Use Case |
+|-------|-------|-----------------|----------|
+| **Dev/Test (MinIO)** | 1 (SNO) | MinIO (standalone) | Local development, testing, demos |
+| **Production (ODF)** | 3+ | ODF with Direct Ceph RGW | Production deployments |
+
 ## 🤝 Contributing
 
 See [Quick Start Guide](docs/operations/quickstart.md) for development environment setup.

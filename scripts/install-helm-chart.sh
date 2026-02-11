@@ -429,24 +429,31 @@ create_storage_credentials_secret() {
         return 0
     fi
 
-    # PRIORITY: If MINIO_ENDPOINT is set, use MinIO credentials (for testing)
+    # PRIORITY: If MINIO_ENDPOINT is set, use MinIO credentials (for testing/dev)
     if [ -n "$MINIO_ENDPOINT" ]; then
-        echo_info "MINIO_ENDPOINT detected: Using MinIO credentials for testing..."
-        # Check if MinIO credentials secret exists (from deploy-minio script)
-        if kubectl get secret minio-credentials -n "$NAMESPACE" >/dev/null 2>&1; then
-            echo_info "Found existing MinIO credentials secret, extracting credentials..."
-            local access_key=$(kubectl get secret minio-credentials -n "$NAMESPACE" -o jsonpath='{.data.root-user}' | base64 -d)
-            local secret_key=$(kubectl get secret minio-credentials -n "$NAMESPACE" -o jsonpath='{.data.root-password}' | base64 -d)
-            kubectl create secret generic "$secret_name" \
-                --namespace="$NAMESPACE" \
-                --from-literal=access-key="$access_key" \
-                --from-literal=secret-key="$secret_key"
-            echo_success "Storage credentials created from MinIO credentials secret"
-            echo_info "  Access Key: $access_key"
-            return 0
-        else
-            echo_warning "MinIO credentials secret not found, falling back to default logic..."
-        fi
+        echo_info "MINIO_ENDPOINT detected: Using MinIO credentials..."
+        # Extract MinIO namespace from the FQDN (e.g., minio.my-ns.svc.cluster.local → my-ns)
+        local minio_host minio_ns
+        minio_host=$(echo "$MINIO_ENDPOINT" | sed -E 's|^https?://||; s|:[0-9]+/?$||; s|/$||')
+        minio_ns=$(echo "$minio_host" | cut -d. -f2)
+
+        # Try the MinIO namespace first, then the chart namespace
+        for ns in "$minio_ns" "$NAMESPACE"; do
+            if kubectl get secret minio-credentials -n "$ns" >/dev/null 2>&1; then
+                echo_info "Found minio-credentials secret in namespace: $ns"
+                local access_key=$(kubectl get secret minio-credentials -n "$ns" -o jsonpath='{.data.access-key}' | base64 -d)
+                local secret_key=$(kubectl get secret minio-credentials -n "$ns" -o jsonpath='{.data.secret-key}' | base64 -d)
+                if [ -n "$access_key" ] && [ -n "$secret_key" ]; then
+                    kubectl create secret generic "$secret_name" \
+                        --namespace="$NAMESPACE" \
+                        --from-literal=access-key="$access_key" \
+                        --from-literal=secret-key="$secret_key"
+                    echo_success "Storage credentials created from MinIO credentials (namespace: $ns)"
+                    return 0
+                fi
+            fi
+        done
+        echo_warning "MinIO credentials secret not found in $minio_ns or $NAMESPACE, falling back to default logic..."
     fi
 
     # OpenShift-only deployment (supports both ODF and MinIO)
@@ -573,18 +580,14 @@ create_s3_buckets() {
     # Determine S3 endpoint and configuration
     local s3_url mc_insecure
 
-    # PRIORITY: If MINIO_ENDPOINT is set, use MinIO (for testing)
+    # PRIORITY: If MINIO_ENDPOINT is set, use MinIO (for testing/dev)
     if [ -n "$MINIO_ENDPOINT" ]; then
-        # Check if MinIO service exists in namespace
-        if kubectl get service minio -n "$NAMESPACE" >/dev/null 2>&1; then
-            s3_url="http://minio:9000"
-            mc_insecure=""
-            echo_info "  ✓ Using MinIO (MINIO_ENDPOINT override): $MINIO_ENDPOINT"
-            echo_info "  ✓ Internal service URL: $s3_url"
-        else
-            echo_error "MINIO_ENDPOINT set but MinIO service not found in namespace: $NAMESPACE"
-            exit 1
-        fi
+        # Extract hostname from MINIO_ENDPOINT
+        local minio_host
+        minio_host=$(echo "$MINIO_ENDPOINT" | sed -E 's|^https?://||; s|:[0-9]+/?$||; s|/$||')
+        s3_url="http://${minio_host}:80"
+        mc_insecure=""
+        echo_info "  ✓ Using MinIO: $s3_url"
     elif kubectl get crd noobaas.noobaa.io >/dev/null 2>&1 && \
        kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
         # ODF NooBaa detected
@@ -617,12 +620,13 @@ create_s3_buckets() {
     echo_info "Creating buckets at ${s3_url}..."
 
     # Use kubectl run --rm for one-shot bucket creation (auto-cleanup)
-    # Using alpine image since minio/mc doesn't have a shell
+    # Using UBI9 minimal image (available on OpenShift without Docker Hub rate limits)
     # Real failures (connectivity, permissions) will cause non-zero exit
     # Security context overrides required for OpenShift Pod Security Standards
+    local bucket_image="registry.access.redhat.com/ubi9/ubi-minimal:latest"
     local output
     if output=$(kubectl run bucket-setup --rm -i --restart=Never \
-        --image=alpine:latest \
+        --image="$bucket_image" \
         -n "$NAMESPACE" \
         --overrides='{
             "spec": {
@@ -635,7 +639,7 @@ create_s3_buckets() {
                 },
                 "containers": [{
                     "name": "bucket-setup",
-                    "image": "alpine:latest",
+                    "image": "'"$bucket_image"'",
                     "securityContext": {
                         "allowPrivilegeEscalation": false,
                         "capabilities": {
@@ -649,7 +653,8 @@ create_s3_buckets() {
         }' \
         -- sh -c "
             set -e
-            wget -q https://dl.min.io/client/mc/release/linux-amd64/mc -O /usr/local/bin/mc && chmod +x /usr/local/bin/mc
+            curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /tmp/mc && chmod +x /tmp/mc
+            export PATH=/tmp:\$PATH
             mc alias set s3 ${s3_url} '${access_key}' '${secret_key}' ${mc_insecure}
             for bucket in insights-upload-perma koku-bucket ros-data; do
                 if mc ls s3/\${bucket} ${mc_insecure} >/dev/null 2>&1; then
@@ -831,12 +836,18 @@ deploy_helm_chart() {
         echo_info "  Bucket creation job will be skipped"
     fi
 
-    # Add MinIO endpoint override if specified (for testing with MinIO in OCP)
+    # Add MinIO S3 configuration if specified (for testing/dev with MinIO in OCP)
+    # This sets the generic odf.* values that chart templates actually read.
     if [ -n "$MINIO_ENDPOINT" ]; then
-        echo_info "Configuring custom S3 endpoint for MinIO testing"
-        helm_cmd="$helm_cmd --set costManagement.s3Endpoint=\"$MINIO_ENDPOINT\""
-        helm_cmd="$helm_cmd --set costManagement.s3VerifySSL=false"
-        echo_success "✓ MinIO endpoint configured: $MINIO_ENDPOINT"
+        # Extract hostname from MINIO_ENDPOINT (strip protocol and port)
+        local minio_host
+        minio_host=$(echo "$MINIO_ENDPOINT" | sed -E 's|^https?://||; s|:[0-9]+/?$||; s|/$||')
+
+        echo_info "Configuring S3 endpoint for MinIO (dev/test)"
+        helm_cmd="$helm_cmd --set odf.endpoint=\"${minio_host}\""
+        helm_cmd="$helm_cmd --set odf.port=80"
+        helm_cmd="$helm_cmd --set odf.useSSL=false"
+        echo_success "✓ S3 endpoint configured: ${minio_host} (port 80, no SSL)"
     fi
 
     # Add additional Helm arguments passed to the script

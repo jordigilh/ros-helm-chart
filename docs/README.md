@@ -71,6 +71,7 @@ Testing guides, validation procedures, and development resources.
 
 | Document | Purpose |
 |----------|---------|
+| **[OCP Dev Setup with MinIO](development/ocp-dev-setup-minio.md)** | Set up a dev environment on OCP using MinIO instead of ODF |
 | **[UI OAuth Testing](development/ui-oauth-testing.md)** | Guide for testing UI OAuth flow with Keycloak |
 
 ---
@@ -107,6 +108,11 @@ Testing guides, validation procedures, and development resources.
 1. Check **[Troubleshooting Guide](operations/troubleshooting.md)** for common issues
 2. Use **[Upload Verification Checklist](operations/cost-management-operator-upload-verification-checklist.md)** to verify operator uploads
 3. Review logs and debugging steps in relevant setup guides
+
+### "I'm setting up a development environment"
+1. Follow **[OCP Dev Setup with MinIO](development/ocp-dev-setup-minio.md)** to deploy with MinIO (no ODF required)
+2. Read **[Installation Guide](operations/installation.md)** for the full install options
+3. Set up authentication using **[Keycloak JWT Authentication Setup](api/keycloak-jwt-authentication-setup.md)**
 
 ### "I need to understand the codebase"
 1. Read **[Helm Templates Reference](architecture/helm-templates-reference.md)** for resource definitions
