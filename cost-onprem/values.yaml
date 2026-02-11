@@ -403,110 +403,6 @@ costManagement:
             cpu: 400m
             memory: 1Gi
 
-      priorityXl:
-        # On-prem: 1 replica to fit cluster constraints (SaaS uses 2)
-        replicas: 1
-        queue: priority,priority_xl
-        concurrency: 5
-        resources:
-          # Aligned with SaaS Clowder configuration
-          requests:
-            cpu: 150m
-            memory: 400Mi
-          limits:
-            cpu: 300m
-            memory: 750Mi
-
-      refreshXl:
-        # OCP-ONLY: Disabled - not needed for OCP
-        replicas: 0
-        queue: refresh,refresh_xl
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 200m
-            memory: 512Mi
-
-      summaryXl:
-        replicas: 1
-        queue: summary,summary_xl
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 200Mi
-          limits:
-            cpu: 200m
-            memory: 400Mi
-
-      downloadXl:
-        # OCP-ONLY: Disabled - not needed for OCP
-        replicas: 0
-        queue: download,download_xl
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 200m
-            memory: 512Mi
-          limits:
-            cpu: 400m
-            memory: 1Gi
-
-      priorityPenalty:
-        # On-prem: 1 replica to fit cluster constraints (SaaS uses 2)
-        replicas: 1
-        queue: priority,priority_penalty
-        concurrency: 5
-        resources:
-          # Aligned with SaaS Clowder configuration
-          requests:
-            cpu: 150m
-            memory: 400Mi
-          limits:
-            cpu: 300m
-            memory: 750Mi
-
-      refreshPenalty:
-        # OCP-ONLY: Disabled - not needed for OCP
-        replicas: 0
-        queue: refresh,refresh_penalty
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 200m
-            memory: 512Mi
-
-      summaryPenalty:
-        replicas: 1
-        queue: summary,summary_penalty
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 200Mi
-          limits:
-            cpu: 200m
-            memory: 400Mi
-
-      downloadPenalty:
-        # OCP-ONLY: Disabled - not needed for OCP
-        replicas: 0
-        queue: download,download_penalty
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 200m
-            memory: 512Mi
-          limits:
-            cpu: 400m
-            memory: 1Gi
-
       ocp:
         replicas: 1
         queue: ocp
@@ -519,57 +415,9 @@ costManagement:
             cpu: 500m
             memory: 1Gi
 
-      ocpXl:
-        replicas: 1
-        queue: ocp_xl
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 200m
-            memory: 512Mi
-
-      ocpPenalty:
-        replicas: 1
-        queue: ocp_penalty
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 200m
-            memory: 512Mi
-
       costModel:
         replicas: 1
         queue: cost_model
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 200m
-            memory: 512Mi
-
-      costModelXl:
-        replicas: 1
-        queue: cost_model_xl
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 200m
-            memory: 512Mi
-
-      costModelPenalty:
-        replicas: 1
-        queue: cost_model_penalty
         concurrency: 5
         resources:
           requests:
