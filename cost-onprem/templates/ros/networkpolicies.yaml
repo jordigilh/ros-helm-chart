@@ -161,7 +161,8 @@ spec:
           port: {{ .Values.ros.api.port }}  # ROS API container port
 
 ---
-# NetworkPolicy to allow REST API traffic to Cost Management API from centralized gateway
+# NetworkPolicy to allow REST API traffic to Cost Management API
+# from the centralized gateway, ingress service, and ROS housekeeper
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -184,6 +185,16 @@ spec:
             matchLabels:
               app.kubernetes.io/instance: {{ .Release.Name }}
               app.kubernetes.io/component: gateway
+        # Allow traffic from ingress service (upload processing, internal API calls)
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: ingress
+        # Allow traffic from ROS housekeeper (calls sources API endpoints)
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: housekeeper
       ports:
         - protocol: TCP
           port: {{ include "cost-onprem.koku.api.port" . }}  # Cost Management API container port
