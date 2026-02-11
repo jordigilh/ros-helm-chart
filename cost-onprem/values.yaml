@@ -221,6 +221,16 @@ costManagement:
       DJANGO_LOG_LEVEL: INFO
       GUNICORN_LOG_LEVEL: INFO
       PROMETHEUS_MULTIPROC_DIR: /tmp
+      # Data retention: how many months of cost data to keep in the database.
+      # The MASU vacuum process purges data older than this threshold.
+      # Must match the value set in costManagement.api.env for consistency.
+      RETAIN_NUM_MONTHS: "3"
+      # Initial ingest: how many months of historical data to process when
+      # a new cost data source (provider) is first registered.
+      INITIAL_INGEST_NUM_MONTHS: "2"
+      # Override: when True, forces INITIAL_INGEST_NUM_MONTHS for all providers,
+      # even those already fully set up. Default is False (normal rolling ingest).
+      INITIAL_INGEST_OVERRIDE: "False"
 
   # ---------------------------------------------------------------------------
   # Kafka Listener
