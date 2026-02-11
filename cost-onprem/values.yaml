@@ -32,9 +32,6 @@ global:
     waitFor:
       repository: registry.access.redhat.com/ubi9/ubi-minimal
       tag: "latest"
-    minioMc:
-      repository: quay.io/minio/mc
-      tag: "RELEASE.2025-07-21T05-28-08Z"
 
 # -----------------------------------------------------------------------------
 # ROS (Resource Optimization Service) - Top-level Service
@@ -134,6 +131,7 @@ costManagement:
 
   storage:
     bucketName: "koku-bucket"
+    rosBucketName: "ros-data"
 
   # ---------------------------------------------------------------------------
   # Koku API Configuration
@@ -888,11 +886,6 @@ odf:
   s3:
     region: "onprem"
 
-  # Buckets to create during installation
-  buckets:
-    - insights-upload-perma
-    - koku-bucket
-    - ros-data
 
 # -----------------------------------------------------------------------------
 # Authentication Configuration (JWT with Keycloak/RHBK)
