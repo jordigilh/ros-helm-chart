@@ -84,11 +84,8 @@ View logs:
   # Ingress
   oc logs -n {{ $namespace }} -l app.kubernetes.io/component=ingress --tail=100
 
-  # Cost Management API (reads)
-  oc logs -n {{ $namespace }} -l app.kubernetes.io/component=cost-management-api-reads --tail=100
-
-  # Cost Management API (writes)
-  oc logs -n {{ $namespace }} -l app.kubernetes.io/component=cost-management-api-writes --tail=100
+  # Cost Management API
+  oc logs -n {{ $namespace }} -l app.kubernetes.io/component=cost-management-api --tail=100
 
 Check service health:
   oc get pods -n {{ $namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}

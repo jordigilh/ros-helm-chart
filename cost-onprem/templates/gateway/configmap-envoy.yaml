@@ -100,10 +100,9 @@ data:
                   # ROUTING PRIORITY ORDER (Envoy uses first-match)
                   # =========================================================================
                   # 1. ROS recommendations (most specific path, must match before /api/cost-management/)
-                  # 2. Cost Management API - Read operations (GET, HEAD)
-                  # 3. Cost Management API - Write operations (POST, PUT, DELETE, PATCH)
+                  # 2. Cost Management API (all methods - unified deployment)
                   #    Note: Sources API is now part of Cost Management API at /api/cost-management/v1/sources/
-                  # 4. Ingress (file upload)
+                  # 3. Ingress (file upload)
                   # =========================================================================
 
                   # 1. ROS Recommendations - Route to ROS API service
@@ -118,41 +117,12 @@ data:
                         num_retries: 2
                         per_try_timeout: 15s
 
-                  # 2. Cost Management API - Read operations (GET, HEAD) route to reads service
+                  # 2. Cost Management API - All operations route to unified koku-api service
                   #    Includes Sources API at /api/cost-management/v1/sources/
                   - match:
                       prefix: "/api/cost-management/"
-                      headers:
-                      - name: ":method"
-                        string_match:
-                          exact: "GET"
                     route:
-                      cluster: koku-api-reads-backend
-                      timeout: 60s
-                      retry_policy:
-                        retry_on: 5xx,reset,connect-failure,refused-stream
-                        num_retries: 2
-                        per_try_timeout: 30s
-                  - match:
-                      prefix: "/api/cost-management/"
-                      headers:
-                      - name: ":method"
-                        string_match:
-                          exact: "HEAD"
-                    route:
-                      cluster: koku-api-reads-backend
-                      timeout: 60s
-                      retry_policy:
-                        retry_on: 5xx,reset,connect-failure,refused-stream
-                        num_retries: 2
-                        per_try_timeout: 30s
-
-                  # 3. Cost Management API - Write operations (POST, PUT, DELETE, PATCH) route to writes service
-                  #    This also handles Sources API requests at /api/cost-management/v1/sources/
-                  - match:
-                      prefix: "/api/cost-management/"
-                    route:
-                      cluster: koku-api-writes-backend
+                      cluster: koku-api-backend
                       timeout: 60s
                       retry_policy:
                         retry_on: 5xx,reset,connect-failure,refused-stream
@@ -473,41 +443,19 @@ data:
             max_requests: 1024
             max_retries: 3
 
-      # Koku API Reads backend for Cost Management read operations (GET, HEAD)
-      - name: koku-api-reads-backend
+      # Koku API backend for all Cost Management operations (unified deployment)
+      - name: koku-api-backend
         connect_timeout: 5s
         type: STRICT_DNS
         dns_refresh_rate: 30s
         load_assignment:
-          cluster_name: koku-api-reads-backend
+          cluster_name: koku-api-backend
           endpoints:
           - lb_endpoints:
             - endpoint:
                 address:
                   socket_address:
-                    address: {{ include "cost-onprem.koku.api.reads.name" . }}.{{ .Release.Namespace }}.svc.cluster.local
-                    port_value: {{ include "cost-onprem.koku.api.port" . }}
-        circuit_breakers:
-          thresholds:
-          - priority: DEFAULT
-            max_connections: 1024
-            max_pending_requests: 1024
-            max_requests: 1024
-            max_retries: 3
-
-      # Koku API Writes backend for Cost Management write operations (POST, PUT, DELETE, PATCH)
-      - name: koku-api-writes-backend
-        connect_timeout: 5s
-        type: STRICT_DNS
-        dns_refresh_rate: 30s
-        load_assignment:
-          cluster_name: koku-api-writes-backend
-          endpoints:
-          - lb_endpoints:
-            - endpoint:
-                address:
-                  socket_address:
-                    address: {{ include "cost-onprem.koku.api.writes.name" . }}.{{ .Release.Namespace }}.svc.cluster.local
+                    address: {{ include "cost-onprem.koku.api.name" . }}.{{ .Release.Namespace }}.svc.cluster.local
                     port_value: {{ include "cost-onprem.koku.api.port" . }}
         circuit_breakers:
           thresholds:

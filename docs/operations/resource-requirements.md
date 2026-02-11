@@ -42,12 +42,11 @@ The Cost Management stack consists of the cost-onprem Helm chart plus infrastruc
 
 | Component | Replicas | CPU Request | CPU Limit | Memory Request | Memory Limit |
 |-----------|----------|-------------|-----------|----------------|--------------|
-| koku-api-reads | 2 | 300m | 600m | 500 Mi | 1 Gi |
-| koku-api-writes | 1 | 300m | 600m | 500 Mi | 1 Gi |
+| koku-api | 2 | 300m | 600m | 500 Mi | 1 Gi |
 | koku-api-masu | 2 | 300m | 1000m | 1 Gi | 8 Gi |
 | koku-api-listener | 2 | 200m | 500m | 512 Mi | 1 Gi |
 
-**Subtotal**: 7 pods, **1.9 cores** request, **4.5 Gi** memory request
+**Subtotal**: 6 pods, **1.6 cores** request, **4 Gi** memory request
 
 > ⚠️ **Critical**: The `koku-api-masu` pods run database migrations on startup. If these pods cannot be scheduled, all Celery workers will be stuck waiting for migrations.
 
@@ -158,15 +157,15 @@ Kafka pods typically don't have explicit resource requests set by default. Based
 
 | Category | Pods | CPU Request | Memory Request |
 |----------|------|-------------|----------------|
-| Koku Core Services | 7 | 1.9 cores | 4.5 Gi |
+| Koku Core Services | 6 | 1.6 cores | 4 Gi |
 | Celery Workers (default) | 15 | 1.5 cores | 3.7 Gi |
 | ROS Services | 6 | 1.3 cores | 4.2 Gi |
 | Infrastructure | 3 | 0.8 cores | 1.8 Gi |
 | Supporting Services | 4 | 0.6 cores | 1.0 Gi |
 | Kafka (recommended) | 7 | 3.2 cores | 7.0 Gi |
-| **TOTAL (default)** | **42** | **~9.3 cores** | **~22 Gi** |
+| **TOTAL (default)** | **41** | **~9.0 cores** | **~21.5 Gi** |
 
-With cloud providers enabled (9 additional Celery workers): **51** pods, **~10.2 cores**, **~25 Gi**.
+With cloud providers enabled (9 additional Celery workers): **50** pods, **~9.9 cores**, **~24.5 Gi**.
 
 ### Grand Total
 
@@ -298,12 +297,9 @@ celery:
           cpu: "150m"
 
 # Reduce API replicas
-koku:
+costManagement:
   api:
-    reads:
-      replicas: 1
-    writes:
-      replicas: 1
+    replicas: 1
 ```
 
 ---
@@ -324,8 +320,7 @@ The authoritative resource configuration is defined in the Koku repository:
 
 | Component | SaaS CPU Req | SaaS Mem Req | SaaS CPU Lim | SaaS Mem Lim | Replicas |
 |-----------|--------------|--------------|--------------|--------------|----------|
-| **koku-api-reads** | 250m | 512Mi | 500m | 1Gi | 3 |
-| **koku-api-writes** | 250m | 512Mi | 500m | 1Gi | 3 |
+| **koku-api** | 250m | 512Mi | 500m | 1Gi | 3 |
 | **koku-api-masu** | 50m | 500Mi | 100m | 700Mi | 1 |
 | **listener** | 150m | 300Mi | 300m | 600Mi | 2 |
 | **nginx** | 100m | 100Mi | 200m | 200Mi | 3 |
@@ -367,24 +362,14 @@ The `ros-helm-chart` team needs to update `values.yaml` to match these SaaS valu
 
 koku:
   api:
-    reads:
-      replicas: 3
-      resources:
-        requests:
-          cpu: 250m
-          memory: 512Mi
-        limits:
-          cpu: 500m
-          memory: 1Gi
-    writes:
-      replicas: 3
-      resources:
-        requests:
-          cpu: 250m
-          memory: 512Mi
-        limits:
-          cpu: 500m
-          memory: 1Gi
+    replicas: 3
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
     masu:
       replicas: 1
       resources:

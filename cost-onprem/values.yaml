@@ -146,104 +146,57 @@ costManagement:
       tag: "sources"
       pullPolicy: Always
 
-    reads:
-      replicas: 1
-      resources:
-        requests:
-          cpu: 250m
-          memory: 1Gi
-        limits:
-          cpu: 1
-          memory: 2Gi
+    replicas: 1
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: 1
+        memory: 2Gi
 
-      livenessProbe:
-        httpGet:
-          path: /livez
-          port: 9000
-          scheme: HTTP
-        initialDelaySeconds: 30
-        periodSeconds: 20
-        timeoutSeconds: 3
-        failureThreshold: 5
-        successThreshold: 1
+    livenessProbe:
+      httpGet:
+        path: /livez
+        port: 9000
+        scheme: HTTP
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 5
+      successThreshold: 1
 
-      readinessProbe:
-        httpGet:
-          path: /readyz
-          port: 9000
-          scheme: HTTP
-        initialDelaySeconds: 30
-        periodSeconds: 20
-        timeoutSeconds: 3
-        failureThreshold: 5
-        successThreshold: 1
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: 9000
+        scheme: HTTP
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 5
+      successThreshold: 1
 
-      env:
-        API_PATH_PREFIX: /api/cost-management
-        DEVELOPMENT: "False"
-        GUNICORN_LOG_LEVEL: INFO
-        KOKU_LOG_LEVEL: INFO
-        DJANGO_LOG_LEVEL: INFO
-        DJANGO_LOG_FORMATTER: simple
-        DJANGO_LOG_HANDLERS: console
-        PROMETHEUS_MULTIPROC_DIR: /tmp
-        KOKU_ENABLE_SENTRY: "False"
-        CACHED_VIEWS_DISABLED: "False"
-        RETAIN_NUM_MONTHS: "3"
-        NOTIFICATION_CHECK_TIME: "24"
-        ENHANCED_ORG_ADMIN: "True"
-        RBAC_CACHE_TIMEOUT: "300"
-        CACHE_TIMEOUT: "3600"
-        TAG_ENABLED_LIMIT: "200"
-        USE_READREPLICA: "False"
-        GUNICORN_WORKERS: "2"
-        GUNICORN_THREADS: "4"
-
-    writes:
-      replicas: 1
-      resources:
-        requests:
-          cpu: 250m
-          memory: 1Gi
-        limits:
-          cpu: 1
-          memory: 2Gi
-
-      livenessProbe:
-        httpGet:
-          path: /livez
-          port: 9000
-          scheme: HTTP
-        initialDelaySeconds: 30
-        periodSeconds: 20
-        timeoutSeconds: 3
-        failureThreshold: 5
-        successThreshold: 1
-
-      readinessProbe:
-        httpGet:
-          path: /readyz
-          port: 9000
-          scheme: HTTP
-        initialDelaySeconds: 30
-        periodSeconds: 20
-        timeoutSeconds: 3
-        failureThreshold: 5
-        successThreshold: 1
-
-      env:
-        API_PATH_PREFIX: /api/cost-management
-        DEVELOPMENT: "False"
-        ENHANCED_ORG_ADMIN: "True"
-        GUNICORN_LOG_LEVEL: INFO
-        KOKU_LOG_LEVEL: INFO
-        DJANGO_LOG_LEVEL: INFO
-        DJANGO_LOG_FORMATTER: simple
-        DJANGO_LOG_HANDLERS: console
-        PROMETHEUS_MULTIPROC_DIR: /tmp
-        KOKU_ENABLE_SENTRY: "False"
-        GUNICORN_WORKERS: "1"
-        GUNICORN_THREADS: "4"
+    env:
+      API_PATH_PREFIX: /api/cost-management
+      DEVELOPMENT: "False"
+      GUNICORN_LOG_LEVEL: INFO
+      KOKU_LOG_LEVEL: INFO
+      DJANGO_LOG_LEVEL: INFO
+      DJANGO_LOG_FORMATTER: simple
+      DJANGO_LOG_HANDLERS: console
+      PROMETHEUS_MULTIPROC_DIR: /tmp
+      KOKU_ENABLE_SENTRY: "False"
+      CACHED_VIEWS_DISABLED: "False"
+      RETAIN_NUM_MONTHS: "3"
+      NOTIFICATION_CHECK_TIME: "24"
+      ENHANCED_ORG_ADMIN: "True"
+      RBAC_CACHE_TIMEOUT: "300"
+      CACHE_TIMEOUT: "3600"
+      TAG_ENABLED_LIMIT: "200"
+      USE_READREPLICA: "False"
+      GUNICORN_WORKERS: "2"
+      GUNICORN_THREADS: "4"
 
     service:
       type: ClusterIP

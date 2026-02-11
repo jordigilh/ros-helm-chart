@@ -112,12 +112,11 @@ OCP-on-Cloud:
 
 | Component | Replicas | CPU Request | Memory Request | CPU Limit | Memory Limit |
 |-----------|----------|-------------|----------------|-----------|--------------|
-| koku-api-reads | 1-2 | 250m | 512Mi | 500m | 1Gi |
-| koku-api-writes | 1 | 250m | 512Mi | 500m | 1Gi |
+| koku-api | 1-2 | 250m | 512Mi | 500m | 1Gi |
 | koku-api-masu | 1 | 50m | 500Mi | 100m | 700Mi |
 | listener | 1 | 150m | 300Mi | 300m | 600Mi |
 
-**Subtotal (Core)**: 4-5 pods, **700m CPU**, **1.8 Gi memory**
+**Subtotal (Core)**: 3-4 pods, **450-700m CPU**, **1.3-1.8 Gi memory**
 
 ### Celery Resources by Scenario
 
@@ -153,8 +152,8 @@ OCP-on-Cloud:
 
 | Scenario | Celery Workers | Koku Core | Total Pods | CPU Request | Memory Request |
 |----------|----------------|-----------|------------|-------------|----------------|
-| **OCP-Only** | 12 | 4-5 | 16-17 | **~1.85 cores** | **~5.7 Gi** |
-| **OCP on Cloud** | 21 | 4-5 | 25-26 | **~3.15 cores** | **~9.1 Gi** |
+| **OCP-Only** | 12 | 3-4 | 15-16 | **~1.6 cores** | **~5.2 Gi** |
+| **OCP on Cloud** | 21 | 3-4 | 24-25 | **~2.9 cores** | **~8.6 Gi** |
 
 > **Note**: "OCP on Cloud" covers AWS, Azure, GCP, or any combination. Workers are provider-agnostic.
 
@@ -180,8 +179,8 @@ ROS components remain constant regardless of deployment scenario:
 
 | Scenario | Koku Pods | ROS Pods | Total Pods | CPU Request | Memory Request |
 |----------|-----------|----------|------------|-------------|----------------|
-| **OCP-Only** | 16-17 | 5-6 | **21-23** | **~3.0 cores** | **~9 Gi** |
-| **OCP on Cloud** | 25-26 | 5-6 | **30-32** | **~4.3 cores** | **~12.3 Gi** |
+| **OCP-Only** | 15-16 | 5-6 | **20-22** | **~2.7 cores** | **~8.5 Gi** |
+| **OCP on Cloud** | 24-25 | 5-6 | **29-31** | **~4.0 cores** | **~12 Gi** |
 
 > **Note**: These totals exclude infrastructure (PostgreSQL, Kafka, Valkey) which adds ~5 Gi memory and ~2 cores.
 

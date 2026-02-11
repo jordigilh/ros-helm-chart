@@ -14,7 +14,7 @@ from typing import Any, Dict, Generator, Optional
 
 import pytest
 
-from e2e_helpers import get_koku_api_reads_url, get_koku_api_writes_url, get_source_type_id
+from e2e_helpers import get_koku_api_url, get_source_type_id
 from utils import (
     create_identity_header_custom,
     create_rh_identity_header,
@@ -24,15 +24,9 @@ from utils import (
 
 
 @pytest.fixture(scope="module")
-def koku_api_writes_url(cluster_config) -> str:
-    """Get Koku API writes URL for operations that modify state (POST, PUT, DELETE)."""
-    return get_koku_api_writes_url(cluster_config.helm_release_name, cluster_config.namespace)
-
-
-@pytest.fixture(scope="module")
-def koku_api_reads_url(cluster_config) -> str:
-    """Get Koku API reads URL for read-only operations (GET)."""
-    return get_koku_api_reads_url(cluster_config.helm_release_name, cluster_config.namespace)
+def koku_api_url(cluster_config) -> str:
+    """Get Koku API URL for all operations (unified deployment)."""
+    return get_koku_api_url(cluster_config.helm_release_name, cluster_config.namespace)
 
 
 @pytest.fixture(scope="module")
@@ -99,8 +93,7 @@ def invalid_identity_headers(org_id: str) -> Dict[str, str]:
 def test_source(
     cluster_config: Any,
     ingress_pod: str,
-    koku_api_reads_url: str,
-    koku_api_writes_url: str,
+    koku_api_url: str,
     rh_identity_header: str,
     org_id: str,
 ) -> Generator[Dict[str, Any], None, None]:
@@ -118,7 +111,7 @@ def test_source(
         source_type_id = get_source_type_id(
             cluster_config.namespace,
             ingress_pod,
-            koku_api_reads_url,
+            koku_api_url,
             rh_identity_header,
             container="ingress",
         )
@@ -150,7 +143,7 @@ def test_source(
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n%{http_code}", "-X", "POST",
-                f"{koku_api_writes_url}/sources",
+                f"{koku_api_url}/sources",
                 "-H", "Content-Type: application/json",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
                 "-d", source_payload,
@@ -203,7 +196,7 @@ def test_source(
         ingress_pod,
         [
             "curl", "-s", "-w", "\n%{http_code}", "-X", "DELETE",
-            f"{koku_api_writes_url}/sources/{source_id}",
+            f"{koku_api_url}/sources/{source_id}",
             "-H", f"X-Rh-Identity: {rh_identity_header}",
         ],
         container="ingress",

@@ -88,7 +88,7 @@ The script deploys a unified chart containing all components:
 - Valkey (caching and Celery broker)
 
 **Applications:**
-- Koku API (reads, writes, masu, listener)
+- Koku API (unified, masu, listener)
 - Celery Workers (background processing)
 - ROS components (API, processor, housekeeper)
 - Sources API

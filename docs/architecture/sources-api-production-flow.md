@@ -166,7 +166,7 @@ The ros-ocp-backend housekeeper no longer queries sources-api-go for application
 
 **Check Koku API logs:**
 ```bash
-oc logs -n cost-onprem -l app.kubernetes.io/component=cost-management-api-writes --tail=50
+oc logs -n cost-onprem -l app.kubernetes.io/component=cost-management-api --tail=50
 ```
 
 **Check Koku listener logs:**

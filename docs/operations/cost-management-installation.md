@@ -45,8 +45,7 @@
 
 | Component | Pods | CPU Request | CPU Limit | Memory Request | Memory Limit |
 |-----------|------|-------------|-----------|----------------|--------------|
-| **Koku API Reads** | 2 | 300m each | 600m each | 500Mi each | 1Gi each |
-| **Koku API Writes** | 1 | 300m | 600m | 500Mi | 1Gi |
+| **Koku API** | 1-2 | 300m each | 600m each | 500Mi each | 1Gi each |
 | **Koku API Listener** | 1 | 200m | 400m | 256Mi | 512Mi |
 | **MASU** | 1 | 300m | 600m | 500Mi | 1Gi |
 | **Celery Beat** | 1 | 100m | 200m | 256Mi | 512Mi |
@@ -64,7 +63,7 @@
 | **Total Memory Limit** | **~28 GB** | **64+ GB** |
 | **Storage (ODF)** | **150 GB** | **300+ GB** |
 
-**Note:** Production deployments should scale Koku API reads and Celery workers based on data volume.
+**Note:** Production deployments should scale Koku API and Celery workers based on data volume.
 
 ### Required OpenShift Components
 
@@ -303,8 +302,7 @@ USE_LOCAL_CHART=true ./install-helm-chart.sh
 **Expected Pods:**
 - `cost-onprem-database-0` (StatefulSet, Ready 1/1) - PostgreSQL
 - `cost-onprem-valkey-*` (Deployment, Ready 1/1) - Cache/Broker
-- `cost-onprem-koku-api-reads-*` (Deployment)
-- `cost-onprem-koku-api-writes-*` (Deployment)
+- `cost-onprem-koku-api-*` (Deployment)
 - `cost-onprem-koku-listener-*` (Deployment)
 - `cost-onprem-koku-masu-*` (Deployment)
 - `cost-onprem-celery-*` (Multiple Deployments)
@@ -316,7 +314,7 @@ USE_LOCAL_CHART=true ./install-helm-chart.sh
 oc exec -n $NAMESPACE cost-onprem-database-0 -- psql -U koku -d costonprem_koku -c "SELECT version();"
 
 # Check Koku API health
-oc exec -n $NAMESPACE $(oc get pod -n $NAMESPACE -l app.kubernetes.io/component=cost-management-api-reads -o name | head -1) \
+oc exec -n $NAMESPACE $(oc get pod -n $NAMESPACE -l app.kubernetes.io/component=cost-management-api -o name | head -1) \
   -- python manage.py showmigrations --database=default
 
 # Check Kafka listener
@@ -337,8 +335,7 @@ oc get pods -n $NAMESPACE
 NAME                                            READY   STATUS    RESTARTS   AGE
 cost-onprem-database-0                          1/1     Running   0          5m
 cost-onprem-valkey-*                            1/1     Running   0          5m
-cost-onprem-koku-api-reads-*                    1/1     Running   0          3m
-cost-onprem-koku-api-writes-*                   1/1     Running   0          3m
+cost-onprem-koku-api-*                          1/1     Running   0          3m
 cost-onprem-koku-api-listener-*                 1/1     Running   0          3m
 cost-onprem-koku-api-masu-*                     1/1     Running   0          3m
 cost-onprem-celery-*                            1/1     Running   0          3m

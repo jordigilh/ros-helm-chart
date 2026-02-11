@@ -49,15 +49,14 @@ class TestKokuSourcesHealth:
     @pytest.mark.smoke
     def test_koku_api_pod_ready(self, cluster_config):
         """Verify Koku API pod is ready (serves sources endpoints)."""
-        # Koku API has separate read/write pods - check the writes pod for sources
         assert check_pod_ready(
             cluster_config.namespace,
-            "app.kubernetes.io/component=cost-management-api-writes"
-        ), "Koku API (writes) pod is not ready"
+            "app.kubernetes.io/component=cost-management-api"
+        ), "Koku API pod is not ready"
 
     @pytest.mark.smoke
     def test_koku_sources_endpoint_responds(
-        self, cluster_config, koku_api_reads_url: str, ingress_pod: str, rh_identity_header: str
+        self, cluster_config, koku_api_url: str, ingress_pod: str, rh_identity_header: str
     ):
         """Verify Koku sources endpoint responds to requests."""
         result = exec_in_pod(
@@ -65,7 +64,7 @@ class TestKokuSourcesHealth:
             ingress_pod,
             [
                 "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-                f"{koku_api_reads_url}/sources/",
+                f"{koku_api_url}/sources/",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
             container="ingress",
@@ -81,7 +80,7 @@ class TestSourceTypes:
     """Tests for source type configuration in Koku."""
 
     def test_all_cloud_source_types_exist(
-        self, cluster_config, koku_api_reads_url: str, ingress_pod: str, rh_identity_header: str
+        self, cluster_config, koku_api_url: str, ingress_pod: str, rh_identity_header: str
     ):
         """Verify all expected cloud source types are configured."""
         result = exec_in_pod(
@@ -89,7 +88,7 @@ class TestSourceTypes:
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n%{http_code}",
-                f"{koku_api_reads_url}/source_types",
+                f"{koku_api_url}/source_types",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
             container="ingress",
@@ -112,7 +111,7 @@ class TestApplicationTypes:
     """Tests for application type configuration in Koku."""
 
     def test_cost_management_application_type_exists(
-        self, cluster_config, koku_api_reads_url: str, ingress_pod: str, rh_identity_header: str
+        self, cluster_config, koku_api_url: str, ingress_pod: str, rh_identity_header: str
     ):
         """Verify cost-management application type is configured."""
         result = exec_in_pod(
@@ -120,7 +119,7 @@ class TestApplicationTypes:
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n%{http_code}",
-                f"{koku_api_reads_url}/application_types",
+                f"{koku_api_url}/application_types",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
             container="ingress",
@@ -145,7 +144,7 @@ class TestApplicationsEndpoint:
     """Tests for the applications endpoint."""
 
     def test_applications_list_returns_valid_response(
-        self, cluster_config, koku_api_reads_url: str, ingress_pod: str, rh_identity_header: str
+        self, cluster_config, koku_api_url: str, ingress_pod: str, rh_identity_header: str
     ):
         """Verify applications endpoint returns valid paginated response."""
         result = exec_in_pod(
@@ -153,7 +152,7 @@ class TestApplicationsEndpoint:
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n%{http_code}",
-                f"{koku_api_reads_url}/applications",
+                f"{koku_api_url}/applications",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
             container="ingress",
@@ -181,7 +180,7 @@ class TestAuthenticationErrors:
     """Tests for authentication error handling in Sources API."""
 
     def test_malformed_base64_header_returns_403(
-        self, cluster_config, koku_api_reads_url: str, ingress_pod: str, invalid_identity_headers
+        self, cluster_config, koku_api_url: str, ingress_pod: str, invalid_identity_headers
     ):
         """Verify malformed base64 in X-Rh-Identity returns 403 Forbidden."""
         result = exec_in_pod(
@@ -189,7 +188,7 @@ class TestAuthenticationErrors:
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n%{http_code}",
-                f"{koku_api_reads_url}/sources/",
+                f"{koku_api_url}/sources/",
                 "-H", f"X-Rh-Identity: {invalid_identity_headers['malformed_base64']}",
             ],
             container="ingress",
@@ -199,7 +198,7 @@ class TestAuthenticationErrors:
         assert status == "403", f"Expected 403, got {status}: {body}"
 
     def test_invalid_json_in_header_returns_401(
-        self, cluster_config, koku_api_reads_url: str, ingress_pod: str, invalid_identity_headers
+        self, cluster_config, koku_api_url: str, ingress_pod: str, invalid_identity_headers
     ):
         """Verify invalid JSON in decoded X-Rh-Identity returns an error."""
         result = exec_in_pod(
@@ -207,7 +206,7 @@ class TestAuthenticationErrors:
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n%{http_code}",
-                f"{koku_api_reads_url}/sources/",
+                f"{koku_api_url}/sources/",
                 "-H", f"X-Rh-Identity: {invalid_identity_headers['invalid_json']}",
             ],
             container="ingress",
@@ -217,7 +216,7 @@ class TestAuthenticationErrors:
         assert status == "401", f"Expected 401, got {status}: {body}"
 
     def test_missing_identity_header_returns_401(
-        self, cluster_config, koku_api_reads_url: str, ingress_pod: str
+        self, cluster_config, koku_api_url: str, ingress_pod: str
     ):
         """Verify missing X-Rh-Identity header returns 401 Unauthorized."""
         result = exec_in_pod(
@@ -225,7 +224,7 @@ class TestAuthenticationErrors:
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n%{http_code}",
-                f"{koku_api_reads_url}/sources/",
+                f"{koku_api_url}/sources/",
             ],
             container="ingress",
         )
@@ -234,7 +233,7 @@ class TestAuthenticationErrors:
         assert status == "401", f"Expected 401, got {status}: {body}"
 
     def test_missing_entitlements_returns_403(
-        self, cluster_config, koku_api_reads_url: str, ingress_pod: str, invalid_identity_headers
+        self, cluster_config, koku_api_url: str, ingress_pod: str, invalid_identity_headers
     ):
         """Verify request with missing cost_management entitlement returns 403 Forbidden."""
         result = exec_in_pod(
@@ -242,7 +241,7 @@ class TestAuthenticationErrors:
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n%{http_code}",
-                f"{koku_api_reads_url}/sources/",
+                f"{koku_api_url}/sources/",
                 "-H", f"X-Rh-Identity: {invalid_identity_headers['no_entitlements']}",
             ],
             container="ingress",
@@ -252,7 +251,7 @@ class TestAuthenticationErrors:
         assert status == "403", f"Expected 403, got {status}: {body}"
 
     def test_non_admin_source_creation_returns_424(
-        self, cluster_config, koku_api_writes_url: str, ingress_pod: str, invalid_identity_headers
+        self, cluster_config, koku_api_url: str, ingress_pod: str, invalid_identity_headers
     ):
         """Verify non-admin source creation fails when RBAC is unavailable.
 
@@ -271,7 +270,7 @@ class TestAuthenticationErrors:
             [
                 "curl", "-s", "-w", "\n%{http_code}",
                 "-X", "POST",
-                f"{koku_api_writes_url}/sources/",
+                f"{koku_api_url}/sources/",
                 "-H", "Content-Type: application/json",
                 "-H", f"X-Rh-Identity: {invalid_identity_headers['non_admin']}",
                 "-d", source_payload,
@@ -283,7 +282,7 @@ class TestAuthenticationErrors:
         assert status == "424", f"Expected 424, got {status}: {body}"
 
     def test_missing_email_in_identity_returns_401(
-        self, cluster_config, koku_api_reads_url: str, ingress_pod: str, invalid_identity_headers
+        self, cluster_config, koku_api_url: str, ingress_pod: str, invalid_identity_headers
     ):
         """Verify missing email in identity header returns 401 Unauthorized.
 
@@ -295,7 +294,7 @@ class TestAuthenticationErrors:
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n%{http_code}",
-                f"{koku_api_reads_url}/sources/",
+                f"{koku_api_url}/sources/",
                 "-H", f"X-Rh-Identity: {invalid_identity_headers['no_email']}",
             ],
             container="ingress",
@@ -316,7 +315,7 @@ class TestConflictHandling:
     """Tests for conflict detection and error handling."""
 
     def test_duplicate_cluster_id_returns_400(
-        self, cluster_config, koku_api_writes_url: str, ingress_pod: str,
+        self, cluster_config, koku_api_url: str, ingress_pod: str,
         rh_identity_header: str, test_source
     ):
         """Verify duplicate source_ref (cluster_id) returns 400 Bad Request."""
@@ -333,7 +332,7 @@ class TestConflictHandling:
             [
                 "curl", "-s", "-w", "\n%{http_code}",
                 "-X", "POST",
-                f"{koku_api_writes_url}/sources",
+                f"{koku_api_url}/sources",
                 "-H", "Content-Type: application/json",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
                 "-d", source_payload,
@@ -345,7 +344,7 @@ class TestConflictHandling:
         assert status == "400", f"Expected 400, got {status}: {body}"
 
     def test_invalid_source_type_id_returns_400(
-        self, cluster_config, koku_api_writes_url: str, ingress_pod: str, rh_identity_header: str
+        self, cluster_config, koku_api_url: str, ingress_pod: str, rh_identity_header: str
     ):
         """Verify invalid source_type_id returns 400 Bad Request.
 
@@ -364,7 +363,7 @@ class TestConflictHandling:
             [
                 "curl", "-s", "-w", "\n%{http_code}",
                 "-X", "POST",
-                f"{koku_api_writes_url}/sources/",
+                f"{koku_api_url}/sources/",
                 "-H", "Content-Type: application/json",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
                 "-d", source_payload,
@@ -376,7 +375,7 @@ class TestConflictHandling:
         assert status == "400", f"Expected 400, got {status}: {body}"
 
     def test_duplicate_source_name(
-        self, cluster_config, koku_api_writes_url: str, ingress_pod: str,
+        self, cluster_config, koku_api_url: str, ingress_pod: str,
         rh_identity_header: str, test_source
     ):
         """Verify duplicate source names are allowed.
@@ -395,7 +394,7 @@ class TestConflictHandling:
             [
                 "curl", "-s", "-w", "\n%{http_code}",
                 "-X", "POST",
-                f"{koku_api_writes_url}/sources",
+                f"{koku_api_url}/sources",
                 "-H", "Content-Type: application/json",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
                 "-d", source_payload,
@@ -414,7 +413,7 @@ class TestConflictHandling:
                 ingress_pod,
                 [
                     "curl", "-s", "-X", "DELETE",
-                    f"{koku_api_writes_url}/sources/{data['id']}",
+                    f"{koku_api_url}/sources/{data['id']}",
                     "-H", f"X-Rh-Identity: {rh_identity_header}",
                 ],
                 container="ingress",
@@ -432,8 +431,8 @@ class TestDeleteEdgeCases:
     """Tests for edge cases in source deletion."""
 
     def test_get_deleted_source_returns_404(
-        self, cluster_config, koku_api_writes_url: str, koku_api_reads_url: str,
-        ingress_pod: str, rh_identity_header: str, test_source
+        self, cluster_config, koku_api_url: str, ingress_pod: str,
+        rh_identity_header: str, test_source
     ):
         """Verify that after deletion, GET returns 404."""
         source_id = test_source["source_id"]
@@ -444,7 +443,7 @@ class TestDeleteEdgeCases:
             ingress_pod,
             [
                 "curl", "-s", "-X", "DELETE",
-                f"{koku_api_writes_url}/sources/{source_id}",
+                f"{koku_api_url}/sources/{source_id}",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
             container="ingress",
@@ -456,7 +455,7 @@ class TestDeleteEdgeCases:
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n%{http_code}",
-                f"{koku_api_reads_url}/sources/{source_id}",
+                f"{koku_api_url}/sources/{source_id}",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
             container="ingress",
@@ -477,7 +476,7 @@ class TestSourcesFiltering:
     """Tests for filtering capabilities in sources list endpoints."""
 
     def test_filter_sources_by_name(
-        self, cluster_config, koku_api_reads_url: str, ingress_pod: str,
+        self, cluster_config, koku_api_url: str, ingress_pod: str,
         rh_identity_header: str, test_source
     ):
         """Verify sources can be filtered by name."""
@@ -486,7 +485,7 @@ class TestSourcesFiltering:
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n%{http_code}",
-                f"{koku_api_reads_url}/sources/?name={test_source['source_name']}",
+                f"{koku_api_url}/sources/?name={test_source['source_name']}",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
             container="ingress",
@@ -503,7 +502,7 @@ class TestSourcesFiltering:
         assert test_source["source_name"] in names, f"Source not found in filtered results: {names}"
 
     def test_filter_sources_by_source_type_id(
-        self, cluster_config, koku_api_reads_url: str, ingress_pod: str,
+        self, cluster_config, koku_api_url: str, ingress_pod: str,
         rh_identity_header: str, test_source
     ):
         """Verify sources can be filtered by source_type_id."""
@@ -512,7 +511,7 @@ class TestSourcesFiltering:
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n%{http_code}",
-                f"{koku_api_reads_url}/sources/?source_type_id={test_source['source_type_id']}",
+                f"{koku_api_url}/sources/?source_type_id={test_source['source_type_id']}",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
             container="ingress",
@@ -530,7 +529,7 @@ class TestSourcesFiltering:
                 f"Source type mismatch: {source}"
 
     def test_filter_source_types_by_name(
-        self, cluster_config, koku_api_reads_url: str, ingress_pod: str, rh_identity_header: str
+        self, cluster_config, koku_api_url: str, ingress_pod: str, rh_identity_header: str
     ):
         """Verify source_types can be filtered by name."""
         result = exec_in_pod(
@@ -538,7 +537,7 @@ class TestSourcesFiltering:
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n%{http_code}",
-                f"{koku_api_reads_url}/source_types?name=openshift",
+                f"{koku_api_url}/source_types?name=openshift",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
             container="ingress",

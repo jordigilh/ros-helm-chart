@@ -425,8 +425,7 @@ class TestCompleteDataFlow:
         org_id: str,
         e2e_cluster_id: str,
         s3_config,
-        koku_api_reads_url: str,
-        koku_api_writes_url: str,
+        koku_api_url: str,
         ingress_pod: str,
         rh_identity_header: str,
     ):
@@ -482,7 +481,7 @@ class TestCompleteDataFlow:
             ingress_pod,
             [
                 "curl", "-s", "-w", "\n__HTTP_CODE__:%{http_code}",
-                f"{koku_api_reads_url}/source_types",
+                f"{koku_api_url}/source_types",
                 "-H", "Content-Type: application/json",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
@@ -492,7 +491,7 @@ class TestCompleteDataFlow:
         if not result:
             pytest.fail(
                 f"Could not get source types - exec_in_pod returned None. "
-                f"ingress_pod={ingress_pod}, url={koku_api_reads_url}/source_types"
+                f"ingress_pod={ingress_pod}, url={koku_api_url}/source_types"
             )
         
         # Parse response and status code
@@ -524,7 +523,7 @@ class TestCompleteDataFlow:
             cluster_config.namespace,
             ingress_pod,
             [
-                "curl", "-s", f"{koku_api_reads_url}/application_types",
+                "curl", "-s", f"{koku_api_url}/application_types",
                 "-H", "Content-Type: application/json",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
@@ -547,7 +546,7 @@ class TestCompleteDataFlow:
             cluster_config.namespace,
             ingress_pod,
             [
-                "curl", "-s", f"{koku_api_reads_url}/sources",
+                "curl", "-s", f"{koku_api_url}/sources",
                 "-H", "Content-Type: application/json",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
@@ -568,7 +567,7 @@ class TestCompleteDataFlow:
                             ingress_pod,
                             [
                                 "curl", "-s", "-X", "DELETE",
-                                f"{koku_api_writes_url}/sources/{existing_id}",
+                                f"{koku_api_url}/sources/{existing_id}",
                                 "-H", f"X-Rh-Identity: {rh_identity_header}",
                             ],
                             container="ingress",
@@ -609,7 +608,7 @@ class TestCompleteDataFlow:
                 ingress_pod,
                 [
                     "curl", "-s", "-w", "\n__HTTP_CODE__:%{http_code}", "-X", "POST",
-                    f"{koku_api_writes_url}/sources",
+                    f"{koku_api_url}/sources",
                     "-H", "Content-Type: application/json",
                     "-H", f"X-Rh-Identity: {rh_identity_header}",
                     "-d", payload,
@@ -662,7 +661,7 @@ class TestCompleteDataFlow:
                 ingress_pod,
                 [
                     "curl", "-s", "-w", "\nHTTP_CODE:%{http_code}",
-                    f"{koku_api_reads_url}/sources",
+                    f"{koku_api_url}/sources",
                     "-H", "Content-Type: application/json",
                     "-H", f"X-Rh-Identity: {rh_identity_header}",
                 ],
@@ -671,7 +670,7 @@ class TestCompleteDataFlow:
             pytest.fail(
                 f"Source creation failed after {max_retries} attempts. "
                 f"Last error: {last_error}. "
-                f"ingress_pod={ingress_pod}, url={koku_api_writes_url}/sources, "
+                f"ingress_pod={ingress_pod}, url={koku_api_url}/sources, "
                 f"Debug info: {error_result}"
             )
         
@@ -687,7 +686,7 @@ class TestCompleteDataFlow:
                 ingress_pod,
                 [
                     "curl", "-s", "-X", "POST",
-                    f"{koku_api_writes_url}/applications",
+                    f"{koku_api_url}/applications",
                     "-H", "Content-Type: application/json",
                     "-H", f"X-Rh-Identity: {rh_identity_header}",
                     "-d", app_payload,
@@ -701,8 +700,7 @@ class TestCompleteDataFlow:
             "cluster_id": e2e_cluster_id,
             "org_id": org_id,
             "ingress_pod": ingress_pod,
-            "koku_api_reads_url": koku_api_reads_url,
-            "koku_api_writes_url": koku_api_writes_url,
+            "koku_api_url": koku_api_url,
             "rh_identity_header": rh_identity_header,
             "db_pod": db_pod,
             "s3_config_dict": s3_config_dict,
@@ -721,7 +719,7 @@ class TestCompleteDataFlow:
                 ingress_pod,
                 [
                     "curl", "-s", "-X", "DELETE",
-                    f"{koku_api_writes_url}/sources/{source_id}",
+                    f"{koku_api_url}/sources/{source_id}",
                     "-H", f"X-Rh-Identity: {rh_identity_header}",
                 ],
                 container="ingress",
