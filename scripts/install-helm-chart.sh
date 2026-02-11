@@ -663,7 +663,15 @@ create_s3_buckets() {
                         },
                         "runAsNonRoot": true,
                         "runAsUser": 1001
-                    }
+                    },
+                    "volumeMounts": [{
+                        "name": "mc-config",
+                        "mountPath": "/.mc"
+                    }]
+                }],
+                "volumes": [{
+                    "name": "mc-config",
+                    "emptyDir": {}
                 }]
             }
         }' \
