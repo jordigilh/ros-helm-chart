@@ -86,6 +86,17 @@ echo_success() { log_success "$1"; }
 echo_warning() { log_warning "$1"; }
 echo_error() { log_error "$1"; }
 
+# Parse MinIO endpoint: strips protocol and port from FQDN
+# Usage: parse_minio_host "http://minio.ns.svc.cluster.local:80" => "minio.ns.svc.cluster.local"
+parse_minio_host() {
+    echo "$1" | sed -E 's|^https?://||; s|:[0-9]+/?$||; s|/$||'
+}
+
+# Extract namespace from FQDN: "minio.ns.svc.cluster.local" => "ns"
+parse_minio_namespace() {
+    parse_minio_host "$1" | cut -d. -f2
+}
+
 # Function to check if a command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -432,10 +443,9 @@ create_storage_credentials_secret() {
     # PRIORITY: If MINIO_ENDPOINT is set, use MinIO credentials (for testing/dev)
     if [ -n "$MINIO_ENDPOINT" ]; then
         echo_info "MINIO_ENDPOINT detected: Using MinIO credentials..."
-        # Extract MinIO namespace from the FQDN (e.g., minio.my-ns.svc.cluster.local → my-ns)
         local minio_host minio_ns
-        minio_host=$(echo "$MINIO_ENDPOINT" | sed -E 's|^https?://||; s|:[0-9]+/?$||; s|/$||')
-        minio_ns=$(echo "$minio_host" | cut -d. -f2)
+        minio_host=$(parse_minio_host "$MINIO_ENDPOINT")
+        minio_ns=$(parse_minio_namespace "$MINIO_ENDPOINT")
 
         # Try the MinIO namespace first, then the chart namespace
         for ns in "$minio_ns" "$NAMESPACE"; do
@@ -582,9 +592,8 @@ create_s3_buckets() {
 
     # PRIORITY: If MINIO_ENDPOINT is set, use MinIO (for testing/dev)
     if [ -n "$MINIO_ENDPOINT" ]; then
-        # Extract hostname from MINIO_ENDPOINT
         local minio_host
-        minio_host=$(echo "$MINIO_ENDPOINT" | sed -E 's|^https?://||; s|:[0-9]+/?$||; s|/$||')
+        minio_host=$(parse_minio_host "$MINIO_ENDPOINT")
         s3_url="http://${minio_host}:80"
         mc_insecure=""
         echo_info "  ✓ Using MinIO: $s3_url"
@@ -595,27 +604,34 @@ create_s3_buckets() {
         mc_insecure="--insecure"
         echo_info "  ✓ Detected: ODF (NooBaa S3)"
     else
-        # Detect ODF storage backend (fallback for backward compatibility)
-        echo_info "Detecting ODF storage backend..."
-
-        if kubectl get crd noobaas.noobaa.io >/dev/null 2>&1 && \
-           kubectl get noobaa -n openshift-storage >/dev/null 2>&1; then
-            # ODF NooBaa detected
-            s3_url="https://s3.openshift-storage.svc:443"
-            mc_insecure="--insecure"
-            echo_info "  ✓ Detected: ODF (NooBaa S3)"
-        else
-            echo_error "Could not detect ODF storage backend"
-            echo_error "Checked for:"
-            echo_error "  - ODF NooBaa CRD in openshift-storage namespace"
-            echo_error ""
-            echo_error "Solutions:"
-            echo_error "  1. Deploy ODF: Ensure OpenShift Data Foundation is properly deployed"
-            echo_error "  2. Manual override: Set S3_ENDPOINT environment variable (e.g., export S3_ENDPOINT=s3.test.example.com)"
-            echo_error "  3. Skip setup: Set SKIP_S3_SETUP=true for CI environments"
-            exit 1
-        fi
+        echo_error "Could not detect ODF storage backend"
+        echo_error "Checked for:"
+        echo_error "  - ODF NooBaa CRD in openshift-storage namespace"
+        echo_error ""
+        echo_error "Solutions:"
+        echo_error "  1. Deploy ODF: Ensure OpenShift Data Foundation is properly deployed"
+        echo_error "  2. Manual override: Set MINIO_ENDPOINT environment variable"
+        echo_error "  3. Skip setup: Set SKIP_S3_SETUP=true for CI environments"
+        exit 1
     fi
+
+    # Read bucket names from values.yaml (single source of truth)
+    local chart_dir="${CHART_DIR:-${SCRIPT_DIR}/../cost-onprem}"
+    local values_file="${chart_dir}/values.yaml"
+    local ingress_bucket koku_bucket ros_bucket bucket_list
+    if [ -f "$values_file" ] && command_exists yq; then
+        ingress_bucket=$(yq '.ingress.storage.bucket' "$values_file")
+        koku_bucket=$(yq '.costManagement.storage.bucketName' "$values_file")
+        ros_bucket=$(yq '.costManagement.storage.rosBucketName' "$values_file")
+        echo_info "Bucket names from values.yaml: $ingress_bucket $koku_bucket $ros_bucket"
+    else
+        # Fallback to defaults if values.yaml or yq not available (e.g., GitHub release install)
+        ingress_bucket="insights-upload-perma"
+        koku_bucket="koku-bucket"
+        ros_bucket="ros-data"
+        echo_info "Using default bucket names (values.yaml or yq not available)"
+    fi
+    bucket_list="$ingress_bucket $koku_bucket $ros_bucket"
 
     echo_info "Creating buckets at ${s3_url}..."
 
@@ -656,7 +672,7 @@ create_s3_buckets() {
             curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /tmp/mc && chmod +x /tmp/mc
             export PATH=/tmp:\$PATH
             mc alias set s3 ${s3_url} '${access_key}' '${secret_key}' ${mc_insecure}
-            for bucket in insights-upload-perma koku-bucket ros-data; do
+            for bucket in ${bucket_list}; do
                 if mc ls s3/\${bucket} ${mc_insecure} >/dev/null 2>&1; then
                     echo \"ℹ️  Bucket \${bucket} already exists\"
                 else
@@ -820,9 +836,9 @@ deploy_helm_chart() {
         helm_cmd="$helm_cmd --set odf.endpoint=\"$EXTERNAL_OBC_ENDPOINT\""
         helm_cmd="$helm_cmd --set odf.port=\"$EXTERNAL_OBC_PORT\""
         helm_cmd="$helm_cmd --set odf.useExternalOBC=true"
-        helm_cmd="$helm_cmd --set odf.bucket=\"$EXTERNAL_OBC_BUCKET_NAME\""  # For ingress INGRESS_STAGEBUCKET
+        helm_cmd="$helm_cmd --set ingress.storage.bucket=\"$EXTERNAL_OBC_BUCKET_NAME\""
 
-        # Set bucket names for Koku and ROS (via dynamic helpers in _helpers-koku.tpl)
+        # Set bucket names for Koku and ROS (via standardized helpers in _helpers.tpl)
         helm_cmd="$helm_cmd --set costManagement.storage.bucketName=\"$EXTERNAL_OBC_BUCKET_NAME\""
         helm_cmd="$helm_cmd --set costManagement.storage.rosBucketName=\"$EXTERNAL_OBC_BUCKET_NAME\""
 
@@ -833,15 +849,13 @@ deploy_helm_chart() {
         echo_info "  Endpoint: https://$EXTERNAL_OBC_ENDPOINT:$EXTERNAL_OBC_PORT"
         echo_info "  Bucket: $EXTERNAL_OBC_BUCKET_NAME"
         echo_info "  Bucket configured for ingress, Koku, and ROS components"
-        echo_info "  Bucket creation job will be skipped"
     fi
 
     # Add MinIO S3 configuration if specified (for testing/dev with MinIO in OCP)
     # This sets the generic odf.* values that chart templates actually read.
     if [ -n "$MINIO_ENDPOINT" ]; then
-        # Extract hostname from MINIO_ENDPOINT (strip protocol and port)
         local minio_host
-        minio_host=$(echo "$MINIO_ENDPOINT" | sed -E 's|^https?://||; s|:[0-9]+/?$||; s|/$||')
+        minio_host=$(parse_minio_host "$MINIO_ENDPOINT")
 
         echo_info "Configuring S3 endpoint for MinIO (dev/test)"
         helm_cmd="$helm_cmd --set odf.endpoint=\"${minio_host}\""
