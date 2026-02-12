@@ -539,12 +539,22 @@ http://{{ $endpoint }}:{{ $port }}
 Storage bucket name (staging bucket for ingress uploads)
 */}}
 {{- define "cost-onprem.storage.bucket" -}}
-{{- if .Values.odf -}}
-{{- .Values.odf.bucket -}}
-{{- else -}}
-insights-upload-perma
-{{- end -}}
+{{- .Values.ingress.storage.bucket | default "insights-upload-perma" -}}
 {{- end }}
+
+{{/*
+Koku cost data bucket name
+*/}}
+{{- define "cost-onprem.storage.kokuBucket" -}}
+{{- required "costManagement.storage.bucketName is required" .Values.costManagement.storage.bucketName -}}
+{{- end -}}
+
+{{/*
+ROS (Resource Optimization Service) data bucket name
+*/}}
+{{- define "cost-onprem.storage.rosBucket" -}}
+{{- .Values.costManagement.storage.rosBucketName | default "ros-data" -}}
+{{- end -}}
 
 {{/*
 Storage use SSL flag

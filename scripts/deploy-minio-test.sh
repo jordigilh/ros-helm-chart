@@ -31,9 +31,30 @@ echo_error() {
 
 # Configuration
 NAMESPACE=${1:-"minio-test"}
+ACTION=${2:-"deploy"}
 MINIO_VERSION=${MINIO_VERSION:-"RELEASE.2025-07-23T15-54-02Z"}
 STORAGE_CLASS=${STORAGE_CLASS:-""}  # Empty = use default
 STORAGE_SIZE=${STORAGE_SIZE:-"10Gi"}
+
+# Handle cleanup subcommand
+if [ "$ACTION" = "cleanup" ]; then
+    echo ""
+    echo "════════════════════════════════════════════════════════════"
+    echo "  Cleanup MinIO Resources"
+    echo "════════════════════════════════════════════════════════════"
+    echo ""
+    echo "Namespace: $NAMESPACE"
+    echo ""
+    echo_info "Removing MinIO resources from namespace: $NAMESPACE"
+    kubectl delete deployment minio -n "$NAMESPACE" --ignore-not-found
+    kubectl delete svc minio -n "$NAMESPACE" --ignore-not-found
+    kubectl delete svc minio-console -n "$NAMESPACE" --ignore-not-found
+    kubectl delete pvc minio-pvc -n "$NAMESPACE" --ignore-not-found
+    kubectl delete secret minio-credentials -n "$NAMESPACE" --ignore-not-found
+    kubectl delete route minio-console -n "$NAMESPACE" --ignore-not-found 2>/dev/null || true
+    echo_success "MinIO cleanup complete in namespace: $NAMESPACE"
+    exit 0
+fi
 
 echo ""
 echo "════════════════════════════════════════════════════════════"

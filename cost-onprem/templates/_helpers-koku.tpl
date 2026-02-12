@@ -160,12 +160,6 @@ Uses configurable value from .Values.costManagement.kafka.port
 {{- end -}}
 
 {{/*
-MinIO ROS bucket name
-*/}}
-{{- define "cost-onprem.koku.s3.rosBucket" -}}
-{{- .Values.costManagement.storage.rosBucketName | default "ros-data" -}}
-{{- end -}}
-{{/*
 =============================================================================
 Secret Names
 =============================================================================
@@ -336,13 +330,9 @@ Common environment variables for Koku API and Celery
 - name: S3_ENDPOINT
   value: {{ include "cost-onprem.storage.endpointWithProtocol" . | quote }}
 - name: REQUESTED_BUCKET
-  {{- if and .Values.odf .Values.odf.useExternalOBC }}
-  value: {{ .Values.odf.bucket | default "ros-data" | quote }}
-  {{- else }}
-  value: {{ required "costManagement.storage.bucketName is required" .Values.costManagement.storage.bucketName | quote }}
-  {{- end }}
+  value: {{ include "cost-onprem.storage.kokuBucket" . | quote }}
 - name: REQUESTED_ROS_BUCKET
-  value: {{ include "cost-onprem.koku.s3.rosBucket" . | quote }}
+  value: {{ include "cost-onprem.storage.rosBucket" . | quote }}
 - name: AWS_CA_BUNDLE
   value: /etc/pki/ca-trust/combined/ca-bundle.crt
 - name: REQUESTS_CA_BUNDLE

@@ -67,7 +67,7 @@ The install script detects `MINIO_ENDPOINT` and automatically:
 - Locates the `minio-credentials` secret (by parsing the namespace from the FQDN)
 - Creates the `cost-onprem-storage-credentials` secret used by the chart
 - Passes `odf.endpoint`, `odf.port=80`, `odf.useSSL=false` to Helm
-- Creates the S3 buckets (`insights-upload-perma`, `koku-bucket`, `ros-data`)
+- Creates the S3 buckets (names read from `values.yaml`: `insights-upload-perma`, `koku-bucket`, `ros-data`)
 
 ### 3. Verify the deployment
 
@@ -104,8 +104,18 @@ These values flow into the chart's template helpers:
 
 - **Ingress**: `INGRESS_MINIOENDPOINT` gets the hostname
 - **Koku/MASU**: `S3_ENDPOINT` gets `http://minio.cost-onprem.svc.cluster.local`
-- **Bucket job**: Uses `http://endpoint:port` to connect with `mc`
 - **Init containers**: TCP check against `endpoint:port`
+
+Bucket names are defined in `values.yaml` and referenced via standardized helpers:
+
+| Helm Value | Default | Used By |
+|------------|---------|---------|
+| `ingress.storage.bucket` | `insights-upload-perma` | Ingress (`INGRESS_STAGEBUCKET`) |
+| `costManagement.storage.bucketName` | `koku-bucket` | Koku (`REQUESTED_BUCKET`) |
+| `costManagement.storage.rosBucketName` | `ros-data` | Koku (`REQUESTED_ROS_BUCKET`) |
+
+The install script reads these bucket names from `values.yaml` and creates them
+before Helm runs.
 
 ## Troubleshooting
 
@@ -150,13 +160,10 @@ MINIO_ENDPOINT=http://minio.cost-onprem.svc.cluster.local ./scripts/install-helm
 ## Cleanup
 
 ```bash
-# Remove MinIO
-kubectl delete deployment minio -n cost-onprem
-kubectl delete svc minio -n cost-onprem
-kubectl delete pvc minio-pvc -n cost-onprem
-kubectl delete secret minio-credentials -n cost-onprem
+# Remove MinIO resources from the chart namespace
+./scripts/deploy-minio-test.sh cost-onprem cleanup
 
-# Or if deployed to a separate namespace
+# Or if deployed to a separate namespace, delete the whole namespace
 kubectl delete namespace minio-test
 ```
 
