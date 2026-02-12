@@ -47,7 +47,7 @@ spec:
               value: "false"
             # Point to Koku API for sources endpoints (application_types, etc.)
             - name: SOURCES_API_BASE_URL
-              value: "http://{{ include "cost-onprem.koku.api.reads.name" . }}:{{ .Values.costManagement.api.service.port }}"
+              value: "http://{{ include "cost-onprem.koku.api.name" . }}:{{ .Values.costManagement.api.service.port }}"
             - name: SOURCES_API_PREFIX
               value: "/api/cost-management/v1"
             - name: KRUIZE_HOST

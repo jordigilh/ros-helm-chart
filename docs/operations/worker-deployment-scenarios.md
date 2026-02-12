@@ -112,38 +112,37 @@ OCP-on-Cloud:
 
 | Component | Replicas | CPU Request | Memory Request | CPU Limit | Memory Limit |
 |-----------|----------|-------------|----------------|-----------|--------------|
-| koku-api-reads | 1-2 | 250m | 512Mi | 500m | 1Gi |
-| koku-api-writes | 1 | 250m | 512Mi | 500m | 1Gi |
-| koku-api-masu | 1 | 50m | 500Mi | 100m | 700Mi |
+| koku-api | 1 | 250m | 1Gi | 1 | 2Gi |
+| koku-masu | 1 | 250m | 1Gi | 500m | 2Gi |
 | listener | 1 | 150m | 300Mi | 300m | 600Mi |
 
-**Subtotal (Core)**: 4-5 pods, **700m CPU**, **1.8 Gi memory**
+**Subtotal (Core)**: 3 pods, **650m CPU**, **2.3 Gi memory**
 
 ### Celery Resources by Scenario
 
-#### OCP-Only (Minimal)
+#### OCP-Only (Default)
+
+Penalty and XL worker variants have been removed for on-premise deployments (FLPATH-3209).
 
 | Component | Count | CPU Request | Memory Request |
 |-----------|-------|-------------|----------------|
 | celery-beat | 1 | 50m | 200Mi |
-| ocp workers (3) | 3 | 300m | 768Mi |
-| summary workers (3) | 3 | 300m | 1.5Gi |
-| cost-model workers (3) | 3 | 300m | 768Mi |
-| default | 1 | 100m | 256Mi |
-| priority | 1 | 100m | 400Mi |
-| **Subtotal** | **12** | **1.15 cores** | **~3.9 Gi** |
+| ocp | 1 | 250m | 512Mi |
+| summary | 1 | 250m | 1Gi |
+| cost-model | 1 | 100m | 256Mi |
+| default | 1 | 100m | 200Mi |
+| priority | 1 | 250m | 1Gi |
+| **Subtotal** | **6** | **1.0 cores** | **~3.2 Gi** |
 
 #### OCP on Cloud (Any combination of AWS/Azure/GCP)
 
 | Component | Count | CPU Request | Memory Request |
 |-----------|-------|-------------|----------------|
-| *OCP-Only workers* | 12 | 1.15 cores | 3.9 Gi |
-| download workers (3) | 3 | 600m | 1.5Gi |
-| refresh workers (3) | 3 | 300m | 768Mi |
+| *OCP-Only workers* | 6 | 1.0 cores | 3.2 Gi |
+| download | 1 | 200m | 512Mi |
+| refresh | 1 | 100m | 256Mi |
 | hcs | 1 | 100m | 300Mi |
-| priority-penalty | 1 | 150m | 400Mi |
-| priority-xl | 1 | 150m | 400Mi |
-| **Subtotal** | **21** | **~2.45 cores** | **~7.3 Gi** |
+| **Subtotal** | **9** | **~1.4 cores** | **~4.3 Gi** |
 
 > **Note**: Workers are provider-agnostic. "OCP on AWS only", "OCP on Azure only", "OCP on GCP only", and "OCP on all three" all have the **same resource requirements**.
 
@@ -153,8 +152,8 @@ OCP-on-Cloud:
 
 | Scenario | Celery Workers | Koku Core | Total Pods | CPU Request | Memory Request |
 |----------|----------------|-----------|------------|-------------|----------------|
-| **OCP-Only** | 12 | 4-5 | 16-17 | **~1.85 cores** | **~5.7 Gi** |
-| **OCP on Cloud** | 21 | 4-5 | 25-26 | **~3.15 cores** | **~9.1 Gi** |
+| **OCP-Only** | 6 | 3 | 9 | **~1.65 cores** | **~5.5 Gi** |
+| **OCP on Cloud** | 9 | 3 | 12 | **~2.05 cores** | **~6.6 Gi** |
 
 > **Note**: "OCP on Cloud" covers AWS, Azure, GCP, or any combination. Workers are provider-agnostic.
 
@@ -166,13 +165,13 @@ ROS components remain constant regardless of deployment scenario:
 
 | Component | Replicas | CPU Request | Memory Request | CPU Limit | Memory Limit |
 |-----------|----------|-------------|----------------|-----------|--------------|
-| ros-api | 1 | 300m | 640Mi | 1000m | 1.25Gi |
-| ros-processor | 1 | 200m | 512Mi | 500m | 1Gi |
-| ros-housekeeper | 1 | 200m | 512Mi | 500m | 1Gi |
-| ros-rec-poller | 1 | 200m | 512Mi | 500m | 1Gi |
-| kruize | 1-2 | 200m | 1Gi | 1000m | 2Gi |
+| ros-api | 1 | 500m | 1Gi | 1 | 1Gi |
+| ros-processor | 1 | 500m | 1Gi | 1 | 1Gi |
+| ros-housekeeper | 1 | 500m | 1Gi | 1 | 1Gi |
+| ros-rec-poller | 1 | 500m | 1Gi | 1 | 1Gi |
+| kruize | 1 | 500m | 1Gi | 1 | 2Gi |
 
-**ROS Subtotal**: 5-6 pods, **~1.1 cores**, **~3.2 Gi**
+**ROS Subtotal**: 5 pods, **2.5 cores**, **5 Gi**
 
 ---
 
@@ -180,17 +179,21 @@ ROS components remain constant regardless of deployment scenario:
 
 | Scenario | Koku Pods | ROS Pods | Total Pods | CPU Request | Memory Request |
 |----------|-----------|----------|------------|-------------|----------------|
-| **OCP-Only** | 16-17 | 5-6 | **21-23** | **~3.0 cores** | **~9 Gi** |
-| **OCP on Cloud** | 25-26 | 5-6 | **30-32** | **~4.3 cores** | **~12.3 Gi** |
+| **OCP-Only** | 9 | 5 | **14** | **~4.15 cores** | **~10.5 Gi** |
+| **OCP on Cloud** | 12 | 5 | **17** | **~4.55 cores** | **~11.6 Gi** |
 
-> **Note**: These totals exclude infrastructure (PostgreSQL, Kafka, Valkey) which adds ~5 Gi memory and ~2 cores.
+> **Note**: These totals exclude infrastructure (PostgreSQL, Valkey) and support services (gateway, ingress, UI).
 
-### With Infrastructure
+### With Infrastructure and Support Services
 
-| Scenario | Application | Infrastructure | **Grand Total** |
-|----------|-------------|----------------|-----------------|
-| **OCP-Only** | ~3.0 cores / ~9 Gi | ~2 cores / ~5 Gi | **~5 cores / ~14 Gi** |
-| **OCP on Cloud** | ~4.3 cores / ~12 Gi | ~2 cores / ~5 Gi | **~6.3 cores / ~17 Gi** |
+Infrastructure (PostgreSQL, Valkey) and support services (gateway, ingress, UI) add ~1.0 cores CPU and ~1.9 Gi memory.
+
+| Scenario | Koku + ROS | Infra + Support | **Grand Total** |
+|----------|------------|-----------------|-----------------|
+| **OCP-Only** | ~4.15 cores / ~10.5 Gi | ~1.0 cores / ~1.9 Gi | **~5.2 cores / ~12.4 Gi** |
+| **OCP on Cloud** | ~4.55 cores / ~11.6 Gi | ~1.0 cores / ~1.9 Gi | **~5.6 cores / ~13.5 Gi** |
+
+> **Note**: These totals exclude Kafka (Strimzi), which adds ~3.2 cores / ~7 Gi if deployed alongside.
 
 ---
 
@@ -203,27 +206,15 @@ celery:
   workers:
     # ===== CORE OCP PROCESSING (Required) =====
     ocp: { replicas: 1 }
-    ocpPenalty: { replicas: 1 }
-    ocpXl: { replicas: 1 }
     summary: { replicas: 1 }
-    summaryPenalty: { replicas: 1 }
-    summaryXl: { replicas: 1 }
     costModel: { replicas: 1 }
-    costModelPenalty: { replicas: 1 }
-    costModelXl: { replicas: 1 }
     default: { replicas: 1 }
     priority: { replicas: 1 }
 
     # ===== CLOUD-SPECIFIC (Disabled for OCP-Only) =====
     download: { replicas: 0 }
-    downloadPenalty: { replicas: 0 }
-    downloadXl: { replicas: 0 }
     refresh: { replicas: 0 }
-    refreshPenalty: { replicas: 0 }
-    refreshXl: { replicas: 0 }
     hcs: { replicas: 0 }
-    priorityPenalty: { replicas: 0 }
-    priorityXl: { replicas: 0 }
     subsExtraction: { replicas: 0 }
     subsTransmission: { replicas: 0 }
 ```
@@ -235,32 +226,22 @@ celery:
   workers:
     # ===== CORE OCP PROCESSING (Required) =====
     ocp: { replicas: 1 }
-    ocpPenalty: { replicas: 1 }
-    ocpXl: { replicas: 1 }
     summary: { replicas: 1 }
-    summaryPenalty: { replicas: 1 }
-    summaryXl: { replicas: 1 }
     costModel: { replicas: 1 }
-    costModelPenalty: { replicas: 1 }
-    costModelXl: { replicas: 1 }
     default: { replicas: 1 }
     priority: { replicas: 1 }
-    priorityPenalty: { replicas: 1 }
-    priorityXl: { replicas: 1 }
 
     # ===== CLOUD-SPECIFIC (Enable for any cloud integration) =====
     download: { replicas: 1 }      # Pull reports from S3/Blob
-    downloadPenalty: { replicas: 1 }
-    downloadXl: { replicas: 1 }
     refresh: { replicas: 1 }       # OCP-on-cloud correlation
-    refreshPenalty: { replicas: 1 }
-    refreshXl: { replicas: 1 }
     hcs: { replicas: 1 }           # Hybrid Committed Spend
 
     # ===== ALWAYS DISABLED =====
     subsExtraction: { replicas: 0 }
     subsTransmission: { replicas: 0 }
 ```
+
+> **Note**: Penalty and XL worker variants have been removed for on-premise deployments (FLPATH-3209). Each queue now uses a single worker replica.
 
 ---
 
@@ -270,8 +251,8 @@ celery:
 
 ```
 Q: Do you need cloud provider cost data (AWS, Azure, GCP)?
-├── NO  → OCP-Only deployment (~3 cores, ~9 Gi)
-└── YES → OCP on Cloud deployment (~4.3 cores, ~12 Gi)
+├── NO  → OCP-Only deployment (~5.2 cores, ~12.4 Gi)
+└── YES → OCP on Cloud deployment (~5.6 cores, ~13.5 Gi)
           (Same resources whether using 1 cloud or all 3)
 ```
 
@@ -279,11 +260,12 @@ Q: Do you need cloud provider cost data (AWS, Azure, GCP)?
 
 1. **Only two resource profiles**: OCP-Only vs OCP on Cloud
 2. **Workers are provider-agnostic**: Same workers handle AWS, Azure, and GCP
-3. **OCP-Only saves**: ~10 worker pods, ~1.3 cores CPU, ~3 Gi memory
+3. **OCP-Only saves**: ~3 worker pods, ~0.4 cores CPU, ~1.1 Gi memory
 4. **Download workers**: Only needed for cloud provider data (PULL model)
 5. **Refresh workers**: Only needed for OCP-on-cloud correlation
 6. **HCS**: Only supports AWS, Azure, GCP (not standalone OCP)
 7. **SUBS workers**: Generally disabled (cloud RHEL subscription tracking)
+8. **Penalty/XL variants removed**: On-premise uses single replicas per queue (FLPATH-3209)
 
 ---
 

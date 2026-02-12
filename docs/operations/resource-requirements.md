@@ -1,6 +1,6 @@
 # Cost Management On-Premise Resource Requirements
 
-> **For ros-helm-chart team**: This document details the CPU, memory, and infrastructure requirements for deploying the complete Cost Management stack. Please add this to `docs/resource-requirements.md` and reference it from the README.md.
+> Resource requirements for deploying the complete Cost Management stack via the cost-onprem Helm chart.
 
 ---
 
@@ -8,12 +8,12 @@
 
 | Resource | Minimum (Requests) | Recommended | Maximum (Limits) |
 |----------|-------------------|-------------|------------------|
-| **CPU** | 9.4 cores | 11-13 cores | 16 cores |
-| **Memory** | 21 Gi | 28-36 Gi | 48 Gi |
+| **CPU** | ~8.5 cores | 10-12 cores | ~15 cores |
+| **Memory** | ~19 Gi | 24-32 Gi | ~27 Gi |
 | **Worker Nodes** | 3 nodes @ 8 Gi each | 3 nodes @ 12-16 Gi each | - |
-| **Total Pods** | ~42 | - | - |
+| **Total Pods** | ~27 | - | - |
 
-> **Note**: Default deployment excludes 9 cloud-only Celery workers (gated on `cloudProviderSupported`). With cloud providers enabled, add ~0.9 cores and ~2.8 Gi memory (see Celery section).
+> **Note**: Default deployment excludes 5 cloud-only Celery workers (gated on `cloudProviderSupported`). With cloud providers enabled, add ~0.6 cores and ~1.9 Gi memory (see Celery section).
 
 ---
 
@@ -24,7 +24,7 @@ The Cost Management stack consists of the cost-onprem Helm chart plus infrastruc
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         cost-onprem                             │
-│  Koku APIs, Celery Workers, ROS, Kruize, Gateway, UI, Ingress   │
+│  Koku API, Celery Workers, ROS, Kruize, Gateway, UI, Ingress   │
 │  PostgreSQL, Valkey                                             │
 └─────────────────────────────────────────────────────────────────┘
                               +
@@ -42,71 +42,60 @@ The Cost Management stack consists of the cost-onprem Helm chart plus infrastruc
 
 | Component | Replicas | CPU Request | CPU Limit | Memory Request | Memory Limit |
 |-----------|----------|-------------|-----------|----------------|--------------|
-| koku-api-reads | 2 | 300m | 600m | 500 Mi | 1 Gi |
-| koku-api-writes | 1 | 300m | 600m | 500 Mi | 1 Gi |
-| koku-api-masu | 2 | 300m | 1000m | 1 Gi | 8 Gi |
-| koku-api-listener | 2 | 200m | 500m | 512 Mi | 1 Gi |
+| koku-api | 1 | 250m | 1000m | 1 Gi | 2 Gi |
+| koku-masu | 1 | 250m | 500m | 1 Gi | 2 Gi |
+| koku-listener | 1 | 150m | 300m | 300 Mi | 600 Mi |
 
-**Subtotal**: 7 pods, **1.9 cores** request, **4.5 Gi** memory request
+**Subtotal**: 3 pods, **650m** CPU request, **~2.3 Gi** memory request
 
-> ⚠️ **Critical**: The `koku-api-masu` pods run database migrations on startup. If these pods cannot be scheduled, all Celery workers will be stuck waiting for migrations.
+> The unified `koku-api` deployment serves both read and write API traffic with 2 Gunicorn workers. MASU runs database migrations on startup; if it cannot be scheduled, Celery workers will be stuck waiting.
 
 ---
 
 ### 2. Celery Workers (Background Processing)
 
-By default the chart deploys **15 Celery pods** (OCP/supported queues only). Nine cloud-only workers are **gated** on `cost-onprem.koku.cloudProviderSupported` (hard-coded `false` until cloud support is enabled, FLPATH-3098) and are not deployed unless that helper is set to `true`.
+The chart deploys **6 Celery pods** by default (beat scheduler + 5 queue workers). Penalty and XL worker variants have been removed for on-premise deployments to reduce resource footprint (FLPATH-3209). Five cloud-only workers are **gated** on `cloudProviderSupported` (hard-coded `false`) and are not deployed unless enabled.
 
-#### Deployed by default (15 workers)
+#### Deployed by default (6 pods)
 
 | Worker Type | Replicas | CPU Request | CPU Limit | Memory Request | Memory Limit | Purpose |
 |-------------|----------|-------------|-----------|----------------|--------------|---------|
-| celery-beat | 1 | 100m | 200m | 512 Mi | 1 Gi | Task scheduler |
+| celery-beat | 1 | 50m | 100m | 200 Mi | 400 Mi | Task scheduler |
 | cost-model | 1 | 100m | 200m | 256 Mi | 512 Mi | Cost model calculations |
-| cost-model-penalty | 1 | 100m | 200m | 256 Mi | 512 Mi | Penalty queue overflow |
-| cost-model-xl | 1 | 100m | 200m | 256 Mi | 512 Mi | Large cost model jobs |
-| ocp | 1 | 100m | 200m | 256 Mi | 512 Mi | OpenShift processing |
-| ocp-penalty | 1 | 100m | 200m | 256 Mi | 512 Mi | Penalty queue overflow |
-| ocp-xl | 1 | 100m | 200m | 256 Mi | 512 Mi | Large OCP jobs |
-| summary | 1 | 100m | 200m | 200 Mi | 400 Mi | Data summarization |
-| summary-penalty | 1 | 100m | 200m | 200 Mi | 400 Mi | Penalty queue overflow |
-| summary-xl | 1 | 100m | 200m | 200 Mi | 400 Mi | Large summaries |
-| priority | 1 | 100m | 200m | 200 Mi | 400 Mi | High-priority tasks |
-| priority-penalty | 1 | 100m | 200m | 200 Mi | 400 Mi | Penalty queue overflow |
-| priority-xl | 1 | 100m | 200m | 200 Mi | 400 Mi | Large priority jobs |
+| ocp | 1 | 250m | 500m | 512 Mi | 1 Gi | OpenShift data processing |
+| summary | 1 | 250m | 500m | 1 Gi | 2 Gi | Data summarization |
+| priority | 1 | 250m | 500m | 1 Gi | 2 Gi | High-priority tasks |
 | default | 1 | 100m | 200m | 200 Mi | 400 Mi | Default queue |
 
-**Subtotal (default)**: 15 pods, **1.5 cores** request, **~3.7 Gi** memory request
+**Subtotal (default)**: 6 pods, **1.0 cores** request, **~3.2 Gi** memory request
 
-#### Cloud-only workers (gated; 9 workers, not deployed by default)
+#### Cloud-only workers (gated; 5 workers, not deployed by default)
 
 | Worker Type | Replicas | CPU Request | CPU Limit | Memory Request | Memory Limit | Purpose |
 |-------------|----------|-------------|-----------|----------------|--------------|---------|
-| download | 1 | 100m | 200m | 512 Mi | 1 Gi | Report downloads |
-| download-penalty | 1 | 100m | 200m | 512 Mi | 1 Gi | Penalty queue overflow |
-| download-xl | 1 | 100m | 200m | 512 Mi | 1 Gi | Large downloads |
-| refresh | 1 | 100m | 200m | 200 Mi | 400 Mi | Data refresh |
-| refresh-penalty | 1 | 100m | 200m | 200 Mi | 400 Mi | Penalty queue overflow |
-| refresh-xl | 1 | 100m | 200m | 200 Mi | 400 Mi | Large refresh jobs |
-| hcs | 1 | 100m | 200m | 200 Mi | 400 Mi | HCS processing |
-| subs-extraction | 1 | 100m | 200m | 256 Mi | 512 Mi | Subscription extraction |
-| subs-transmission | 1 | 100m | 200m | 256 Mi | 512 Mi | Subscription transmission |
+| download | 1 | 200m | 400m | 512 Mi | 1 Gi | Report downloads (cloud PULL model) |
+| refresh | 1 | 100m | 200m | 256 Mi | 512 Mi | Cloud data refresh |
+| hcs | 1 | 100m | 200m | 300 Mi | 500 Mi | Hybrid Committed Spend |
+| subs-extraction | 0 | 100m | 200m | 300 Mi | 500 Mi | Subscription extraction (disabled in SaaS) |
+| subs-transmission | 0 | 100m | 200m | 300 Mi | 500 Mi | Subscription transmission (disabled in SaaS) |
 
-**When cloud providers enabled**: +9 pods, **+0.9 cores** request, **+~2.8 Gi** memory request (24 Celery pods total, ~2.4 cores, ~6.5 Gi).
+**When cloud providers enabled**: +3 active pods (download, refresh, hcs), **+0.4 cores** request, **+~1.1 Gi** memory request.
 
 ---
 
 ### 3. Resource Optimization Service (ROS)
 
+ROS components use the shared `resources.application` defaults from values.yaml unless overridden.
+
 | Component | Replicas | CPU Request | CPU Limit | Memory Request | Memory Limit |
 |-----------|----------|-------------|-----------|----------------|--------------|
-| ros-api | 1 | 300m | 1000m | 640 Mi | 1.25 Gi |
-| ros-processor | 1 | 200m | 500m | 512 Mi | 1 Gi |
-| ros-housekeeper | 1 | 200m | 500m | 512 Mi | 1 Gi |
-| ros-rec-poller | 1 | 200m | 500m | 512 Mi | 1 Gi |
-| kruize | 2 | 200m | 1000m | 1 Gi | 2 Gi |
+| ros-api | 1 | 500m | 1000m | 1 Gi | 1 Gi |
+| ros-processor | 1 | 500m | 1000m | 1 Gi | 1 Gi |
+| ros-housekeeper | 1 | 500m | 1000m | 1 Gi | 1 Gi |
+| ros-rec-poller | 1 | 500m | 1000m | 1 Gi | 1 Gi |
+| kruize | 1 | 500m | 1000m | 1 Gi | 2 Gi |
 
-**Subtotal**: 6 pods, **1.3 cores** request, **~4.2 Gi** memory request
+**Subtotal**: 5 pods, **2.5 cores** request, **5 Gi** memory request
 
 ---
 
@@ -114,11 +103,10 @@ By default the chart deploys **15 Celery pods** (OCP/supported queues only). Nin
 
 | Component | Replicas | CPU Request | CPU Limit | Memory Request | Memory Limit |
 |-----------|----------|-------------|-----------|----------------|--------------|
-| **PostgreSQL (main)** | 1 | 500m | 2000m | 1 Gi | 4 Gi |
-| cost-onprem-database | 1 | 100m | 500m | 256 Mi | 512 Mi |
-| Valkey | 1 | 200m | 500m | 512 Mi | 1 Gi |
+| PostgreSQL (database) | 1 | 100m | 500m | 256 Mi | 512 Mi |
+| Valkey (cache) | 1 | 100m | 500m | 256 Mi | 512 Mi |
 
-**Subtotal**: 3 pods, **800m** request, **~1.8 Gi** memory request
+**Subtotal**: 2 pods, **200m** request, **512 Mi** memory request
 
 ---
 
@@ -127,12 +115,12 @@ By default the chart deploys **15 Celery pods** (OCP/supported queues only). Nin
 | Component | Replicas | CPU Request | CPU Limit | Memory Request | Memory Limit |
 |-----------|----------|-------------|-----------|----------------|--------------|
 | gateway (Envoy) | 2 | 100m | 500m | 128 Mi | 256 Mi |
-| ingress | 1 | 300m | 1000m | 640 Mi | 1.25 Gi |
-| ui | 1 | 100m | 200m | 128 Mi | 256 Mi |
+| ingress | 1 | 500m | 1000m | 1 Gi | 1 Gi |
+| ui (app + OAuth proxy) | 1 | 100m | 200m | 128 Mi | 256 Mi |
 
-**Subtotal**: 4 pods, **600m** request, **~1.0 Gi** memory request
+**Subtotal**: 4 pods, **800m** request, **~1.4 Gi** memory request
 
-> **Note**: Sources API functionality is embedded within the Koku API deployments and is not a separate deployment.
+> **Note**: Sources API functionality is embedded within the unified Koku API deployment and is not a separate service.
 
 ---
 
@@ -148,7 +136,7 @@ Kafka pods typically don't have explicit resource requests set by default. Based
 
 **Subtotal**: 7 pods, **~3.2 cores** recommended request, **~7 Gi** memory
 
-> 💡 **Note**: Configure Strimzi Kafka CR with explicit resource requests for production deployments.
+> Configure Strimzi Kafka CR with explicit resource requests for production deployments.
 
 ---
 
@@ -158,25 +146,25 @@ Kafka pods typically don't have explicit resource requests set by default. Based
 
 | Category | Pods | CPU Request | Memory Request |
 |----------|------|-------------|----------------|
-| Koku Core Services | 7 | 1.9 cores | 4.5 Gi |
-| Celery Workers (default) | 15 | 1.5 cores | 3.7 Gi |
-| ROS Services | 6 | 1.3 cores | 4.2 Gi |
-| Infrastructure | 3 | 0.8 cores | 1.8 Gi |
-| Supporting Services | 4 | 0.6 cores | 1.0 Gi |
+| Koku Core Services | 3 | 0.65 cores | 2.3 Gi |
+| Celery Workers (default) | 6 | 1.0 cores | 3.2 Gi |
+| ROS Services | 5 | 2.5 cores | 5.0 Gi |
+| Infrastructure | 2 | 0.2 cores | 0.5 Gi |
+| Supporting Services | 4 | 0.8 cores | 1.4 Gi |
 | Kafka (recommended) | 7 | 3.2 cores | 7.0 Gi |
-| **TOTAL (default)** | **42** | **~9.3 cores** | **~22 Gi** |
+| **TOTAL (default)** | **27** | **~8.4 cores** | **~19.4 Gi** |
 
-With cloud providers enabled (9 additional Celery workers): **51** pods, **~10.2 cores**, **~25 Gi**.
+With cloud providers enabled (3 additional Celery workers): **30** pods, **~8.8 cores**, **~20.5 Gi**.
 
 ### Grand Total
 
 | Metric | Default (OCP-only) | With cloud workers |
 |--------|--------------------|--------------------|
-| **Total Pods** | 41-42 | 50-51 |
-| **CPU Requests** | ~9-10 cores | ~10-11 cores |
-| **CPU Limits** | ~14-15 cores | ~15-16 cores |
-| **Memory Requests** | ~21-23 Gi | ~24-26 Gi |
-| **Memory Limits** | ~42-47 Gi | ~45-50 Gi |
+| **Total Pods** | 27 | 30 |
+| **CPU Requests** | ~8.4 cores | ~8.8 cores |
+| **CPU Limits** | ~15 cores | ~15.8 cores |
+| **Memory Requests** | ~19.4 Gi | ~20.5 Gi |
+| **Memory Limits** | ~26.5 Gi | ~28.5 Gi |
 
 ---
 
@@ -210,12 +198,11 @@ For resource-constrained environments, you can reduce the deployment footprint:
 
 | Change | CPU Saved | Memory Saved | Trade-off |
 |--------|-----------|--------------|-----------|
-| Remove penalty workers (8 pods) | 800m | ~2 Gi | Slower recovery from failures |
-| Remove XL workers (8 pods) | 800m | ~2 Gi | Large jobs may timeout |
-| Single replica API pods | 600m | 1.5 Gi | No HA for API layer |
-| Skip Kruize replica | 200m | 1 Gi | No HA for recommendations |
+| Single gateway replica | 100m | 128 Mi | No HA for gateway layer |
+| Single replica API pods | 250m | 1 Gi | No HA for API layer |
+| Skip Kruize (disables ROS) | 500m | 1 Gi | No resource optimization recommendations |
 
-**Minimal Deployment Total**: ~6.5 cores, ~15 Gi memory
+**Minimal Deployment Total**: ~7 cores, ~17 Gi memory
 
 ---
 
@@ -223,12 +210,13 @@ For resource-constrained environments, you can reduce the deployment footprint:
 
 | Component | Storage Class | Size | Notes |
 |-----------|---------------|------|-------|
-| PostgreSQL | Block (RWO) | 50 Gi | Main application database |
+| PostgreSQL | Block (RWO) | 30 Gi | Main application database |
 | ODF/MinIO | Object Storage | 150+ Gi | Cost report storage |
-| Kafka | Block (RWO) | 50 Gi × 3 | Message persistence |
-| ZooKeeper | Block (RWO) | 10 Gi × 3 | Coordination state |
+| Kafka | Block (RWO) | 50 Gi x 3 | Message persistence |
+| ZooKeeper | Block (RWO) | 10 Gi x 3 | Coordination state |
+| Valkey | Block (RWO) | 5 Gi | Cache persistence |
 
-**Total Persistent Storage**: ~280-380 Gi
+**Total Persistent Storage**: ~265-365 Gi
 
 ---
 
@@ -247,15 +235,14 @@ kubectl describe nodes | grep -A5 "Allocated resources"
 
 **Solutions**:
 1. Add more worker nodes
-2. Reduce worker replicas (disable penalty/XL workers)
-3. Lower memory requests in values.yaml
+2. Lower memory requests in values.yaml
 
 ### MASU Pods Pending = Workers Stuck
 
-The `koku-api-masu` pods run database migrations. If they can't schedule:
+The `koku-masu` pod runs database migrations. If it can't schedule:
 
 ```
-MASU pending → Migrations don't run → All workers stuck in migration-wait loop
+MASU pending -> Migrations don't run -> All workers stuck in migration-wait loop
 ```
 
 **Priority**: Always ensure MASU pods can be scheduled first.
@@ -286,31 +273,32 @@ Example `values.yaml` overrides for resource-constrained environments:
 
 ```yaml
 # Reduce Celery worker memory
-celery:
-  workers:
-    default:
-      resources:
-        requests:
-          memory: "150Mi"
-          cpu: "50m"
-        limits:
-          memory: "300Mi"
-          cpu: "150m"
+costManagement:
+  celery:
+    workers:
+      default:
+        resources:
+          requests:
+            memory: "150Mi"
+            cpu: "50m"
+          limits:
+            memory: "300Mi"
+            cpu: "150m"
 
-# Reduce API replicas
-koku:
+  # Reduce API resources
   api:
-    reads:
-      replicas: 1
-    writes:
-      replicas: 1
+    replicas: 1
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
 ```
 
 ---
 
-## ⚠️ SaaS vs On-Prem Resource Alignment
+## SaaS vs On-Prem Resource Alignment
 
-> **IMPORTANT**: The On-Prem Helm chart resource values MUST match the Clowder SaaS configuration to ensure consistent behavior and proper resource allocation.
+> **IMPORTANT**: The On-Prem Helm chart resource values are aligned with the Clowder SaaS configuration to ensure consistent behavior.
 
 ### Source of Truth
 
@@ -318,386 +306,83 @@ The authoritative resource configuration is defined in the Koku repository:
 - **Location**: `deploy/kustomize/patches/*.yaml`
 - **Format**: Clowder ClowdApp kustomize patches
 
-### Comparison: Current On-Prem vs Required SaaS Values
+### Comparison: Current On-Prem vs SaaS Values
 
 #### Koku Core Services
 
-| Component | SaaS CPU Req | SaaS Mem Req | SaaS CPU Lim | SaaS Mem Lim | Replicas |
-|-----------|--------------|--------------|--------------|--------------|----------|
-| **koku-api-reads** | 250m | 512Mi | 500m | 1Gi | 3 |
-| **koku-api-writes** | 250m | 512Mi | 500m | 1Gi | 3 |
-| **koku-api-masu** | 50m | 500Mi | 100m | 700Mi | 1 |
-| **listener** | 150m | 300Mi | 300m | 600Mi | 2 |
-| **nginx** | 100m | 100Mi | 200m | 200Mi | 3 |
-| **scheduler (celery-beat)** | 50m | 200Mi | 100m | 400Mi | 1 |
+| Component | SaaS CPU Req | SaaS Mem Req | On-Prem CPU Req | On-Prem Mem Req | On-Prem Replicas |
+|-----------|--------------|--------------|-----------------|-----------------|------------------|
+| **koku-api** | 250m | 512Mi | 250m | 1Gi | 1 |
+| **koku-masu** | 50m | 500Mi | 250m | 1Gi | 1 |
+| **listener** | 150m | 300Mi | 150m | 300Mi | 1 |
+| **scheduler (celery-beat)** | 50m | 200Mi | 50m | 200Mi | 1 |
 
-#### Celery Workers
+#### Celery Workers (deployed by default)
 
-| Worker | SaaS CPU Req | SaaS Mem Req | SaaS CPU Lim | SaaS Mem Lim | Replicas |
-|--------|--------------|--------------|--------------|--------------|----------|
-| **worker-ocp** | 100m | 256Mi | 200m | 512Mi | 2 |
-| **worker-ocp-penalty** | 100m | 256Mi | 200m | 512Mi | 2 |
-| **worker-ocp-xl** | 100m | 256Mi | 200m | 512Mi | 2 |
-| **worker-cost-model** | 100m | 256Mi | 200m | 512Mi | 2 |
-| **worker-cost-model-penalty** | 100m | 256Mi | 200m | 512Mi | 2 |
-| **worker-cost-model-xl** | 100m | 256Mi | 200m | 512Mi | 2 |
-| **worker-download** | 200m | 512Mi | 400m | 1Gi | 1-10 (HPA) |
-| **worker-download-penalty** | 200m | 512Mi | 400m | 1Gi | 1-10 (HPA) |
-| **worker-download-xl** | 200m | 512Mi | 400m | 1Gi | 1-10 (HPA) |
-| **worker-summary** | 100m | 500Mi | 200m | 750Mi | 1-10 (HPA) |
-| **worker-summary-penalty** | 100m | 500Mi | 200m | 750Mi | 1-10 (HPA) |
-| **worker-summary-xl** | 100m | 500Mi | 200m | 750Mi | 1-10 (HPA) |
-| **worker-priority** | 100m | 400Mi | 200m | 750Mi | 2 |
-| **worker-priority-penalty** | 150m | 400Mi | 300m | 750Mi | 2 |
-| **worker-priority-xl** | 150m | 400Mi | 300m | 750Mi | 2 |
-| **worker-refresh** | 100m | 256Mi | 200m | 512Mi | 2 |
-| **worker-refresh-penalty** | 100m | 256Mi | 200m | 512Mi | 2 |
-| **worker-refresh-xl** | 100m | 256Mi | 200m | 512Mi | 2 |
-| **worker-celery (default)** | 100m | 256Mi | 200m | 512Mi | 1 |
-| **worker-hcs** | 100m | 300Mi | 200m | 500Mi | 1 |
-| **worker-subs-extraction** | 100m | 300Mi | 200m | 500Mi | 0 (disabled) |
-| **worker-subs-transmission** | 100m | 300Mi | 200m | 500Mi | 0 (disabled) |
+| Worker | SaaS CPU Req | SaaS Mem Req | On-Prem CPU Req | On-Prem Mem Req | Notes |
+|--------|--------------|--------------|-----------------|-----------------|-------|
+| **worker-ocp** | 100m | 256Mi | 250m | 512Mi | |
+| **worker-cost-model** | 100m | 256Mi | 100m | 256Mi | Aligned |
+| **worker-summary** | 100m | 500Mi | 250m | 1Gi | |
+| **worker-priority** | 100m | 400Mi | 250m | 1Gi | |
+| **worker-celery (default)** | 100m | 256Mi | 100m | 200Mi | |
 
-### Required Helm Chart Changes
+> **Note**: On-prem no longer deploys penalty or XL worker variants (FLPATH-3209). In SaaS, these handle overflow and large jobs but are unnecessary for on-premise workloads where data volume is predictable. Celery will route overflow tasks to the base queue worker.
 
-The `ros-helm-chart` team needs to update `values.yaml` to match these SaaS values:
+#### Cloud-only Workers (gated, not deployed by default)
 
-```yaml
-# cost-onprem/values.yaml - REQUIRED UPDATES
-
-koku:
-  api:
-    reads:
-      replicas: 3
-      resources:
-        requests:
-          cpu: 250m
-          memory: 512Mi
-        limits:
-          cpu: 500m
-          memory: 1Gi
-    writes:
-      replicas: 3
-      resources:
-        requests:
-          cpu: 250m
-          memory: 512Mi
-        limits:
-          cpu: 500m
-          memory: 1Gi
-    masu:
-      replicas: 1
-      resources:
-        requests:
-          cpu: 50m      # Was 300m - REDUCE
-          memory: 500Mi # Was 1Gi - REDUCE
-        limits:
-          cpu: 100m     # Was 1000m - REDUCE
-          memory: 700Mi # Was 8Gi - REDUCE
-
-  listener:
-    replicas: 2
-    resources:
-      requests:
-        cpu: 150m
-        memory: 300Mi
-      limits:
-        cpu: 300m
-        memory: 600Mi
-
-celery:
-  beat:
-    resources:
-      requests:
-        cpu: 50m
-        memory: 200Mi
-      limits:
-        cpu: 100m
-        memory: 400Mi
-
-  workers:
-    ocp:
-      replicas: 2
-      resources:
-        requests:
-          cpu: 100m
-          memory: 256Mi
-        limits:
-          cpu: 200m
-          memory: 512Mi
-
-    download:
-      replicas: 3  # fallback, HPA 1-10
-      resources:
-        requests:
-          cpu: 200m      # Was 100m - INCREASE
-          memory: 512Mi
-        limits:
-          cpu: 400m      # Was 200m - INCREASE
-          memory: 1Gi
-
-    summary:
-      replicas: 3  # fallback, HPA 1-10
-      resources:
-        requests:
-          cpu: 100m
-          memory: 500Mi  # Was 200Mi - INCREASE
-        limits:
-          cpu: 200m
-          memory: 750Mi  # Was 400Mi - INCREASE
-
-    priority:
-      replicas: 2
-      resources:
-        requests:
-          cpu: 100m
-          memory: 400Mi  # Was 200Mi - INCREASE
-        limits:
-          cpu: 200m
-          memory: 750Mi  # Was 400Mi - INCREASE
-
-    priorityPenalty:
-      replicas: 2
-      resources:
-        requests:
-          cpu: 150m      # Was 100m - INCREASE
-          memory: 400Mi  # Was 200Mi - INCREASE
-        limits:
-          cpu: 300m      # Was 200m - INCREASE
-          memory: 750Mi  # Was 400Mi - INCREASE
-
-    priorityXl:
-      replicas: 2
-      resources:
-        requests:
-          cpu: 150m      # Was 100m - INCREASE
-          memory: 400Mi  # Was 200Mi - INCREASE
-        limits:
-          cpu: 300m      # Was 200m - INCREASE
-          memory: 750Mi  # Was 400Mi - INCREASE
-
-    hcs:
-      replicas: 1
-      resources:
-        requests:
-          cpu: 100m
-          memory: 300Mi  # Was 200Mi - INCREASE
-        limits:
-          cpu: 200m
-          memory: 500Mi  # Was 400Mi - INCREASE
-
-    # Disabled in SaaS
-    subsExtraction:
-      replicas: 0
-    subsTransmission:
-      replicas: 0
-```
-
-### Summary of Key Differences
-
-| Component | Issue | SaaS Value | On-Prem Value | Action |
-|-----------|-------|------------|---------------|--------|
-| **MASU** | Over-provisioned | 50m/500Mi | 300m/1Gi | **REDUCE** |
-| **Download workers** | Under-provisioned CPU | 200m | 100m | **INCREASE** |
-| **Summary workers** | Under-provisioned memory | 500Mi | 200Mi | **INCREASE** |
-| **Priority workers** | Under-provisioned memory | 400Mi | 200Mi | **INCREASE** |
-| **Priority-penalty/xl** | Under-provisioned | 150m/400Mi | 100m/200Mi | **INCREASE** |
-| **HCS worker** | Under-provisioned memory | 300Mi | 200Mi | **INCREASE** |
-
-### Revised Total Requirements (After Alignment)
-
-After aligning with SaaS values:
-
-| Resource | Previous Estimate | After SaaS Alignment |
-|----------|-------------------|----------------------|
-| **CPU Requests** | ~10.3 cores | **~7.5 cores** |
-| **Memory Requests** | ~24 Gi | **~18 Gi** |
-
-The MASU reduction alone saves: **250m CPU** and **500Mi memory** per pod.
+| Worker | SaaS CPU Req | SaaS Mem Req | On-Prem Status |
+|--------|--------------|--------------|----------------|
+| **worker-download** | 200m | 512Mi | Gated (replicas: 0) |
+| **worker-refresh** | 100m | 256Mi | Gated (replicas: 0) |
+| **worker-hcs** | 100m | 300Mi | Gated (replicas: 0) |
+| **worker-subs-extraction** | 100m | 300Mi | Disabled (replicas: 0) |
+| **worker-subs-transmission** | 100m | 300Mi | Disabled (replicas: 0) |
 
 ---
 
-## 🎯 OCP-Only Deployment (Reduced Footprint)
+## OCP-Only Deployment (Default)
 
-The chart **default is now OCP-only**: cloud-only Celery workers (download, refresh, hcs, subs*) are gated on `cloudProviderSupported` (false) and are not deployed. For deployments that **only process OpenShift data** (no AWS, Azure, or GCP providers), no extra configuration is needed. The following section documents which workers are required vs optional when tuning manually.
-
-### Worker Classification for OCP-Only
-
-| Status | Workers | Count | Notes |
-|--------|---------|-------|-------|
-| ✅ **REQUIRED** | celery-beat, ocp, ocp-penalty, ocp-xl, summary, summary-penalty, summary-xl, cost-model, cost-model-penalty, cost-model-xl, default | 11 | Core OCP processing |
-| ⚠️ **OPTIONAL** | priority, priority-penalty, priority-xl, refresh, refresh-penalty, refresh-xl | 6 | Can disable for minimal |
-| ❌ **NOT NEEDED** | download, download-penalty, download-xl, hcs, subs-extraction, subs-transmission | 7 | Cloud-provider specific |
-
-### Why Workers Can Be Disabled
-
-#### Download Workers (NOT NEEDED)
-- **Reason**: OCP uses a **PUSH model** via Kafka - the Cost Management Operator sends data with presigned S3 URLs
-- **Cloud providers** use a **PULL model** - Koku polls and downloads reports from S3/Blob
-- **Code evidence**: OCP ingestion is in `masu/api/ingest_ocp_payload.py` (Kafka-triggered)
-
-#### HCS Worker (NOT NEEDED)
-- **Reason**: Hybrid Committed Spend only supports cloud providers
-- **Code evidence** (`hcs/tasks.py`):
-```python
-HCS_ACCEPTED_PROVIDERS = (
-    Provider.PROVIDER_AWS,
-    Provider.PROVIDER_AZURE,
-    Provider.PROVIDER_GCP,
-    # Note: OCP is NOT in this list
-)
-```
-
-#### SUBS Workers (NOT NEEDED)
-- **Reason**: Subscription data extraction is for RHEL instances on cloud providers
-- **Note**: Already disabled in SaaS (`replicas: 0`)
-
-#### Refresh Workers (OPTIONAL)
-- **Reason**: Primary use is `delete_openshift_on_cloud_data` for OCP-on-cloud scenarios
-- **OCP-only impact**: None - no cloud data to correlate
-
-### OCP-Only Helm Values
-
-```yaml
-# values.yaml for OCP-only deployment
-
-celery:
-  beat:
-    replicas: 1
-    enabled: true
-
-  workers:
-    # ===== REQUIRED FOR OCP =====
-    ocp:
-      replicas: 2
-      enabled: true
-    ocpPenalty:
-      replicas: 1
-      enabled: true
-    ocpXl:
-      replicas: 1
-      enabled: true
-
-    summary:
-      replicas: 2
-      enabled: true
-    summaryPenalty:
-      replicas: 1
-      enabled: true
-    summaryXl:
-      replicas: 1
-      enabled: true
-
-    costModel:
-      replicas: 2
-      enabled: true
-    costModelPenalty:
-      replicas: 1
-      enabled: true
-    costModelXl:
-      replicas: 1
-      enabled: true
-
-    default:
-      replicas: 1
-      enabled: true
-
-    # ===== OPTIONAL =====
-    priority:
-      replicas: 1  # Keep for production
-      enabled: true
-    priorityPenalty:
-      replicas: 0
-      enabled: false
-    priorityXl:
-      replicas: 0
-      enabled: false
-
-    refresh:
-      replicas: 0
-      enabled: false
-    refreshPenalty:
-      replicas: 0
-      enabled: false
-    refreshXl:
-      replicas: 0
-      enabled: false
-
-    # ===== NOT NEEDED FOR OCP-ONLY =====
-    download:
-      replicas: 0
-      enabled: false
-    downloadPenalty:
-      replicas: 0
-      enabled: false
-    downloadXl:
-      replicas: 0
-      enabled: false
-
-    hcs:
-      replicas: 0
-      enabled: false
-
-    subsExtraction:
-      replicas: 0
-      enabled: false
-    subsTransmission:
-      replicas: 0
-      enabled: false
-```
-
-### OCP-Only Resource Savings
-
-| Deployment | Workers | CPU Request | Memory Request |
-|------------|---------|-------------|----------------|
-| **Before (all workers enabled)** | 24 | ~2.4 cores | ~6.5 Gi |
-| **After (default, cloud gated)** | 15 | ~1.5 cores | ~3.7 Gi |
-| **OCP-Only (minimal, manual)** | 8 | ~0.8 cores | ~2.2 Gi |
-
-**Default savings** (cloud workers gated): 9 fewer pods, ~0.9 cores CPU, ~2.8 Gi memory
+The chart default is OCP-only: cloud-only Celery workers (download, refresh, hcs, subs*) are gated on `cloudProviderSupported` (false) and are not deployed. Penalty and XL worker variants have been removed entirely. No extra configuration is needed for OCP-only deployments.
 
 ### Queue to Worker Reference
 
-| Queue | Worker | OCP-Only |
-|-------|--------|----------|
-| `celery` | worker-celery | ✅ Required |
-| `ocp`, `ocp_xl`, `ocp_penalty` | worker-ocp-* | ✅ Required |
-| `summary`, `summary_xl`, `summary_penalty` | worker-summary-* | ✅ Required |
-| `cost_model`, `cost_model_xl`, `cost_model_penalty` | worker-cost-model-* | ✅ Required |
-| `priority`, `priority_xl`, `priority_penalty` | worker-priority-* | ⚠️ Optional |
-| `refresh`, `refresh_xl`, `refresh_penalty` | worker-refresh-* | ⚠️ Optional |
-| `download`, `download_xl`, `download_penalty` | worker-download-* | ❌ Disable |
-| `hcs` | worker-hcs | ❌ Disable |
-| `subs_extraction`, `subs_transmission` | worker-subs-* | ❌ Disable |
+| Queue | Worker | Status |
+|-------|--------|--------|
+| `celery` | worker-default | Deployed |
+| `ocp` | worker-ocp | Deployed |
+| `summary` | worker-summary | Deployed |
+| `cost_model` | worker-cost-model | Deployed |
+| `priority` | worker-priority | Deployed |
+| `download` | worker-download | Gated (cloud-only) |
+| `refresh` | worker-refresh | Gated (cloud-only) |
+| `hcs` | worker-hcs | Gated (cloud-only) |
+| `subs_extraction` | worker-subs-extraction | Disabled |
+| `subs_transmission` | worker-subs-transmission | Disabled |
+
+### Why Cloud Workers Are Disabled
+
+#### Download Workers
+- **Reason**: OCP uses a **PUSH model** via Kafka - the Cost Management Operator sends data with presigned S3 URLs
+- **Cloud providers** use a **PULL model** - Koku polls and downloads reports from S3/Blob
+
+#### HCS Worker
+- **Reason**: Hybrid Committed Spend only supports cloud providers (AWS, Azure, GCP)
+
+#### SUBS Workers
+- **Reason**: Subscription data extraction is for RHEL instances on cloud providers
+- Already disabled in SaaS (`replicas: 0`)
+
+#### Refresh Workers
+- **Reason**: Primary use is `delete_openshift_on_cloud_data` for OCP-on-cloud scenarios
+- No impact for OCP-only deployments
 
 ---
 
 ## Version Information
 
-- **Based on**: Production deployment observations + Clowder SaaS configuration + OCP-only code analysis (December 2024). Updated for cloud-only Celery worker gating (FLPATH-3098): default deployment now 15 Celery workers; 9 cloud-only workers gated on `cloudProviderSupported`.
-- **Helm Chart Version**: cost-onprem v0.2.x
+- **Based on**: Production deployment observations + Clowder SaaS configuration + OCP-only code analysis
+- **Helm Chart Version**: cost-onprem v0.3.0
 - **Koku Image**: `quay.io/insights-onprem/koku:latest`
 - **SaaS Config Source**: `deploy/kustomize/patches/*.yaml` in koku repository
-
----
-
-## README.md Addition
-
-Add the following to the ros-helm-chart README.md under the "Configuration" section:
-
-```markdown
-### Resource Requirements
-
-Complete Cost Management deployment requires significant cluster resources:
-
-| Resource | Minimum | Recommended |
-|----------|---------|-------------|
-| **CPU** | 10 cores | 12-14 cores |
-| **Memory** | 24 Gi | 32-40 Gi |
-| **Worker Nodes** | 3 × 8 Gi | 3 × 16 Gi |
-| **Storage** | 300 Gi | 400+ Gi |
-| **Pods** | ~55 | - |
-
-**📖 See [Resource Requirements Guide](docs/resource-requirements.md) for detailed breakdown by component.**
-```
-
+- **Last updated**: FLPATH-3209 (remove XL/penalty workers), FLPATH-3210 (unified API)

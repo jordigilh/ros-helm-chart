@@ -91,11 +91,11 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "cost-onprem.koku.api.reads.name" . }}
+  name: {{ include "cost-onprem.koku.api.name" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cost-management-api-reads
+    app.kubernetes.io/component: cost-management-api
 spec:
   namespaceSelector:
     matchNames:
@@ -103,27 +103,7 @@ spec:
   selector:
     matchLabels:
       {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: cost-management-api-reads
-  endpoints:
-    - port: http
-      interval: {{ .Values.monitoring.scrapeInterval }}
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: {{ include "cost-onprem.koku.api.writes.name" . }}
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "cost-onprem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cost-management-api-writes
-spec:
-  namespaceSelector:
-    matchNames:
-      - {{ .Release.Namespace }}
-  selector:
-    matchLabels:
-      {{- include "cost-onprem.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: cost-management-api-writes
+      app.kubernetes.io/component: cost-management-api
   endpoints:
     - port: http
       interval: {{ .Values.monitoring.scrapeInterval }}

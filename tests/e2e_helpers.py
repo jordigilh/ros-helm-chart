@@ -298,18 +298,10 @@ def generate_cluster_id(prefix: str = "") -> str:
 # Koku API Utilities
 # =============================================================================
 
-def get_koku_api_reads_url(helm_release_name: str, namespace: str) -> str:
-    """Get the internal Koku API reads URL for GET operations."""
+def get_koku_api_url(helm_release_name: str, namespace: str) -> str:
+    """Get the internal Koku API URL for all operations (unified deployment)."""
     return (
-        f"http://{helm_release_name}-koku-api-reads."
-        f"{namespace}.svc.cluster.local:8000/api/cost-management/v1"
-    )
-
-
-def get_koku_api_writes_url(helm_release_name: str, namespace: str) -> str:
-    """Get the internal Koku API writes URL for POST/PUT/DELETE operations."""
-    return (
-        f"http://{helm_release_name}-koku-api-writes."
+        f"http://{helm_release_name}-koku-api."
         f"{namespace}.svc.cluster.local:8000/api/cost-management/v1"
     )
 
@@ -411,8 +403,7 @@ def get_application_type_id(
 def register_source(
     namespace: str,
     pod: str,
-    api_reads_url: str,
-    api_writes_url: str,
+    api_url: str,
     rh_identity_header: str,
     cluster_id: str,
     org_id: str,
@@ -434,8 +425,7 @@ def register_source(
     Args:
         namespace: Kubernetes namespace
         pod: Pod name for executing curl commands (typically ingress pod)
-        api_reads_url: Koku API reads URL
-        api_writes_url: Koku API writes URL
+        api_url: Koku API URL (unified deployment)
         rh_identity_header: Base64-encoded X-Rh-Identity header value
         cluster_id: Cluster ID for the source
         org_id: Organization ID
@@ -448,15 +438,14 @@ def register_source(
     Returns:
         SourceRegistration with source details
     """
-    # Get type IDs using reads endpoint
     source_type_id = get_source_type_id(
-        namespace, pod, api_reads_url, rh_identity_header, container=container
+        namespace, pod, api_url, rh_identity_header, container=container
     )
     if not source_type_id:
         raise RuntimeError("Could not get OpenShift source type ID")
     
     app_type_id = get_application_type_id(
-        namespace, pod, api_reads_url, rh_identity_header, container=container
+        namespace, pod, api_url, rh_identity_header, container=container
     )
     
     # Generate source name using the unique suffix of cluster_id
@@ -486,7 +475,7 @@ def register_source(
             pod,
             [
                 "curl", "-s", "-w", "\n__HTTP_CODE__:%{http_code}", "-X", "POST",
-                f"{api_writes_url}/sources",
+                f"{api_url}/sources",
                 "-H", "Content-Type: application/json",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
                 "-d", source_payload,
@@ -528,7 +517,7 @@ def register_source(
         raise RuntimeError(
             f"Source creation failed after {max_retries} attempts. "
             f"Last error: {last_error}. "
-            f"pod={pod}, url={api_writes_url}/sources"
+            f"pod={pod}, url={api_url}/sources"
         )
     
     # Create application with cluster_id in extra
@@ -544,7 +533,7 @@ def register_source(
             pod,
             [
                 "curl", "-s", "-X", "POST",
-                f"{api_writes_url}/applications",
+                f"{api_url}/applications",
                 "-H", "Content-Type: application/json",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
                 "-d", app_payload,
@@ -563,7 +552,7 @@ def register_source(
 def delete_source(
     namespace: str,
     pod: str,
-    api_writes_url: str,
+    api_url: str,
     rh_identity_header: str,
     source_id: str,
     container: str = "ingress",
@@ -573,7 +562,7 @@ def delete_source(
     Args:
         namespace: Kubernetes namespace
         pod: Pod name for executing curl commands (typically ingress pod)
-        api_writes_url: Koku API writes URL
+        api_url: Koku API URL (unified deployment)
         rh_identity_header: Base64-encoded X-Rh-Identity header value
         source_id: ID of the source to delete
         container: Container name in the pod (default: "ingress")
@@ -587,7 +576,7 @@ def delete_source(
             pod,
             [
                 "curl", "-s", "-X", "DELETE",
-                f"{api_writes_url}/sources/{source_id}",
+                f"{api_url}/sources/{source_id}",
                 "-H", f"X-Rh-Identity: {rh_identity_header}",
             ],
             container=container,

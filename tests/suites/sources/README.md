@@ -42,8 +42,7 @@ Key fixtures provided by `conftest.py`:
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
-| `koku_api_reads_url` | module | Koku API URL for GET requests |
-| `koku_api_writes_url` | module | Koku API URL for POST/PUT/DELETE |
+| `koku_api_url` | module | Koku API URL (unified deployment) |
 | `ingress_pod` | module | Pod name for executing internal API calls |
 | `rh_identity_header` | module | Valid X-Rh-Identity header for test org |
 | `invalid_identity_headers` | module | Dict of invalid headers for error testing |

@@ -21,7 +21,7 @@ class TestKokuSourcesIntegration:
         endpoints at /api/cost-management/v1/.
         """
         # Check that Koku API services exist
-        for suffix in ["koku-api-reads", "koku-api-writes"]:
+        for suffix in ["koku-api"]:
             service_name = f"{cluster_config.helm_release_name}-{suffix}"
             exists = check_service_exists(cluster_config.namespace, service_name)
 

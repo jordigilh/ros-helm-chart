@@ -207,8 +207,7 @@ end
 **Backend Clusters** (Gateway routes to multiple backends):
 - **ingress-backend**: Ingress service for file uploads (`/api/ingress/*`)
 - **ros-api-backend**: ROS API service (`/api/cost-management/v1/recommendations/openshift/*`)
-- **koku-api-reads-backend**: Koku API read service (`/api/cost-management/*` GET/HEAD)
-- **koku-api-writes-backend**: Koku API write service (`/api/cost-management/*` POST/PUT/DELETE/PATCH)
+- **koku-api-backend**: Koku API service (`/api/cost-management/*`)
 
 **Note**: Sources API is now integrated into Koku API at `/api/cost-management/v1/sources/`
 

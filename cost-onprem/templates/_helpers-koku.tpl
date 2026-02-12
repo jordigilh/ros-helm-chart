@@ -10,17 +10,10 @@ Koku Service Names
 */}}
 
 {{/*
-Koku API reads deployment name
+Koku API deployment name (unified - handles both reads and writes)
 */}}
-{{- define "cost-onprem.koku.api.reads.name" -}}
-{{- printf "%s-koku-api-reads" (include "cost-onprem.fullname" .) -}}
-{{- end -}}
-
-{{/*
-Koku API writes deployment name
-*/}}
-{{- define "cost-onprem.koku.api.writes.name" -}}
-{{- printf "%s-koku-api-writes" (include "cost-onprem.fullname" .) -}}
+{{- define "cost-onprem.koku.api.name" -}}
+{{- printf "%s-koku-api" (include "cost-onprem.fullname" .) -}}
 {{- end -}}
 
 {{/*
@@ -195,21 +188,11 @@ Note: We don't add component here - each resource defines its own specific compo
 {{- end -}}
 
 {{/*
-Selector labels for Koku API reads
+Selector labels for Koku API (unified)
 */}}
-{{- define "cost-onprem.koku.api.reads.selectorLabels" -}}
+{{- define "cost-onprem.koku.api.selectorLabels" -}}
 {{ include "cost-onprem.selectorLabels" . }}
-app.kubernetes.io/component: cost-management-api-reads
-cost-onprem.io/api-type: reads
-{{- end -}}
-
-{{/*
-Selector labels for Koku API writes
-*/}}
-{{- define "cost-onprem.koku.api.writes.selectorLabels" -}}
-{{ include "cost-onprem.selectorLabels" . }}
-app.kubernetes.io/component: cost-management-api-writes
-cost-onprem.io/api-type: writes
+app.kubernetes.io/component: cost-management-api
 {{- end -}}
 
 {{/*

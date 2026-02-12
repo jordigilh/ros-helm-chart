@@ -144,104 +144,57 @@ costManagement:
       tag: "sources"
       pullPolicy: Always
 
-    reads:
-      replicas: 1
-      resources:
-        requests:
-          cpu: 250m
-          memory: 1Gi
-        limits:
-          cpu: 1
-          memory: 2Gi
+    replicas: 1
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: 1
+        memory: 2Gi
 
-      livenessProbe:
-        httpGet:
-          path: /livez
-          port: 9000
-          scheme: HTTP
-        initialDelaySeconds: 30
-        periodSeconds: 20
-        timeoutSeconds: 3
-        failureThreshold: 5
-        successThreshold: 1
+    livenessProbe:
+      httpGet:
+        path: /livez
+        port: 9000
+        scheme: HTTP
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 5
+      successThreshold: 1
 
-      readinessProbe:
-        httpGet:
-          path: /readyz
-          port: 9000
-          scheme: HTTP
-        initialDelaySeconds: 30
-        periodSeconds: 20
-        timeoutSeconds: 3
-        failureThreshold: 5
-        successThreshold: 1
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: 9000
+        scheme: HTTP
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 5
+      successThreshold: 1
 
-      env:
-        API_PATH_PREFIX: /api/cost-management
-        DEVELOPMENT: "False"
-        GUNICORN_LOG_LEVEL: INFO
-        KOKU_LOG_LEVEL: INFO
-        DJANGO_LOG_LEVEL: INFO
-        DJANGO_LOG_FORMATTER: simple
-        DJANGO_LOG_HANDLERS: console
-        PROMETHEUS_MULTIPROC_DIR: /tmp
-        KOKU_ENABLE_SENTRY: "False"
-        CACHED_VIEWS_DISABLED: "False"
-        RETAIN_NUM_MONTHS: "3"
-        NOTIFICATION_CHECK_TIME: "24"
-        ENHANCED_ORG_ADMIN: "True"
-        RBAC_CACHE_TIMEOUT: "300"
-        CACHE_TIMEOUT: "3600"
-        TAG_ENABLED_LIMIT: "200"
-        USE_READREPLICA: "False"
-        GUNICORN_WORKERS: "2"
-        GUNICORN_THREADS: "4"
-
-    writes:
-      replicas: 1
-      resources:
-        requests:
-          cpu: 250m
-          memory: 1Gi
-        limits:
-          cpu: 1
-          memory: 2Gi
-
-      livenessProbe:
-        httpGet:
-          path: /livez
-          port: 9000
-          scheme: HTTP
-        initialDelaySeconds: 30
-        periodSeconds: 20
-        timeoutSeconds: 3
-        failureThreshold: 5
-        successThreshold: 1
-
-      readinessProbe:
-        httpGet:
-          path: /readyz
-          port: 9000
-          scheme: HTTP
-        initialDelaySeconds: 30
-        periodSeconds: 20
-        timeoutSeconds: 3
-        failureThreshold: 5
-        successThreshold: 1
-
-      env:
-        API_PATH_PREFIX: /api/cost-management
-        DEVELOPMENT: "False"
-        ENHANCED_ORG_ADMIN: "True"
-        GUNICORN_LOG_LEVEL: INFO
-        KOKU_LOG_LEVEL: INFO
-        DJANGO_LOG_LEVEL: INFO
-        DJANGO_LOG_FORMATTER: simple
-        DJANGO_LOG_HANDLERS: console
-        PROMETHEUS_MULTIPROC_DIR: /tmp
-        KOKU_ENABLE_SENTRY: "False"
-        GUNICORN_WORKERS: "1"
-        GUNICORN_THREADS: "4"
+    env:
+      API_PATH_PREFIX: /api/cost-management
+      DEVELOPMENT: "False"
+      GUNICORN_LOG_LEVEL: INFO
+      KOKU_LOG_LEVEL: INFO
+      DJANGO_LOG_LEVEL: INFO
+      DJANGO_LOG_FORMATTER: simple
+      DJANGO_LOG_HANDLERS: console
+      PROMETHEUS_MULTIPROC_DIR: /tmp
+      KOKU_ENABLE_SENTRY: "False"
+      CACHED_VIEWS_DISABLED: "False"
+      RETAIN_NUM_MONTHS: "3"
+      NOTIFICATION_CHECK_TIME: "24"
+      ENHANCED_ORG_ADMIN: "True"
+      RBAC_CACHE_TIMEOUT: "300"
+      CACHE_TIMEOUT: "3600"
+      TAG_ENABLED_LIMIT: "200"
+      USE_READREPLICA: "False"
+      GUNICORN_WORKERS: "2"
+      GUNICORN_THREADS: "4"
 
     service:
       type: ClusterIP
@@ -266,6 +219,16 @@ costManagement:
       DJANGO_LOG_LEVEL: INFO
       GUNICORN_LOG_LEVEL: INFO
       PROMETHEUS_MULTIPROC_DIR: /tmp
+      # Data retention: how many months of cost data to keep in the database.
+      # The MASU vacuum process purges data older than this threshold.
+      # Must match the value set in costManagement.api.env for consistency.
+      RETAIN_NUM_MONTHS: "3"
+      # Initial ingest: how many months of historical data to process when
+      # a new cost data source (provider) is first registered.
+      INITIAL_INGEST_NUM_MONTHS: "2"
+      # Override: when True, forces INITIAL_INGEST_NUM_MONTHS for all providers,
+      # even those already fully set up. Default is False (normal rolling ingest).
+      INITIAL_INGEST_OVERRIDE: "False"
 
   # ---------------------------------------------------------------------------
   # Kafka Listener
@@ -401,110 +364,6 @@ costManagement:
             cpu: 400m
             memory: 1Gi
 
-      priorityXl:
-        # On-prem: 1 replica to fit cluster constraints (SaaS uses 2)
-        replicas: 1
-        queue: priority,priority_xl
-        concurrency: 5
-        resources:
-          # Aligned with SaaS Clowder configuration
-          requests:
-            cpu: 150m
-            memory: 400Mi
-          limits:
-            cpu: 300m
-            memory: 750Mi
-
-      refreshXl:
-        # OCP-ONLY: Disabled - not needed for OCP
-        replicas: 0
-        queue: refresh,refresh_xl
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 200m
-            memory: 512Mi
-
-      summaryXl:
-        replicas: 1
-        queue: summary,summary_xl
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 200Mi
-          limits:
-            cpu: 200m
-            memory: 400Mi
-
-      downloadXl:
-        # OCP-ONLY: Disabled - not needed for OCP
-        replicas: 0
-        queue: download,download_xl
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 200m
-            memory: 512Mi
-          limits:
-            cpu: 400m
-            memory: 1Gi
-
-      priorityPenalty:
-        # On-prem: 1 replica to fit cluster constraints (SaaS uses 2)
-        replicas: 1
-        queue: priority,priority_penalty
-        concurrency: 5
-        resources:
-          # Aligned with SaaS Clowder configuration
-          requests:
-            cpu: 150m
-            memory: 400Mi
-          limits:
-            cpu: 300m
-            memory: 750Mi
-
-      refreshPenalty:
-        # OCP-ONLY: Disabled - not needed for OCP
-        replicas: 0
-        queue: refresh,refresh_penalty
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 200m
-            memory: 512Mi
-
-      summaryPenalty:
-        replicas: 1
-        queue: summary,summary_penalty
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 200Mi
-          limits:
-            cpu: 200m
-            memory: 400Mi
-
-      downloadPenalty:
-        # OCP-ONLY: Disabled - not needed for OCP
-        replicas: 0
-        queue: download,download_penalty
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 200m
-            memory: 512Mi
-          limits:
-            cpu: 400m
-            memory: 1Gi
-
       ocp:
         replicas: 1
         queue: ocp
@@ -517,57 +376,9 @@ costManagement:
             cpu: 500m
             memory: 1Gi
 
-      ocpXl:
-        replicas: 1
-        queue: ocp_xl
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 200m
-            memory: 512Mi
-
-      ocpPenalty:
-        replicas: 1
-        queue: ocp_penalty
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 200m
-            memory: 512Mi
-
       costModel:
         replicas: 1
         queue: cost_model
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 200m
-            memory: 512Mi
-
-      costModelXl:
-        replicas: 1
-        queue: cost_model_xl
-        concurrency: 5
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 200m
-            memory: 512Mi
-
-      costModelPenalty:
-        replicas: 1
-        queue: cost_model_penalty
         concurrency: 5
         resources:
           requests:
