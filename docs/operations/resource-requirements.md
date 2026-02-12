@@ -8,8 +8,8 @@
 
 | Resource | Minimum (Requests) | Recommended | Maximum (Limits) |
 |----------|-------------------|-------------|------------------|
-| **CPU** | ~6.5 cores | 8-10 cores | ~14 cores |
-| **Memory** | ~13 Gi | 18-24 Gi | ~30 Gi |
+| **CPU** | ~8.5 cores | 10-12 cores | ~15 cores |
+| **Memory** | ~19 Gi | 24-32 Gi | ~27 Gi |
 | **Worker Nodes** | 3 nodes @ 8 Gi each | 3 nodes @ 12-16 Gi each | - |
 | **Total Pods** | ~27 | - | - |
 
@@ -115,10 +115,10 @@ ROS components use the shared `resources.application` defaults from values.yaml 
 | Component | Replicas | CPU Request | CPU Limit | Memory Request | Memory Limit |
 |-----------|----------|-------------|-----------|----------------|--------------|
 | gateway (Envoy) | 2 | 100m | 500m | 128 Mi | 256 Mi |
-| ingress | 1 | 300m | 1000m | 640 Mi | 1.25 Gi |
+| ingress | 1 | 500m | 1000m | 1 Gi | 1 Gi |
 | ui (app + OAuth proxy) | 1 | 100m | 200m | 128 Mi | 256 Mi |
 
-**Subtotal**: 4 pods, **600m** request, **~1.0 Gi** memory request
+**Subtotal**: 4 pods, **800m** request, **~1.4 Gi** memory request
 
 > **Note**: Sources API functionality is embedded within the unified Koku API deployment and is not a separate service.
 
@@ -150,21 +150,21 @@ Kafka pods typically don't have explicit resource requests set by default. Based
 | Celery Workers (default) | 6 | 1.0 cores | 3.2 Gi |
 | ROS Services | 5 | 2.5 cores | 5.0 Gi |
 | Infrastructure | 2 | 0.2 cores | 0.5 Gi |
-| Supporting Services | 4 | 0.6 cores | 1.0 Gi |
+| Supporting Services | 4 | 0.8 cores | 1.4 Gi |
 | Kafka (recommended) | 7 | 3.2 cores | 7.0 Gi |
-| **TOTAL (default)** | **27** | **~8.2 cores** | **~19.0 Gi** |
+| **TOTAL (default)** | **27** | **~8.4 cores** | **~19.4 Gi** |
 
-With cloud providers enabled (3 additional Celery workers): **30** pods, **~8.6 cores**, **~20.1 Gi**.
+With cloud providers enabled (3 additional Celery workers): **30** pods, **~8.8 cores**, **~20.5 Gi**.
 
 ### Grand Total
 
 | Metric | Default (OCP-only) | With cloud workers |
 |--------|--------------------|--------------------|
 | **Total Pods** | 27 | 30 |
-| **CPU Requests** | ~8 cores | ~9 cores |
-| **CPU Limits** | ~13-14 cores | ~14-15 cores |
-| **Memory Requests** | ~19 Gi | ~20 Gi |
-| **Memory Limits** | ~28-30 Gi | ~30-32 Gi |
+| **CPU Requests** | ~8.4 cores | ~8.8 cores |
+| **CPU Limits** | ~15 cores | ~15.8 cores |
+| **Memory Requests** | ~19.4 Gi | ~20.5 Gi |
+| **Memory Limits** | ~26.5 Gi | ~28.5 Gi |
 
 ---
 

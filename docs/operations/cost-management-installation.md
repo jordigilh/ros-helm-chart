@@ -37,33 +37,38 @@
 
 | Component | Pods | CPU Request | CPU Limit | Memory Request | Memory Limit |
 |-----------|------|-------------|-----------|----------------|--------------|
-| **PostgreSQL** | 1 | 500m | 1000m | 1Gi | 2Gi |
+| **PostgreSQL** | 1 | 100m | 500m | 256Mi | 512Mi |
 | **Valkey** | 1 | 100m | 500m | 256Mi | 512Mi |
-| **Subtotal** | **2** | **600m** | **1.5 cores** | **1.25 GB** | **2.5 GB** |
+| **Subtotal** | **2** | **200m** | **1 core** | **512Mi** | **1Gi** |
 
 #### Application Components
 
 | Component | Pods | CPU Request | CPU Limit | Memory Request | Memory Limit |
 |-----------|------|-------------|-----------|----------------|--------------|
-| **Koku API** | 1-2 | 300m each | 600m each | 500Mi each | 1Gi each |
-| **Koku API Listener** | 1 | 200m | 400m | 256Mi | 512Mi |
-| **MASU** | 1 | 300m | 600m | 500Mi | 1Gi |
-| **Celery Beat** | 1 | 100m | 200m | 256Mi | 512Mi |
-| **Celery Workers** | 17 | 100-500m | 200-1000m | 256Mi-1Gi | 512Mi-2Gi |
-| **Subtotal** | **24** | **~6.25 cores** | **~12.5 cores** | **~11.5 GB** | **~23 GB** |
+| **Koku API** | 1 | 250m | 1 | 1Gi | 2Gi |
+| **Koku Listener** | 1 | 150m | 300m | 300Mi | 600Mi |
+| **MASU** | 1 | 250m | 500m | 1Gi | 2Gi |
+| **Celery Beat** | 1 | 50m | 100m | 200Mi | 400Mi |
+| **Celery Workers** | 5 | 100-250m | 200m-500m | 200Mi-1Gi | 400Mi-2Gi |
+| **ROS (API, Processor, Housekeeper, Poller)** | 4 | 500m each | 1 each | 1Gi each | 1Gi each |
+| **Kruize** | 1 | 500m | 1 | 1Gi | 2Gi |
+| **Gateway (Envoy)** | 2 | 100m each | 500m each | 128Mi each | 256Mi each |
+| **Ingress** | 1 | 500m | 1 | 1Gi | 1Gi |
+| **UI** | 1 | 100m | 200m | 128Mi | 256Mi |
+| **Subtotal** | **18** | **~5.0 cores** | **~11 cores** | **~11.8Gi** | **~18.6Gi** |
 
 #### Total Deployment Resources
 
 | Metric | Development | Production |
 |--------|-------------|------------|
-| **Total Pods** | ~24 | 34+ (with replicas) |
-| **Total CPU Request** | **~7.5 cores** | **15+ cores** |
-| **Total CPU Limit** | **~15 cores** | **30+ cores** |
-| **Total Memory Request** | **~16 GB** | **32+ GB** |
-| **Total Memory Limit** | **~28 GB** | **64+ GB** |
+| **Total Pods** | ~20 | 27+ (with replicas) |
+| **Total CPU Request** | **~5.2 cores** | **8+ cores** |
+| **Total CPU Limit** | **~12 cores** | **14+ cores** |
+| **Total Memory Request** | **~12.3Gi** | **19+ Gi** |
+| **Total Memory Limit** | **~19.6Gi** | **30+ Gi** |
 | **Storage (ODF)** | **150 GB** | **300+ GB** |
 
-**Note:** Production deployments should scale Koku API and Celery workers based on data volume.
+**Note:** These totals exclude Kafka (Strimzi), which adds ~7 pods and ~3.2 cores / ~7Gi memory.
 
 ### Required OpenShift Components
 
