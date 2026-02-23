@@ -757,6 +757,32 @@ objectStorage:
 
 
 # -----------------------------------------------------------------------------
+# Kessel (ReBAC Authorization)
+# -----------------------------------------------------------------------------
+# Kessel provides Relationship-Based Access Control (ReBAC) for Cost Management.
+# It is deployed separately by scripts/deploy-kessel.sh (similar to RHBK).
+#
+# The deploy-kessel.sh script creates the Kessel stack in its own namespace
+# and outputs the service hostnames to configure here.
+#
+# After deploy-kessel.sh runs, install-helm-chart.sh auto-detects and sets
+# these values via --set overrides.
+kessel:
+  namespace: kessel
+  spicedb:
+    host: ""
+    port: 50051
+    tls: false
+  relations:
+    host: ""
+    port: 9000
+    tls: false
+  inventory:
+    host: ""
+    port: 9000
+    tls: false
+
+# -----------------------------------------------------------------------------
 # Authentication Configuration (JWT with Keycloak/RHBK)
 # -----------------------------------------------------------------------------
 # JWT authentication with RHBK using Envoy's native JWT filter

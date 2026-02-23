@@ -963,6 +963,21 @@ deploy_helm_chart() {
         echo_warning "RHBK not detected — Keycloak values will use chart defaults"
     fi
 
+    # Kessel (ReBAC) values -- detect services deployed by deploy-kessel.sh
+    detect_kessel
+    if [ "$KESSEL_FOUND" = "true" ]; then
+        helm_cmd="$helm_cmd --set kessel.namespace=\"$KESSEL_NAMESPACE\""
+        helm_cmd="$helm_cmd --set kessel.relations.host=\"$KESSEL_RELATIONS_HOST\""
+        helm_cmd="$helm_cmd --set kessel.relations.port=\"$KESSEL_RELATIONS_PORT\""
+        helm_cmd="$helm_cmd --set kessel.inventory.host=\"$KESSEL_INVENTORY_HOST\""
+        helm_cmd="$helm_cmd --set kessel.inventory.port=\"$KESSEL_INVENTORY_PORT\""
+        helm_cmd="$helm_cmd --set kessel.spicedb.host=\"$KESSEL_SPICEDB_HOST\""
+        helm_cmd="$helm_cmd --set kessel.spicedb.port=\"$KESSEL_SPICEDB_PORT\""
+        echo_info "Kessel: namespace=$KESSEL_NAMESPACE relations=$KESSEL_RELATIONS_HOST:$KESSEL_RELATIONS_PORT"
+    else
+        echo_warning "Kessel not detected — run deploy-kessel.sh first for ReBAC authorization"
+    fi
+
     # S3 endpoint configuration for Helm:
     # If user pre-configured S3 in values.yaml, skip all --set overrides
     # (the values file already has the right config).
@@ -1430,6 +1445,57 @@ detect_keycloak() {
         echo_info "JWT authentication will be disabled"
         echo_info "To enable JWT auth, deploy RHBK using:"
         echo_info "  ./deploy-rhbk.sh"
+        return 1
+    fi
+}
+
+# Function to detect Kessel (SpiceDB + Relations API + Inventory API)
+# Deployed by deploy-kessel.sh into its own namespace
+detect_kessel() {
+    echo_info "Detecting Kessel (ReBAC authorization stack)..."
+
+    local kessel_found=false
+    local kessel_namespace=""
+    local relations_host=""
+    local relations_port="9000"
+    local inventory_host=""
+    local inventory_port="9000"
+    local spicedb_host=""
+    local spicedb_port="50051"
+
+    for ns in kessel kessel-system; do
+        if kubectl get namespace "$ns" >/dev/null 2>&1; then
+            if kubectl get service kessel-relations -n "$ns" >/dev/null 2>&1; then
+                kessel_namespace="$ns"
+                kessel_found=true
+                relations_host="kessel-relations.${ns}.svc.cluster.local"
+                inventory_host="kessel-inventory.${ns}.svc.cluster.local"
+                spicedb_host="spicedb.${ns}.svc.cluster.local"
+                echo_success "Kessel services found in namespace: $ns"
+                break
+            fi
+        fi
+    done
+
+    export KESSEL_FOUND="$kessel_found"
+    export KESSEL_NAMESPACE="$kessel_namespace"
+    export KESSEL_RELATIONS_HOST="$relations_host"
+    export KESSEL_RELATIONS_PORT="$relations_port"
+    export KESSEL_INVENTORY_HOST="$inventory_host"
+    export KESSEL_INVENTORY_PORT="$inventory_port"
+    export KESSEL_SPICEDB_HOST="$spicedb_host"
+    export KESSEL_SPICEDB_PORT="$spicedb_port"
+
+    if [ "$kessel_found" = true ]; then
+        echo_success "Kessel detected successfully"
+        echo_info "  Namespace: $kessel_namespace"
+        echo_info "  Relations: $relations_host:$relations_port"
+        echo_info "  Inventory: $inventory_host:$inventory_port"
+        echo_info "  SpiceDB:   $spicedb_host:$spicedb_port"
+        return 0
+    else
+        echo_warning "Kessel not detected"
+        echo_info "To deploy Kessel, run: ./deploy-kessel.sh"
         return 1
     fi
 }
