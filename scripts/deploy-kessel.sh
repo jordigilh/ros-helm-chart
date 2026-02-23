@@ -13,14 +13,16 @@
 #   - Kessel Inventory API (HTTP on port 8000, gRPC on port 9000)
 #
 # Schema writing and role seeding is handled by Koku's management commands
-# (kessel_update_schema + kessel_seed_roles) run as a Helm post-install hook.
-# This script only deploys infrastructure.
+# (kessel_update_schema + kessel_seed_roles) run inside the Helm pre-install
+# migration job.  This script only deploys infrastructure and sets up
+# cross-namespace RBAC so the migration job can sync the schema ConfigMap.
 #
 # Environment Variables:
 #   LOG_LEVEL             - Control output verbosity (ERROR|WARN|INFO|DEBUG, default: WARN)
 #   KESSEL_NAMESPACE      - Namespace for Kessel components (default: kessel)
 #   SPICEDB_PRESHARED_KEY - Pre-shared key for SpiceDB gRPC (default: auto-generated)
 #   COST_MGMT_NAMESPACE   - Namespace where Cost Management runs (default: cost-onprem)
+#   COST_MGMT_SA          - Koku ServiceAccount name in COST_MGMT_NAMESPACE (default: koku)
 #   STORAGE_CLASS         - PVC storage class (default: auto-detect)
 #
 # Examples:
@@ -41,6 +43,7 @@ LOG_LEVEL=${LOG_LEVEL:-WARN}
 NAMESPACE=${KESSEL_NAMESPACE:-kessel}
 SPICEDB_PRESHARED_KEY=${SPICEDB_PRESHARED_KEY:-$(openssl rand -hex 16)}
 COST_MGMT_NAMESPACE=${COST_MGMT_NAMESPACE:-cost-onprem}
+COST_MGMT_SA=${COST_MGMT_SA:-koku}
 STORAGE_CLASS=${STORAGE_CLASS:-}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -489,6 +492,12 @@ spec:
                   key: preshared-key
             - name: SPICEDB_ENDPOINT
               value: "spicedb:50051"
+            - name: SPICEDB_SCHEMA_FILE
+              value: "/etc/schema/schema.zed"
+          volumeMounts:
+            - name: schema
+              mountPath: /etc/schema
+              readOnly: true
           readinessProbe:
             tcpSocket:
               port: 9000
@@ -501,6 +510,11 @@ spec:
             limits:
               cpu: 250m
               memory: 256Mi
+      volumes:
+        - name: schema
+          configMap:
+            name: kessel-schema
+            optional: true
 EOF
     log_success "✓ Relations API Deployment created"
 
@@ -609,7 +623,7 @@ spec:
       containers:
         - name: inventory-api
           image: quay.io/cloudservices/kessel-inventory:latest
-          command: ["serve"]
+          command: ["inventory-api", "serve"]
           ports:
             - name: http
               containerPort: 8000
@@ -643,6 +657,76 @@ EOF
     log_success "✓ Inventory API Deployment created"
 
     wait_for_rollout "deployment/kessel-inventory"
+}
+
+# ---------------------------------------------------------------------------
+# Schema ConfigMap + cross-namespace RBAC for the Koku migration job
+# ---------------------------------------------------------------------------
+setup_schema_and_rbac() {
+    log_header "SETTING UP SCHEMA CONFIGMAP AND CROSS-NAMESPACE RBAC"
+
+    # Create kessel-schema ConfigMap (empty placeholder); the Koku migration
+    # job populates it via kessel_update_schema --sync-configmap.
+    if ! oc get configmap kessel-schema -n "$NAMESPACE" >/dev/null 2>&1; then
+        log_info "Creating empty kessel-schema ConfigMap..."
+        cat <<EOF | oc apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kessel-schema
+  namespace: $NAMESPACE
+  labels:
+    app: kessel
+    managed-by: koku-migration
+EOF
+        log_success "✓ kessel-schema ConfigMap created"
+    else
+        log_warning "kessel-schema ConfigMap already exists -- not overwriting"
+    fi
+
+    # Role: allows PATCH on ConfigMaps (schema sync) and Deployments (rollout restart)
+    log_info "Creating/updating kessel-schema-manager Role..."
+    cat <<EOF | oc apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kessel-schema-manager
+  namespace: $NAMESPACE
+  labels:
+    app: kessel
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["kessel-schema"]
+    verbs: ["get", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["kessel-relations"]
+    verbs: ["get", "patch"]
+EOF
+    log_success "✓ kessel-schema-manager Role created"
+
+    # RoleBinding: grants the Koku SA in the cost-management namespace
+    # the ability to manage the schema ConfigMap and restart the Relations API.
+    log_info "Creating/updating kessel-schema-manager RoleBinding..."
+    cat <<EOF | oc apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kessel-schema-manager
+  namespace: $NAMESPACE
+  labels:
+    app: kessel
+subjects:
+  - kind: ServiceAccount
+    name: ${COST_MGMT_SA}
+    namespace: ${COST_MGMT_NAMESPACE}
+roleRef:
+  kind: Role
+  name: kessel-schema-manager
+  apiGroup: rbac.authorization.k8s.io
+EOF
+    log_success "✓ kessel-schema-manager RoleBinding created (SA: ${COST_MGMT_SA}@${COST_MGMT_NAMESPACE})"
 }
 
 # ---------------------------------------------------------------------------
@@ -691,7 +775,7 @@ print_summary() {
     echo "  Inventory API:     kessel-inventory.${NAMESPACE}.svc.cluster.local:8000 (HTTP)"
     echo "                     kessel-inventory.${NAMESPACE}.svc.cluster.local:9000 (gRPC)"
     echo ""
-    echo "  Schema and role seeding is handled by Koku's Helm post-install hook"
+    echo "  Schema and role seeding is handled by Koku's migration job"
     echo "  (kessel_update_schema + kessel_seed_roles management commands)."
     echo ""
     echo "  install-helm-chart.sh will auto-detect Kessel and set Helm values."
@@ -714,6 +798,7 @@ main() {
     deploy_spicedb
     deploy_relations_api
     deploy_inventory_api
+    setup_schema_and_rbac
     create_cost_mgmt_secret
     print_summary
 

@@ -105,6 +105,70 @@ spec:
                 print("✓ Migration lock will auto-release on connection close")
             PYTHON_EOF
 
+            echo "=== Django migration job completed ==="
+
+            # =================================================================
+            # Kessel ReBAC Provisioning
+            # =================================================================
+            # AUTHORIZATION_BACKEND is derived inside Python (settings.py), not
+            # set as a shell env var.  ONPREM="True" unconditionally implies
+            # rebac, so we gate on ONPREM here; the management commands perform
+            # their own internal settings.AUTHORIZATION_BACKEND check.
+            if [ "$ONPREM" = "True" ]; then
+                echo "=== Kessel ReBAC Provisioning ==="
+
+                # -- Wait for SpiceDB --
+                ELAPSED=0
+                echo "Waiting for SpiceDB at ${SPICEDB_HOST}:${SPICEDB_PORT}..."
+                while ! timeout 5 bash -c "cat < /dev/null > /dev/tcp/${SPICEDB_HOST}/${SPICEDB_PORT}" 2>/dev/null; do
+                  if [ $ELAPSED -ge $MAX_WAIT ]; then
+                    echo "ERROR: SpiceDB not ready after ${MAX_WAIT} seconds"
+                    exit 1
+                  fi
+                  echo "SpiceDB not ready (${ELAPSED}s elapsed), waiting..."
+                  sleep 5
+                  ELAPSED=$((ELAPSED + 5))
+                done
+                echo "✓ SpiceDB is ready (waited ${ELAPSED}s)"
+
+                # Step 1: Write schema to SpiceDB + sync ConfigMap + restart Relations API
+                echo "Step 1/2: Writing schema and syncing ConfigMap..."
+                python manage.py kessel_update_schema --force --sync-configmap
+
+                # -- Wait for Relations API to come up after restart --
+                ELAPSED=0
+                echo "Waiting for Relations API at ${KESSEL_RELATIONS_HOST}:${KESSEL_RELATIONS_PORT}..."
+                while ! timeout 5 bash -c "cat < /dev/null > /dev/tcp/${KESSEL_RELATIONS_HOST}/${KESSEL_RELATIONS_PORT}" 2>/dev/null; do
+                  if [ $ELAPSED -ge $MAX_WAIT ]; then
+                    echo "ERROR: Relations API not ready after ${MAX_WAIT} seconds"
+                    exit 1
+                  fi
+                  echo "Relations API not ready (${ELAPSED}s elapsed), waiting..."
+                  sleep 5
+                  ELAPSED=$((ELAPSED + 5))
+                done
+                echo "✓ Relations API TCP ready, waiting 5s for full initialization..."
+                sleep 5
+
+                # Step 2: Seed roles (retry loop for Relations API initialization timing)
+                echo "Step 2/2: Seeding standard roles..."
+                ATTEMPT=0
+                MAX_ATTEMPTS=3
+                until python manage.py kessel_seed_roles; do
+                  ATTEMPT=$((ATTEMPT + 1))
+                  if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+                    echo "ERROR: kessel_seed_roles failed after $MAX_ATTEMPTS attempts"
+                    exit 1
+                  fi
+                  echo "kessel_seed_roles failed (attempt $ATTEMPT/$MAX_ATTEMPTS), retrying in 10s..."
+                  sleep 10
+                done
+
+                echo "=== Kessel ReBAC provisioning complete ==="
+            else
+                echo "ONPREM=$ONPREM (not True), skipping Kessel provisioning"
+            fi
+
             echo "=== Migration job completed ==="
 
         env:
