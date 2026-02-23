@@ -146,8 +146,8 @@ costManagement:
     enabled: true
 
     image:
-      repository: quay.io/insights-onprem/koku
-      tag: "sources"
+      repository: quay.io/jordigilh/koku
+      tag: "rebac"
       pullPolicy: Always
 
     replicas: 1
