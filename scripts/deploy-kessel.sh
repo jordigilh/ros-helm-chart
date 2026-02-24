@@ -698,15 +698,14 @@ spec:
       containers:
         - name: zed
           image: ghcr.io/authzed/zed:v0.35.0
-          command:
-            - /bin/sh
-            - -c
-            - |
-              zed schema write \
-                --endpoint=spicedb:50051 \
-                --token="$SPICEDB_TOKEN" \
-                --insecure \
-                /etc/schema/schema.zed
+          command: ["zed"]
+          args:
+            - schema
+            - write
+            - --endpoint=spicedb:50051
+            - "--token=$(SPICEDB_TOKEN)"
+            - --insecure
+            - /etc/schema/schema.zed
           env:
             - name: SPICEDB_TOKEN
               valueFrom:
