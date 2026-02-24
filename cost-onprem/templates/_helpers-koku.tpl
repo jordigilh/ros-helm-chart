@@ -428,10 +428,6 @@ Common environment variables for Koku API and Celery
       key: spicedb-preshared-key
 - name: SPICEDB_TLS
   value: {{ .Values.kessel.spicedb.tls | default "false" | quote }}
-# Kessel namespace -- used by kessel_update_schema --sync-configmap to manage
-# the schema ConfigMap and restart the Relations API from the migration job.
-- name: KESSEL_NAMESPACE
-  value: {{ .Values.kessel.namespace | default "kessel" | quote }}
 {{- end -}}
 
 {{/*

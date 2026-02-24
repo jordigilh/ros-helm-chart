@@ -966,7 +966,6 @@ deploy_helm_chart() {
     # Kessel (ReBAC) values -- detect services deployed by deploy-kessel.sh
     detect_kessel
     if [ "$KESSEL_FOUND" = "true" ]; then
-        helm_cmd="$helm_cmd --set kessel.namespace=\"$KESSEL_NAMESPACE\""
         helm_cmd="$helm_cmd --set kessel.relations.host=\"$KESSEL_RELATIONS_HOST\""
         helm_cmd="$helm_cmd --set kessel.relations.port=\"$KESSEL_RELATIONS_PORT\""
         helm_cmd="$helm_cmd --set kessel.inventory.host=\"$KESSEL_INVENTORY_HOST\""

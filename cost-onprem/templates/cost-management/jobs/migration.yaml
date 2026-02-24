@@ -110,10 +110,10 @@ spec:
             # =================================================================
             # Kessel ReBAC Provisioning
             # =================================================================
-            # AUTHORIZATION_BACKEND is derived inside Python (settings.py), not
-            # set as a shell env var.  ONPREM="True" unconditionally implies
-            # rebac, so we gate on ONPREM here; the management commands perform
-            # their own internal settings.AUTHORIZATION_BACKEND check.
+            # Schema and ConfigMap are managed by deploy-kessel.sh.
+            # This section is a safety net: it writes the schema to SpiceDB
+            # (in case deploy-kessel.sh was not re-run after a Koku upgrade)
+            # and seeds role tuples directly to SpiceDB via the authzed SDK.
             if [ "$ONPREM" = "True" ]; then
                 echo "=== Kessel ReBAC Provisioning ==="
 
@@ -131,26 +131,11 @@ spec:
                 done
                 echo "✓ SpiceDB is ready (waited ${ELAPSED}s)"
 
-                # Step 1: Write schema to SpiceDB + sync ConfigMap + restart Relations API
-                echo "Step 1/2: Writing schema and syncing ConfigMap..."
-                python manage.py kessel_update_schema --force --sync-configmap
+                # Step 1: Write schema to SpiceDB (safety net for upgrades)
+                echo "Step 1/2: Writing schema to SpiceDB..."
+                python manage.py kessel_update_schema --force
 
-                # -- Wait for Relations API to come up after restart --
-                ELAPSED=0
-                echo "Waiting for Relations API at ${KESSEL_RELATIONS_HOST}:${KESSEL_RELATIONS_PORT}..."
-                while ! timeout 5 bash -c "cat < /dev/null > /dev/tcp/${KESSEL_RELATIONS_HOST}/${KESSEL_RELATIONS_PORT}" 2>/dev/null; do
-                  if [ $ELAPSED -ge $MAX_WAIT ]; then
-                    echo "ERROR: Relations API not ready after ${MAX_WAIT} seconds"
-                    exit 1
-                  fi
-                  echo "Relations API not ready (${ELAPSED}s elapsed), waiting..."
-                  sleep 5
-                  ELAPSED=$((ELAPSED + 5))
-                done
-                echo "✓ Relations API TCP ready, waiting 5s for full initialization..."
-                sleep 5
-
-                # Step 2: Seed roles (retry loop for Relations API initialization timing)
+                # Step 2: Seed roles directly to SpiceDB
                 echo "Step 2/2: Seeding standard roles..."
                 ATTEMPT=0
                 MAX_ATTEMPTS=3
